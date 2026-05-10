@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import {
   API_VERSION,
@@ -114,14 +115,15 @@ async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): P
 async function startDaemon(paths: RuntimePaths): Promise<void> {
   await ensureDir(paths.home);
   const daemonPath = resolve(import.meta.dir, "daemon.ts");
-  Bun.spawn([process.execPath, "run", daemonPath], {
-    stdout: "ignore",
-    stderr: "ignore",
+  const child = spawn(process.execPath, ["run", daemonPath], {
+    detached: true,
+    stdio: "ignore",
     env: {
       ...process.env,
       [ENV_STARTED_BY_CLIENT]: "1",
     },
-  }).unref();
+  });
+  child.unref();
 }
 
 function log(message: string): void {

@@ -99,3 +99,54 @@ test("protected REST routes require bearer token when LAN bind is enabled", asyn
     await proc.exited;
   }
 });
+
+test("CLI-launched daemon stays alive across separate CLI processes", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-cli-daemon-"));
+  homes.push(home);
+  let daemonPid: number | null = null;
+
+  try {
+    const first = Bun.spawnSync({
+      cmd: [process.execPath, "run", "src/cli.ts", "status"],
+      env: { ...process.env, SYNCHRONIZE_HOME: home },
+    });
+    expect(first.exitCode).toBe(0);
+    const firstStatus = JSON.parse(first.stdout.toString()) as { pid: number; daemon_started_by_cli: boolean };
+    daemonPid = firstStatus.pid;
+    expect(firstStatus.daemon_started_by_cli).toBe(true);
+
+    await Bun.sleep(1_000);
+
+    const second = Bun.spawnSync({
+      cmd: [process.execPath, "run", "src/cli.ts", "status"],
+      env: { ...process.env, SYNCHRONIZE_HOME: home },
+    });
+    expect(second.exitCode).toBe(0);
+    const secondStatus = JSON.parse(second.stdout.toString()) as { pid: number; daemon_started_by_cli: boolean };
+    expect(secondStatus.pid).toBe(firstStatus.pid);
+    expect(secondStatus.daemon_started_by_cli).toBe(false);
+  } finally {
+    if (daemonPid) await killPid(daemonPid);
+  }
+});
+
+async function killPid(pid: number): Promise<void> {
+  try {
+    process.kill(pid);
+  } catch {
+    return;
+  }
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await Bun.sleep(50);
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    return;
+  }
+}
