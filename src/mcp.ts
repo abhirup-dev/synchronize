@@ -7,25 +7,27 @@ import {
   NOTIFIER_ACTIVE_MS,
   NOTIFIER_IDLE_MS,
 } from "./constants.ts";
-import { ensureDaemon, requestJson, type ClientConfig } from "./client.ts";
-
-interface Peer {
-  peer_id: string;
-  session_name: string;
-  tool: string;
-  purpose: string | null;
-}
-
-interface Event {
-  event_id: number;
-  type: string;
-  sender_peer_id: string | null;
-  recipient_peer_id: string | null;
-  group_id: number | null;
-  body: string | null;
-  media_id: string | null;
-  created_at: string;
-}
+import { ensureDaemon, type ClientConfig } from "./client.ts";
+import {
+  ackInbox,
+  createGroup,
+  findReusablePeer,
+  getGroupHistory,
+  getMedia,
+  joinGroup,
+  leaveGroup,
+  listGroups,
+  listMedia,
+  listPeers,
+  readEvents,
+  readInbox,
+  registerPeer,
+  sendDm,
+  sendGroupMessage,
+  shareMedia,
+  type Event,
+  type Peer,
+} from "./api.ts";
 
 interface AdapterState {
   client: ClientConfig | null;
@@ -75,10 +77,7 @@ export class NotificationBridge {
     while (!this.stopped) {
       let sleepMs = idleMs;
       try {
-        const result = await requestJson<{ events: Event[]; next_cursor: number }>(
-          this.options.client,
-          `/events/${encodeURIComponent(this.options.peerId)}?cursor=${this.cursor}&limit=${limit}`,
-        );
+        const result = await readEvents(this.options.client, this.options.peerId, { cursor: this.cursor, limit });
         if (result.events.length > 0) {
           sleepMs = activeMs;
           for (const event of result.events) {
@@ -155,13 +154,13 @@ export function createMcpServer(): McpServer {
     },
     async (args) => {
       const client = await getClient(state);
-      const response = await requestJson<{ peer: Peer }>(client, "/peers/register", {
-        method: "POST",
-        body: JSON.stringify({
-          session_name: args.session_name,
-          purpose: args.purpose,
-          tool: args.tool ?? getMode(),
-        }),
+      const tool = args.tool ?? getMode();
+      const peerId = await resolveMcpRegisterPeerId(client, state, args.session_name, tool);
+      const response = await registerPeer(client, {
+        sessionName: args.session_name,
+        tool,
+        ...(peerId ? { peerId } : {}),
+        ...(args.purpose ? { purpose: args.purpose } : {}),
       });
       state.peer = response.peer;
       state.notifier?.stop();
@@ -188,8 +187,7 @@ export function createMcpServer(): McpServer {
     },
     async (args) => {
       const client = await getClient(state);
-      const path = args.group ? `/peers?group=${encodeURIComponent(args.group)}` : "/peers";
-      return text(await requestJson(client, path));
+      return text(await listPeers(client, args.group ? { group: args.group } : {}));
     },
   );
 
@@ -203,13 +201,10 @@ export function createMcpServer(): McpServer {
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(
-        await requestJson(client, "/dm", {
-          method: "POST",
-          body: JSON.stringify({
-            sender_peer_id: peer.peer_id,
-            recipient_peer_id: args.recipient_peer_id,
-            message: args.message,
-          }),
+        await sendDm(client, {
+          senderPeerId: peer.peer_id,
+          recipientPeerId: args.recipient_peer_id,
+          message: args.message,
         }),
       );
     },
@@ -224,12 +219,9 @@ export function createMcpServer(): McpServer {
     async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      const inbox = await requestJson<{ events: Event[] }>(client, `/peers/${encodeURIComponent(peer.peer_id)}/inbox`);
+      const inbox = await readInbox(client, peer.peer_id);
       if (args.ack && inbox.events.length > 0) {
-        await requestJson(client, `/peers/${encodeURIComponent(peer.peer_id)}/inbox/ack`, {
-          method: "POST",
-          body: JSON.stringify({ event_ids: inbox.events.map((event) => event.event_id) }),
-        });
+        await ackInbox(client, peer.peer_id, inbox.events.map((event) => event.event_id));
       }
       return text(inbox);
     },
@@ -245,13 +237,10 @@ export function createMcpServer(): McpServer {
       const client = await getClient(state);
       const peer = state.peer;
       return text(
-        await requestJson(client, "/groups", {
-          method: "POST",
-          body: JSON.stringify({
-            name: args.name,
-            ephemeral: args.ephemeral,
-            creator_peer_id: peer?.peer_id,
-          }),
+        await createGroup(client, {
+          name: args.name,
+          ...(args.ephemeral !== undefined ? { ephemeral: args.ephemeral } : {}),
+          ...(peer ? { creatorPeerId: peer.peer_id } : {}),
         }),
       );
     },
@@ -267,9 +256,11 @@ export function createMcpServer(): McpServer {
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(
-        await requestJson(client, `/groups/${encodeURIComponent(args.name)}/join`, {
-          method: "POST",
-          body: JSON.stringify({ peer_id: peer.peer_id, alias: args.alias, fresh: args.fresh }),
+        await joinGroup(client, {
+          name: args.name,
+          peerId: peer.peer_id,
+          ...(args.alias ? { alias: args.alias } : {}),
+          ...(args.fresh !== undefined ? { fresh: args.fresh } : {}),
         }),
       );
     },
@@ -281,12 +272,7 @@ export function createMcpServer(): McpServer {
     async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(
-        await requestJson(client, `/groups/${encodeURIComponent(args.name)}/leave`, {
-          method: "POST",
-          body: JSON.stringify({ peer_id: peer.peer_id }),
-        }),
-      );
+      return text(await leaveGroup(client, { name: args.name, peerId: peer.peer_id }));
     },
   );
 
@@ -300,9 +286,10 @@ export function createMcpServer(): McpServer {
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(
-        await requestJson(client, `/groups/${encodeURIComponent(args.name)}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ sender_peer_id: peer.peer_id, message: args.message }),
+        await sendGroupMessage(client, {
+          name: args.name,
+          senderPeerId: peer.peer_id,
+          message: args.message,
         }),
       );
     },
@@ -314,18 +301,13 @@ export function createMcpServer(): McpServer {
     async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(
-        await requestJson(
-          client,
-          `/groups/${encodeURIComponent(args.name)}/history?peer_id=${encodeURIComponent(peer.peer_id)}`,
-        ),
-      );
+      return text(await getGroupHistory(client, { name: args.name, peerId: peer.peer_id }));
     },
   );
 
   mcp.registerTool("bridge_list_groups", { description: "List groups." }, async () => {
     const client = await getClient(state);
-    return text(await requestJson(client, "/groups"));
+    return text(await listGroups(client));
   });
 
   mcp.registerTool(
@@ -342,13 +324,11 @@ export function createMcpServer(): McpServer {
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(
-        await requestJson(client, `/groups/${encodeURIComponent(args.group)}/media`, {
-          method: "POST",
-          body: JSON.stringify({
-            shared_by_peer_id: peer.peer_id,
-            path: args.path,
-            description: args.description,
-          }),
+        await shareMedia(client, {
+          group: args.group,
+          sharedByPeerId: peer.peer_id,
+          path: args.path,
+          ...(args.description ? { description: args.description } : {}),
         }),
       );
     },
@@ -362,8 +342,7 @@ export function createMcpServer(): McpServer {
     },
     async (args) => {
       const client = await getClient(state);
-      const query = args.query ? `?query=${encodeURIComponent(args.query)}` : "";
-      return text(await requestJson(client, `/groups/${encodeURIComponent(args.group)}/media${query}`));
+      return text(await listMedia(client, { group: args.group, ...(args.query ? { query: args.query } : {}) }));
     },
   );
 
@@ -375,11 +354,21 @@ export function createMcpServer(): McpServer {
     },
     async (args) => {
       const client = await getClient(state);
-      return text(await requestJson(client, `/media/${encodeURIComponent(args.media_id)}`));
+      return text(await getMedia(client, args.media_id));
     },
   );
 
   return mcp;
+}
+
+async function resolveMcpRegisterPeerId(
+  client: ClientConfig,
+  state: AdapterState,
+  sessionName: string,
+  tool: string,
+): Promise<string | undefined> {
+  if (state.peer?.session_name === sessionName && state.peer.tool === tool) return state.peer.peer_id;
+  return findReusablePeer(client, { sessionName, tool });
 }
 
 if (import.meta.main) {
