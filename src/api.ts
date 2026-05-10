@@ -75,6 +75,13 @@ export interface MediaItem {
   created_at: string;
 }
 
+export interface EventSubscriptionRegistration {
+  peer_id: string;
+  callback_url: string;
+  token: string;
+  created_at: string;
+}
+
 export interface SummaryResponse {
   ok: boolean;
   daemon: {
@@ -147,6 +154,18 @@ export function registerPeer(
   });
 }
 
+export function heartbeatPeer(client: ClientConfig, peerId: string): Promise<{ peer: Peer }> {
+  return requestJson<{ peer: Peer }>(client, `/peers/${encodeURIComponent(peerId)}/heartbeat`, {
+    method: "PATCH",
+  });
+}
+
+export function deletePeer(client: ClientConfig, peerId: string): Promise<{ ok: boolean; peer_id: string }> {
+  return requestJson<{ ok: boolean; peer_id: string }>(client, `/peers/${encodeURIComponent(peerId)}`, {
+    method: "DELETE",
+  });
+}
+
 export function listPeers(client: ClientConfig, input: { group?: string } = {}): Promise<{ peers: Peer[] }> {
   const path = input.group ? `/peers?group=${encodeURIComponent(input.group)}` : "/peers";
   return requestJson<{ peers: Peer[] }>(client, path);
@@ -187,6 +206,20 @@ export function readEvents(
   if (input.limit !== undefined) params.set("limit", String(input.limit));
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return requestJson<{ events: Event[]; next_cursor: number }>(client, `/events/${encodeURIComponent(peerId)}${query}`);
+}
+
+export function subscribeToEvents(
+  client: ClientConfig,
+  input: { peerId: string; callbackUrl: string; token: string },
+): Promise<{ subscription: EventSubscriptionRegistration }> {
+  return requestJson<{ subscription: EventSubscriptionRegistration }>(client, "/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({
+      peer_id: input.peerId,
+      callback_url: input.callbackUrl,
+      token: input.token,
+    }),
+  });
 }
 
 export function createGroup(

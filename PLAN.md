@@ -101,7 +101,8 @@ REST endpoint groups:
 - `POST /groups/{name}/join`, `POST /groups/{name}/leave`
 - `POST /groups/{name}/messages`, `GET /groups/{name}/history`
 - `POST /groups/{name}/media`, `GET /groups/{name}/media`, `GET /media/{media_id}`
-- `GET /events/{peer_id}?cursor=&limit=` for notifier/debug polling
+- `POST /subscriptions` for MCP adapter event callbacks
+- `GET /events/{peer_id}?cursor=&limit=` for debug/manual fallback reads
 
 MCP tools:
 - `bridge_register`
@@ -165,7 +166,7 @@ insert inbox(recipient=B, event_id)
         |
         +--------------- online B --------------+
         |                                       v
-        |                              B notifier polls events
+        |                              daemon POSTs B callback
         |                                       |
         |                                       v
         |                              MCP notification emitted
@@ -230,14 +231,15 @@ Identity:
 
 ## Notification Model
 
-MCP adapters run one adaptive polling loop per peer, not per group.
+Claude MCP adapters register one localhost event callback subscription per peer, not per group. Codex MCP adapters keep one adaptive polling loop per peer for standard MCP notifications.
 
 ```text
 MCP adapter
    |
-   | adaptive GET /events/{peer_id}?cursor=N
+   | Claude: POST /subscriptions { peer_id, callback_url }
+   | Codex: adaptive GET /events/{peer_id}?cursor=N
    v
-daemon returns directed events
+daemon returns or POSTs directed events
    |
    +-- Claude client
    |    +-- notifications/claude/channel
@@ -249,8 +251,8 @@ daemon returns directed events
 Performance constraints:
 - No group history cached in adapter memory.
 - No per-group polling.
-- Poll cursor is per peer.
-- Adaptive loop backs off when idle and speeds up after activity.
+- Claude event callback subscription is per peer; Codex poll cursor is per peer.
+- Failed callback delivery leaves durable inbox rows readable.
 - Notification failure does not ack inbox rows.
 - `bridge_inbox` remains authoritative durable fallback.
 
@@ -339,11 +341,11 @@ Daemon REST tests:
 
 MCP tests:
 - Auto-start daemon through discovery/lock.
-- Register starts heartbeat and adaptive notifier.
+- Register starts heartbeat plus the mode-specific notification path.
 - Claude mode emits `notifications/claude/channel`.
 - Codex mode emits `notifications/message`.
 - Notification failure leaves inbox rows readable.
-- Adaptive polling uses one cursor per peer.
+- Claude event subscription uses one callback per peer; Codex polling uses one cursor per peer.
 
 CLI parity tests:
 - For every MCP tool, run equivalent CLI command against a test daemon.
@@ -366,5 +368,5 @@ End-to-end scenarios:
 - `/join-group` means history access; `/join-group-fork` means fresh from join point.
 - Durable messages and groups are retained forever in v0.
 - Media sharing copies files by default.
-- No WebSocket/SSE in v0; adaptive polling is the chosen performance tradeoff.
+- No WebSocket/SSE in v0; MCP live notifications use localhost REST callbacks and durable inbox fallback.
 - No backup automation, encryption, cloud sync, or remote discovery in v0.

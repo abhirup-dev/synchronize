@@ -4,7 +4,7 @@
 
 Build `synchronize` by following the repository root `PLAN.md` completely. The goal package exists to turn that plan into a reviewed `/goal` execution package with acceptance evidence, automated milestone summaries, and verification discipline.
 
-At a high level, `synchronize` is a local daemon plus two thin clients: an MCP stdio adapter for agents and a CLI for humans. The daemon owns state, exposes a full REST API, persists messages and group state in SQLite, stores media on disk, and emits pollable events. MCP adapters register a peer, heartbeat, poll a single per-peer event stream, and translate new events into Claude or Codex notifications.
+At a high level, `synchronize` is a local daemon plus two thin clients: an MCP stdio adapter for agents and a CLI for humans. The daemon owns state, exposes a full REST API, persists messages and group state in SQLite, stores media on disk, and emits directed events. MCP adapters register a peer, heartbeat, and translate new events into Claude or Codex notifications. Claude mode uses one local callback subscription per peer; Codex mode keeps one adaptive polling loop per peer.
 
 ```text
                           same REST contract
@@ -94,7 +94,7 @@ insert inbox(recipient=B, event_id)
         |
         +--------------- online B --------------+
         |                                       v
-        |                              B notifier polls events
+        |                              B receives event through callback/polling
         |                                       |
         |                                       v
         |                              MCP notification emitted
@@ -145,7 +145,7 @@ MediaStore:
 | 3 | Peer identity and REST API | peers, heartbeat, auth, LAN token | Register/list/heartbeat/deregister work through REST and CLI | Token handling and lease semantics |
 | 4 | Durable event/inbox messaging | events, inbox, DM endpoints, ack/read state | Offline DM survives and is readable later | At-least-once semantics must be precise |
 | 5 | Groups and history modes | groups, members, aliases, group messages/history | Join-with-history and join-fresh behavior pass tests | History cursor mistakes can leak prior messages |
-| 6 | MCP adapter and notifications | MCP tools, heartbeat, adaptive notifier | Claude/Codex notification paths work and inbox fallback remains durable | Client notification support varies |
+| 6 | MCP adapter and notifications | MCP tools, heartbeat, Claude callback subscription, Codex polling notifier | Claude/Codex notification paths work and inbox fallback remains durable | Client notification support varies |
 | 7 | CLI parity | CLI commands over REST | CLI covers every MCP capability | Parity drift |
 | 8 | MediaStore | file copy, metadata, `index.jsonl`, media events | Shared media is copied, indexed, listed, and fetchable | Large files and path safety |
 | 9 | Skills/docs and end-to-end tests | Claude/Codex skill docs, integration tests | Slash-command behavior is documented and tools are verified | Skill wording ambiguity |
@@ -160,7 +160,8 @@ REST endpoint groups:
 - `POST /groups/{name}/join`, `POST /groups/{name}/leave`
 - `POST /groups/{name}/messages`, `GET /groups/{name}/history`
 - `POST /groups/{name}/media`, `GET /groups/{name}/media`, `GET /media/{media_id}`
-- `GET /events/{peer_id}?cursor=&limit=` for notifier/debug polling
+- `POST /subscriptions` for Claude MCP adapter event callbacks
+- `GET /events/{peer_id}?cursor=&limit=` for Codex notifier/debug polling
 
 MCP tools:
 - `bridge_register`, `bridge_whoami`, `bridge_list_peers`, `bridge_dm`, `bridge_inbox`
@@ -203,7 +204,7 @@ Required implementation choices:
 - One SQLite DB with WAL and `busy_timeout`.
 - Bounded MCP notification buffer, default 100.
 - Paginated reads everywhere.
-- One adaptive polling loop per MCP peer, not per group.
+- One live notification path per MCP peer, not per group: Claude callback subscription, Codex adaptive polling.
 - Text messages in SQLite; media contents on filesystem.
 - Index hot paths for inbox, events by group, group alias uniqueness, lease expiry, and media lookup.
 
@@ -230,7 +231,7 @@ Required implementation choices:
 | Group history modes | Join history/fork tests | `progress.jsonl` |
 | Notification paths | MCP notification tests or manual trace | `progress.jsonl` |
 | MediaStore | Copied file, `index.jsonl`, DB metadata test | `progress.jsonl` |
-| Performance constraints | Code inspection and tests proving one notifier loop per peer | `progress.jsonl` |
+| Performance constraints | Code inspection and tests proving one live notification path per peer | `progress.jsonl` |
 | Milestone verification summaries | Progress entries recording command evidence and automated test summaries | `progress.jsonl` |
 
 ## Milestone Summaries

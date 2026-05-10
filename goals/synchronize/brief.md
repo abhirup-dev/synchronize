@@ -32,7 +32,7 @@ Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform 
 
 - Use Bun/TypeScript for v0.
 - Keep one daemon process, one SQLite WAL database, and filesystem media under `~/.synchronize/`.
-- Do not use per-group polling loops. One lightweight notifier cursor per peer is the limit.
+- Do not use per-group polling loops. Keep one lightweight live notification path per peer: Claude callback subscription, Codex polling cursor.
 - Do not cache group history in MCP adapter memory.
 - Do not mark durable inbox rows lost because notification delivery failed.
 - Do not implement WebSocket/SSE, cloud sync, backup automation, encryption, or remote discovery in v0.
@@ -51,7 +51,7 @@ Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform 
 
 - Changing the implementation stack away from Bun/TypeScript.
 - Changing repository branch/default-branch policy.
-- Adding WebSocket/SSE or another transport instead of adaptive polling.
+- Adding WebSocket/SSE or another transport instead of the chosen Claude callback plus Codex polling paths.
 - Making LAN mode tokenless.
 - Choosing symlink/reference-only media sharing as the default.
 - Destructive cleanup of existing `~/.synchronize` data.

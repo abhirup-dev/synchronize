@@ -66,6 +66,17 @@ Environment:
 `);
 }
 
+function printCliRealtimeWarning(): void {
+  console.error(
+    [
+      "synchronize CLI fallback warning:",
+      "  Claude channel real-time notifications do not work through CLI peers.",
+      "  CLI peers do not attach a Claude channel subscription, so auto-prompt messages will not appear.",
+      "  Use MCP bridge_register/bridge_dm for real-time Claude channel delivery; with CLI, use inbox polling/checking.",
+    ].join("\n"),
+  );
+}
+
 async function main(argv: string[]): Promise<void> {
   const [command] = argv;
   if (!command || command === "--help" || command === "-h" || command === "help") {
@@ -101,6 +112,7 @@ async function main(argv: string[]): Promise<void> {
       peer_id: response.peer.peer_id,
       session_name: response.peer.session_name,
     });
+    printCliRealtimeWarning();
     console.log(JSON.stringify(response.peer, null, 2));
     return;
   }
@@ -131,6 +143,7 @@ async function main(argv: string[]): Promise<void> {
       recipientPeerId: recipient,
       message,
     });
+    printCliRealtimeWarning();
     console.log(JSON.stringify(response.event, null, 2));
     return;
   }
@@ -353,6 +366,7 @@ async function handleGroup(argv: string[]): Promise<void> {
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
     const response = await sendGroupMessage(client, { name, senderPeerId: identity.peer_id, message });
+    printCliRealtimeWarning();
     console.log(JSON.stringify(response.event, null, 2));
     return;
   }
@@ -388,6 +402,7 @@ async function handleMedia(argv: string[]): Promise<void> {
       path: file,
       ...(args.flags.description ? { description: args.flags.description } : {}),
     });
+    printCliRealtimeWarning();
     console.log(JSON.stringify(response, null, 2));
     return;
   }

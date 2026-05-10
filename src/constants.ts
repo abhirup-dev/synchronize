@@ -25,3 +25,4 @@ export const MAX_PAGE_LIMIT = 200;
 export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
+export const MCP_HEARTBEAT_MS = 15_000;

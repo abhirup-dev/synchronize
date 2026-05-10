@@ -42,7 +42,7 @@ The daemon stores state locally under `~/.synchronize` by default. Nothing leave
     +----------------+ +----------------+ +--------------------+
 ```
 
-The MCP server is intentionally thin. It registers a peer, heartbeats, polls one per-peer event stream, and converts events into client notifications. The daemon owns durable state.
+The MCP server is intentionally thin. It registers a peer and converts daemon events into client notifications. Claude mode opens one local event callback subscription for channel delivery; Codex mode keeps one peer-level polling bridge for standard MCP notifications. The daemon owns durable state and durable inbox fallback.
 
 ## Requirements
 
@@ -112,6 +112,11 @@ Read durable inbox messages:
 synchronize inbox
 synchronize inbox --ack
 ```
+
+CLI fallback note: CLI peers do not attach Claude channel subscriptions. When an
+agent uses CLI commands, real-time Claude auto-prompt notifications will not
+work; the agent must tell the user this and rely on `synchronize inbox` polling
+or checking.
 
 Share media into a group:
 
@@ -446,7 +451,7 @@ Confirm the MCP server was added with `SYNCHRONIZE_MCP_MODE=claude`, then start 
 claude --dangerously-load-development-channels server:synchronize
 ```
 
-Inbox remains available through `bridge_inbox` even if channel notifications do not surface.
+Inbox remains available through `bridge_inbox` even if channel notifications do not surface. Claude mode receives daemon events through one localhost callback subscription; it does not rely on per-group polling.
 
 ### Codex notifications do not appear
 

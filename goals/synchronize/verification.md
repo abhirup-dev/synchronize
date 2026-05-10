@@ -25,7 +25,7 @@
 - Send group message and fan out only to active members except sender.
 - Share media and verify copied file, DB row, `index.jsonl`, and media event.
 - Reject protected REST routes in LAN/token mode with missing or wrong token.
-- Prove MCP adapter uses one peer-level notifier loop, not per-group loops.
+- Prove MCP adapter uses one peer-level live notification path, not per-group loops.
 - Prove CLI and MCP observe the same state created through REST.
 
 ## Manual Checks

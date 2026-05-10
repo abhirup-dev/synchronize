@@ -77,11 +77,20 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
 
   expect(calls).toEqual([
     expect.objectContaining({ method: "notifications/message" }),
-    expect.objectContaining({ method: "notifications/claude/channel" }),
+    expect.objectContaining({
+      method: "notifications/claude/channel",
+      params: expect.objectContaining({
+        content: "hello",
+        meta: expect.objectContaining({ event_id: "1", type: "dm", from_id: "a", sent_at: event.created_at }),
+      }),
+    }),
   ]);
+  const claudeCall = calls[1] as { params: { meta: Record<string, unknown> } };
+  expect(claudeCall.params.meta).not.toHaveProperty("source");
+  expect(Object.values(claudeCall.params.meta).every((value) => typeof value === "string")).toBe(true);
 });
 
-test("NotificationBridge polls one peer event stream and keeps a bounded buffer", async () => {
+test("Codex NotificationBridge polls one peer event stream and keeps a bounded buffer", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-"));
   homes.push(home);
   const daemon = await startDaemon(home);

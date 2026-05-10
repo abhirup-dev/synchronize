@@ -26,6 +26,7 @@ interface DaemonContext {
   startedAt: string;
   token: string | null;
   server: Bun.Server<unknown>;
+  subscribers: Map<string, EventSubscriber>;
 }
 
 interface DiscoveryFile {
@@ -59,6 +60,13 @@ interface EventRow {
   group_id: number | null;
   body: string | null;
   media_id: string | null;
+  created_at: string;
+}
+
+interface EventSubscriber {
+  peer_id: string;
+  callback_url: string;
+  token: string;
   created_at: string;
 }
 
@@ -125,6 +133,14 @@ interface SummaryGroupRow {
   last_activity_at: string | null;
 }
 
+function log(message: string): void {
+  console.error(`[synchronize-daemon] ${message}`);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function resolveBind(env: NodeJS.ProcessEnv): { host: string; port: number } {
   const host = env[ENV_BIND] ?? DEFAULT_BIND_HOST;
   const rawPort = env[ENV_PORT];
@@ -163,6 +179,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         "inbox",
         "groups",
         "events",
+        "event_subscriptions",
         "media",
         "summary",
       ],
@@ -334,6 +351,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       )
       .run(peerId, tool, sessionName, purpose ?? null, machineId, leaseExpiresAt);
 
+    log(`peer registered peer_id=${peerId} session_name=${sessionName} tool=${tool} lease_expires_at=${leaseExpiresAt}`);
     return jsonResponse({ peer: getPeer(ctx.db, peerId) }, { status: 201 });
   }
 
@@ -349,6 +367,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          WHERE peer_id = ?`,
       )
       .run(leaseExpiresAt, peerId);
+    log(`peer heartbeat peer_id=${peerId} lease_expires_at=${leaseExpiresAt}`);
     return jsonResponse({ peer: getPeer(ctx.db, peerId) });
   }
 
@@ -383,7 +402,26 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerId = decodeURIComponent(peerDelete[1] ?? "");
     ensurePeer(ctx.db, peerId);
     ctx.db.query("DELETE FROM peers WHERE peer_id = ?").run(peerId);
+    ctx.subscribers.delete(peerId);
+    log(`peer deleted peer_id=${peerId}; removed any in-memory subscriber`);
     return jsonResponse({ ok: true, peer_id: peerId });
+  }
+
+  if (request.method === "POST" && url.pathname === "/subscriptions") {
+    const body = await readBody(request);
+    const peerId = requireString(body, "peer_id");
+    const callbackUrl = requireLocalCallbackUrl(requireString(body, "callback_url"));
+    const token = requireString(body, "token");
+    ensurePeer(ctx.db, peerId);
+    const subscriber = {
+      peer_id: peerId,
+      callback_url: callbackUrl,
+      token,
+      created_at: new Date().toISOString(),
+    };
+    ctx.subscribers.set(peerId, subscriber);
+    log(`subscription registered peer_id=${peerId} callback_url=${callbackUrl}`);
+    return jsonResponse({ subscription: subscriber }, { status: 201 });
   }
 
   if (request.method === "POST" && url.pathname === "/dm") {
@@ -410,8 +448,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         .run(recipientPeerId, id);
       return id;
     })();
+    const event = getEvent(ctx.db, eventId);
+    log(`dm stored event_id=${eventId} sender=${senderPeerId} recipient=${recipientPeerId} body_chars=${message.length}`);
+    void notifySubscribers(ctx, [recipientPeerId], event);
 
-    return jsonResponse({ event: getEvent(ctx.db, eventId) }, { status: 201 });
+    return jsonResponse({ event }, { status: 201 });
   }
 
   if (request.method === "POST" && url.pathname === "/groups") {
@@ -529,22 +570,27 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
 
+    let recipients: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_message', ?, ?, ?)")
         .run(senderPeerId, group.group_id, message);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      const recipients = ctx.db
+      recipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
         )
-        .all(group.group_id, senderPeerId);
+        .all(group.group_id, senderPeerId)
+        .map((recipient) => recipient.peer_id);
       const insertInbox = ctx.db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
-      for (const recipient of recipients) insertInbox.run(recipient.peer_id, id);
+      for (const recipient of recipients) insertInbox.run(recipient, id);
       return id;
     })();
+    const event = getEvent(ctx.db, eventId);
+    log(`group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} recipients=${recipients.length}`);
+    void notifySubscribers(ctx, recipients, event);
 
-    return jsonResponse({ event: getEvent(ctx.db, eventId) }, { status: 201 });
+    return jsonResponse({ event }, { status: 201 });
   }
 
   const groupHistory = url.pathname.match(/^\/groups\/([^/]+)\/history$/);
@@ -589,6 +635,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const sha256 = await hashFile(copiedPath);
     const contentType = guessContentType(originalPath);
 
+    let recipients: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
@@ -601,20 +648,24 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         .query("INSERT INTO events (type, sender_peer_id, group_id, body, media_id) VALUES ('media_shared', ?, ?, ?, ?)")
         .run(sharedByPeerId, group.group_id, description ?? "", mediaId);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      const recipients = ctx.db
+      recipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
         )
-        .all(group.group_id, sharedByPeerId);
+        .all(group.group_id, sharedByPeerId)
+        .map((recipient) => recipient.peer_id);
       const insertInbox = ctx.db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
-      for (const recipient of recipients) insertInbox.run(recipient.peer_id, id);
+      for (const recipient of recipients) insertInbox.run(recipient, id);
       return id;
     })();
 
     const media = getMedia(ctx.db, mediaId);
     await appendMediaIndex(group, media);
     await writeMediaReadme(group, ctx.db);
-    return jsonResponse({ media, event: getEvent(ctx.db, eventId) }, { status: 201 });
+    const event = getEvent(ctx.db, eventId);
+    log(`media shared event_id=${eventId} group=${group.name} media_id=${mediaId} sender=${sharedByPeerId} recipients=${recipients.length}`);
+    void notifySubscribers(ctx, recipients, event);
+    return jsonResponse({ media, event }, { status: 201 });
   }
 
   if (request.method === "GET" && groupMedia) {
@@ -775,6 +826,20 @@ function optionalNumberArray(body: Record<string, unknown>, key: string): number
   return value as number[];
 }
 
+function requireLocalCallbackUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HttpError(400, "invalid_callback_url", "callback_url must be a valid URL");
+  }
+  const localHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+  if (url.protocol !== "http:" || !localHosts.has(url.hostname)) {
+    throw new HttpError(400, "invalid_callback_url", "callback_url must be an http localhost URL");
+  }
+  return url.toString();
+}
+
 function requireGroupName(name: string): string {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(name)) {
     throw new HttpError(
@@ -818,6 +883,47 @@ function getEvent(db: Database, eventId: number): EventRow {
   const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
   return event;
+}
+
+async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: EventRow): Promise<void> {
+  await Promise.all(
+    peerIds.map(async (peerId) => {
+      const subscriber = ctx.subscribers.get(peerId);
+      if (!subscriber) {
+        log(`notification pending event_id=${event.event_id} peer_id=${peerId}: no active subscriber; durable inbox fallback only`);
+        return;
+      }
+      try {
+        log(`notification callback start event_id=${event.event_id} peer_id=${peerId} callback_url=${subscriber.callback_url}`);
+        const response = await fetch(subscriber.callback_url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-synchronize-subscription-token": subscriber.token,
+          },
+          body: JSON.stringify({ event }),
+        });
+        if (!response.ok) {
+          ctx.subscribers.delete(peerId);
+          log(`notification callback failed event_id=${event.event_id} peer_id=${peerId} status=${response.status}; subscriber removed`);
+          return;
+        }
+        const now = new Date().toISOString();
+        ctx.db
+          .query(
+            `UPDATE inbox
+             SET delivered_at = COALESCE(delivered_at, ?)
+             WHERE recipient_peer_id = ? AND event_id = ?`,
+          )
+          .run(now, peerId, event.event_id);
+        ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(event.event_id, peerId);
+        log(`notification callback delivered event_id=${event.event_id} peer_id=${peerId} delivered_at=${now}`);
+      } catch (error) {
+        ctx.subscribers.delete(peerId);
+        log(`notification callback error event_id=${event.event_id} peer_id=${peerId}: ${formatError(error)}; subscriber removed`);
+      }
+    }),
+  );
 }
 
 function getGroup(db: Database, name: string): GroupRow {
@@ -948,7 +1054,7 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, server };
+  ctx = { paths, db, startedAt, token, server, subscribers: new Map() };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,

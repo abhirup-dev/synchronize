@@ -147,6 +147,7 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
     env: { ...process.env, SYNCHRONIZE_HOME: home },
   });
   expect(bobRegister.exitCode).toBe(0);
+  expect(bobRegister.stderr.toString()).toContain("Claude channel real-time notifications do not work through CLI peers");
   const bob = JSON.parse(bobRegister.stdout.toString()) as { peer_id: string; session_name: string };
 
   const aliceRegister = Bun.spawnSync({
@@ -166,6 +167,7 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
     env: { ...process.env, SYNCHRONIZE_HOME: home },
   });
   expect(dm.exitCode).toBe(0);
+  expect(dm.stderr.toString()).toContain("with CLI, use inbox polling/checking");
   expect(JSON.parse(dm.stdout.toString())).toMatchObject({ body: "hello from cli" });
 
   await writeFile(join(home, "cli-peer.json"), JSON.stringify({ peer_id: bob.peer_id, session_name: "bob" }), "utf8");
