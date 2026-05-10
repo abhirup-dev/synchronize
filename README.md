@@ -73,6 +73,9 @@ bun link
 synchronize --help
 ```
 
+`synchronize-mcp` is also linked for MCP clients; it is a stdio server, so it is
+normally launched by Codex or Claude rather than run interactively.
+
 If you do not want to link it, run the CLI from the repo:
 
 ```bash
@@ -145,8 +148,11 @@ Aliases are unique within a group. If two peers try to join the same group with 
 The MCP adapter command is:
 
 ```bash
-bun run /absolute/path/to/synchronize/src/mcp.ts
+synchronize-mcp
 ```
+
+Run `bun link` from this repo first so the `synchronize` and `synchronize-mcp`
+binaries are available on `PATH`.
 
 Set `SYNCHRONIZE_MCP_MODE` to choose notification behavior:
 
@@ -161,7 +167,7 @@ From anywhere:
 codex mcp add \
   --env SYNCHRONIZE_MCP_MODE=codex \
   synchronize \
-  -- bun run /absolute/path/to/synchronize/src/mcp.ts
+  -- synchronize-mcp
 ```
 
 Then start Codex and use the MCP tools:
@@ -181,7 +187,7 @@ Then start Codex and use the MCP tools:
 claude mcp add --scope user \
   -e SYNCHRONIZE_MCP_MODE=claude \
   synchronize \
-  -- bun run /absolute/path/to/synchronize/src/mcp.ts
+  -- synchronize-mcp
 ```
 
 For Claude channel notifications, start Claude with the development channel enabled:
