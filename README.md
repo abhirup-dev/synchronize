@@ -100,10 +100,10 @@ synchronize whoami
 Create and use a group:
 
 ```bash
-synchronize group create demo
-synchronize group join demo --alias terminal
-synchronize group send demo "hello from the CLI"
-synchronize group history demo
+synchronize group create demo --as terminal
+synchronize group join demo --as terminal
+synchronize group send demo --as terminal "hello from the CLI"
+synchronize group history demo --as terminal
 ```
 
 Read durable inbox messages:
@@ -125,14 +125,20 @@ synchronize media list demo --query notes
 Normal join gets history:
 
 ```bash
-synchronize group join demo --alias reviewer
+synchronize group join demo --as reviewer
 ```
 
 Fresh join starts from the join point:
 
 ```bash
-synchronize group join demo --alias reviewer-fresh --fresh
+synchronize group join demo --as reviewer-fresh --fresh
 ```
+
+If no `--alias` is supplied, the daemon uses the registered peer's session name
+as the group alias. CLI group commands require `--as SESSION_NAME` so a stale
+terminal identity cannot silently create or join groups as the wrong peer.
+If that default alias is already active in the group, the join is blocked and
+the agent must retry with a unique `--alias`.
 
 This maps to the skill-level commands:
 

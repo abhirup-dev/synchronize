@@ -260,7 +260,7 @@ export function createMcpServer(): McpServer {
   mcp.registerTool(
     "bridge_join_group",
     {
-      description: "Join a group with history by default; set fresh for join-group-fork behavior.",
+      description: "Join a group; alias defaults to this agent's registered session name, history is included by default, set fresh for join-group-fork behavior.",
       inputSchema: { name: z.string().min(1), alias: z.string().optional(), fresh: z.boolean().optional() },
     },
     async (args) => {

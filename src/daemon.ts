@@ -486,7 +486,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
           )
           .run(group.group_id, peerId, alias, eventId, historyFrom, peer.purpose);
       } catch (error) {
-        throw mapSqliteConstraint(error, "alias_collision", `Alias '${alias}' is already active in group '${group.name}'`);
+        throw mapSqliteConstraint(
+          error,
+          "alias_collision",
+          `Alias '${alias}' is already active in group '${group.name}'. Provide a unique alias to join this group.`,
+        );
       }
       return eventId;
     })();

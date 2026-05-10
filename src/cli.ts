@@ -103,11 +103,11 @@ Usage:
   synchronize peers
   synchronize dm PEER MESSAGE
   synchronize inbox [--ack]
-  synchronize group create NAME [--ephemeral]
-  synchronize group join NAME [--alias ALIAS] [--fresh]
-  synchronize group leave NAME
-  synchronize group send NAME MESSAGE
-  synchronize group history NAME
+  synchronize group create NAME --as SESSION_NAME [--ephemeral]
+  synchronize group join NAME --as SESSION_NAME [--alias ALIAS] [--fresh]
+  synchronize group leave NAME --as SESSION_NAME
+  synchronize group send NAME --as SESSION_NAME MESSAGE
+  synchronize group history NAME --as SESSION_NAME
   synchronize media share GROUP FILE --description TEXT
   synchronize media list GROUP [--query TEXT]
   synchronize media get MEDIA_ID
@@ -380,7 +380,8 @@ async function handleGroup(argv: string[]): Promise<void> {
     if (!name) throw new Error("group create requires NAME");
     const args = parseFlags(rest);
     const client = await ensureDaemon();
-    const identity = await readJson<CliIdentity>(client.paths.cliIdentityPath);
+    if (!args.flags.as) throw new Error("group create requires --as SESSION_NAME to confirm the CLI peer identity");
+    const identity = await requireIdentity(client, args.flags.as);
     const response = await requestJson<{ group: Group }>(client, "/groups", {
       method: "POST",
       body: JSON.stringify({
@@ -397,13 +398,15 @@ async function handleGroup(argv: string[]): Promise<void> {
     const [name, ...rest] = argv.slice(1);
     if (!name) throw new Error("group join requires NAME");
     const args = parseFlags(rest);
+    const alias = args.flags.alias;
+    if (!args.flags.as) throw new Error("group join requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
-    const identity = await requireIdentity(client);
+    const identity = await requireIdentity(client, args.flags.as);
     const response = await requestJson(client, `/groups/${encodeURIComponent(name)}/join`, {
       method: "POST",
       body: JSON.stringify({
         peer_id: identity.peer_id,
-        alias: args.flags.alias,
+        alias,
         fresh: args.boolFlags.has("fresh"),
       }),
     });
@@ -412,10 +415,12 @@ async function handleGroup(argv: string[]): Promise<void> {
   }
 
   if (subcommand === "leave") {
-    const [name] = argv.slice(1);
+    const [name, ...rest] = argv.slice(1);
     if (!name) throw new Error("group leave requires NAME");
+    const args = parseFlags(rest);
+    if (!args.flags.as) throw new Error("group leave requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
-    const identity = await requireIdentity(client);
+    const identity = await requireIdentity(client, args.flags.as);
     const response = await requestJson(client, `/groups/${encodeURIComponent(name)}/leave`, {
       method: "POST",
       body: JSON.stringify({ peer_id: identity.peer_id }),
@@ -426,10 +431,12 @@ async function handleGroup(argv: string[]): Promise<void> {
 
   if (subcommand === "send") {
     const [name, ...messageParts] = argv.slice(1);
-    const message = messageParts.join(" ").trim();
+    const args = parseFlags(messageParts);
+    if (!args.flags.as) throw new Error("group send requires --as SESSION_NAME to confirm the CLI peer identity");
+    const message = args.rest.join(" ").trim();
     if (!name || !message) throw new Error("group send requires NAME MESSAGE");
     const client = await ensureDaemon();
-    const identity = await requireIdentity(client);
+    const identity = await requireIdentity(client, args.flags.as);
     const response = await requestJson<{ event: Event }>(client, `/groups/${encodeURIComponent(name)}/messages`, {
       method: "POST",
       body: JSON.stringify({ sender_peer_id: identity.peer_id, message }),
@@ -439,10 +446,12 @@ async function handleGroup(argv: string[]): Promise<void> {
   }
 
   if (subcommand === "history") {
-    const [name] = argv.slice(1);
+    const [name, ...rest] = argv.slice(1);
     if (!name) throw new Error("group history requires NAME");
+    const args = parseFlags(rest);
+    if (!args.flags.as) throw new Error("group history requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
-    const identity = await requireIdentity(client);
+    const identity = await requireIdentity(client, args.flags.as);
     const response = await requestJson<{ events: Event[]; next_cursor: number }>(
       client,
       `/groups/${encodeURIComponent(name)}/history?peer_id=${encodeURIComponent(identity.peer_id)}`,
@@ -525,10 +534,19 @@ async function writeIdentity(client: Awaited<ReturnType<typeof ensureDaemon>>, i
   await writeJson(client.paths.cliIdentityPath, identity);
 }
 
-async function requireIdentity(client: Awaited<ReturnType<typeof ensureDaemon>>): Promise<CliIdentity> {
+async function requireIdentity(
+  client: Awaited<ReturnType<typeof ensureDaemon>>,
+  expectedSessionName?: string,
+): Promise<CliIdentity> {
   const identity = await readJson<CliIdentity>(client.paths.cliIdentityPath);
   if (!identity?.peer_id) {
     throw new Error("No CLI peer is registered. Run: synchronize register --name NAME");
+  }
+  if (expectedSessionName && identity.session_name !== expectedSessionName) {
+    throw new Error(
+      `CLI peer mismatch: expected session '${expectedSessionName}' but current CLI peer is '${identity.session_name}'. ` +
+        `Run 'synchronize register --name ${expectedSessionName}' or use the matching --as value.`,
+    );
   }
   return identity;
 }

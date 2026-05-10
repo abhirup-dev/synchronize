@@ -178,6 +178,26 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
   const inboxBody = JSON.parse(inbox.stdout.toString()) as { events: Array<{ body: string }> };
   expect(inboxBody.events).toEqual([expect.objectContaining({ body: "hello from cli" })]);
 
+  const staleIdentityGuard = Bun.spawnSync({
+    cmd: [process.execPath, "run", "src/cli.ts", "group", "create", "cli-room", "--as", "alice"],
+    env: { ...process.env, SYNCHRONIZE_HOME: home },
+  });
+  expect(staleIdentityGuard.exitCode).toBe(1);
+  expect(staleIdentityGuard.stderr.toString()).toContain("CLI peer mismatch");
+
+  const cliGroupCreate = Bun.spawnSync({
+    cmd: [process.execPath, "run", "src/cli.ts", "group", "create", "cli-room", "--as", "bob"],
+    env: { ...process.env, SYNCHRONIZE_HOME: home },
+  });
+  expect(cliGroupCreate.exitCode).toBe(0);
+
+  const cliGroupJoin = Bun.spawnSync({
+    cmd: [process.execPath, "run", "src/cli.ts", "group", "join", "cli-room", "--as", "bob"],
+    env: { ...process.env, SYNCHRONIZE_HOME: home },
+  });
+  expect(cliGroupJoin.exitCode).toBe(0);
+  expect(JSON.parse(cliGroupJoin.stdout.toString())).toMatchObject({ member: { alias: "bob" } });
+
   const discovery = await Bun.file(join(home, "daemon.json")).json();
   process.kill(discovery.pid);
 });
@@ -199,6 +219,10 @@ test("groups support durable restart, ephemeral cleanup, aliases, fanout, and hi
     const carol = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
       method: "POST",
       body: JSON.stringify({ session_name: "carol", tool: "cli" }),
+    });
+    const dave = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
+      method: "POST",
+      body: JSON.stringify({ session_name: "lead", tool: "cli" }),
     });
 
     await json(daemon.baseUrl, "/groups", {
@@ -230,12 +254,37 @@ test("groups support durable restart, ephemeral cleanup, aliases, fanout, and hi
       method: "POST",
       body: JSON.stringify({ peer_id: bob.peer.peer_id, alias: "reviewer" }),
     });
+
+    const aliasDefaults = await json<{ member: { alias: string } }>(daemon.baseUrl, "/groups/durable-room/join", {
+      method: "POST",
+      body: JSON.stringify({ peer_id: carol.peer.peer_id }),
+    });
+    expect(aliasDefaults.member.alias).toBe("carol");
+
     const duplicateAlias = await fetch(`${daemon.baseUrl}/groups/durable-room/join`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ peer_id: carol.peer.peer_id, alias: "reviewer" }),
     });
     expect(duplicateAlias.status).toBe(409);
+    const duplicateAliasBody = (await duplicateAlias.json()) as { error: { message: string } };
+    expect(duplicateAliasBody.error.message).toContain("Provide a unique alias");
+
+    const carolLeave = await json<{ ok: boolean }>(daemon.baseUrl, "/groups/durable-room/leave", {
+      method: "POST",
+      body: JSON.stringify({ peer_id: carol.peer.peer_id }),
+    });
+    expect(carolLeave.ok).toBe(true);
+
+    const carolNameCollision = await fetch(`${daemon.baseUrl}/groups/durable-room/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ peer_id: dave.peer.peer_id }),
+    });
+    expect(carolNameCollision.status).toBe(409);
+    expect(((await carolNameCollision.json()) as { error: { message: string } }).error.message).toContain(
+      "Provide a unique alias",
+    );
 
     await json(daemon.baseUrl, "/groups/durable-room/join", {
       method: "POST",
