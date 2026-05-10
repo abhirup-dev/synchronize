@@ -121,7 +121,7 @@ function getMode(): NotifyMode {
 }
 
 async function getClient(state: AdapterState): Promise<ClientConfig> {
-  state.client ??= await ensureDaemon();
+  state.client = await ensureDaemon();
   return state.client;
 }
 
