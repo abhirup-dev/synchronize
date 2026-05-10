@@ -2,13 +2,9 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  ackInbox,
-  findReusablePeer,
-  readInbox,
-  registerPeer,
-  sendDm,
-} from "../src/api.ts";
+import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
+import { registerPeer } from "../src/api/peers.ts";
+import { findReusablePeer } from "../src/api/status.ts";
 import type { ClientConfig } from "../src/client.ts";
 
 const homes: string[] = [];
