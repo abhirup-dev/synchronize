@@ -1,95 +1,29 @@
 #!/usr/bin/env bun
-import { ensureDaemon, requestJson } from "./client.ts";
+import { ensureDaemon } from "./client.ts";
+import {
+  ackInbox,
+  createGroup,
+  findReusablePeer,
+  getGroupHistory,
+  getMedia,
+  getStatus,
+  getSummary,
+  joinGroup,
+  leaveGroup,
+  listMedia,
+  listPeers,
+  readInbox,
+  registerPeer,
+  sendDm,
+  sendGroupMessage,
+  shareMedia,
+  type SummaryResponse,
+} from "./api.ts";
 import { readJson, writeJson } from "./fs.ts";
-
-interface StatusResponse {
-  ok: boolean;
-  pid: number;
-  base_url: string;
-  started_at: string;
-  token_required: boolean;
-  home: string;
-  db_path: string;
-  media_path: string;
-  counts: {
-    peers: number;
-    groups: number;
-    events: number;
-  };
-}
-
-interface Peer {
-  peer_id: string;
-  tool: string;
-  session_name: string;
-  purpose: string | null;
-  lease_expires_at: string;
-  online?: boolean;
-}
-
-interface Event {
-  event_id: number;
-  type: string;
-  sender_peer_id: string | null;
-  recipient_peer_id: string | null;
-  group_id?: number | null;
-  body: string | null;
-  created_at: string;
-  acked_at?: string | null;
-}
-
-interface Group {
-  group_id: number;
-  name: string;
-  durable: boolean;
-  media_dir: string;
-  creator_peer_id: string | null;
-  created_at: string;
-}
 
 interface CliIdentity {
   peer_id: string;
   session_name: string;
-}
-
-interface SummaryResponse {
-  ok: boolean;
-  daemon: {
-    pid: number;
-    base_url: string;
-    started_at: string;
-    token_required: boolean;
-    home: string;
-    db_path: string;
-    media_path: string;
-  };
-  totals: {
-    peers: { total: number; online: number; stale: number };
-    groups: { total: number; durable: number; ephemeral: number };
-    events: { total: number; last_event_at: string | null };
-    inbox: { total: number; pending: number };
-    media: { files: number; bytes: number };
-  };
-  peers: Array<{
-    peer_id: string;
-    session_name: string;
-    tool: string;
-    purpose: string | null;
-    online: boolean;
-    pending_inbox: number;
-    groups: number;
-    updated_at: string;
-  }>;
-  groups: Array<{
-    name: string;
-    durable: boolean;
-    members: number;
-    online_members: number;
-    messages: number;
-    media: number;
-    last_activity_at: string | null;
-  }>;
-  generated_at: string;
 }
 
 function printHelp(): void {
@@ -152,7 +86,7 @@ async function main(argv: string[]): Promise<void> {
 
   if (command === "status") {
     const client = await ensureDaemon();
-    const status = await requestJson<StatusResponse>(client, "/status");
+    const status = await getStatus(client);
     console.log(JSON.stringify({ ...status, daemon_started_by_cli: client.started }, null, 2));
     return;
   }
@@ -167,13 +101,12 @@ async function main(argv: string[]): Promise<void> {
     const name = args.flags.name;
     if (!name) throw new Error("register requires --name NAME");
     const client = await ensureDaemon();
-    const response = await requestJson<{ peer: Peer }>(client, "/peers/register", {
-      method: "POST",
-      body: JSON.stringify({
-        session_name: name,
-        purpose: args.flags.purpose,
-        tool: "cli",
-      }),
+    const peerId = await resolveCliRegisterPeerId(client, name);
+    const response = await registerPeer(client, {
+      sessionName: name,
+      tool: "cli",
+      ...(peerId ? { peerId } : {}),
+      ...(args.flags.purpose ? { purpose: args.flags.purpose } : {}),
     });
     await writeIdentity(client, {
       peer_id: response.peer.peer_id,
@@ -194,8 +127,7 @@ async function main(argv: string[]): Promise<void> {
   if (command === "peers") {
     const args = parseFlags(argv.slice(1));
     const client = await ensureDaemon();
-    const path = args.flags.group ? `/peers?group=${encodeURIComponent(args.flags.group)}` : "/peers";
-    const response = await requestJson<{ peers: Peer[] }>(client, path);
+    const response = await listPeers(client, args.flags.group ? { group: args.flags.group } : {});
     console.log(JSON.stringify(response.peers, null, 2));
     return;
   }
@@ -206,13 +138,10 @@ async function main(argv: string[]): Promise<void> {
     if (!recipient || !message) throw new Error("dm requires PEER MESSAGE");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client);
-    const response = await requestJson<{ event: Event }>(client, "/dm", {
-      method: "POST",
-      body: JSON.stringify({
-        sender_peer_id: identity.peer_id,
-        recipient_peer_id: recipient,
-        message,
-      }),
+    const response = await sendDm(client, {
+      senderPeerId: identity.peer_id,
+      recipientPeerId: recipient,
+      message,
     });
     printCliRealtimeWarning();
     console.log(JSON.stringify(response.event, null, 2));
@@ -233,15 +162,9 @@ async function main(argv: string[]): Promise<void> {
     const args = parseFlags(argv.slice(1));
     const client = await ensureDaemon();
     const identity = await requireIdentity(client);
-    const response = await requestJson<{ events: Event[]; next_cursor: number }>(
-      client,
-      `/peers/${encodeURIComponent(identity.peer_id)}/inbox`,
-    );
+    const response = await readInbox(client, identity.peer_id);
     if (args.boolFlags.has("ack") && response.events.length > 0) {
-      await requestJson(client, `/peers/${encodeURIComponent(identity.peer_id)}/inbox/ack`, {
-        method: "POST",
-        body: JSON.stringify({ event_ids: response.events.map((event) => event.event_id) }),
-      });
+      await ackInbox(client, identity.peer_id, response.events.map((event) => event.event_id));
     }
     console.log(JSON.stringify(response, null, 2));
     return;
@@ -261,13 +184,13 @@ async function handleTop(argv: string[]): Promise<void> {
   }
 
   if (args.boolFlags.has("json")) {
-    const summary = await requestJson<SummaryResponse>(client, "/summary");
+    const summary = await getSummary(client);
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
 
   if (args.boolFlags.has("once") || !process.stdout.isTTY) {
-    const summary = await requestJson<SummaryResponse>(client, "/summary");
+    const summary = await getSummary(client);
     console.log(renderSummary(summary));
     return;
   }
@@ -281,7 +204,7 @@ async function handleTop(argv: string[]): Promise<void> {
   process.stdout.write("\x1b[?25l");
   try {
     while (!stopped) {
-      const summary = await requestJson<SummaryResponse>(client, "/summary");
+      const summary = await getSummary(client);
       process.stdout.write("\x1b[H\x1b[2J");
       process.stdout.write(renderSummary(summary));
       process.stdout.write("\n\nPress Ctrl-C to quit.");
@@ -395,13 +318,10 @@ async function handleGroup(argv: string[]): Promise<void> {
     const client = await ensureDaemon();
     if (!args.flags.as) throw new Error("group create requires --as SESSION_NAME to confirm the CLI peer identity");
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await requestJson<{ group: Group }>(client, "/groups", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        ephemeral: args.boolFlags.has("ephemeral"),
-        creator_peer_id: identity?.peer_id,
-      }),
+    const response = await createGroup(client, {
+      name,
+      ephemeral: args.boolFlags.has("ephemeral"),
+      creatorPeerId: identity.peer_id,
     });
     console.log(JSON.stringify(response.group, null, 2));
     return;
@@ -415,13 +335,11 @@ async function handleGroup(argv: string[]): Promise<void> {
     if (!args.flags.as) throw new Error("group join requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await requestJson(client, `/groups/${encodeURIComponent(name)}/join`, {
-      method: "POST",
-      body: JSON.stringify({
-        peer_id: identity.peer_id,
-        alias,
-        fresh: args.boolFlags.has("fresh"),
-      }),
+    const response = await joinGroup(client, {
+      name,
+      peerId: identity.peer_id,
+      fresh: args.boolFlags.has("fresh"),
+      ...(alias ? { alias } : {}),
     });
     console.log(JSON.stringify(response, null, 2));
     return;
@@ -434,10 +352,7 @@ async function handleGroup(argv: string[]): Promise<void> {
     if (!args.flags.as) throw new Error("group leave requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await requestJson(client, `/groups/${encodeURIComponent(name)}/leave`, {
-      method: "POST",
-      body: JSON.stringify({ peer_id: identity.peer_id }),
-    });
+    const response = await leaveGroup(client, { name, peerId: identity.peer_id });
     console.log(JSON.stringify(response, null, 2));
     return;
   }
@@ -450,10 +365,7 @@ async function handleGroup(argv: string[]): Promise<void> {
     if (!name || !message) throw new Error("group send requires NAME MESSAGE");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await requestJson<{ event: Event }>(client, `/groups/${encodeURIComponent(name)}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ sender_peer_id: identity.peer_id, message }),
-    });
+    const response = await sendGroupMessage(client, { name, senderPeerId: identity.peer_id, message });
     printCliRealtimeWarning();
     console.log(JSON.stringify(response.event, null, 2));
     return;
@@ -466,10 +378,7 @@ async function handleGroup(argv: string[]): Promise<void> {
     if (!args.flags.as) throw new Error("group history requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await requestJson<{ events: Event[]; next_cursor: number }>(
-      client,
-      `/groups/${encodeURIComponent(name)}/history?peer_id=${encodeURIComponent(identity.peer_id)}`,
-    );
+    const response = await getGroupHistory(client, { name, peerId: identity.peer_id });
     console.log(JSON.stringify(response, null, 2));
     return;
   }
@@ -487,13 +396,11 @@ async function handleMedia(argv: string[]): Promise<void> {
     const args = parseFlags(rest);
     const client = await ensureDaemon();
     const identity = await requireIdentity(client);
-    const response = await requestJson(client, `/groups/${encodeURIComponent(group)}/media`, {
-      method: "POST",
-      body: JSON.stringify({
-        shared_by_peer_id: identity.peer_id,
-        path: file,
-        description: args.flags.description,
-      }),
+    const response = await shareMedia(client, {
+      group,
+      sharedByPeerId: identity.peer_id,
+      path: file,
+      ...(args.flags.description ? { description: args.flags.description } : {}),
     });
     printCliRealtimeWarning();
     console.log(JSON.stringify(response, null, 2));
@@ -505,8 +412,7 @@ async function handleMedia(argv: string[]): Promise<void> {
     if (!group) throw new Error("media list requires GROUP");
     const args = parseFlags(rest);
     const client = await ensureDaemon();
-    const query = args.flags.query ? `?query=${encodeURIComponent(args.flags.query)}` : "";
-    const response = await requestJson(client, `/groups/${encodeURIComponent(group)}/media${query}`);
+    const response = await listMedia(client, { group, ...(args.flags.query ? { query: args.flags.query } : {}) });
     console.log(JSON.stringify(response, null, 2));
     return;
   }
@@ -515,7 +421,7 @@ async function handleMedia(argv: string[]): Promise<void> {
     const [mediaId] = argv.slice(1);
     if (!mediaId) throw new Error("media get requires MEDIA_ID");
     const client = await ensureDaemon();
-    const response = await requestJson(client, `/media/${encodeURIComponent(mediaId)}`);
+    const response = await getMedia(client, mediaId);
     console.log(JSON.stringify(response, null, 2));
     return;
   }
@@ -547,6 +453,15 @@ function parseFlags(argv: string[]): { flags: Record<string, string>; boolFlags:
 
 async function writeIdentity(client: Awaited<ReturnType<typeof ensureDaemon>>, identity: CliIdentity): Promise<void> {
   await writeJson(client.paths.cliIdentityPath, identity);
+}
+
+async function resolveCliRegisterPeerId(
+  client: Awaited<ReturnType<typeof ensureDaemon>>,
+  sessionName: string,
+): Promise<string | undefined> {
+  const identity = await readJson<CliIdentity>(client.paths.cliIdentityPath);
+  if (identity?.peer_id && identity.session_name === sessionName) return identity.peer_id;
+  return findReusablePeer(client, { sessionName, tool: "cli" });
 }
 
 async function requireIdentity(

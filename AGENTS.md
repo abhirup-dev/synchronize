@@ -36,6 +36,11 @@ cp -rf source dest          # NOT: cp -r source dest
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
+## Git Merge Policy
+
+Always merge feature branches into `master` with a squash merge. Do not create
+feature branch merge commits unless the maintainer explicitly asks for one.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
 
