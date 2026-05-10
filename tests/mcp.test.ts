@@ -2,7 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NotificationBridge, emitMcpNotification } from "../src/mcp.ts";
+import { NotificationBridge } from "../src/mcp/codex-notifier.ts";
+import { emitMcpNotification } from "../src/mcp/notifications.ts";
 import type { ClientConfig } from "../src/client.ts";
 
 const homes: string[] = [];
