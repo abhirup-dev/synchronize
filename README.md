@@ -414,6 +414,32 @@ SYNCHRONIZE_MCP_MODE=codex bun run src/mcp.ts
 SYNCHRONIZE_MCP_MODE=claude bun run src/mcp.ts
 ```
 
+## Fresh Manual Test Setup
+
+From the repo you want to test:
+
+```bash
+bun install
+bun link
+make daemon-relaunch
+
+SYNCHRONIZE_MCP_BIN="$(command -v synchronize-mcp)"
+
+codex mcp remove synchronize || true
+codex mcp add --env SYNCHRONIZE_MCP_MODE=codex synchronize -- "$SYNCHRONIZE_MCP_BIN"
+
+claude mcp remove synchronize -s user || true
+claude mcp add synchronize "$SYNCHRONIZE_MCP_BIN" --scope user -e SYNCHRONIZE_MCP_MODE=claude
+```
+
+Verify:
+
+```bash
+codex mcp get synchronize
+claude mcp get synchronize
+synchronize status
+```
+
 ## Troubleshooting
 
 ### `No CLI peer is registered`
