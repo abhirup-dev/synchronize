@@ -90,13 +90,16 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-claude-"));
   homes.push(home);
   const client = new Client({ name: "synchronize-claude-test-client", version: "0.1.0" });
-  const notifications: Array<{ method: string }> = [];
+  const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
   const ClaudeChannelNotificationSchema = z.object({
     method: z.literal("notifications/claude/channel"),
-    params: z.object({}).passthrough().optional(),
+    params: z.object({
+      content: z.string(),
+      meta: z.record(z.string(), z.string()),
+    }),
   });
   client.setNotificationHandler(ClaudeChannelNotificationSchema, (notification) => {
-    notifications.push(notification as { method: string });
+    notifications.push(notification);
   });
   const transport = new StdioClientTransport({
     command: join(process.cwd(), "bin/synchronize-mcp"),
@@ -108,6 +111,8 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
 
   try {
     await client.connect(transport);
+    expect(client.getServerCapabilities()?.experimental).toMatchObject({ "claude/channel": {} });
+    expect(client.getInstructions()).toContain('<channel source="synchronize"');
     const registered = parseToolText(
       await client.callTool({ name: "bridge_register", arguments: { session_name: "claude-e2e" } }),
     ) as { peer: { peer_id: string } };
@@ -119,7 +124,17 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     while (!notifications.some((item) => item.method === "notifications/claude/channel") && Date.now() < deadline) {
       await Bun.sleep(20);
     }
-    expect(notifications).toEqual([expect.objectContaining({ method: "notifications/claude/channel" })]);
+    expect(notifications).toEqual([
+      expect.objectContaining({
+        method: "notifications/claude/channel",
+        params: expect.objectContaining({
+          content: "claude notify",
+          meta: expect.objectContaining({ type: "dm", event_id: "1", sent_at: expect.any(String) }),
+        }),
+      }),
+    ]);
+    expect(notifications[0]?.params.meta).not.toHaveProperty("source");
+    expect(Object.values(notifications[0]?.params.meta ?? {}).every((value) => typeof value === "string")).toBe(true);
   } finally {
     await client.close();
   }

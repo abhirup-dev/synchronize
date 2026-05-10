@@ -5,3 +5,14 @@ import { createMcpServer } from "../src/mcp.ts";
 const server = createMcpServer();
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+let shuttingDown = false;
+const shutdown = () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  void server.cleanup().finally(() => process.exit(0));
+};
+process.stdin.on("end", shutdown);
+process.stdin.on("close", shutdown);
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

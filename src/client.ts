@@ -36,18 +36,24 @@ export async function ensureDaemon(): Promise<ClientConfig> {
 
   const existing = await readJson<Discovery>(paths.discoveryPath);
   if (existing && (await isHealthy(existing.baseUrl))) {
+    log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
     return { baseUrl: existing.baseUrl, token, paths, started: false };
   }
 
   await withLaunchLock(paths, async () => {
     const refreshed = await readJson<Discovery>(paths.discoveryPath);
-    if (refreshed && (await isHealthy(refreshed.baseUrl))) return;
+    if (refreshed && (await isHealthy(refreshed.baseUrl))) {
+      log(`daemon became healthy while waiting base_url=${refreshed.baseUrl} pid=${refreshed.pid}`);
+      return;
+    }
+    log(`starting daemon home=${paths.home}`);
     await startDaemon(paths);
     await waitForDaemon(paths);
   });
 
   const discovery = await readJson<Discovery>(paths.discoveryPath);
   if (!discovery) throw new Error("Daemon did not write discovery file");
+  log(`started daemon base_url=${discovery.baseUrl} pid=${discovery.pid}`);
   return { baseUrl: discovery.baseUrl, token, paths, started: true };
 }
 
@@ -116,6 +122,10 @@ async function startDaemon(paths: RuntimePaths): Promise<void> {
       [ENV_STARTED_BY_CLIENT]: "1",
     },
   }).unref();
+}
+
+function log(message: string): void {
+  console.error(`[synchronize-client] ${message}`);
 }
 
 async function waitForDaemon(paths: RuntimePaths): Promise<void> {

@@ -17,9 +17,9 @@ Use this skill when a Claude agent needs local agent messaging through `synchron
 - Group aliases default to the registered session name of the peer that actually joins and must be unique within the group.
 - If the default alias collides with an existing active group alias, retry `bridge_join_group` with a unique `alias`.
 - Prefer MCP tools over CLI fallback. If MCP tools are unavailable or registration fails, report the MCP failure instead of continuing with shell commands.
-- CLI fallback creates terminal peers only; it does not attach a Claude channel notifier and cannot produce auto-prompt notifications.
+- CLI fallback creates terminal peers only; it does not attach a Claude channel subscription and cannot produce auto-prompt notifications. If you use CLI fallback, explicitly tell the user that real-time Claude channel messages will not work and that only inbox polling/checking will work.
 - Treat `bridge_inbox` as the durable fallback even if channel notifications are missed.
-- Claude notifications use `notifications/claude/channel` with channel `synchronize`.
+- Claude notifications use `notifications/claude/channel`.
 
 ## CLI Fallback
 
