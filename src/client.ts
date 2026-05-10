@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  API_VERSION,
   ENV_STARTED_BY_CLIENT,
   ENV_TOKEN,
   HEALTH_TIMEOUT_MS,
@@ -71,7 +72,9 @@ async function isHealthy(baseUrl: string): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
-    return response.ok;
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null);
+    return body?.service === "synchronize" && body?.api_version === API_VERSION;
   } catch {
     return false;
   } finally {

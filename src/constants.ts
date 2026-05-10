@@ -1,4 +1,5 @@
 export const APP_NAME = "synchronize";
+export const API_VERSION = 1;
 export const DEFAULT_BIND_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 0;
 export const DISCOVERY_FILE = "daemon.json";

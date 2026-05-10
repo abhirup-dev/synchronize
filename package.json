@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "synchronize": "./src/cli.ts",
-    "synchronize-mcp": "./src/mcp.ts"
+    "synchronize": "./bin/synchronize",
+    "synchronize-mcp": "./bin/synchronize-mcp"
   },
   "scripts": {
     "daemon": "bun run src/daemon.ts",

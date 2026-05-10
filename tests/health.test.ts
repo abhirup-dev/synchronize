@@ -39,7 +39,7 @@ test("daemon exposes health and authenticated status", async () => {
 
     const health = await fetch(`${discovery!.baseUrl}/health`);
     expect(health.status).toBe(200);
-    expect(await health.json()).toMatchObject({ ok: true, service: "synchronize" });
+    expect(await health.json()).toMatchObject({ ok: true, service: "synchronize", api_version: 1 });
 
     const status = await fetch(`${discovery!.baseUrl}/status`);
     expect(status.status).toBe(200);

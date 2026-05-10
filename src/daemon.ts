@@ -13,6 +13,7 @@ import {
   ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
+  API_VERSION,
 } from "./constants.ts";
 import { openDatabase } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
@@ -155,6 +156,16 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({
       ok: true,
       service: "synchronize",
+      api_version: API_VERSION,
+      capabilities: [
+        "peers",
+        "dm",
+        "inbox",
+        "groups",
+        "events",
+        "media",
+        "summary",
+      ],
       pid: process.pid,
       started_at: ctx.startedAt,
     });
