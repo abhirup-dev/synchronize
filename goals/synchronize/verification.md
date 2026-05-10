@@ -37,7 +37,7 @@
 - Confirm generated skill docs tell agents to enforce mandatory session identity before joining a group.
 - From Codex, use the installed/provided skill flow to register, join a group, send/read a message, and confirm notification or inbox fallback works.
 - From Claude, use the installed/provided skill flow to register, join a group, send/read a message, and confirm channel notification or inbox fallback works.
-- At every milestone gate in `plan.md`, show evidence to the user and record explicit user confirmation before continuing.
+- At every milestone summary in `plan.md`, record automated command/test evidence in `progress.jsonl` and include a concise summary in the next user-facing update.
 - Confirm implementation satisfies every section of root `PLAN.md`.
 
 ## Evidence Rules

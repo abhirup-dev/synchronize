@@ -1,0 +1,126 @@
+import { afterAll, expect, test } from "bun:test";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { LoggingMessageNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const homes: string[] = [];
+
+afterAll(async () => {
+  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
+});
+
+function parseToolText(result: unknown): unknown {
+  const typed = result as { content?: Array<{ type: string; text?: string }> };
+  const text = typed.content?.find((item) => item.type === "text")?.text;
+  if (!text) throw new Error("tool result had no text content");
+  return JSON.parse(text);
+}
+
+test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, and durable inbox fallback", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-e2e-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-test-client", version: "0.1.0" });
+  const notifications: unknown[] = [];
+  client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+    notifications.push(notification);
+  });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ["run", "src/mcp.ts"],
+    cwd: process.cwd(),
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "codex" },
+    stderr: "pipe",
+  });
+
+  try {
+    await client.connect(transport);
+    await client.setLoggingLevel("debug");
+    const listed = await client.listTools();
+    const toolNames = listed.tools.map((tool) => tool.name).sort();
+    expect(toolNames).toEqual(
+      expect.arrayContaining([
+        "bridge_register",
+        "bridge_whoami",
+        "bridge_list_peers",
+        "bridge_dm",
+        "bridge_inbox",
+        "bridge_create_group",
+        "bridge_join_group",
+        "bridge_leave_group",
+        "bridge_send_group",
+        "bridge_group_history",
+        "bridge_list_groups",
+        "bridge_share_media",
+        "bridge_list_media",
+        "bridge_get_media",
+      ]),
+    );
+
+    const registered = parseToolText(
+      await client.callTool({ name: "bridge_register", arguments: { session_name: "codex-e2e", purpose: "test" } }),
+    ) as { peer: { peer_id: string } };
+    const peerId = registered.peer.peer_id;
+
+    await client.callTool({ name: "bridge_dm", arguments: { recipient_peer_id: peerId, message: "self notify" } });
+    const deadline = Date.now() + 5_000;
+    while (notifications.length === 0 && Date.now() < deadline) await Bun.sleep(20);
+    expect(notifications.length).toBeGreaterThan(0);
+    const inbox = parseToolText(await client.callTool({ name: "bridge_inbox", arguments: { ack: true } })) as {
+      events: Array<{ body: string | null }>;
+    };
+    expect(inbox.events).toEqual([expect.objectContaining({ body: "self notify" })]);
+
+    await client.callTool({ name: "bridge_create_group", arguments: { name: "mcp-room" } });
+    await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
+    await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } });
+    const history = parseToolText(
+      await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
+    ) as { events: Array<{ body: string | null }> };
+    expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+  } finally {
+    await client.close();
+  }
+});
+
+test("MCP stdio adapter emits Claude channel notifications", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-claude-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-claude-test-client", version: "0.1.0" });
+  const notifications: Array<{ method: string }> = [];
+  const ClaudeChannelNotificationSchema = z.object({
+    method: z.literal("notifications/claude/channel"),
+    params: z.object({}).passthrough().optional(),
+  });
+  client.setNotificationHandler(ClaudeChannelNotificationSchema, (notification) => {
+    notifications.push(notification as { method: string });
+  });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ["run", "src/mcp.ts"],
+    cwd: process.cwd(),
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "claude" },
+    stderr: "pipe",
+  });
+
+  try {
+    await client.connect(transport);
+    const registered = parseToolText(
+      await client.callTool({ name: "bridge_register", arguments: { session_name: "claude-e2e" } }),
+    ) as { peer: { peer_id: string } };
+    await client.callTool({
+      name: "bridge_dm",
+      arguments: { recipient_peer_id: registered.peer.peer_id, message: "claude notify" },
+    });
+    const deadline = Date.now() + 5_000;
+    while (!notifications.some((item) => item.method === "notifications/claude/channel") && Date.now() < deadline) {
+      await Bun.sleep(20);
+    }
+    expect(notifications).toEqual([expect.objectContaining({ method: "notifications/claude/channel" })]);
+  } finally {
+    await client.close();
+  }
+});

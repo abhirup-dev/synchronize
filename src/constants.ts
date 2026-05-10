@@ -1,0 +1,26 @@
+export const APP_NAME = "synchronize";
+export const DEFAULT_BIND_HOST = "127.0.0.1";
+export const DEFAULT_PORT = 0;
+export const DISCOVERY_FILE = "daemon.json";
+export const LOCK_DIR = "daemon.lock";
+export const DB_FILE = "synchronize.db";
+export const MEDIA_DIR = "media";
+export const LOG_FILE = "daemon.log";
+export const CLI_IDENTITY_FILE = "cli-peer.json";
+
+export const ENV_HOME = "SYNCHRONIZE_HOME";
+export const ENV_BIND = "SYNCHRONIZE_BIND";
+export const ENV_PORT = "SYNCHRONIZE_PORT";
+export const ENV_TOKEN = "SYNCHRONIZE_TOKEN";
+export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
+
+export const STARTUP_TIMEOUT_MS = 5_000;
+export const HEALTH_TIMEOUT_MS = 500;
+export const STALE_LOCK_MS = 30_000;
+export const DEFAULT_LEASE_MS = 5 * 60_000;
+export const MAX_MESSAGE_CHARS = 16_000;
+export const DEFAULT_PAGE_LIMIT = 50;
+export const MAX_PAGE_LIMIT = 200;
+export const DEFAULT_NOTIFICATION_BUFFER = 100;
+export const NOTIFIER_ACTIVE_MS = 500;
+export const NOTIFIER_IDLE_MS = 2_000;

@@ -13,7 +13,7 @@
 - If implementing REST/MCP/CLI parity requires dropping a required feature from any surface.
 - If LAN support needs anything stronger than shared-token auth in v0.
 - If a group history implementation cannot enforce fresh-join isolation without complex policy machinery.
-- If user does not confirm a milestone gate after Codex presents evidence.
+- If automated milestone evidence is inconclusive or a required scenario cannot be verified.
 - If implementation cannot satisfy a requirement in root `PLAN.md` without changing scope.
 
 ## Dangerous Or High-Risk Actions

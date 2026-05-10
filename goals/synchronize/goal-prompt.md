@@ -20,7 +20,7 @@ Required outcome:
 - Claude uses `notifications/claude/channel`; Codex uses standard MCP `notifications/message`; durable inbox remains authoritative fallback.
 - Default bind is localhost; LAN mode is opt-in and token-protected.
 - Performance constraints are preserved: one notifier cursor per peer, no per-group polling, paginated reads, bounded adapter buffers.
-- Pause after each milestone gate listed in `plan.md`, including separate Codex-skill and Claude-skill integration gates. Present evidence and wait for user confirmation that the setup works before continuing.
+- After each milestone listed in `plan.md`, record automated command/test evidence and continue without manual confirmation unless a blocker is hit. Include separate Codex-skill and Claude-skill integration evidence summaries.
 
 Do not implement WebSocket/SSE, cloud sync, encryption, backup automation, GUI, retention policies, or remote discovery in this goal.
 

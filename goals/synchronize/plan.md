@@ -2,7 +2,7 @@
 
 ## Solution Overview
 
-Build `synchronize` by following the repository root `PLAN.md` completely. The goal package exists to turn that plan into a reviewed `/goal` execution package with acceptance evidence, milestone pauses, and verification discipline.
+Build `synchronize` by following the repository root `PLAN.md` completely. The goal package exists to turn that plan into a reviewed `/goal` execution package with acceptance evidence, automated milestone summaries, and verification discipline.
 
 At a high level, `synchronize` is a local daemon plus two thin clients: an MCP stdio adapter for agents and a CLI for humans. The daemon owns state, exposes a full REST API, persists messages and group state in SQLite, stores media on disk, and emits pollable events. MCP adapters register a peer, heartbeat, poll a single per-peer event stream, and translate new events into Claude or Codex notifications.
 
@@ -219,7 +219,7 @@ Required implementation choices:
 - [ ] Media sharing copies files into a group MediaStore and writes both DB metadata and filesystem index.
 - [ ] Durable groups survive daemon restart; ephemeral groups are removed during startup recovery.
 - [ ] Tests prove performance-sensitive constraints: no per-group polling and paginated reads for unbounded collections.
-- [ ] Codex pauses after each major milestone and waits for user confirmation that the setup works before continuing.
+- [ ] Codex records automated verification summaries after each major milestone and continues without manual confirmation unless a blocker is hit.
 
 ## Required Evidence
 
@@ -231,11 +231,11 @@ Required implementation choices:
 | Notification paths | MCP notification tests or manual trace | `progress.jsonl` |
 | MediaStore | Copied file, `index.jsonl`, DB metadata test | `progress.jsonl` |
 | Performance constraints | Code inspection and tests proving one notifier loop per peer | `progress.jsonl` |
-| User milestone confirmations | Progress entries recording the pause and confirmation | `progress.jsonl` |
+| Milestone verification summaries | Progress entries recording command evidence and automated test summaries | `progress.jsonl` |
 
-## Milestone Gates
+## Milestone Summaries
 
-Codex must pause and wait for user confirmation after these milestones:
+Codex must record automated verification summaries after these milestones:
 - Daemon lifecycle and REST health/status are working.
 - Peer registration plus DM/inbox delivery works from CLI.
 - Group create/join/send/history works from CLI.
@@ -244,7 +244,7 @@ Codex must pause and wait for user confirmation after these milestones:
 - Claude skill integration works end-to-end from the user's Claude environment.
 - MediaStore share/list/get works.
 
-At each pause, Codex must show the command evidence and ask the user to confirm the setup works before continuing.
+At each milestone, Codex must append command/test evidence to `progress.jsonl` and include a concise automated test summary in its next user-facing update. Codex should continue implementation without stopping for manual confirmation unless `blockers.md` requires asking.
 
 ## Phase Boundaries
 

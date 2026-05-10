@@ -60,4 +60,4 @@ Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform 
 
 ## Done Means
 
-The repository contains a working `synchronize` daemon, REST API, MCP adapter, CLI, persistence layer, MediaStore, skill docs, and tests proving every requirement in `PLAN.md`: durable DM, inbox, group, join-history, media, notification, and CLI/MCP parity behavior. Codex has paused at defined milestone checkpoints for user confirmation that the setup works.
+The repository contains a working `synchronize` daemon, REST API, MCP adapter, CLI, persistence layer, MediaStore, skill docs, and tests proving every requirement in `PLAN.md`: durable DM, inbox, group, join-history, media, notification, and CLI/MCP parity behavior. Milestone progress is recorded with automated test summaries instead of manual confirmation pauses.
