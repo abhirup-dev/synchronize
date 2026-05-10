@@ -99,8 +99,8 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     notifications.push(notification as { method: string });
   });
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["run", "src/mcp.ts"],
+    command: join(process.cwd(), "bin/synchronize-mcp"),
+    args: [],
     cwd: process.cwd(),
     env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "claude" },
     stderr: "pipe",
