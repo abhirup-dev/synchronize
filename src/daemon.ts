@@ -103,6 +103,27 @@ interface MemberRow {
   tool: string;
 }
 
+interface SummaryPeerRow {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  purpose: string | null;
+  online: number;
+  pending_inbox: number;
+  groups: number;
+  updated_at: string;
+}
+
+interface SummaryGroupRow {
+  name: string;
+  durable: number;
+  members: number;
+  online_members: number;
+  messages: number;
+  media: number;
+  last_activity_at: string | null;
+}
+
 function resolveBind(env: NodeJS.ProcessEnv): { host: string; port: number } {
   const host = env[ENV_BIND] ?? DEFAULT_BIND_HOST;
   const rawPort = env[ENV_PORT];
@@ -165,6 +186,120 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     });
   }
 
+  if (request.method === "GET" && url.pathname === "/summary") {
+    const now = new Date().toISOString();
+    const peerTotals =
+      ctx.db
+        .query<{ total: number; online: number }, [string]>(
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers",
+        )
+        .get(now) ?? { total: 0, online: 0 };
+    const groupTotals =
+      ctx.db
+        .query<{ total: number; durable: number; ephemeral: number }, []>(
+          `SELECT
+             COUNT(*) AS total,
+             SUM(CASE WHEN durable = 1 THEN 1 ELSE 0 END) AS durable,
+             SUM(CASE WHEN durable = 0 THEN 1 ELSE 0 END) AS ephemeral
+           FROM groups`,
+        )
+        .get() ?? { total: 0, durable: 0, ephemeral: 0 };
+    const eventTotals =
+      ctx.db
+        .query<{ total: number; last_event_at: string | null }, []>(
+          "SELECT COUNT(*) AS total, MAX(created_at) AS last_event_at FROM events",
+        )
+        .get() ?? { total: 0, last_event_at: null };
+    const inboxTotals =
+      ctx.db
+        .query<{ total: number; pending: number }, []>(
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN acked_at IS NULL THEN 1 ELSE 0 END) AS pending FROM inbox",
+        )
+        .get() ?? { total: 0, pending: 0 };
+    const mediaTotals =
+      ctx.db
+        .query<{ files: number; bytes: number }, []>(
+          "SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM media_items",
+        )
+        .get() ?? { files: 0, bytes: 0 };
+    const peers = ctx.db
+      .query<SummaryPeerRow, [string]>(
+        `SELECT
+           p.peer_id,
+           p.session_name,
+           p.tool,
+           p.purpose,
+           p.lease_expires_at > ? AS online,
+           COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
+           COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
+           p.updated_at
+         FROM peers p
+         LEFT JOIN inbox i ON i.recipient_peer_id = p.peer_id
+         LEFT JOIN group_members gm ON gm.peer_id = p.peer_id
+         GROUP BY p.peer_id
+         ORDER BY online DESC, pending_inbox DESC, p.updated_at DESC
+         LIMIT 12`,
+      )
+      .all(now);
+    const groups = ctx.db
+      .query<SummaryGroupRow, [string]>(
+        `SELECT
+           g.name,
+           g.durable,
+           COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.peer_id END) AS members,
+           COUNT(DISTINCT CASE WHEN gm.active = 1 AND p.lease_expires_at > ? THEN gm.peer_id END) AS online_members,
+           COUNT(DISTINCT CASE WHEN e.type = 'group_message' THEN e.event_id END) AS messages,
+           COUNT(DISTINCT mi.media_id) AS media,
+           MAX(e.created_at) AS last_activity_at
+         FROM groups g
+         LEFT JOIN group_members gm ON gm.group_id = g.group_id
+         LEFT JOIN peers p ON p.peer_id = gm.peer_id
+         LEFT JOIN events e ON e.group_id = g.group_id
+         LEFT JOIN media_items mi ON mi.group_id = g.group_id
+         GROUP BY g.group_id
+         ORDER BY last_activity_at DESC, g.name ASC
+         LIMIT 12`,
+      )
+      .all(now);
+
+    return jsonResponse({
+      ok: true,
+      daemon: {
+        pid: process.pid,
+        base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
+        started_at: ctx.startedAt,
+        token_required: Boolean(ctx.token),
+        home: ctx.paths.home,
+        db_path: ctx.paths.dbPath,
+        media_path: ctx.paths.mediaPath,
+      },
+      totals: {
+        peers: {
+          total: peerTotals.total,
+          online: peerTotals.online ?? 0,
+          stale: peerTotals.total - (peerTotals.online ?? 0),
+        },
+        groups: {
+          total: groupTotals.total,
+          durable: groupTotals.durable ?? 0,
+          ephemeral: groupTotals.ephemeral ?? 0,
+        },
+        events: {
+          total: eventTotals.total,
+          last_event_at: eventTotals.last_event_at,
+        },
+        inbox: {
+          total: inboxTotals.total,
+          pending: inboxTotals.pending ?? 0,
+        },
+        media: mediaTotals,
+      },
+      peers: peers.map((peer) => ({ ...peer, online: Boolean(peer.online) })),
+      groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
+      generated_at: now,
+    });
+  }
+
   if (request.method === "POST" && url.pathname === "/peers/register") {
     const body = await readBody(request);
     const sessionName = requireString(body, "session_name");
@@ -212,7 +347,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     if (groupName) {
       const group = getGroup(ctx.db, groupName);
       const rows = ctx.db
-      .query<MemberRow & { online: number }, [string, number]>(
+        .query<MemberRow & { online: number }, [string, number]>(
           `SELECT gm.*, p.session_name, p.tool, p.lease_expires_at > ? AS online
            FROM group_members gm
            JOIN peers p ON p.peer_id = gm.peer_id

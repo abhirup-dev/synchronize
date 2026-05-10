@@ -342,6 +342,17 @@ test("media share copies files, indexes metadata, and emits group inbox events",
       `/peers/${encodeURIComponent(bob.peer.peer_id)}/inbox`,
     );
     expect(bobInbox.events).toEqual([expect.objectContaining({ type: "media_shared", media_id: shared.media.media_id })]);
+
+    const summary = await json<{
+      totals: { peers: { total: number; online: number }; groups: { durable: number }; media: { files: number } };
+      peers: Array<{ peer_id: string; pending_inbox: number }>;
+      groups: Array<{ name: string; media: number }>;
+    }>(daemon.baseUrl, "/summary");
+    expect(summary.totals.peers).toMatchObject({ total: 2, online: 2 });
+    expect(summary.totals.groups.durable).toBe(1);
+    expect(summary.totals.media.files).toBe(1);
+    expect(summary.peers).toEqual(expect.arrayContaining([expect.objectContaining({ peer_id: bob.peer.peer_id, pending_inbox: 1 })]));
+    expect(summary.groups).toEqual(expect.arrayContaining([expect.objectContaining({ name: "media-room", media: 1 })]));
   } finally {
     await daemon.stop();
   }

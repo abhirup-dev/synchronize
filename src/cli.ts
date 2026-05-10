@@ -52,11 +52,52 @@ interface CliIdentity {
   session_name: string;
 }
 
+interface SummaryResponse {
+  ok: boolean;
+  daemon: {
+    pid: number;
+    base_url: string;
+    started_at: string;
+    token_required: boolean;
+    home: string;
+    db_path: string;
+    media_path: string;
+  };
+  totals: {
+    peers: { total: number; online: number; stale: number };
+    groups: { total: number; durable: number; ephemeral: number };
+    events: { total: number; last_event_at: string | null };
+    inbox: { total: number; pending: number };
+    media: { files: number; bytes: number };
+  };
+  peers: Array<{
+    peer_id: string;
+    session_name: string;
+    tool: string;
+    purpose: string | null;
+    online: boolean;
+    pending_inbox: number;
+    groups: number;
+    updated_at: string;
+  }>;
+  groups: Array<{
+    name: string;
+    durable: boolean;
+    members: number;
+    online_members: number;
+    messages: number;
+    media: number;
+    last_activity_at: string | null;
+  }>;
+  generated_at: string;
+}
+
 function printHelp(): void {
   console.log(`synchronize
 
 Usage:
   synchronize status
+  synchronize top [--once] [--json] [--interval SECONDS]
   synchronize register --name NAME [--purpose TEXT]
   synchronize whoami
   synchronize peers
@@ -74,6 +115,7 @@ Usage:
 
 Commands:
   status    Start or connect to the local daemon and print health/status
+  top       Live htop-style dashboard for daemon, peers, groups, inbox, and media
   register  Register this CLI session and remember its peer id
   whoami    Show the registered CLI peer identity
   peers     List registered peers
@@ -101,6 +143,11 @@ async function main(argv: string[]): Promise<void> {
     const client = await ensureDaemon();
     const status = await requestJson<StatusResponse>(client, "/status");
     console.log(JSON.stringify({ ...status, daemon_started_by_cli: client.started }, null, 2));
+    return;
+  }
+
+  if (command === "top" || command === "summary") {
+    await handleTop(argv.slice(1));
     return;
   }
 
@@ -190,6 +237,138 @@ async function main(argv: string[]): Promise<void> {
   console.error(`Unknown command: ${command}`);
   printHelp();
   process.exit(2);
+}
+
+async function handleTop(argv: string[]): Promise<void> {
+  const args = parseFlags(argv);
+  const client = await ensureDaemon();
+  const intervalSeconds = args.flags.interval ? Number.parseFloat(args.flags.interval) : 1;
+  if (!Number.isFinite(intervalSeconds) || intervalSeconds <= 0) {
+    throw new Error("--interval must be a positive number of seconds");
+  }
+
+  if (args.boolFlags.has("json")) {
+    const summary = await requestJson<SummaryResponse>(client, "/summary");
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+
+  if (args.boolFlags.has("once") || !process.stdout.isTTY) {
+    const summary = await requestJson<SummaryResponse>(client, "/summary");
+    console.log(renderSummary(summary));
+    return;
+  }
+
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  process.stdout.write("\x1b[?25l");
+  try {
+    while (!stopped) {
+      const summary = await requestJson<SummaryResponse>(client, "/summary");
+      process.stdout.write("\x1b[H\x1b[2J");
+      process.stdout.write(renderSummary(summary));
+      process.stdout.write("\n\nPress Ctrl-C to quit.");
+      await Bun.sleep(intervalSeconds * 1000);
+    }
+  } finally {
+    process.stdout.write("\x1b[?25h\n");
+  }
+}
+
+export function renderSummary(summary: SummaryResponse): string {
+  const uptime = formatDuration(Date.now() - new Date(summary.daemon.started_at).getTime());
+  const lines: string[] = [];
+  lines.push(
+    `synchronize top   daemon: ${summary.ok ? "ok" : "down"}   uptime: ${uptime}   pid: ${summary.daemon.pid}   ${summary.daemon.base_url}`,
+  );
+  lines.push(
+    `PEERS ${summary.totals.peers.online} online / ${summary.totals.peers.total} total   GROUPS ${summary.totals.groups.durable} durable / ${summary.totals.groups.ephemeral} ephemeral   EVENTS ${summary.totals.events.total}   INBOX ${summary.totals.inbox.pending} pending   MEDIA ${summary.totals.media.files} files / ${formatBytes(summary.totals.media.bytes)}`,
+  );
+  lines.push(`DB ${summary.daemon.db_path}`);
+  lines.push("");
+  lines.push("Peers");
+  lines.push(
+    table(
+      ["status", "name", "tool", "purpose", "inbox", "groups", "updated"],
+      summary.peers.map((peer) => [
+        peer.online ? "online" : "stale",
+        peer.session_name,
+        peer.tool,
+        peer.purpose ?? "",
+        String(peer.pending_inbox),
+        String(peer.groups),
+        formatRelative(peer.updated_at),
+      ]),
+    ),
+  );
+  lines.push("");
+  lines.push("Groups");
+  lines.push(
+    table(
+      ["name", "members", "messages", "media", "kind", "last activity"],
+      summary.groups.map((group) => [
+        group.name,
+        `${group.online_members}/${group.members}`,
+        String(group.messages),
+        String(group.media),
+        group.durable ? "durable" : "ephemeral",
+        group.last_activity_at ? formatRelative(group.last_activity_at) : "never",
+      ]),
+    ),
+  );
+  lines.push("");
+  lines.push(`generated: ${summary.generated_at}`);
+  return lines.join("\n");
+}
+
+function table(headers: string[], rows: string[][]): string {
+  const widths = headers.map((header, index) => {
+    const maxCell = Math.max(header.length, ...rows.map((row) => (row[index] ?? "").length));
+    return Math.min(Math.max(maxCell, 4), index === 3 ? 28 : 22);
+  });
+  const renderRow = (row: string[]) => row.map((cell, index) => fit(cell, widths[index] ?? 12)).join("  ");
+  const divider = widths.map((width) => "-".repeat(width)).join("  ");
+  const body = rows.length > 0 ? rows.map(renderRow) : ["(none)"];
+  return [renderRow(headers), divider, ...body].join("\n");
+}
+
+function fit(value: string, width: number): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length > width) return `${clean.slice(0, Math.max(0, width - 1))}~`;
+  return clean.padEnd(width, " ");
+}
+
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)}${units[unit]}`;
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0s";
+  const seconds = Math.floor(ms / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  if (hours > 0) return `${hours}h${minutes}m`;
+  if (minutes > 0) return `${minutes}m${remaining}s`;
+  return `${remaining}s`;
+}
+
+function formatRelative(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "unknown";
+  if (ms < 5_000) return "now";
+  return `${formatDuration(ms)} ago`;
 }
 
 async function handleGroup(argv: string[]): Promise<void> {
