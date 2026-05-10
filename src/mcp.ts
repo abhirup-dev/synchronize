@@ -5,8 +5,8 @@ import { getMode } from "./mcp/state.ts";
 import { log } from "./mcp/util.ts";
 
 export { createMcpServer } from "./mcp/server.ts";
-export { NotificationBridge } from "./mcp/codex-notifier.ts";
-export { EventSubscription } from "./mcp/claude-subscription.ts";
+export { NotificationBridge, type NotificationBridgeOptions } from "./mcp/codex-notifier.ts";
+export { EventSubscription, type EventSubscriptionOptions } from "./mcp/claude-subscription.ts";
 export { emitMcpNotification } from "./mcp/notifications.ts";
 
 if (import.meta.main) {
