@@ -3,7 +3,8 @@
 ```text
 /goal Implement `synchronize`: a lean Bun/TypeScript daemon, REST API, MCP adapter, CLI, durable inbox, group chat, join-history modes, MediaStore, and Claude/Codex notification bridge for local agent messaging.
 
-Use `goals/synchronize/` as the durable source of truth:
+Use `PLAN.md` and `goals/synchronize/` as the durable source of truth:
+- Follow root `PLAN.md` completely. It is the authoritative implementation plan.
 - Read `brief.md` for the mission, constraints, non-goals, and ask-before rules.
 - Follow `plan.md` for the architecture, REST/MCP/CLI parity requirements, implementation slices, acceptance criteria, and performance constraints.
 - Use `verification.md` for exact commands, required scenarios, manual checks, and evidence rules.
@@ -19,9 +20,6 @@ Required outcome:
 - Claude uses `notifications/claude/channel`; Codex uses standard MCP `notifications/message`; durable inbox remains authoritative fallback.
 - Default bind is localhost; LAN mode is opt-in and token-protected.
 - Performance constraints are preserved: one notifier cursor per peer, no per-group polling, paginated reads, bounded adapter buffers.
-- Set git remote `origin` to `https://github.com/abhirup-dev/synchronize` before any push-related work.
-- Keep local branch as `master`; do not rename it to `main`.
-- Ensure GitHub upstream default branch is also `master` after remote branch setup.
 - Pause after each milestone gate listed in `plan.md`, present evidence, and wait for user confirmation that the setup works before continuing.
 
 Do not implement WebSocket/SSE, cloud sync, encryption, backup automation, GUI, retention policies, or remote discovery in this goal.

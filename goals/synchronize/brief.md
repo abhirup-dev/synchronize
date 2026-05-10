@@ -2,7 +2,7 @@
 
 ## Mission
 
-Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform that lets Claude and Codex agents discover each other, send durable DMs, participate in group chats, share group media, and receive near-real-time notifications through MCP.
+Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform that lets Claude and Codex agents discover each other, send durable DMs, participate in group chats, share group media, and receive near-real-time notifications through MCP. The implementation goal is to follow the repository root `PLAN.md` completely.
 
 ## Context
 
@@ -11,9 +11,8 @@ Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform 
 - The platform is local-first. It binds to localhost by default, can optionally bind for LAN use, and requires token auth when LAN mode is enabled.
 - The daemon must survive agent death and revive durable state after restart.
 - Performance and memory use are top priorities because many agents may live in many groups.
-- This is a new repository at `https://github.com/abhirup-dev/synchronize`; upstream setup is part of the goal.
-- Local branch `master` is intentional and correct.
-- GitHub upstream should also use `master` as the default branch; update the remote repository default branch if needed.
+- The full implementation plan lives at `PLAN.md` and is the authoritative scope contract for this goal.
+- Repository upstream setup has already been completed before implementation: local branch is `master`, `origin` points to `https://abhirup-dev@github.com/abhirup-dev/synchronize.git`, and GitHub default branch is `master`.
 
 ## Required Product Behavior
 
@@ -51,15 +50,14 @@ Implement `synchronize`: a lean Bun/TypeScript daemon-backed messaging platform 
 ## Ask Before
 
 - Changing the implementation stack away from Bun/TypeScript.
-- Renaming the local `master` branch to `main`.
-- Leaving GitHub default branch as `main` after upstream setup.
+- Changing repository branch/default-branch policy.
 - Adding WebSocket/SSE or another transport instead of adaptive polling.
 - Making LAN mode tokenless.
 - Choosing symlink/reference-only media sharing as the default.
 - Destructive cleanup of existing `~/.synchronize` data.
-- Pushing to GitHub or setting a remote differently from `https://github.com/abhirup-dev/synchronize`.
+- Setting a remote differently from `https://github.com/abhirup-dev/synchronize`.
 - Any migration that cannot preserve existing durable messages once v0 data exists.
 
 ## Done Means
 
-The repository contains a working `synchronize` daemon, REST API, MCP adapter, CLI, persistence layer, MediaStore, skill docs, and tests proving durable DM, inbox, group, join-history, media, notification, and CLI/MCP parity behavior. The repository has `origin` set to `https://github.com/abhirup-dev/synchronize`, local and upstream default branch are both `master`, and Codex has paused at defined milestone checkpoints for user confirmation that the setup works.
+The repository contains a working `synchronize` daemon, REST API, MCP adapter, CLI, persistence layer, MediaStore, skill docs, and tests proving every requirement in `PLAN.md`: durable DM, inbox, group, join-history, media, notification, and CLI/MCP parity behavior. Codex has paused at defined milestone checkpoints for user confirmation that the setup works.

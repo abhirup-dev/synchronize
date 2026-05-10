@@ -14,8 +14,7 @@
 - If LAN support needs anything stronger than shared-token auth in v0.
 - If a group history implementation cannot enforce fresh-join isolation without complex policy machinery.
 - If user does not confirm a milestone gate after Codex presents evidence.
-- If any tool or remote workflow tries to rename local `master` to `main`.
-- If GitHub does not allow setting `master` as the default branch because the branch does not exist remotely yet; create/push `master` first when the user asks for push-related work.
+- If implementation cannot satisfy a requirement in root `PLAN.md` without changing scope.
 
 ## Dangerous Or High-Risk Actions
 
@@ -24,13 +23,9 @@
 - Running commands that overwrite user media paths.
 - Introducing background processes that cannot be discovered or stopped by CLI.
 - Adding non-v0 infrastructure such as cloud services, public tunnels, or remote discovery.
-- Pushing to GitHub before the user asks for it.
-- Renaming local branch `master` to `main`.
-- Leaving GitHub default branch as `main` once `master` exists remotely.
+- Changing repository branch/default-branch policy.
 
 ## Known Blockers
 
-- No `origin` remote is currently configured. The goal should set `origin` to `https://github.com/abhirup-dev/synchronize` before any push-related work.
-- Local branch is currently unborn `master`; this is correct and must be preserved.
-- GitHub upstream should also end with default branch `master`.
+- Root `PLAN.md` is now the authoritative plan; if it changes, the goal files should be rechecked for consistency.
 - The main execution risk is notification behavior variance between Claude and Codex clients.

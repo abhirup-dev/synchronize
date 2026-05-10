@@ -10,9 +10,6 @@
 | `bun run lint` | Static quality check if lint script exists | Exit code 0 | `progress.jsonl` |
 | `synchronize --help` | Verify CLI entrypoint | Lists documented command groups | `progress.jsonl` |
 | `synchronize status` | Verify daemon discovery/autostart | Shows healthy daemon and state path | `progress.jsonl` |
-| `git remote -v` | Verify upstream setup | `origin` points to `https://github.com/abhirup-dev/synchronize` | `progress.jsonl` |
-| `git branch --show-current` | Verify local branch policy | Outputs `master` | `progress.jsonl` |
-| `gh repo view abhirup-dev/synchronize --json defaultBranchRef` | Verify GitHub branch policy | Default branch is `master` | `progress.jsonl` |
 
 ## Required Test Scenarios
 
@@ -39,7 +36,7 @@
 - Inspect `~/.synchronize/media/<group>/index.jsonl` with `rg` and confirm metadata is findable.
 - Confirm generated skill docs tell agents to enforce mandatory session identity before joining a group.
 - At every milestone gate in `plan.md`, show evidence to the user and record explicit user confirmation before continuing.
-- If the GitHub default branch is not `master`, update it to `master` after the branch exists remotely, then record evidence.
+- Confirm implementation satisfies every section of root `PLAN.md`.
 
 ## Evidence Rules
 

@@ -2,7 +2,9 @@
 
 ## Solution Overview
 
-Build `synchronize` as a local daemon plus two thin clients: an MCP stdio adapter for agents and a CLI for humans. The daemon owns state, exposes a full REST API, persists messages and group state in SQLite, stores media on disk, and emits pollable events. MCP adapters register a peer, heartbeat, poll a single per-peer event stream, and translate new events into Claude or Codex notifications.
+Build `synchronize` by following the repository root `PLAN.md` completely. The goal package exists to turn that plan into a reviewed `/goal` execution package with acceptance evidence, milestone pauses, and verification discipline.
+
+At a high level, `synchronize` is a local daemon plus two thin clients: an MCP stdio adapter for agents and a CLI for humans. The daemon owns state, exposes a full REST API, persists messages and group state in SQLite, stores media on disk, and emits pollable events. MCP adapters register a peer, heartbeat, poll a single per-peer event stream, and translate new events into Claude or Codex notifications.
 
 ```text
                           same REST contract
@@ -146,7 +148,7 @@ MediaStore:
 | 6 | MCP adapter and notifications | MCP tools, heartbeat, adaptive notifier | Claude/Codex notification paths work and inbox fallback remains durable | Client notification support varies |
 | 7 | CLI parity | CLI commands over REST | CLI covers every MCP capability | Parity drift |
 | 8 | MediaStore | file copy, metadata, `index.jsonl`, media events | Shared media is copied, indexed, listed, and fetchable | Large files and path safety |
-| 9 | Skills/docs, upstream, and end-to-end tests | Claude/Codex skill docs, integration tests, git remote | Slash-command behavior is documented, tools are verified, and `origin` points to GitHub | Skill wording ambiguity |
+| 9 | Skills/docs and end-to-end tests | Claude/Codex skill docs, integration tests | Slash-command behavior is documented and tools are verified | Skill wording ambiguity |
 
 ## Public Interface Requirements
 
@@ -217,9 +219,6 @@ Required implementation choices:
 - [ ] Media sharing copies files into a group MediaStore and writes both DB metadata and filesystem index.
 - [ ] Durable groups survive daemon restart; ephemeral groups are removed during startup recovery.
 - [ ] Tests prove performance-sensitive constraints: no per-group polling and paginated reads for unbounded collections.
-- [ ] Git remote `origin` is set to `https://github.com/abhirup-dev/synchronize`.
-- [ ] Local branch remains `master`; Codex does not rename it to `main`.
-- [ ] GitHub repository default branch is `master`, not `main`.
 - [ ] Codex pauses after each major milestone and waits for user confirmation that the setup works before continuing.
 
 ## Required Evidence
@@ -232,9 +231,6 @@ Required implementation choices:
 | Notification paths | MCP notification tests or manual trace | `progress.jsonl` |
 | MediaStore | Copied file, `index.jsonl`, DB metadata test | `progress.jsonl` |
 | Performance constraints | Code inspection and tests proving one notifier loop per peer | `progress.jsonl` |
-| Upstream setup | `git remote -v` output showing `origin` | `progress.jsonl` |
-| Branch policy | `git branch --show-current` output showing `master` | `progress.jsonl` |
-| GitHub default branch | `gh repo view abhirup-dev/synchronize --json defaultBranchRef` or equivalent showing `master` | `progress.jsonl` |
 | User milestone confirmations | Progress entries recording the pause and confirmation | `progress.jsonl` |
 
 ## Milestone Gates
