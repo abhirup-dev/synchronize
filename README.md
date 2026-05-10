@@ -154,6 +154,13 @@ synchronize-mcp
 Run `bun link` from this repo first so the `synchronize` and `synchronize-mcp`
 binaries are available on `PATH`.
 
+For a resilient MCP client config, resolve the linked binary once and store its
+absolute path:
+
+```bash
+SYNCHRONIZE_MCP_BIN="$(command -v synchronize-mcp)"
+```
+
 Set `SYNCHRONIZE_MCP_MODE` to choose notification behavior:
 
 - `codex`: standard MCP `notifications/message`
@@ -167,7 +174,7 @@ From anywhere:
 codex mcp add \
   --env SYNCHRONIZE_MCP_MODE=codex \
   synchronize \
-  -- synchronize-mcp
+  -- "$SYNCHRONIZE_MCP_BIN"
 ```
 
 Then start Codex and use the MCP tools:
@@ -184,10 +191,10 @@ Then start Codex and use the MCP tools:
 ### Claude Code
 
 ```bash
-claude mcp add --scope user \
-  -e SYNCHRONIZE_MCP_MODE=claude \
-  synchronize \
-  -- synchronize-mcp
+claude mcp add \
+  synchronize "$SYNCHRONIZE_MCP_BIN" \
+  --scope user \
+  -e SYNCHRONIZE_MCP_MODE=claude
 ```
 
 For Claude channel notifications, start Claude with the development channel enabled:
