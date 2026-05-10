@@ -35,6 +35,8 @@
 - Confirm notification failure does not remove inbox items.
 - Inspect `~/.synchronize/media/<group>/index.jsonl` with `rg` and confirm metadata is findable.
 - Confirm generated skill docs tell agents to enforce mandatory session identity before joining a group.
+- From Codex, use the installed/provided skill flow to register, join a group, send/read a message, and confirm notification or inbox fallback works.
+- From Claude, use the installed/provided skill flow to register, join a group, send/read a message, and confirm channel notification or inbox fallback works.
 - At every milestone gate in `plan.md`, show evidence to the user and record explicit user confirmation before continuing.
 - Confirm implementation satisfies every section of root `PLAN.md`.
 

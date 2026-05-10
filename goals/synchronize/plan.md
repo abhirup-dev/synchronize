@@ -240,6 +240,8 @@ Codex must pause and wait for user confirmation after these milestones:
 - Peer registration plus DM/inbox delivery works from CLI.
 - Group create/join/send/history works from CLI.
 - MCP adapter can register and emit at least one test notification path.
+- Codex skill integration works end-to-end from the user's Codex environment.
+- Claude skill integration works end-to-end from the user's Claude environment.
 - MediaStore share/list/get works.
 
 At each pause, Codex must show the command evidence and ask the user to confirm the setup works before continuing.
