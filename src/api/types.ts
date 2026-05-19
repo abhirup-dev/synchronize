@@ -1,0 +1,123 @@
+export interface StatusResponse {
+  ok: boolean;
+  pid: number;
+  base_url: string;
+  started_at: string;
+  token_required: boolean;
+  home: string;
+  db_path: string;
+  media_path: string;
+  counts: {
+    peers: number;
+    groups: number;
+    events: number;
+  };
+}
+
+export interface Peer {
+  peer_id: string;
+  tool: string;
+  session_name: string;
+  purpose: string | null;
+  lease_expires_at: string;
+  online?: boolean;
+}
+
+export interface Event {
+  event_id: number;
+  type: string;
+  sender_peer_id: string | null;
+  recipient_peer_id: string | null;
+  group_id: number | null;
+  body: string | null;
+  media_id: string | null;
+  created_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  acked_at?: string | null;
+}
+
+export interface Group {
+  group_id: number;
+  name: string;
+  durable: boolean;
+  media_dir: string;
+  creator_peer_id: string | null;
+  created_at: string;
+}
+
+export interface GroupMember {
+  group_id: number;
+  peer_id: string;
+  alias: string;
+  join_event_id: number | null;
+  history_from_event_id: number | null;
+  active: boolean;
+  purpose: string | null;
+  joined_at: string;
+  left_at: string | null;
+  session_name: string;
+  tool: string;
+}
+
+export interface MediaItem {
+  media_id: string;
+  group_id: number;
+  original_path: string;
+  copied_path: string;
+  size_bytes: number;
+  sha256: string;
+  content_type: string;
+  description: string | null;
+  shared_by_peer_id: string;
+  created_at: string;
+}
+
+export interface EventSubscriptionRegistration {
+  peer_id: string;
+  callback_url: string;
+  token: string;
+  created_at: string;
+}
+
+export interface SummaryResponse {
+  ok: boolean;
+  daemon: {
+    pid: number;
+    base_url: string;
+    started_at: string;
+    token_required: boolean;
+    home: string;
+    db_path: string;
+    media_path: string;
+  };
+  totals: {
+    peers: { total: number; online: number; stale: number };
+    groups: { total: number; durable: number; ephemeral: number };
+    events: { total: number; last_event_at: string | null };
+    inbox: { total: number; pending: number };
+    media: { files: number; bytes: number };
+  };
+  peers: Array<{
+    peer_id: string;
+    session_name: string;
+    tool: string;
+    purpose: string | null;
+    online: boolean;
+    pending_inbox: number;
+    groups: number;
+    updated_at: string;
+  }>;
+  groups: Array<{
+    name: string;
+    durable: boolean;
+    members: number;
+    online_members: number;
+    messages: number;
+    media: number;
+    last_activity_at: string | null;
+  }>;
+  generated_at: string;
+}
+
+export type SummaryPeer = SummaryResponse["peers"][number];
