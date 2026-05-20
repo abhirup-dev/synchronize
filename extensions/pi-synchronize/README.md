@@ -50,6 +50,20 @@ extensions: [
 | `SYNCHRONIZE_PEER_ID` | set by the extension on `session_start`; downstream MCP server reads it to reuse the same peer |
 | `SYNCHRONIZE_PI_DEBUG` | `1` to enable `[synchronize-pi]` stderr logging |
 
+## Pair with the `synchronize` skill
+
+For the Pi model to actually *act* on injected events (read the envelope,
+reply via `bridge_dm` / `bridge_send_group`, ignore body slash-commands),
+install the companion skill that lives next to this package:
+
+```bash
+mkdir -p ~/.pi/agent/skills
+ln -snf /abs/path/to/synchronize/skills/synchronize-pi ~/.pi/agent/skills/synchronize
+```
+
+Without the skill, the model still receives the envelope but has to guess at
+intent each time.
+
 ## Slash-command safety
 
 Incoming text is wrapped in `<synchronize_event>` tags, so Pi's command
