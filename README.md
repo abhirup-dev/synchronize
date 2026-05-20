@@ -162,96 +162,52 @@ Aliases are unique within a group. If two peers try to join the same group with 
 
 ## MCP Setup
 
-The MCP adapter command is:
+Each agent needs (a) the `synchronize` MCP server registered and (b) the
+matching `SKILL.md` copied into its skills directory. `make install-<agent>`
+does both:
 
 ```bash
-synchronize-mcp
+make install-claude      # claude mcp add + copy skills/synchronize-claude
+make install-codex       # codex  mcp add + copy skills/synchronize-codex
+make install-pi          # merge ~/.pi/agent/mcp.json + extension shim + copy skill
+make install-all         # all three
+make uninstall-{claude,codex,pi,all}
 ```
 
-Run `bun link` from this repo first so the `synchronize` and `synchronize-mcp`
-binaries are available on `PATH`.
+All targets depend on `make link` (`bun install && bun link` so
+`synchronize-mcp` is on `PATH`). `SYNCHRONIZE_MCP_MODE` selects the
+notification dialect: `codex` (standard `notifications/message`) or `claude`
+(`notifications/claude/channel`).
 
-For a resilient MCP client config, resolve the linked binary once and store its
-absolute path:
+### Under the hood
 
-```bash
-SYNCHRONIZE_MCP_BIN="$(command -v synchronize-mcp)"
-```
+| Agent  | What `install-<agent>` runs |
+|--------|------------------------------|
+| Codex  | `codex mcp add --env SYNCHRONIZE_MCP_MODE=codex synchronize -- synchronize-mcp` |
+| Claude | `claude mcp add synchronize synchronize-mcp --scope user -e SYNCHRONIZE_MCP_MODE=claude` |
+| Pi     | `bun run scripts/pi-mcp-config.ts ~/.pi/agent/mcp.json` + writes `~/.pi/agent/extensions/synchronize.ts` |
 
-Set `SYNCHRONIZE_MCP_MODE` to choose notification behavior:
+For Claude channel pushes to surface in the UI, launch Claude with
+`--dangerously-load-development-channels server:synchronize`. Without it,
+durable inbox tools still work but channel events stay silent.
 
-- `codex`: standard MCP `notifications/message`
-- `claude`: `notifications/claude/channel`
-
-### Codex
-
-From anywhere:
-
-```bash
-codex mcp add \
-  --env SYNCHRONIZE_MCP_MODE=codex \
-  synchronize \
-  -- "$SYNCHRONIZE_MCP_BIN"
-```
-
-Then start Codex and use the MCP tools:
-
-- `bridge_register`
-- `bridge_dm`
-- `bridge_inbox`
-- `bridge_create_group`
-- `bridge_join_group`
-- `bridge_send_group`
-- `bridge_group_history`
-- `bridge_share_media`
-
-### Claude Code
-
-```bash
-claude mcp add \
-  synchronize "$SYNCHRONIZE_MCP_BIN" \
-  --scope user \
-  -e SYNCHRONIZE_MCP_MODE=claude
-```
-
-For Claude channel notifications, start Claude with the development channel enabled:
-
-```bash
-claude --dangerously-load-development-channels server:synchronize
-```
-
-Without that flag, durable inbox tools still work, but channel push behavior may not surface in the UI.
-
-### Pi
-
-Pi has no `pi mcp add` CLI — its MCP config is a plain JSON file at
-`~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`). Use `make
-install-pi` (see below) to add the `synchronize` entry without touching the
-other servers in that file:
+Pi has no `pi mcp add` CLI; `scripts/pi-mcp-config.ts` idempotently merges
+this entry into `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`)
+without touching other servers:
 
 ```json
-{
-  "mcpServers": {
-    "synchronize": {
-      "command": "synchronize-mcp",
-      "env": { "SYNCHRONIZE_MCP_MODE": "codex" }
-    }
-  }
-}
+{ "mcpServers": { "synchronize": { "command": "synchronize-mcp", "env": { "SYNCHRONIZE_MCP_MODE": "codex" } } } }
 ```
 
-Pi receives synchronize events as user messages injected by the
-`@synchronize/pi-extension` extension (see `extensions/pi-synchronize/`), not
-as a Pi-native MCP channel — so `codex` mode is the right setting. The
-extension owns the push path; the MCP server only serves outbound tool calls.
-
-`make install-pi` runs `scripts/pi-mcp-config.ts` to merge the entry above,
-writes the extension shim at `~/.pi/agent/extensions/synchronize.ts`, and
-copies the skill. `make uninstall-pi` reverses all three.
+Pi mode is `codex` because Pi receives synchronize events as user messages
+injected by `@synchronize/pi-extension` (see `extensions/pi-synchronize/`),
+not as a native channel notification — the extension owns the push path; the
+MCP server only serves outbound tool calls.
 
 ## Skills
 
-Skill files are included for agents that support local `SKILL.md` directories:
+Each agent gets its own `SKILL.md` with rules tailored to its notification
+path:
 
 ```text
 skills/synchronize-codex/SKILL.md
@@ -259,56 +215,17 @@ skills/synchronize-claude/SKILL.md
 skills/synchronize-pi/SKILL.md
 ```
 
-Install by copying the relevant directory into your agent's skills folder, or
-use the Makefile targets below.
+`make install-<agent>` (see above) copies the right one. The skills cover:
+register before messaging, mandatory session name, optional purpose,
+`bridge_join_group` for `/join-group` (with `fresh: true` for fork), inbox as
+the durable fallback, and — for Pi specifically — how to interpret incoming
+`<synchronize_event>` user-message envelopes.
 
-Example for Codex:
-
-```bash
-mkdir -p ~/.codex/skills
-cp -R skills/synchronize-codex ~/.codex/skills/synchronize
-```
-
-Example for Claude-style skill folders:
+For manual install without `make`, all three are plain directory copies:
 
 ```bash
-mkdir -p ~/.claude/skills
-cp -R skills/synchronize-claude ~/.claude/skills/synchronize
+cp -R skills/synchronize-<agent> ~/<agent-skills-dir>/synchronize
 ```
-
-Example for Pi:
-
-```bash
-mkdir -p ~/.pi/agent/skills
-cp -R skills/synchronize-pi ~/.pi/agent/skills/synchronize
-```
-
-### Makefile shortcut
-
-For repeatable installs into the current user's home dir:
-
-```bash
-make install-claude   # claude mcp add + copy skill
-make install-codex    # codex  mcp add + copy skill
-make install-pi       # write Pi extension shim + copy skill
-make install-all      # all three
-
-make uninstall-claude / uninstall-codex / uninstall-pi / uninstall-all
-```
-
-All three depend on `make link` (runs `bun install && bun link` so
-`synchronize-mcp` resolves on PATH). `install-pi` additionally merges the
-`synchronize` server into `~/.pi/agent/mcp.json` via
-`scripts/pi-mcp-config.ts`, preserving any other servers already configured.
-
-The skills instruct agents to:
-
-- register before messaging
-- provide a mandatory session name
-- optionally provide a purpose
-- use `bridge_join_group` for `/join-group`
-- use `bridge_join_group` with `fresh: true` for `/join-group-fork`
-- treat inbox as the durable fallback
 
 ## REST API
 
@@ -480,24 +397,17 @@ From the repo you want to test:
 
 ```bash
 bun install
-bun link
 make daemon-relaunch
-
-SYNCHRONIZE_MCP_BIN="$(command -v synchronize-mcp)"
-
-codex mcp remove synchronize || true
-codex mcp add --env SYNCHRONIZE_MCP_MODE=codex synchronize -- "$SYNCHRONIZE_MCP_BIN"
-
-claude mcp remove synchronize -s user || true
-claude mcp add synchronize "$SYNCHRONIZE_MCP_BIN" --scope user -e SYNCHRONIZE_MCP_MODE=claude
+make install-all          # wires Codex + Claude + Pi (link, MCP register, copy skills)
+synchronize status        # confirm daemon is healthy
 ```
 
-Verify:
+Verify per-agent registration:
 
 ```bash
 codex mcp get synchronize
 claude mcp get synchronize
-synchronize status
+cat ~/.pi/agent/mcp.json
 ```
 
 ## Troubleshooting
@@ -543,6 +453,10 @@ Inbox remains available through `bridge_inbox` even if channel notifications do 
 
 Confirm the MCP server was added with `SYNCHRONIZE_MCP_MODE=codex`. If notifications are not surfaced by the client UI, use `bridge_inbox` as the durable fallback.
 
+### Pi events do not appear in the session
+
+`@synchronize/pi-extension` injects events as `<synchronize_event>` user messages. Tail `~/.synchronize/pi-extension.log` to see lifecycle (register / subscribe / event received / delivery mode). If the log shows the event was injected but the model didn't react, confirm `skills/synchronize-pi/SKILL.md` is installed at `~/.pi/agent/skills/synchronize`.
+
 ## Current Scope
 
 Implemented for v0:
@@ -555,7 +469,7 @@ Implemented for v0:
 - durable and ephemeral groups
 - join-with-history and join-fresh modes
 - filesystem MediaStore
-- Claude and Codex notification paths
+- Claude, Codex, and Pi notification paths
 
 Not included in v0:
 
