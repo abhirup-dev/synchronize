@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { discoverDaemon, deletePeer, heartbeatPeer, registerPeer, type Event, type PiSyncClient } from "./client.ts";
 import { formatExternalEvent, mapEventToDelivery } from "./delivery.ts";
 import { resolveSessionName } from "./identity.ts";
-import { formatError, log } from "./log.ts";
+import { formatError, getLogPath, log } from "./log.ts";
 import { PiEventSubscription } from "./subscription.ts";
 
 /**
@@ -17,7 +17,10 @@ export interface PiSendOptions {
 }
 
 export interface PiExtensionContext {
-  session?: { id?: string } | null;
+  sessionManager?: {
+    getSessionId?: () => string;
+    getSessionName?: () => string;
+  };
   ui?: { notify?: (message: string, level?: string) => void };
   isIdle?: () => boolean;
   abort?: () => void;
@@ -42,6 +45,7 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let sessionFile: string | null = null;
 
   async function teardown(): Promise<void> {
+    log(`teardown begin peer_id=${peerId ?? "-"}`);
     if (heartbeat) {
       clearInterval(heartbeat);
       heartbeat = null;
@@ -51,6 +55,7 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     if (peerId && client) {
       try {
         await deletePeer(client, peerId);
+        log(`deleted peer ${peerId}`);
       } catch (error) {
         log(`failed to delete peer ${peerId}: ${formatError(error)}`);
       }
@@ -72,8 +77,9 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
   async function startup(ctx: PiExtensionContext): Promise<void> {
     ctxRef = ctx;
     client = await discoverDaemon();
+    const piSessionId = ctx.sessionManager?.getSessionId?.() ?? null;
     const sessionName = resolveSessionName({
-      piSessionId: ctx.session?.id ?? null,
+      piSessionId,
       envSessionName: process.env.SYNCHRONIZE_SESSION_NAME ?? null,
     });
     const { peer } = await registerPeer(client, {
@@ -88,7 +94,7 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     const home = process.env.SYNCHRONIZE_HOME ?? join(homedir(), ".synchronize");
     const sessionsDir = join(home, "pi-sessions");
     await mkdir(sessionsDir, { recursive: true });
-    const fileId = ctx.session?.id ?? sessionName;
+    const fileId = piSessionId ?? sessionName;
     sessionFile = join(sessionsDir, `${fileId}.json`);
     await writeFile(
       sessionFile,
@@ -99,9 +105,20 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
       peerId,
       client,
       onEvent: async (event: Event) => {
-        const wrapped = formatExternalEvent(event);
+        const idle = ctxRef?.isIdle?.() ?? true;
         const delivery = mapEventToDelivery(event, ctxRef ?? {});
-        await pi.sendUserMessage(wrapped, delivery ? { deliverAs: delivery } : undefined);
+        const preview = (event.body ?? "").slice(0, 80).replace(/\n/g, "\\n");
+        log(
+          `event received event_id=${event.event_id} type=${event.type} from=${event.sender_peer_id ?? "-"} group_id=${event.group_id ?? "-"} idle=${idle} delivery=${delivery ?? "immediate"} preview="${preview}"`,
+        );
+        const wrapped = formatExternalEvent(event);
+        try {
+          await pi.sendUserMessage(wrapped, delivery ? { deliverAs: delivery } : undefined);
+          log(`event injected event_id=${event.event_id} delivery=${delivery ?? "immediate"} bytes=${wrapped.length}`);
+        } catch (error) {
+          log(`event inject FAILED event_id=${event.event_id}: ${formatError(error)}`);
+          throw error;
+        }
       },
     });
     await sub.start();
@@ -111,7 +128,8 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
       heartbeatPeer(client, peerId).catch((error) => log(`heartbeat failed: ${formatError(error)}`));
     }, HEARTBEAT_MS);
 
-    ctx.ui?.notify?.(`synchronize: connected as ${sessionName}`, "info");
+    log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
+    ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
   }
 
   pi.on("session_start", async (_event, ctx) => {
