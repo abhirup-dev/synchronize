@@ -76,6 +76,7 @@ install-codex: link
 
 install-pi: link
 	@mkdir -p $(PI_AGENT_DIR)/extensions $(PI_AGENT_DIR)/skills
+	@bun run scripts/pi-mcp-config.ts $(PI_AGENT_DIR)/mcp.json
 	@printf '%s\n' \
 		'import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";' \
 		'import synchronizeExtension from "$(CURDIR)/extensions/pi-synchronize/src/index.ts";' \
@@ -86,8 +87,7 @@ install-pi: link
 		> $(PI_AGENT_DIR)/extensions/synchronize.ts
 	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
 	@cp -R skills/synchronize-pi $(PI_AGENT_DIR)/skills/synchronize
-	@echo "Pi: extension shim written + skill copied to $(PI_AGENT_DIR)/skills/synchronize"
-	@echo "NOTE: also add synchronize to $(PI_AGENT_DIR)/mcp.json (see README 'Pi' section)"
+	@echo "Pi: mcp.json updated + extension shim written + skill copied to $(PI_AGENT_DIR)/skills/synchronize"
 
 install-all: install-claude install-codex install-pi
 
@@ -102,8 +102,9 @@ uninstall-codex:
 	@echo "Codex: removed"
 
 uninstall-pi:
+	@bun run scripts/pi-mcp-config.ts --remove $(PI_AGENT_DIR)/mcp.json
 	@rm -f $(PI_AGENT_DIR)/extensions/synchronize.ts
 	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
-	@echo "Pi: extension + skill removed (mcp.json entry left for you to remove manually)"
+	@echo "Pi: removed"
 
 uninstall-all: uninstall-claude uninstall-codex uninstall-pi

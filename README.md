@@ -225,8 +225,9 @@ Without that flag, durable inbox tools still work, but channel push behavior may
 ### Pi
 
 Pi has no `pi mcp add` CLI — its MCP config is a plain JSON file at
-`~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`). Merge the
-`synchronize` entry into the existing `mcpServers` object:
+`~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`). Use `make
+install-pi` (see below) to add the `synchronize` entry without touching the
+other servers in that file:
 
 ```json
 {
@@ -244,8 +245,9 @@ Pi receives synchronize events as user messages injected by the
 as a Pi-native MCP channel — so `codex` mode is the right setting. The
 extension owns the push path; the MCP server only serves outbound tool calls.
 
-`make install-pi` writes the extension shim and copies the skill for you; the
-`mcp.json` merge above remains a manual step.
+`make install-pi` runs `scripts/pi-mcp-config.ts` to merge the entry above,
+writes the extension shim at `~/.pi/agent/extensions/synchronize.ts`, and
+copies the skill. `make uninstall-pi` reverses all three.
 
 ## Skills
 
@@ -295,8 +297,9 @@ make uninstall-claude / uninstall-codex / uninstall-pi / uninstall-all
 ```
 
 All three depend on `make link` (runs `bun install && bun link` so
-`synchronize-mcp` resolves on PATH). `install-pi` does NOT touch
-`~/.pi/agent/mcp.json` — add that entry by hand per the **Pi** section above.
+`synchronize-mcp` resolves on PATH). `install-pi` additionally merges the
+`synchronize` server into `~/.pi/agent/mcp.json` via
+`scripts/pi-mcp-config.ts`, preserving any other servers already configured.
 
 The skills instruct agents to:
 
