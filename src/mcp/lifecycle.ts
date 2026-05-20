@@ -1,7 +1,7 @@
 import { deletePeer, heartbeatPeer, registerPeer } from "../api/peers.ts";
 import { findReusablePeer } from "../api/status.ts";
 import { ensureDaemon, type ClientConfig } from "../client.ts";
-import { MCP_HEARTBEAT_MS } from "../constants.ts";
+import { ENV_PEER_ID, MCP_HEARTBEAT_MS } from "../constants.ts";
 import { type AdapterState, getClient, getMode } from "./state.ts";
 import { formatError, log } from "./util.ts";
 
@@ -25,6 +25,8 @@ export async function resolveMcpRegisterPeerId(
   sessionName: string,
   tool: string,
 ): Promise<string | undefined> {
+  const envPeerId = process.env[ENV_PEER_ID];
+  if (envPeerId) return envPeerId;
   if (state.peer?.session_name === sessionName && state.peer.tool === tool) return state.peer.peer_id;
   return findReusablePeer(client, { sessionName, tool });
 }
