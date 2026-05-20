@@ -222,6 +222,31 @@ claude --dangerously-load-development-channels server:synchronize
 
 Without that flag, durable inbox tools still work, but channel push behavior may not surface in the UI.
 
+### Pi
+
+Pi has no `pi mcp add` CLI — its MCP config is a plain JSON file at
+`~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`). Merge the
+`synchronize` entry into the existing `mcpServers` object:
+
+```json
+{
+  "mcpServers": {
+    "synchronize": {
+      "command": "synchronize-mcp",
+      "env": { "SYNCHRONIZE_MCP_MODE": "codex" }
+    }
+  }
+}
+```
+
+Pi receives synchronize events as user messages injected by the
+`@synchronize/pi-extension` extension (see `extensions/pi-synchronize/`), not
+as a Pi-native MCP channel — so `codex` mode is the right setting. The
+extension owns the push path; the MCP server only serves outbound tool calls.
+
+`make install-pi` writes the extension shim and copies the skill for you; the
+`mcp.json` merge above remains a manual step.
+
 ## Skills
 
 Skill files are included for agents that support local `SKILL.md` directories:
@@ -229,9 +254,11 @@ Skill files are included for agents that support local `SKILL.md` directories:
 ```text
 skills/synchronize-codex/SKILL.md
 skills/synchronize-claude/SKILL.md
+skills/synchronize-pi/SKILL.md
 ```
 
-Install by copying the relevant directory into your agent's skills folder.
+Install by copying the relevant directory into your agent's skills folder, or
+use the Makefile targets below.
 
 Example for Codex:
 
@@ -246,6 +273,30 @@ Example for Claude-style skill folders:
 mkdir -p ~/.claude/skills
 cp -R skills/synchronize-claude ~/.claude/skills/synchronize
 ```
+
+Example for Pi:
+
+```bash
+mkdir -p ~/.pi/agent/skills
+cp -R skills/synchronize-pi ~/.pi/agent/skills/synchronize
+```
+
+### Makefile shortcut
+
+For repeatable installs into the current user's home dir:
+
+```bash
+make install-claude   # claude mcp add + copy skill
+make install-codex    # codex  mcp add + copy skill
+make install-pi       # write Pi extension shim + copy skill
+make install-all      # all three
+
+make uninstall-claude / uninstall-codex / uninstall-pi / uninstall-all
+```
+
+All three depend on `make link` (runs `bun install && bun link` so
+`synchronize-mcp` resolves on PATH). `install-pi` does NOT touch
+`~/.pi/agent/mcp.json` — add that entry by hand per the **Pi** section above.
 
 The skills instruct agents to:
 

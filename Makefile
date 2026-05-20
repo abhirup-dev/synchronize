@@ -1,7 +1,14 @@
 DEMO_HOME := $(CURDIR)/.demo-synchronize
 SYNC_HOME ?= $(HOME)/.synchronize
 
-.PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch
+MCP_BIN      := synchronize-mcp
+CLAUDE_DIR   ?= $(HOME)/.claude
+CODEX_DIR    ?= $(HOME)/.codex
+PI_AGENT_DIR ?= $(HOME)/.pi/agent
+
+.PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch \
+        link install-claude install-codex install-pi install-all \
+        uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
 demo: demo-clean
 	@mkdir -p "$(DEMO_HOME)"
@@ -40,3 +47,63 @@ daemon-kill:
 
 daemon-relaunch: daemon-kill
 	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bun run synchronize status
+
+# --- install targets -------------------------------------------------------
+
+link:
+	@bun install >/dev/null
+	@bun link >/dev/null
+	@command -v $(MCP_BIN) >/dev/null || { echo "$(MCP_BIN) not on PATH after 'bun link'"; exit 1; }
+	@echo "linked $(MCP_BIN) -> $$(readlink $$(command -v $(MCP_BIN)))"
+
+install-claude: link
+	@command -v claude >/dev/null || { echo "claude CLI not found"; exit 1; }
+	@claude mcp remove synchronize -s user 2>/dev/null || true
+	@claude mcp add synchronize $(MCP_BIN) --scope user -e SYNCHRONIZE_MCP_MODE=claude
+	@mkdir -p $(CLAUDE_DIR)/skills
+	@rm -rf $(CLAUDE_DIR)/skills/synchronize
+	@cp -R skills/synchronize-claude $(CLAUDE_DIR)/skills/synchronize
+	@echo "Claude: MCP server registered + skill copied to $(CLAUDE_DIR)/skills/synchronize"
+
+install-codex: link
+	@command -v codex >/dev/null || { echo "codex CLI not found"; exit 1; }
+	@codex mcp remove synchronize 2>/dev/null || true
+	@codex mcp add --env SYNCHRONIZE_MCP_MODE=codex synchronize -- $(MCP_BIN)
+	@mkdir -p $(CODEX_DIR)/skills
+	@rm -rf $(CODEX_DIR)/skills/synchronize
+	@cp -R skills/synchronize-codex $(CODEX_DIR)/skills/synchronize
+	@echo "Codex: MCP server registered + skill copied to $(CODEX_DIR)/skills/synchronize"
+
+install-pi: link
+	@mkdir -p $(PI_AGENT_DIR)/extensions $(PI_AGENT_DIR)/skills
+	@printf '%s\n' \
+		'import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";' \
+		'import synchronizeExtension from "$(CURDIR)/extensions/pi-synchronize/src/index.ts";' \
+		'' \
+		'export default function (pi: ExtensionAPI) {' \
+		'  synchronizeExtension(pi as unknown as Parameters<typeof synchronizeExtension>[0]);' \
+		'}' \
+		> $(PI_AGENT_DIR)/extensions/synchronize.ts
+	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
+	@cp -R skills/synchronize-pi $(PI_AGENT_DIR)/skills/synchronize
+	@echo "Pi: extension shim written + skill copied to $(PI_AGENT_DIR)/skills/synchronize"
+	@echo "NOTE: also add synchronize to $(PI_AGENT_DIR)/mcp.json (see README 'Pi' section)"
+
+install-all: install-claude install-codex install-pi
+
+uninstall-claude:
+	@command -v claude >/dev/null && claude mcp remove synchronize -s user 2>/dev/null || true
+	@rm -rf $(CLAUDE_DIR)/skills/synchronize
+	@echo "Claude: removed"
+
+uninstall-codex:
+	@command -v codex >/dev/null && codex mcp remove synchronize 2>/dev/null || true
+	@rm -rf $(CODEX_DIR)/skills/synchronize
+	@echo "Codex: removed"
+
+uninstall-pi:
+	@rm -f $(PI_AGENT_DIR)/extensions/synchronize.ts
+	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
+	@echo "Pi: extension + skill removed (mcp.json entry left for you to remove manually)"
+
+uninstall-all: uninstall-claude uninstall-codex uninstall-pi
