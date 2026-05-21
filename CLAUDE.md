@@ -49,6 +49,20 @@ Key invariants:
 - Task tracking via `bd` (beads). Don't use TodoWrite/markdown TODOs. Run `bd prime` for the full workflow.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
 
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked with Beads (`bd`) in this repo. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default Matt Pocock skill triage labels as Beads labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
+
 ## Environment
 
 ```text
