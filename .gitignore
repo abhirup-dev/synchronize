@@ -10,3 +10,6 @@ node_modules/
 
 # bd export artefact at repo root (real state lives in .beads/issues.jsonl)
 /issues.jsonl
+
+# graphify knowledge-graph outputs (regeneratable via /graphify)
+graphify-out/
