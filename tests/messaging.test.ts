@@ -204,6 +204,44 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
   process.kill(discovery.pid);
 });
 
+test("Claude hook is env gated and registers native session binding when enabled", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-hook-"));
+  homes.push(home);
+  const input = JSON.stringify({
+    session_id: "claude-hook-session",
+    transcript_path: "/tmp/claude-hook-session.jsonl",
+    cwd: "/tmp/project",
+    source: "startup",
+    model: "sonnet",
+  });
+
+  const disabled = Bun.spawnSync({
+    cmd: ["bash", "-lc", `printf '%s' '${input}' | bun run src/cli.ts hook claude-session`],
+    env: { ...process.env, SYNCHRONIZE_HOME: home },
+  });
+  expect(disabled.exitCode).toBe(0);
+  await expect(stat(join(home, "daemon.json"))).rejects.toThrow();
+
+  const enabled = Bun.spawnSync({
+    cmd: ["bash", "-lc", `printf '%s' '${input}' | bun run src/cli.ts hook claude-session`],
+    env: {
+      ...process.env,
+      SYNCHRONIZE_HOME: home,
+      SYNCHRONIZE_HOOK_ENABLE: "1",
+      SYNCHRONIZE_SESSION_NAME: "hooked-claude",
+    },
+  });
+  expect(enabled.exitCode).toBe(0);
+  const parsed = JSON.parse(enabled.stdout.toString()) as { binding: { host_session_id: string; peer: { session_name: string } } };
+  expect(parsed.binding.host_session_id).toBe("claude-hook-session");
+  expect(parsed.binding.peer.session_name).toBe("hooked-claude");
+
+  const discovery = await Bun.file(join(home, "daemon.json")).json();
+  const sessions = await fetch(`${discovery.baseUrl}/agent-sessions?tool=claude`).then((response) => response.json());
+  expect(sessions.bindings).toHaveLength(1);
+  process.kill(discovery.pid);
+});
+
 test("groups support durable restart, ephemeral cleanup, aliases, fanout, and history modes", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-groups-"));
   homes.push(home);

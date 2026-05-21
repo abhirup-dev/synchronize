@@ -39,6 +39,31 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_peers_lease_expires_at
       ON peers (lease_expires_at);
 
+    CREATE TABLE IF NOT EXISTS agent_sessions (
+      binding_id TEXT PRIMARY KEY,
+      peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+      host_tool TEXT NOT NULL,
+      host_session_id TEXT NOT NULL,
+      host_session_file TEXT,
+      cwd TEXT,
+      pid INTEGER,
+      source TEXT,
+      model TEXT,
+      agent_type TEXT,
+      metadata_json TEXT,
+      launch_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      last_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(host_tool, host_session_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_peer
+      ON agent_sessions (peer_id);
+
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_launch
+      ON agent_sessions (launch_id);
+
     CREATE TABLE IF NOT EXISTS groups (
       group_id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,

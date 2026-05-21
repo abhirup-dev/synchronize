@@ -1,7 +1,15 @@
 import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { discoverDaemon, deletePeer, heartbeatPeer, registerPeer, type Event, type PiSyncClient } from "./client.ts";
+import {
+  discoverDaemon,
+  deletePeer,
+  heartbeatPeer,
+  registerAgentSession,
+  registerPeer,
+  type Event,
+  type PiSyncClient,
+} from "./client.ts";
 import { formatExternalEvent, mapEventToDelivery } from "./delivery.ts";
 import { resolveSessionName } from "./identity.ts";
 import { formatError, getLogPath, log } from "./log.ts";
@@ -90,6 +98,15 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     peerId = peer.peer_id;
     process.env.SYNCHRONIZE_PEER_ID = peerId;
     log(`registered peer_id=${peerId} session_name=${sessionName}`);
+    if (piSessionId) {
+      await registerAgentSession(client, {
+        peerId,
+        sessionName,
+        hostSessionId: piSessionId,
+        cwd: process.cwd(),
+      });
+      log(`registered agent_session host_tool=pi host_session_id=${piSessionId} peer_id=${peerId}`);
+    }
 
     const home = process.env.SYNCHRONIZE_HOME ?? join(homedir(), ".synchronize");
     const sessionsDir = join(home, "pi-sessions");

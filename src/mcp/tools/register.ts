@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { listAgentSessions, renameAgentSession } from "../../api/agent-sessions.ts";
 import { registerPeer } from "../../api/peers.ts";
+import type { Peer } from "../../api/types.ts";
+import { ENV_LAUNCH_ID, ENV_PEER_ID } from "../../constants.ts";
 import { EventSubscription } from "../claude-subscription.ts";
 import { NotificationBridge } from "../codex-notifier.ts";
 import { resolveMcpRegisterPeerId } from "../lifecycle.ts";
@@ -18,14 +21,28 @@ export function registerRegisterTools(ctx: ToolContext): void {
         session_name: z.string().min(1),
         purpose: z.string().optional(),
         tool: z.string().optional(),
+        host_tool: z.string().optional(),
+        host_session_id: z.string().optional(),
       },
     },
     async (args) => {
       const client = await getClient(state);
       const mode = getMode();
-      const tool = args.tool ?? mode;
-      log(`bridge_register requested session_name=${args.session_name} requested_tool=${args.tool ?? "(default)"} notify_mode=${mode}`);
-      const peerId = await resolveMcpRegisterPeerId(client, state, args.session_name, tool);
+      const requestedTool = args.tool ?? mode;
+      const boundPeerId =
+        args.host_tool && args.host_session_id
+          ? (await renameAgentSession(client, {
+              hostTool: args.host_tool,
+              hostSessionId: args.host_session_id,
+              sessionName: args.session_name,
+            })).binding.peer_id
+          : undefined;
+      const envBoundPeer = await findEnvBoundPeer(client);
+      const peerId = boundPeerId ?? envBoundPeer?.peer_id ?? (await resolveMcpRegisterPeerId(client, state, args.session_name, requestedTool));
+      const existingBindings = peerId ? (await listAgentSessions(client, { peerId })).bindings : [];
+      const inferredTool = existingBindings.find((binding) => binding.host_tool === "pi")?.host_tool;
+      const tool = args.tool ?? inferredTool ?? mode;
+      log(`bridge_register requested session_name=${args.session_name} requested_tool=${args.tool ?? "(default)"} stored_tool=${tool} notify_mode=${mode}`);
       const response = await registerPeer(client, {
         sessionName: args.session_name,
         tool,
@@ -34,42 +51,107 @@ export function registerRegisterTools(ctx: ToolContext): void {
       });
       state.peer = response.peer;
       log(`bridge_register completed peer_id=${response.peer.peer_id} stored_tool=${response.peer.tool} notify_mode=${mode}`);
-      state.notifier?.stop();
-      state.notifier = null;
-      state.subscription?.stop();
-      state.subscription = null;
-      if (mode === "claude") {
-        state.subscription = new EventSubscription({
-          peerId: response.peer.peer_id,
-          mode,
-          client,
-          emit,
-        });
-        await state.subscription.start();
-        log(`Claude channel subscription active peer_id=${response.peer.peer_id}`);
-      } else {
-        state.notifier = new NotificationBridge({
-          peerId: response.peer.peer_id,
-          mode,
-          client,
-          emit,
-        });
-        state.notifier.start();
-        log(`Codex polling notifier active peer_id=${response.peer.peer_id}`);
-      }
+      await activatePeer(response.peer, client);
       lifecycle.startHeartbeat();
       return text(response);
     },
   );
 
   mcp.registerTool("bridge_whoami", { description: "Show this adapter peer identity." }, async () => {
+    const client = state.peer ? await getClient(state) : await getClient(state).catch(() => null);
+    if (client && !state.peer) {
+      const envBoundPeer = await findEnvBoundPeer(client);
+      if (envBoundPeer) {
+        await activatePeer(envBoundPeer, client);
+        lifecycle.startHeartbeat();
+      }
+    }
+    const agentSessions = client && state.peer ? (await listAgentSessions(client, { peerId: state.peer.peer_id })).bindings : [];
     return text({
       peer: state.peer,
       registered: Boolean(state.peer),
+      agent_sessions: agentSessions,
       notify_mode: getMode(),
       claude_channel_subscription_active: state.subscription?.isActive() ?? false,
       codex_notifier_active: Boolean(state.notifier),
       heartbeat_active: Boolean(state.heartbeat),
     });
   });
+
+  async function findEnvBoundPeer(client: Awaited<ReturnType<typeof getClient>>): Promise<Peer | null> {
+    // `SYNCHRONIZE_LAUNCH_ID` is a short-lived process correlation key, not an
+    // identity. The launcher, Claude SessionStart hook, and MCP process inherit
+    // the same value; the hook stores it on the daemon binding so bridge_whoami
+    // can attach to the peer that was registered before MCP had any in-memory
+    // state. Once found, all real logic uses peer_id / host_session_id.
+    const launchId = process.env[ENV_LAUNCH_ID];
+    if (launchId) {
+      const binding = (await listAgentSessions(client, { launchId })).bindings.at(0);
+      if (binding) return binding.peer;
+    }
+    const peerId = process.env[ENV_PEER_ID];
+    if (peerId) {
+      const binding = (await listAgentSessions(client, { peerId })).bindings.at(0);
+      if (binding) return binding.peer;
+    }
+    return null;
+  }
+
+  async function activatePeer(peer: Peer, client: Awaited<ReturnType<typeof getClient>>): Promise<void> {
+    state.peer = peer;
+    const mode = getMode();
+    state.notifier?.stop();
+    state.notifier = null;
+    state.subscription?.stop();
+    state.subscription = null;
+    if (mode === "claude") {
+      state.subscription = new EventSubscription({
+        peerId: peer.peer_id,
+        mode,
+        client,
+        emit,
+      });
+      await state.subscription.start();
+      log(`Claude channel subscription active peer_id=${peer.peer_id}`);
+    } else {
+      state.notifier = new NotificationBridge({
+        peerId: peer.peer_id,
+        mode,
+        client,
+        emit,
+      });
+      state.notifier.start();
+      log(`Codex polling notifier active peer_id=${peer.peer_id}`);
+    }
+  }
+
+  mcp.registerTool(
+    "bridge_rename_session",
+    {
+      description: "Rename this synchronize peer's session_name while preserving peer_id and native host session binding.",
+      inputSchema: {
+        session_name: z.string().min(1),
+        peer_id: z.string().optional(),
+        host_tool: z.string().optional(),
+        host_session_id: z.string().optional(),
+      },
+    },
+    async (args) => {
+      const client = await getClient(state);
+      const response = args.peer_id
+        ? await renameAgentSession(client, { peerId: args.peer_id, sessionName: args.session_name })
+        : args.host_tool && args.host_session_id
+          ? await renameAgentSession(client, {
+              hostTool: args.host_tool,
+              hostSessionId: args.host_session_id,
+              sessionName: args.session_name,
+            })
+          : state.peer
+            ? await renameAgentSession(client, { peerId: state.peer.peer_id, sessionName: args.session_name })
+            : null;
+      if (!response) throw new Error("bridge_rename_session requires a registered peer, peer_id, or host session id");
+      if (state.peer?.peer_id === response.binding.peer_id) state.peer = response.binding.peer;
+      return text(response);
+    },
+  );
 }

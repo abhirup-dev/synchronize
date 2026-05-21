@@ -1,6 +1,7 @@
 export * from "./types.ts";
 export * from "./status.ts";
 export * from "./peers.ts";
+export * from "./agent-sessions.ts";
 export * from "./inbox.ts";
 export * from "./events.ts";
 export * from "./groups.ts";

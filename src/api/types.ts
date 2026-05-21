@@ -23,6 +23,25 @@ export interface Peer {
   online?: boolean;
 }
 
+export interface AgentSessionBinding {
+  binding_id: string;
+  peer_id: string;
+  host_tool: string;
+  host_session_id: string;
+  host_session_file: string | null;
+  cwd: string | null;
+  pid: number | null;
+  source: string | null;
+  model: string | null;
+  agent_type: string | null;
+  metadata_json: string | null;
+  launch_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+  peer: Peer;
+}
+
 export interface Event {
   event_id: number;
   type: string;
