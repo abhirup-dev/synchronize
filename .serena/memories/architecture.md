@@ -3,11 +3,11 @@
 ## Layers
 
 ```
-       Claude MCP        Codex MCP        synchronize CLI
-       stdio adapter     stdio adapter    human/operator
-            \                |                /
-             \               | HTTP JSON     /
-              `-------------(REST)----------'
+   Claude MCP   Codex MCP   Pi extension   synchronize CLI
+   stdio        stdio       in-process     human/operator
+       \           |           |              /
+        \          | HTTP JSON |             /
+         `--------(REST + callback subscription)--'
                              |
                     +--------v---------+
                     | synchronize      |
@@ -20,6 +20,8 @@
                                        (~/.synchronize/)
 ```
 
+The Pi extension (`extensions/pi-synchronize/`) is structurally a fourth adapter: it discovers the daemon via `~/.synchronize/daemon.json`, registers a peer over REST, opens a Claude-channel-style callback subscription, and forwards each delivered `Event` into the host Pi session as a `pi.sendUserMessage` (steer / followUp / nextTurn). It ships its own REST client (`extensions/pi-synchronize/src/client.ts`) because Pi runs the extension without the rest of the workspace.
+
 **Key invariant**: the daemon is the *only* component that owns durable state. CLI and MCP are pure REST adapters over `src/client.ts`. After phase-1 refactor, `rg "requestJson" src/cli src/mcp` is empty — adapters call through the typed `src/api/` facade, never raw transport.
 
 ## Layer responsibilities
@@ -30,6 +32,7 @@
 - **`src/mcp/`** — MCP stdio server. Factory-closure pattern: `createMcpServer()` builds private `AdapterState`, threads `{ mcp, state, emit, lifecycle }` as `ToolContext` into tool registrars in `src/mcp/tools/`.
 - **`src/client.ts`** — daemon discovery (`~/.synchronize/daemon.json`) + `requestJson` transport. Consumed by `api/`, `cli/`, `mcp/`.
 - **`src/db.ts`, `src/fs.ts`, `src/http.ts`, `src/paths.ts`, `src/constants.ts`** — shared low-level helpers.
+- **`extensions/pi-synchronize/`** — out-of-tree Pi coding-agent adapter. `index.ts` wires `session_start` → register peer + subscribe; `subscription.ts` mirrors `EventSubscription` (one-shot HTTP callback); `delivery.ts` maps daemon `Event` → Pi `sendUserMessage` (steer/followUp); `log.ts` always-on file logging at `~/.synchronize/pi-extension.log`.
 
 ## God nodes (most-connected abstractions)
 

@@ -9,6 +9,8 @@ All env vars are read by the daemon and/or MCP adapter at process start.
 | `SYNCHRONIZE_PORT` | `0` (random) | daemon | Port. `0` picks a free port; the chosen port is written to `daemon.json` for discovery. |
 | `SYNCHRONIZE_TOKEN` | unset | daemon + clients | Bearer token. **Required** when `SYNCHRONIZE_BIND != 127.0.0.1`. Clients must send `Authorization: Bearer <token>`. |
 | `SYNCHRONIZE_MCP_MODE` | `codex` | MCP adapter | `codex` → `notifications/message` via polling `NotificationBridge`. `claude` → `notifications/claude/channel` via one-shot HTTP callback `EventSubscription`. |
+| `SYNCHRONIZE_PEER_ID` | unset | MCP adapter, Pi extension | Sticky peer id reused across MCP/Pi restarts. Read by `src/mcp/lifecycle.ts::resolveMcpRegisterPeerId` and by `extensions/pi-synchronize/src/identity.ts`. Without it, each restart registers as a fresh peer. Constant: `ENV_PEER_ID` in `src/constants.ts`. |
+| `SYNCHRONIZE_STARTED_BY_CLIENT` | unset | daemon | Marker set by the CLI/MCP when they auto-spawn the daemon so it knows to die with its parent process tree. Constant: `ENV_STARTED_BY_CLIENT`. |
 
 ## Runtime layout under `SYNCHRONIZE_HOME`
 ```

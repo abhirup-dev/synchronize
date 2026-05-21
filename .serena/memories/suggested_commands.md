@@ -6,6 +6,16 @@ bun install                       # install deps
 bun link                          # link `synchronize` + `synchronize-mcp` onto PATH
 ```
 
+## Host installs (Makefile — preferred, idempotent)
+```bash
+make install-claude               # bun link + register MCP server + copy skill into ~/.claude/skills/synchronize
+make install-codex                # same for ~/.codex/skills/synchronize
+make install-pi                   # runs scripts/pi-mcp-config.ts to merge into ~/.pi/agent/mcp.json + copies extension + skill
+make install-all                  # all three
+make uninstall-claude / uninstall-codex / uninstall-pi / uninstall-all
+```
+Override target dirs via `CLAUDE_DIR`, `CODEX_DIR`, `PI_AGENT_DIR` env vars on the make invocation.
+
 ## Tests + type-check (run these as task-completion gates)
 ```bash
 bun test                          # full test suite (integration-style; spins up real daemon under tmp SYNCHRONIZE_HOME)
@@ -20,6 +30,7 @@ bun run src/daemon.ts                              # daemon directly
 bun run src/cli.ts <args>                          # CLI from source (or just `synchronize <args>` after `bun link`)
 SYNCHRONIZE_MCP_MODE=codex  bun run src/mcp.ts     # MCP adapter, codex notifications
 SYNCHRONIZE_MCP_MODE=claude bun run src/mcp.ts     # MCP adapter, Claude channel notifications
+bun test extensions/pi-synchronize/tests/          # Pi extension tests (require @earendil-works/pi-coding-agent as peer dep)
 ```
 
 ## Daemon lifecycle (Makefile)

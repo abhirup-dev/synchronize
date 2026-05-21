@@ -1,4 +1,8 @@
-# Pending Work (as of 2026-05)
+# Pending Work (as of 2026-05-22)
+
+## Recently shipped (no longer pending)
+
+- **Pi extension** (`sync-189`, closed) — squash-merged into master as `35d01bc` on 2026-05-22. Adds `extensions/pi-synchronize/`, `skills/synchronize-pi/`, `scripts/pi-mcp-config.ts`, `make install-{claude,codex,pi,all}`, `SYNCHRONIZE_PEER_ID` env-shared peer id (`src/mcp/lifecycle.ts::resolveMcpRegisterPeerId`), Pi-specific file logging.
 
 ## `sync-mkj` epic — Phase 2: daemon split (NOT STARTED)
 
