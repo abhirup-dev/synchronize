@@ -15,6 +15,7 @@ class PiMcpGroupPolicyScenario(PiMcpDmScenario):
         super().__init__(args, repo)
         if args.profile is None:
             self.profile = f"sync-pi-groups-itest-{self.repo.name}-{self.run_id.lower()}"
+            self.profile_cleanup_prefix = f"sync-pi-groups-itest-{self.repo.name}-"
             self.aoe.profile = self.profile
 
     def run_mcp_dm_smoke(self) -> None:

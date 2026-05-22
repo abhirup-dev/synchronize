@@ -77,6 +77,27 @@ class TmuxController:
         for name, pane in panes.items():
             self.writer.write_text(f"{label}-pane-{name}.txt", self.capture_pane(pane.pane_id, lines=lines))
 
+    def expand_pi_tool_output(self, pane: AgentPane) -> None:
+        self.runner.run(["tmux", "send-keys", "-t", pane.pane_id, "C-o"], log_name=f"tmux-expand-tools-{pane.name}")
+
+    def expand_all_pi_tool_outputs(self, panes: dict[str, AgentPane]) -> None:
+        for pane in panes.values():
+            self.expand_pi_tool_output(pane)
+
+    def kill_sessions_matching(self, needles: list[str]) -> list[str]:
+        result = self.runner.run(["tmux", "list-sessions", "-F", "#S"], check=False, log_name="tmux-list-for-cleanup")
+        if result.returncode != 0:
+            return []
+        killed: list[str] = []
+        for session_name in result.stdout.splitlines():
+            if not session_name.startswith("aoe_"):
+                continue
+            if not any(needle and needle in session_name for needle in needles):
+                continue
+            self.runner.run(["tmux", "kill-session", "-t", session_name], check=False, log_name=f"cleanup-tmux-kill-{session_name}")
+            killed.append(session_name)
+        return killed
+
     def send_shell_command(self, pane: AgentPane, command: str, timeout: int) -> str:
         token = f"{MARKER_PREFIX}_{pane.name}_{int(time.time() * 1000)}".replace("-", "_")
         wrapped = (
@@ -132,4 +153,3 @@ def find_pane_for_agent(name: str, panes: list[dict[str, Any]], aoe_session_ids:
     if candidates:
         return sorted(candidates, key=lambda item: str(item["session"]))[0]
     return None
-

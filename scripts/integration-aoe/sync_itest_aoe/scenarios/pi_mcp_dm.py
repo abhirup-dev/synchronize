@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import time
@@ -38,6 +39,7 @@ class PiMcpDmScenario:
         self.pi_sessions = self.run_dir / "pi-sessions"
         self.sync_home = self.run_dir / "synchronize-home"
         self.profile = args.profile or f"sync-pi-itest-{self.repo.name}-{self.run_id.lower()}"
+        self.profile_cleanup_prefix = args.profile or f"sync-pi-itest-{self.repo.name}-"
         self.agent_names = [f"{args.agent_prefix}-{index}" for index in range(1, args.agents + 1)]
         self.env = synchronize_env(self.sync_home)
         self.writer = ArtifactWriter(self.run_dir)
@@ -59,6 +61,7 @@ class PiMcpDmScenario:
         self.aoe_session_ids: dict[str, str] = {}
 
     def run(self) -> None:
+        self.cleanup_dirty_state_before_run()
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.pi_home.mkdir(parents=True, exist_ok=True)
         self.pi_sessions.mkdir(parents=True, exist_ok=True)
@@ -98,6 +101,7 @@ class PiMcpDmScenario:
             raise
         finally:
             if self.args.keep:
+                self.prepare_kept_sessions_for_inspection()
                 print(f"KEEP enabled: AoE profile '{self.profile}' and run state remain at {self.run_dir}")
             else:
                 self.cleanup()
@@ -281,6 +285,15 @@ class PiMcpDmScenario:
         except Exception as error:  # noqa: BLE001
             self.writer.write_text(f"{label}-pi-transcripts-error.txt", str(error))
 
+    def prepare_kept_sessions_for_inspection(self) -> None:
+        if not self.agent_panes:
+            return
+        try:
+            self.tmux.expand_all_pi_tool_outputs(self.agent_panes)
+            self.tmux.capture_all_panes("kept-expanded", self.agent_panes, lines=1200)
+        except Exception as error:  # noqa: BLE001
+            self.writer.write_text("kept-expanded-error.txt", str(error))
+
     def cleanup(self) -> None:
         if shutil.which("aoe") is not None:
             self.aoe.cleanup(self.agent_names)
@@ -288,6 +301,53 @@ class PiMcpDmScenario:
         shutil.rmtree(self.pi_home, ignore_errors=True)
         shutil.rmtree(self.pi_sessions, ignore_errors=True)
         shutil.rmtree(self.sync_home, ignore_errors=True)
+
+    def cleanup_dirty_state_before_run(self) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        cleaned: dict[str, Any] = {"profiles": [], "tmux_sessions": [], "run_dirs": []}
+        stale_runs = self.find_stale_run_summaries()
+        for stale in stale_runs:
+            profile = str(stale.get("profile") or "")
+            run_dir_value = str(stale.get("run_dir") or "")
+            sync_home_value = str(stale.get("sync_home") or "")
+            run_dir = Path(run_dir_value) if run_dir_value else None
+            sync_home = Path(sync_home_value) if sync_home_value else None
+            if sync_home is not None:
+                stop_daemon(sync_home, self.writer)
+            if profile and shutil.which("aoe") is not None:
+                self.runner.run(["aoe", "profile", "delete", profile], check=False, log_name=f"cleanup-stale-profile-{profile}", input_text="y\n")
+                cleaned["profiles"].append(profile)
+            if run_dir is not None and run_dir != self.run_dir:
+                shutil.rmtree(run_dir, ignore_errors=True)
+                cleaned["run_dirs"].append(str(run_dir))
+        if self.run_dir.exists():
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+            cleaned["run_dirs"].append(str(self.run_dir))
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+        cleaned["tmux_sessions"] = self.tmux.kill_sessions_matching(self.cleanup_tmux_needles())
+        self.writer.write_json("pre-run-cleanup.json", cleaned)
+
+    def find_stale_run_summaries(self) -> list[dict[str, Any]]:
+        runs_dir = self.state_root / "runs"
+        if not runs_dir.exists():
+            return []
+        stale: list[dict[str, Any]] = []
+        for summary_path in runs_dir.glob("*/run-summary.json"):
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            if str(summary.get("repo") or "") != str(self.repo):
+                continue
+            profile = str(summary.get("profile") or "")
+            if profile == self.profile or profile.startswith(self.profile_cleanup_prefix):
+                stale.append(summary)
+        return stale
+
+    def cleanup_tmux_needles(self) -> list[str]:
+        base_prefix = str(self.args.agent_prefix).removesuffix("-agent")
+        compact_prefix = base_prefix.replace("-", "_")
+        return [base_prefix, compact_prefix, self.profile]
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

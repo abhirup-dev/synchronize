@@ -93,6 +93,19 @@ thread reply containing an `@alias` mention. The harness validates group
 membership aliases, root and reply senders, `parent_event_id`, resolved
 `mentions_json`, and thread history through REST.
 
+For a three-agent threaded fanout check, use the thread-baton workflow:
+
+```bash
+uv run scripts/integration_thread_baton_pi.py --command-timeout 240 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+```
+
+It creates a group thread where alpha starts the baton, beta replies with an
+`@gamma` mention, gamma replies with an `@alpha` mention, then alpha posts a
+final validation reply with no mentions. The harness waits for beta and gamma
+to receive that no-mention validation event before prompting them to acknowledge
+it, which exercises thread participant push fanout separately from mention
+resolution.
+
 Run with `--keep` when you want to inspect the live AoE/tmux session:
 
 ```bash
