@@ -16,6 +16,7 @@ from ..tmux import AgentPane, TmuxController, require_libtmux
 
 DEFAULT_PROVIDER = "openai-codex"
 DEFAULT_MODEL = "gpt-5.4-mini"
+DEFAULT_THINKING = "low"
 DEFAULT_AGENTS = 2
 
 
@@ -49,6 +50,7 @@ class PiMcpDmScenario:
             paths=PiPaths(pi_home=self.pi_home, pi_sessions=self.pi_sessions, sync_home=self.sync_home),
             provider=self.args.provider,
             model=self.args.model,
+            thinking=self.args.thinking,
             auth_source=self.args.auth_source,
             writer=self.writer,
         )
@@ -74,6 +76,7 @@ class PiMcpDmScenario:
                 "sync_home": str(self.sync_home),
                 "provider": self.args.provider,
                 "model": self.args.model,
+                "thinking": self.args.thinking,
                 "keep": self.args.keep,
             },
         )
@@ -81,10 +84,12 @@ class PiMcpDmScenario:
         try:
             self.preflight()
             self.pi_env.provision()
+            self.install_pi_packages()
             self.start_daemon()
             self.setup_aoe()
             self.discover_tmux_panes()
             self.wait_for_pi_registration()
+            self.warm_up_pi_agents()
             self.run_mcp_dm_smoke()
             self.collect_diagnostics("success")
             print(f"PASS real Pi AoE/tmux smoke run_id={self.run_id} log_dir={self.run_dir}")
@@ -116,6 +121,10 @@ class PiMcpDmScenario:
     def start_daemon(self) -> None:
         result = self.runner.run(["bun", "run", "src/cli.ts", "status"], log_name="synchronize-status-start")
         self.writer.write_text("synchronize-status-start.txt", result.stdout)
+
+    def install_pi_packages(self) -> None:
+        result = self.runner.run(self.pi_env.install_package_command(), log_name="pi-package-install")
+        self.writer.write_text("pi-package-install.txt", result.stdout)
 
     def setup_aoe(self) -> None:
         self.aoe.launch_sessions(
@@ -174,7 +183,7 @@ class PiMcpDmScenario:
         return mapped
 
     def run_mcp_dm_smoke(self) -> None:
-        sender_name = self.wait_for_mcp_ready_agent()
+        sender_name = self.agent_names[0]
         sender = self.pi_peers[sender_name]
         other_peer_ids = [peer.peer_id for name, peer in self.pi_peers.items() if name != sender_name]
         if not other_peer_ids:
@@ -196,18 +205,32 @@ class PiMcpDmScenario:
             raise HarnessError("Pi transcript did not show bridge_whoami, bridge_list_peers, and bridge_dm MCP calls")
         self.tmux.capture_all_panes("after-pi-mcp-dm", self.agent_panes, lines=700)
 
-    def wait_for_mcp_ready_agent(self) -> str:
-        deadline = time.time() + self.args.mcp_timeout
+    def warm_up_pi_agents(self) -> None:
+        warmed: list[str] = []
+        for name in self.agent_names:
+            marker = f"PI_WARM_READY {self.run_id} {name}"
+            prompt = (
+                "This is a harness liveness check before the real workflow. "
+                "Do not use tools. Do not inspect files. Do not send messages. "
+                f"Reply exactly: {marker}"
+            )
+            self.tmux.send_pi_prompt(self.agent_panes[name], prompt)
+            self.wait_for_pane_text(name, marker, self.args.warmup_timeout, f"warmup-{name}")
+            warmed.append(name)
+        self.writer.write_json("pi-warmup-agents.json", warmed)
+        self.tmux.capture_all_panes("after-pi-warmup", self.agent_panes, lines=700)
+
+    def wait_for_pane_text(self, agent_name: str, text: str, timeout: int, label: str) -> None:
+        deadline = time.time() + timeout
+        pane = self.agent_panes[agent_name]
         while time.time() < deadline:
-            for name in self.agent_names:
-                pane = self.agent_panes[name]
-                output = self.tmux.capture_pane(pane.pane_id, lines=250)
-                if "MCP: 1/1" in output or "MCP: 1 servers connected" in output:
-                    self.writer.write_text("mcp-ready-agent.txt", name)
-                    return name
+            output = self.tmux.capture_pane(pane.pane_id, lines=700)
+            if text in output:
+                self.writer.write_text(f"{label}.txt", output)
+                return
             time.sleep(1)
-        self.tmux.capture_all_panes("mcp-timeout", self.agent_panes, lines=700)
-        raise HarnessError(f"No Pi pane reported MCP ready within {self.args.mcp_timeout}s")
+        self.tmux.capture_all_panes(f"{label}-timeout", self.agent_panes, lines=700)
+        raise HarnessError(f"Pi pane {agent_name} did not produce warmup marker within {timeout}s")
 
     def wait_for_dm_event(self, sender_peer_id: str, recipient_peer_ids: list[str], body: str) -> dict[str, Any]:
         deadline = time.time() + self.args.command_timeout
@@ -277,11 +300,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agent-prefix", default="sync-pi-agent", help="Prefix for Pi session titles.")
     parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="Pi provider to use for the smoke.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
+    parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=90, help="Seconds to wait for Pi extension auto-registration.")
-    parser.add_argument("--mcp-timeout", type=int, default=90, help="Seconds to wait for at least one Pi pane to report MCP ready.")
+    parser.add_argument("--warmup-timeout", type=int, default=90, help="Seconds to wait for each Pi pane to answer the liveness warmup prompt.")
     parser.add_argument("--command-timeout", type=int, default=180, help="Seconds to wait for real Pi MCP behavior.")
     args = parser.parse_args(argv)
     if args.agents < 2:

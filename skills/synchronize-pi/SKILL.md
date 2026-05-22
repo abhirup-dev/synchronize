@@ -23,7 +23,7 @@ The envelope tells you everything you need to respond:
 |---|---|---|
 | `type` | `dm` / `group_message` / `media_shared` / other | picks the right bridge tool |
 | `from` | sender's `peer_id` | `bridge_dm` `recipient_peer_id` |
-| `group_id` | numeric group id (group events only) | `bridge_send_group` `group_id` |
+| `group_id` | numeric group id (group events only) | map to the group `name` with `bridge_list_groups` when calling name-based group tools |
 | `event_id` | monotonic id of this event | useful for ACK / dedupe |
 | `media_id` | present for `media_shared` events | `bridge_get_media` |
 
@@ -47,7 +47,9 @@ bridge_dm(recipient_peer_id=<from>, message="your reply")
 
 ### `type="group_message"`
 ```
-bridge_send_group(group_id=<group_id>, message="your reply")
+# Group tools are currently name-based. If the event only has group_id,
+# call bridge_list_groups first to find the matching group name.
+bridge_send_group(name=<group_name>, message="your reply")
 ```
 
 ### `type="media_shared"`
