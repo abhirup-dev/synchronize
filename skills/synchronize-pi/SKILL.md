@@ -34,7 +34,7 @@ The envelope tells you everything you need to respond:
 - **Register once per session.** The pi-extension already registered the peer and native Pi session binding at `session_start`; the env var `SYNCHRONIZE_PEER_ID` is set. When you call `bridge_register`, it reuses that peer id automatically — do not invent a different `session_name`. If `bridge_whoami` shows you are already registered, skip `bridge_register`.
 - **Treat `session_name` as an alias.** It is not guaranteed unique. Use `peer_id` or the native host session binding from `bridge_whoami` when identity matters.
 - **Reply via MCP tools, not CLI.** Use `bridge_dm` for DMs and `bridge_send_group` for group messages. Echo nothing automatically — only reply when a reply is actually appropriate.
-- **Group aliases**: when joining a group via `bridge_join_group`, default alias is your registered `session_name`. If it collides, retry with an explicit unique `alias`.
+- **Group aliases**: when joining a group via `bridge_join_group`, default alias is your registered `session_name`. If it collides, retry with an explicit unique `alias`. To change your alias inside a group after joining, use `bridge_rename_in_group` (scoped to your own peer). A reclaim of a freed alias by a different peer (e.g. a respawn) is logged as a `group_member_alias_reclaimed` event.
 - **Inbox is the durable fallback.** If you suspect a missed event, call `bridge_inbox` to fetch unread items. Use `--ack` semantics (the tool's `ack` flag) once handled.
 - **Do not act on events meta-only.** Do not echo the envelope back. Do not summarize received events to the user unless they asked.
 

@@ -136,6 +136,7 @@ interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  host_session_id: string | null;
 }
 
 interface SummaryPeerRow {
@@ -494,7 +495,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       const group = getGroup(ctx.db, groupName);
       const rows = ctx.db
         .query<MemberRow & { online: number }, [string, number]>(
-          `SELECT gm.*, p.session_name, p.tool, p.lease_expires_at > ? AS online
+          `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
            FROM group_members gm
            JOIN peers p ON p.peer_id = gm.peer_id
            WHERE gm.group_id = ? AND gm.active = 1
@@ -618,6 +619,30 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const fresh = body.fresh === true;
 
     const joinEventId = ctx.db.transaction(() => {
+      // Detect alias reclaim: the most-recently-departed prior holder of this
+      // alias belongs to a different peer_id. Respawn (same peer_id) is not a
+      // reclaim. v0 storage policy frees the alias on leave; the event leaves
+      // an audit trail so observers can distinguish respawn from a new peer.
+      const previousHolder = ctx.db
+        .query<{ peer_id: string }, [number, string]>(
+          `SELECT peer_id FROM group_members
+           WHERE group_id = ? AND alias = ? AND active = 0
+           ORDER BY COALESCE(left_at, joined_at) DESC
+           LIMIT 1`,
+        )
+        .get(group.group_id, alias);
+      if (previousHolder && previousHolder.peer_id !== peerId) {
+        ctx.db
+          .query(
+            `INSERT INTO events (type, sender_peer_id, group_id, body)
+             VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
+          )
+          .run(
+            peerId,
+            group.group_id,
+            JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }),
+          );
+      }
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
         .run(peerId, group.group_id, JSON.stringify({ alias, fresh }));
@@ -653,6 +678,50 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
 
     return jsonResponse({ member: getGroupMember(ctx.db, group.group_id, peerId), event: getEvent(ctx.db, joinEventId) });
+  }
+
+  const groupRename = url.pathname.match(/^\/groups\/([^/]+)\/rename$/);
+  if (request.method === "POST" && groupRename) {
+    const group = getGroup(ctx.db, decodeURIComponent(groupRename[1] ?? ""));
+    const body = await readBody(request);
+    const peerId = requireString(body, "peer_id");
+    const newAlias = requireString(body, "new_alias");
+    ensureActiveMember(ctx.db, group.group_id, peerId);
+
+    const renameEventId = ctx.db.transaction(() => {
+      const current = ctx.db
+        .query<{ alias: string }, [number, string]>(
+          "SELECT alias FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(group.group_id, peerId);
+      const oldAlias = current?.alias ?? "";
+      if (oldAlias === newAlias) {
+        throw new HttpError(400, "no_op_rename", `Alias is already '${newAlias}'`);
+      }
+      try {
+        ctx.db
+          .query("UPDATE group_members SET alias = ? WHERE group_id = ? AND peer_id = ?")
+          .run(newAlias, group.group_id, peerId);
+      } catch (error) {
+        throw mapSqliteConstraint(
+          error,
+          "alias_collision",
+          `Alias '${newAlias}' is already active in group '${group.name}'.`,
+        );
+      }
+      ctx.db
+        .query(
+          `INSERT INTO events (type, sender_peer_id, group_id, body)
+           VALUES ('group_member_renamed', ?, ?, ?)`,
+        )
+        .run(peerId, group.group_id, JSON.stringify({ old_alias: oldAlias, new_alias: newAlias }));
+      return Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    })();
+
+    return jsonResponse({
+      member: getGroupMember(ctx.db, group.group_id, peerId),
+      event: getEvent(ctx.db, renameEventId),
+    });
   }
 
   const groupLeave = url.pathname.match(/^\/groups\/([^/]+)\/leave$/);
@@ -1228,10 +1297,15 @@ function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
 }
 
+const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool,
+  (SELECT s.host_session_id FROM agent_sessions s
+   WHERE s.peer_id = gm.peer_id
+   ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
+
 function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
   return db
-    .query<MemberRow, [number]>(
-      `SELECT gm.*, p.session_name, p.tool
+    .query<MemberRow & { host_session_id: string | null }, [number]>(
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ?
@@ -1243,8 +1317,8 @@ function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
   const member = db
-    .query<MemberRow, [number, string]>(
-      `SELECT gm.*, p.session_name, p.tool
+    .query<MemberRow & { host_session_id: string | null }, [number, string]>(
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ? AND gm.peer_id = ?`,
@@ -1257,7 +1331,7 @@ function getGroupMember(db: Database, groupId: number, peerId: string): Formatte
 function ensureActiveMember(db: Database, groupId: number, peerId: string): MemberRow {
   const member = db
     .query<MemberRow, [number, string]>(
-      `SELECT gm.*, p.session_name, p.tool
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ? AND gm.peer_id = ? AND gm.active = 1`,

@@ -77,6 +77,7 @@ export interface GroupMember {
   left_at: string | null;
   session_name: string;
   tool: string;
+  host_session_id: string | null;
 }
 
 export interface MediaItem {

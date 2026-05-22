@@ -3,6 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listAgentSessions, registerAgentSession, renameAgentSession } from "../src/api/agent-sessions.ts";
+import {
+  createGroup,
+  getGroupHistory,
+  joinGroup,
+  leaveGroup,
+  renameInGroup,
+} from "../src/api/groups.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { registerPeer } from "../src/api/peers.ts";
 import { findReusablePeer } from "../src/api/status.ts";
@@ -175,6 +182,115 @@ test("shared API client registers reusable peers and drives DM inbox flow", asyn
 
     const empty = await readInbox(daemon.client, bob.peer.peer_id);
     expect(empty.events).toHaveLength(0);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("alias is freed on leave and reclaim by a different peer emits an audit event", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-group-reclaim-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "reclaim-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "scribe" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "watcher" });
+
+    // Same peer rejoining after leave does NOT emit reclaim.
+    await leaveGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "scribe" });
+
+    // A different peer claiming the freed alias DOES emit reclaim.
+    await leaveGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "scribe" });
+
+    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: bob.peer.peer_id });
+    const reclaims = history.events.filter((event) => event.type === "group_member_alias_reclaimed");
+    expect(reclaims).toHaveLength(1);
+    expect(reclaims[0]?.sender_peer_id).toBe(bob.peer.peer_id);
+    const body = JSON.parse(reclaims[0]?.body ?? "{}") as { alias: string; previous_peer_id: string };
+    expect(body.alias).toBe("scribe");
+    expect(body.previous_peer_id).toBe(alice.peer.peer_id);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("rename_in_group renames the requesting peer and emits an audit event", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-group-rename-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "rename-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "scribe" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "watcher" });
+
+    const renamed = await renameInGroup(daemon.client, {
+      name: groupName,
+      peerId: alice.peer.peer_id,
+      newAlias: "lead-scribe",
+    });
+    expect(renamed.member.alias).toBe("lead-scribe");
+    expect(renamed.member.peer_id).toBe(alice.peer.peer_id);
+
+    // Collision against another active member is rejected.
+    await expect(
+      renameInGroup(daemon.client, {
+        name: groupName,
+        peerId: alice.peer.peer_id,
+        newAlias: "watcher",
+      }),
+    ).rejects.toThrow();
+
+    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    const renames = history.events.filter((event) => event.type === "group_member_renamed");
+    expect(renames).toHaveLength(1);
+    const body = JSON.parse(renames[0]?.body ?? "{}") as { old_alias: string; new_alias: string };
+    expect(body.old_alias).toBe("scribe");
+    expect(body.new_alias).toBe("lead-scribe");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("group member listings carry host_session_id when an agent_sessions binding exists", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-group-hostid-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const bound = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-host-xyz",
+      sessionName: "lead",
+      tool: "claude",
+      purpose: "claude session",
+    });
+    const plain = await registerPeer(daemon.client, { sessionName: "lead-cli", tool: "cli" });
+    const groupName = "hostid-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: bound.binding.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: bound.binding.peer_id, alias: "claude-lead" });
+    await joinGroup(daemon.client, { name: groupName, peerId: plain.peer.peer_id, alias: "cli-lead" });
+
+    const peersResp = await fetch(
+      `${daemon.client.baseUrl}/peers?group=${encodeURIComponent(groupName)}`,
+    );
+    const peersBody = (await peersResp.json()) as {
+      peers: Array<{ peer_id: string; host_session_id: string | null }>;
+    };
+    const boundRow = peersBody.peers.find((row) => row.peer_id === bound.binding.peer_id);
+    const plainRow = peersBody.peers.find((row) => row.peer_id === plain.peer.peer_id);
+    expect(boundRow?.host_session_id).toBe("claude-host-xyz");
+    expect(plainRow?.host_session_id).toBeNull();
   } finally {
     await daemon.stop();
   }

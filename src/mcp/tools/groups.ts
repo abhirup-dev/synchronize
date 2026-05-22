@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, sendGroupMessage } from "../../api/groups.ts";
+import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
 import { getClient, requirePeer } from "../state.ts";
 import { text } from "../util.ts";
 import type { ToolContext } from "./context.ts";
@@ -53,6 +53,26 @@ export function registerGroupTools(ctx: ToolContext): void {
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(await leaveGroup(client, { name: args.name, peerId: peer.peer_id }));
+    },
+  );
+
+  mcp.registerTool(
+    "bridge_rename_in_group",
+    {
+      description:
+        "Rename your own alias within a group. Scoped to your registered peer (from bridge_whoami); v0 does not support renaming other members.",
+      inputSchema: { name: z.string().min(1), new_alias: z.string().min(1) },
+    },
+    async (args) => {
+      const client = await getClient(state);
+      const peer = requirePeer(state);
+      return text(
+        await renameInGroup(client, {
+          name: args.name,
+          peerId: peer.peer_id,
+          newAlias: args.new_alias,
+        }),
+      );
     },
   );
 
