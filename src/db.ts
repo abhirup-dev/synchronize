@@ -1,6 +1,11 @@
 import { Database } from "bun:sqlite";
 import { dirname } from "node:path";
+import { EVENT_TYPES } from "./constants.ts";
 import { ensureDir } from "./fs.ts";
+
+// SQL-fragment list for the CHECK constraint on events.type. Single source of
+// truth for the canonical event-type set; see EVENT_TYPES in constants.ts.
+const EVENT_TYPE_CHECK = EVENT_TYPES.map((value) => `'${value}'`).join(",");
 
 export interface DatabaseHandle {
   db: Database;
@@ -92,7 +97,7 @@ function migrate(db: Database): void {
 
     CREATE TABLE IF NOT EXISTS events (
       event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN (${EVENT_TYPE_CHECK})),
       sender_peer_id TEXT,
       recipient_peer_id TEXT,
       group_id INTEGER REFERENCES groups(group_id) ON DELETE CASCADE,

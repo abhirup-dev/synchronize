@@ -36,3 +36,20 @@ export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
 export const MCP_HEARTBEAT_MS = 15_000;
+
+// Canonical event types stored on events.type. Adding a new type here also
+// requires updating the CHECK constraint in src/db.ts so the daemon stays in
+// sync with the schema. Use the EventType union below to make TS callers
+// type-safe at insert sites.
+export const EVENT_TYPES = [
+  "dm",
+  "group_created",
+  "group_joined",
+  "group_left",
+  "group_message",
+  "media_shared",
+  "media_changed",
+  "group_member_alias_reclaimed",
+  "group_member_renamed",
+] as const;
+export type EventType = (typeof EVENT_TYPES)[number];

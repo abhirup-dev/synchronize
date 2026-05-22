@@ -262,6 +262,34 @@ test("rename_in_group renames the requesting peer and emits an audit event", asy
   }
 });
 
+test("events.type CHECK constraint rejects unknown event types at the storage layer", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-event-check-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    // Sanity: a known type inserts fine via the normal DM path.
+    const sender = await registerPeer(daemon.client, { sessionName: "sender", tool: "cli" });
+    const receiver = await registerPeer(daemon.client, { sessionName: "receiver", tool: "cli" });
+    await sendDm(daemon.client, {
+      senderPeerId: sender.peer.peer_id,
+      recipientPeerId: receiver.peer.peer_id,
+      message: "hello",
+    });
+
+    // Open the SQLite file directly and try to insert an unknown type. The
+    // CHECK constraint should reject it.
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(`${home}/synchronize.db`);
+    expect(() =>
+      db.exec("INSERT INTO events (type, body) VALUES ('not_a_real_type', 'x')"),
+    ).toThrow();
+    db.close();
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("group member listings carry host_session_id when an agent_sessions binding exists", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-group-hostid-"));
   homes.push(home);

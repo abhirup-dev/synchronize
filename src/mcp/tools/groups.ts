@@ -29,7 +29,11 @@ export function registerGroupTools(ctx: ToolContext): void {
   mcp.registerTool(
     "bridge_join_group",
     {
-      description: "Join a group; alias defaults to this agent's registered session name, history is included by default, set fresh for join-group-fork behavior.",
+      description:
+        "Join a group; alias defaults to this agent's registered session name. " +
+        "History is included by default; set fresh=true for join-group-fork behavior. " +
+        "Use bridge_rename_in_group later if you need to change your alias inside the group. " +
+        "When a freed alias is claimed by a different peer (e.g. respawn), the daemon emits a group_member_alias_reclaimed event so observers can distinguish respawn from impersonation.",
       inputSchema: { name: z.string().min(1), alias: z.string().optional(), fresh: z.boolean().optional() },
     },
     async (args) => {
