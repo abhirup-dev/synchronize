@@ -12,6 +12,26 @@ This directory contains local integration harnesses that exercise
   tests.
 
 Both harnesses treat AoE as the cockpit and tmux as the automation substrate.
+The executable files are stable wrappers; shared support code lives under
+`integration-aoe/sync_itest_aoe`.
+
+## Code Layout
+
+- `integration-aoe/sync_itest_aoe/runtime.py` owns run ids, command execution,
+  logging, JSON helpers, common errors, environment setup, and daemon cleanup.
+- `integration-aoe/sync_itest_aoe/aoe.py` owns AoE profile/session lifecycle
+  and AoE diagnostics.
+- `integration-aoe/sync_itest_aoe/tmux.py` owns tmux pane discovery, pane
+  mapping, capture, shell command submission, and Pi prompt submission.
+- `integration-aoe/sync_itest_aoe/sync_rest.py` owns synchronize REST access.
+- `integration-aoe/sync_itest_aoe/pi_env.py` owns isolated Pi config/session
+  provisioning and transcript reads.
+- `integration-aoe/sync_itest_aoe/scenarios/` contains the workflow-specific
+  tests.
+
+New workflows should be small scenario modules that compose these primitives.
+Avoid reimplementing AoE setup, tmux input, Pi provisioning, REST polling, or
+diagnostic capture inside each scenario.
 
 ## Real Pi Workflow Pattern
 

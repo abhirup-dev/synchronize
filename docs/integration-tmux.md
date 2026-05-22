@@ -12,6 +12,10 @@ The harness uses:
 
 It is not part of the normal `bun test` suite and is not required for CI.
 
+The public scripts are thin wrappers. Reusable AoE/tmux/Pi support code lives
+under `scripts/integration-aoe/sync_itest_aoe`, with workflow-specific scenarios
+under `scripts/integration-aoe/sync_itest_aoe/scenarios`.
+
 ## Requirements
 
 Install these on the machine running the smoke:
@@ -67,6 +71,15 @@ Every run writes a log directory. On failure, the directory includes:
 
 REST state is the pass/fail source. Direct SQLite inspection is reserved for
 future diagnostics and should not become the primary assertion path.
+
+## Extending the Suite
+
+Add new workflow tests as scenario modules under
+`scripts/integration-aoe/sync_itest_aoe/scenarios`. Scenarios should read as
+setup, action, assertions, and diagnostics while reusing the shared runtime,
+AoE, tmux, REST, and Pi environment helpers. This keeps future group, media,
+inbound notification, and blocked-agent workflows from duplicating harness
+lifecycle code.
 
 ## Real Pi Agent Smoke
 
