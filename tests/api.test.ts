@@ -8,6 +8,8 @@ import {
   getGroupHistory,
   joinGroup,
   leaveGroup,
+  listGroups,
+  patchGroup,
   renameInGroup,
   sendGroupMessage,
 } from "../src/api/groups.ts";
@@ -593,6 +595,41 @@ test("roster events land in every member's inbox but never push", async () => {
     expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(0);
   } finally {
     await sink.stop();
+    await daemon.stop();
+  }
+});
+
+test("group description persists at create, surfaces in listGroups, and is mutable via patch", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-group-description-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const createdWith = await createGroup(daemon.client, {
+      name: "described-room",
+      creatorPeerId: alice.peer.peer_id,
+      description: "  topic at create  ",
+    });
+    expect(createdWith.group.description).toBe("topic at create");
+
+    const list = await listGroups(daemon.client);
+    expect(list.groups.find((g) => g.name === "described-room")?.description).toBe("topic at create");
+
+    const updated = await patchGroup(daemon.client, { name: "described-room", description: "new topic" });
+    expect(updated.group.description).toBe("new topic");
+
+    const cleared = await patchGroup(daemon.client, { name: "described-room", description: null });
+    expect(cleared.group.description).toBeNull();
+
+    // Empty string is normalized to null (cleared).
+    const blank = await patchGroup(daemon.client, { name: "described-room", description: "   " });
+    expect(blank.group.description).toBeNull();
+
+    // Groups created without description default to null.
+    const noTopic = await createGroup(daemon.client, { name: "plain-room", creatorPeerId: alice.peer.peer_id });
+    expect(noTopic.group.description).toBeNull();
+  } finally {
     await daemon.stop();
   }
 });

@@ -31,6 +31,7 @@ export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
               {members.length} member{members.length === 1 ? "" : "s"}
               {working > 0 ? ` · ${working} working` : ""}
             </div>
+            {room.description ? <div className="room-topic">{room.description}</div> : null}
           </div>
         </div>
 

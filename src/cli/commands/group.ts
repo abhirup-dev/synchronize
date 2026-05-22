@@ -1,4 +1,4 @@
-import { createGroup, getGroupHistory, joinGroup, leaveGroup, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
+import { createGroup, getGroupHistory, joinGroup, leaveGroup, patchGroup, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
 import { ensureDaemon } from "../../client.ts";
 import { parseFlags } from "../flags.ts";
 import { requireIdentity } from "../identity.ts";
@@ -19,7 +19,22 @@ export async function run(argv: string[]): Promise<void> {
       name,
       ephemeral: args.boolFlags.has("ephemeral"),
       creatorPeerId: identity.peer_id,
+      ...(args.flags.description !== undefined ? { description: args.flags.description } : {}),
     });
+    console.log(JSON.stringify(response.group, null, 2));
+    return;
+  }
+
+  if (subcommand === "describe") {
+    const [name, ...rest] = argv.slice(1);
+    if (!name) throw new Error("group describe requires NAME");
+    const args = parseFlags(rest);
+    const client = await ensureDaemon();
+    const text = args.rest.join(" ").trim();
+    const clear = args.boolFlags.has("clear");
+    if (clear && text) throw new Error("group describe cannot combine --clear with a description body");
+    if (!clear && !text) throw new Error("group describe requires DESCRIPTION text or --clear");
+    const response = await patchGroup(client, { name, description: clear ? null : text });
     console.log(JSON.stringify(response.group, null, 2));
     return;
   }

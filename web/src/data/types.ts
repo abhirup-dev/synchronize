@@ -25,6 +25,7 @@ export interface Room {
   emoji?: string;
   color: string;
   members: string[]; // agent ids; for DMs always [you, other]
+  description?: string;
   lastPreview?: string;
   unread: number;
   pinned?: boolean;

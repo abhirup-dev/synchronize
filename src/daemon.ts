@@ -115,6 +115,7 @@ interface GroupRow {
   durable: number;
   media_dir: string;
   creator_peer_id: string | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -587,6 +588,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const body = await readBody(request);
     const name = requireGroupName(requireString(body, "name"));
     const creatorPeerId = optionalString(body, "creator_peer_id");
+    const description = optionalString(body, "description") ?? null;
     const durable = body.ephemeral === true ? 0 : 1;
     if (creatorPeerId) ensurePeer(ctx.db, creatorPeerId);
     // media_dir is always lowercased so case-only differences cannot collide
@@ -612,8 +614,8 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       }
       try {
         ctx.db
-          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id) VALUES (?, ?, ?, ?)")
-          .run(name, durable, mediaDir, creatorPeerId ?? null);
+          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, ?, ?, ?, ?)")
+          .run(name, durable, mediaDir, creatorPeerId ?? null, description);
       } catch (error) {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }
@@ -758,6 +760,29 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       member: getGroupMember(ctx.db, group.group_id, peerId),
       event: getEvent(ctx.db, renameEventId),
     });
+  }
+
+  const groupPatch = url.pathname.match(/^\/groups\/([^/]+)$/);
+  if (request.method === "PATCH" && groupPatch) {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPatch[1] ?? ""));
+    const body = await readBody(request);
+    if (!("description" in body)) {
+      throw new HttpError(400, "invalid_request", "PATCH /groups/:name expects a body with at least one updatable field (description)");
+    }
+    const raw = body.description;
+    let description: string | null;
+    if (raw === null) {
+      description = null;
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      description = trimmed === "" ? null : trimmed;
+    } else {
+      throw new HttpError(400, "invalid_request", "description must be a string or null");
+    }
+    ctx.db
+      .query("UPDATE groups SET description = ? WHERE group_id = ?")
+      .run(description, group.group_id);
+    return jsonResponse({ group: getGroup(ctx.db, group.name) });
   }
 
   const groupLeave = url.pathname.match(/^\/groups\/([^/]+)\/leave$/);

@@ -9,7 +9,8 @@ Usage:
   synchronize peers
   synchronize dm PEER MESSAGE
   synchronize inbox [--ack]
-  synchronize group create NAME --as SESSION_NAME [--ephemeral]
+  synchronize group create NAME --as SESSION_NAME [--ephemeral] [--description TEXT]
+  synchronize group describe NAME DESCRIPTION | --clear
   synchronize group join NAME --as SESSION_NAME [--alias ALIAS] [--fresh]
   synchronize group leave NAME --as SESSION_NAME
   synchronize group rename NAME NEW_ALIAS --as SESSION_NAME

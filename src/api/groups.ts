@@ -3,7 +3,7 @@ import type { Event, Group, GroupMember } from "./types.ts";
 
 export function createGroup(
   client: ClientConfig,
-  input: { name: string; ephemeral?: boolean; creatorPeerId?: string },
+  input: { name: string; ephemeral?: boolean; creatorPeerId?: string; description?: string },
 ): Promise<{ group: Group }> {
   return requestJson<{ group: Group }>(client, "/groups", {
     method: "POST",
@@ -11,6 +11,19 @@ export function createGroup(
       name: input.name,
       ephemeral: input.ephemeral,
       creator_peer_id: input.creatorPeerId,
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    }),
+  });
+}
+
+export function patchGroup(
+  client: ClientConfig,
+  input: { name: string; description?: string | null },
+): Promise<{ group: Group }> {
+  return requestJson<{ group: Group }>(client, `/groups/${encodeURIComponent(input.name)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ...(input.description !== undefined ? { description: input.description } : {}),
     }),
   });
 }
