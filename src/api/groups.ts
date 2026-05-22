@@ -33,6 +33,20 @@ export function joinGroup(
   });
 }
 
+export function renameInGroup(
+  client: ClientConfig,
+  input: { name: string; peerId: string; newAlias: string },
+): Promise<{ member: GroupMember; event: Event }> {
+  return requestJson<{ member: GroupMember; event: Event }>(
+    client,
+    `/groups/${encodeURIComponent(input.name)}/rename`,
+    {
+      method: "POST",
+      body: JSON.stringify({ peer_id: input.peerId, new_alias: input.newAlias }),
+    },
+  );
+}
+
 export function leaveGroup(client: ClientConfig, input: { name: string; peerId: string }): Promise<{ ok: boolean; event: Event }> {
   return requestJson<{ ok: boolean; event: Event }>(client, `/groups/${encodeURIComponent(input.name)}/leave`, {
     method: "POST",

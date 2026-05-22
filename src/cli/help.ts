@@ -12,6 +12,7 @@ Usage:
   synchronize group create NAME --as SESSION_NAME [--ephemeral]
   synchronize group join NAME --as SESSION_NAME [--alias ALIAS] [--fresh]
   synchronize group leave NAME --as SESSION_NAME
+  synchronize group rename NAME NEW_ALIAS --as SESSION_NAME
   synchronize group send NAME --as SESSION_NAME MESSAGE
   synchronize group history NAME --as SESSION_NAME
   synchronize media share GROUP FILE --description TEXT

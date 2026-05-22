@@ -1,4 +1,4 @@
-import { createGroup, getGroupHistory, joinGroup, leaveGroup, sendGroupMessage } from "../../api/groups.ts";
+import { createGroup, getGroupHistory, joinGroup, leaveGroup, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
 import { ensureDaemon } from "../../client.ts";
 import { parseFlags } from "../flags.ts";
 import { requireIdentity } from "../identity.ts";
@@ -50,6 +50,18 @@ export async function run(argv: string[]): Promise<void> {
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
     const response = await leaveGroup(client, { name, peerId: identity.peer_id });
+    console.log(JSON.stringify(response, null, 2));
+    return;
+  }
+
+  if (subcommand === "rename") {
+    const [name, newAlias, ...rest] = argv.slice(1);
+    if (!name || !newAlias) throw new Error("group rename requires NAME NEW_ALIAS");
+    const args = parseFlags(rest);
+    if (!args.flags.as) throw new Error("group rename requires --as SESSION_NAME to confirm the CLI peer identity");
+    const client = await ensureDaemon();
+    const identity = await requireIdentity(client, args.flags.as);
+    const response = await renameInGroup(client, { name, peerId: identity.peer_id, newAlias });
     console.log(JSON.stringify(response, null, 2));
     return;
   }
