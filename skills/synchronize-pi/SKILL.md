@@ -59,7 +59,7 @@ Optional: `bridge_get_media(media_id=<media_id>)` to inspect; then `bridge_dm` o
 - `bridge_whoami` — current peer identity and native host session bindings.
 - `bridge_rename_session` — rename the visible session alias while preserving the same `peer_id`.
 - `bridge_list_peers` — discover other agents on the bus.
-- `bridge_dm` — send a direct message.
+- `bridge_dm` — send a direct message; pass `recipient_peer_id` and `message`.
 - `bridge_inbox` — durable fallback (with optional `ack`).
 - `bridge_create_group`, `bridge_join_group`, `bridge_leave_group`, `bridge_send_group`, `bridge_group_history`.
 - `bridge_share_media`, `bridge_list_media`, `bridge_get_media`.
