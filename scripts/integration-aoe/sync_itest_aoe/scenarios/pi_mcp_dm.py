@@ -186,7 +186,7 @@ class PiMcpDmScenario:
             "Use the synchronize MCP tools only. Do not use shell commands or the synchronize CLI. "
             "First call bridge_whoami to inspect your own synchronize identity. "
             "Then call bridge_list_peers and identify the other live Pi peer, excluding your own peer_id. "
-            f"Call bridge_dm exactly once to that other Pi peer with message={body!r}. "
+            f"Call bridge_dm exactly once with recipient_peer_id set to that other Pi peer's peer_id and message={body!r}. "
             "After the tool call succeeds, reply with exactly: PI_MCP_DM_SENT"
         )
         self.tmux.send_pi_prompt(self.agent_panes[sender_name], prompt)

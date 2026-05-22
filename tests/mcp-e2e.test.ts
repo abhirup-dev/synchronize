@@ -66,13 +66,17 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     const peerId = registered.peer.peer_id;
 
     await client.callTool({ name: "bridge_dm", arguments: { recipient_peer_id: peerId, message: "self notify" } });
+    await client.callTool({ name: "bridge_dm", arguments: { peer_id: peerId, message: "self notify via alias" } });
     const deadline = Date.now() + 5_000;
     while (notifications.length === 0 && Date.now() < deadline) await Bun.sleep(20);
     expect(notifications.length).toBeGreaterThan(0);
     const inbox = parseToolText(await client.callTool({ name: "bridge_inbox", arguments: { ack: true } })) as {
       events: Array<{ body: string | null }>;
     };
-    expect(inbox.events).toEqual([expect.objectContaining({ body: "self notify" })]);
+    expect(inbox.events).toEqual([
+      expect.objectContaining({ body: "self notify" }),
+      expect.objectContaining({ body: "self notify via alias" }),
+    ]);
 
     await client.callTool({ name: "bridge_create_group", arguments: { name: "mcp-room" } });
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });

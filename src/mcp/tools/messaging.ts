@@ -10,16 +10,18 @@ export function registerMessagingTools(ctx: ToolContext): void {
   mcp.registerTool(
     "bridge_dm",
     {
-      description: "Send a durable direct message to a peer.",
-      inputSchema: { recipient_peer_id: z.string().min(1), message: z.string().min(1) },
+      description: "Send a durable direct message to a peer. Use recipient_peer_id for the destination peer; peer_id is accepted as an alias.",
+      inputSchema: { recipient_peer_id: z.string().min(1).optional(), peer_id: z.string().min(1).optional(), message: z.string().min(1) },
     },
     async (args) => {
+      const recipientPeerId = args.recipient_peer_id ?? args.peer_id;
+      if (!recipientPeerId) throw new Error("bridge_dm requires recipient_peer_id");
       const client = await getClient(state);
       const peer = requirePeer(state);
       return text(
         await sendDm(client, {
           senderPeerId: peer.peer_id,
-          recipientPeerId: args.recipient_peer_id,
+          recipientPeerId,
           message: args.message,
         }),
       );
