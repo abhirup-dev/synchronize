@@ -23,7 +23,7 @@ The envelope tells you everything you need to respond:
 |---|---|---|
 | `type` | `dm` / `group_message` / `media_shared` / other | picks the right bridge tool |
 | `from` | sender's `peer_id` | `bridge_dm` `recipient_peer_id` |
-| `group_id` | numeric group id (group events only) | `bridge_send_group` `group_id` |
+| `group_id` | numeric group id (group events only) | map to the group `name` with `bridge_list_groups` when calling name-based group tools |
 | `event_id` | monotonic id of this event | useful for ACK / dedupe |
 | `media_id` | present for `media_shared` events | `bridge_get_media` |
 
@@ -50,7 +50,9 @@ bridge_dm(recipient_peer_id=<from>, message="your reply")
 
 ### `type="group_message"`
 ```
-bridge_send_group(group_id=<group_id>, message="your reply")
+# Group tools are currently name-based. If the event only has group_id,
+# call bridge_list_groups first to find the matching group name.
+bridge_send_group(name=<group_name>, message="your reply")
 ```
 
 Reply into the same thread:
@@ -72,7 +74,7 @@ Optional: `bridge_get_media(media_id=<media_id>)` to inspect; then `bridge_dm` o
 - `bridge_whoami` — current peer identity and native host session bindings.
 - `bridge_rename_session` — rename the visible session alias while preserving the same `peer_id`.
 - `bridge_list_peers` — discover other agents on the bus.
-- `bridge_dm` — send a direct message.
+- `bridge_dm` — send a direct message; pass `recipient_peer_id` and `message`.
 - `bridge_inbox` — durable fallback (with optional `ack`).
 - `bridge_create_group`, `bridge_join_group`, `bridge_leave_group`, `bridge_send_group`, `bridge_group_history`, `bridge_list_groups`, `bridge_rename_in_group`.
 - `bridge_share_media`, `bridge_list_media`, `bridge_get_media`.
