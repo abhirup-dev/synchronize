@@ -148,6 +148,7 @@ interface SummaryPeerRow {
   pending_inbox: number;
   groups: number;
   updated_at: string;
+  host_session_id: string | null;
 }
 
 interface SummaryGroupRow {
@@ -291,7 +292,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            p.lease_expires_at > ? AS online,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
-           p.updated_at
+           p.updated_at,
+           (SELECT s.host_session_id FROM agent_sessions s
+            WHERE s.peer_id = p.peer_id
+            ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id
          FROM peers p
          LEFT JOIN inbox i ON i.recipient_peer_id = p.peer_id
          LEFT JOIN group_members gm ON gm.peer_id = p.peer_id

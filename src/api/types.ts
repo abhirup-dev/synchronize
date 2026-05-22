@@ -127,6 +127,7 @@ export interface SummaryResponse {
     pending_inbox: number;
     groups: number;
     updated_at: string;
+    host_session_id: string | null;
   }>;
   groups: Array<{
     name: string;

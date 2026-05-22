@@ -1,5 +1,18 @@
-import type { SummaryResponse } from "../../api/types.ts";
+import type { SummaryPeer, SummaryResponse } from "../../api/types.ts";
 import { formatBytes, formatDuration, formatRelative, table } from "./table.ts";
+
+/**
+ * Disambiguate same-session-name peers with a short identity suffix. Prefer
+ * the host_session_id (set by the Claude/Pi SessionStart hook) when bound,
+ * otherwise fall back to the synchronize peer_id. The full identity stays
+ * available via the JSON peers/summary endpoints.
+ */
+export function peerDisplayName(
+  peer: Pick<SummaryPeer, "session_name" | "peer_id" | "host_session_id">,
+): string {
+  const suffix = peer.host_session_id ? peer.host_session_id.slice(0, 6) : peer.peer_id.slice(0, 4);
+  return `${peer.session_name}#${suffix}`;
+}
 
 export function renderSummary(summary: SummaryResponse): string {
   const uptime = formatDuration(Date.now() - new Date(summary.daemon.started_at).getTime());
@@ -18,7 +31,7 @@ export function renderSummary(summary: SummaryResponse): string {
       ["status", "name", "tool", "purpose", "inbox", "groups", "updated"],
       summary.peers.map((peer) => [
         peer.online ? "online" : "stale",
-        peer.session_name,
+        peerDisplayName(peer),
         peer.tool,
         peer.purpose ?? "",
         String(peer.pending_inbox),

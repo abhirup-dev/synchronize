@@ -262,6 +262,40 @@ test("rename_in_group renames the requesting peer and emits an audit event", asy
   }
 });
 
+test("summary peers carry host_session_id and TUI display name composes the suffix", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-summary-suffix-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  try {
+    const bound = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-summary-abc123",
+      sessionName: "reviewer",
+      tool: "claude",
+      purpose: "claude session",
+    });
+    const plain = await registerPeer(daemon.client, { sessionName: "reviewer-cli", tool: "cli" });
+
+    const summary = (await (await fetch(`${daemon.client.baseUrl}/summary`)).json()) as {
+      peers: Array<{
+        peer_id: string;
+        session_name: string;
+        host_session_id: string | null;
+      }>;
+    };
+    const boundRow = summary.peers.find((p) => p.peer_id === bound.binding.peer_id);
+    const plainRow = summary.peers.find((p) => p.peer_id === plain.peer.peer_id);
+    expect(boundRow?.host_session_id).toBe("claude-summary-abc123");
+    expect(plainRow?.host_session_id).toBeNull();
+
+    const { peerDisplayName } = await import("../src/cli/render/summary.ts");
+    expect(peerDisplayName(boundRow!)).toBe("reviewer#claude");
+    expect(peerDisplayName(plainRow!)).toBe(`reviewer-cli#${plain.peer.peer_id.slice(0, 4)}`);
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("group create rejects case-insensitive name collisions", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-group-case-"));
   homes.push(home);
