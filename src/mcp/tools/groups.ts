@@ -83,8 +83,10 @@ export function registerGroupTools(ctx: ToolContext): void {
   mcp.registerTool(
     "bridge_send_group",
     {
-      description: "Send a durable message to a group.",
-      inputSchema: { name: z.string().min(1), message: z.string().min(1) },
+      description:
+        "Send a durable message to a group. Pass in_reply_to=<event_id> to post into a Slack-style thread; " +
+        "the daemon normalizes reply-to-reply to the original thread root, so threads stay one level deep.",
+      inputSchema: { name: z.string().min(1), message: z.string().min(1), in_reply_to: z.number().int().positive().optional() },
     },
     async (args) => {
       const client = await getClient(state);
@@ -94,6 +96,7 @@ export function registerGroupTools(ctx: ToolContext): void {
           name: args.name,
           senderPeerId: peer.peer_id,
           message: args.message,
+          ...(args.in_reply_to !== undefined ? { inReplyTo: args.in_reply_to } : {}),
         }),
       );
     },
@@ -101,11 +104,22 @@ export function registerGroupTools(ctx: ToolContext): void {
 
   mcp.registerTool(
     "bridge_group_history",
-    { description: "Read group history visible to this peer.", inputSchema: { name: z.string().min(1) } },
+    {
+      description:
+        "Read group history visible to this peer. Without thread_of, returns the main channel " +
+        "(thread replies hidden). Pass thread_of=<root event_id> to fetch the thread root and its replies.",
+      inputSchema: { name: z.string().min(1), thread_of: z.number().int().positive().optional() },
+    },
     async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(await getGroupHistory(client, { name: args.name, peerId: peer.peer_id }));
+      return text(
+        await getGroupHistory(client, {
+          name: args.name,
+          peerId: peer.peer_id,
+          ...(args.thread_of !== undefined ? { threadOf: args.thread_of } : {}),
+        }),
+      );
     },
   );
 

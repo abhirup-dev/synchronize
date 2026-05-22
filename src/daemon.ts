@@ -86,6 +86,7 @@ interface EventRow {
   group_id: number | null;
   body: string | null;
   media_id: string | null;
+  parent_event_id: number | null;
   created_at: string;
 }
 
@@ -772,16 +773,18 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const body = await readBody(request);
     const senderPeerId = requireString(body, "sender_peer_id");
     const message = requireString(body, "message");
+    const inReplyTo = optionalInteger(body, "in_reply_to");
     if (message.length > MAX_MESSAGE_CHARS) {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
+    const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
 
     let recipients: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
-        .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_message', ?, ?, ?)")
-        .run(senderPeerId, group.group_id, message);
+        .query("INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id) VALUES ('group_message', ?, ?, ?, ?)")
+        .run(senderPeerId, group.group_id, message, parentEventId);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
       recipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
@@ -808,15 +811,35 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const member = ensureActiveMember(ctx.db, group.group_id, peerId);
     const limit = parseLimit(url.searchParams.get("limit"));
     const cursor = parseCursor(url.searchParams.get("cursor"));
+    const threadOf = parseOptionalPositiveInt(url.searchParams.get("thread_of"), "thread_of");
     const historyFrom = Math.max(member.history_from_event_id ?? 0, cursor + 1);
-    const rows = ctx.db
-      .query<EventRow, [number, number, number]>(
-        `SELECT * FROM events
-         WHERE group_id = ? AND event_id >= ?
-         ORDER BY event_id ASC
-         LIMIT ?`,
-      )
-      .all(group.group_id, historyFrom, limit);
+    let rows: EventRow[];
+    if (threadOf !== undefined) {
+      const root = ctx.db
+        .query<EventRow, [number, number]>("SELECT * FROM events WHERE event_id = ? AND group_id = ?")
+        .get(threadOf, group.group_id);
+      if (!root) throw new HttpError(404, "thread_root_not_found", `No such event in group: ${threadOf}`);
+      if (root.parent_event_id !== null) {
+        throw new HttpError(400, "thread_of_not_root", `thread_of must reference a thread root (event ${threadOf} is itself a reply)`);
+      }
+      rows = ctx.db
+        .query<EventRow, [number, number, number, number, number]>(
+          `SELECT * FROM events
+           WHERE group_id = ? AND event_id >= ? AND (event_id = ? OR parent_event_id = ?)
+           ORDER BY event_id ASC
+           LIMIT ?`,
+        )
+        .all(group.group_id, historyFrom, threadOf, threadOf, limit);
+    } else {
+      rows = ctx.db
+        .query<EventRow, [number, number, number]>(
+          `SELECT * FROM events
+           WHERE group_id = ? AND event_id >= ? AND parent_event_id IS NULL
+           ORDER BY event_id ASC
+           LIMIT ?`,
+        )
+        .all(group.group_id, historyFrom, limit);
+    }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
   }
 
@@ -1092,6 +1115,31 @@ function parseCursor(raw: string | null): number {
     throw new HttpError(400, "invalid_request", "cursor must be a non-negative integer");
   }
   return value;
+}
+
+function parseOptionalPositiveInt(raw: string | null, label: string): number | undefined {
+  if (raw === null || raw === "") return undefined;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new HttpError(400, "invalid_request", `${label} must be a positive integer`);
+  }
+  return value;
+}
+
+// Normalize Slack-style thread parents to a single level: a reply to a reply
+// collapses to the original thread root. Returns the root event_id (always
+// the root, never a leaf), or throws if in_reply_to is not a visible event in
+// this group.
+function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): number {
+  const target = db
+    .query<{ event_id: number; group_id: number | null; parent_event_id: number | null }, [number]>(
+      "SELECT event_id, group_id, parent_event_id FROM events WHERE event_id = ?",
+    )
+    .get(inReplyTo);
+  if (!target || target.group_id !== groupId) {
+    throw new HttpError(404, "reply_target_not_found", `No such event in group: ${inReplyTo}`);
+  }
+  return target.parent_event_id ?? target.event_id;
 }
 
 function getPeer(db: Database, peerId: string): PeerRow {

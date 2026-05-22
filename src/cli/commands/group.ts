@@ -74,7 +74,17 @@ export async function run(argv: string[]): Promise<void> {
     if (!name || !message) throw new Error("group send requires NAME MESSAGE");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await sendGroupMessage(client, { name, senderPeerId: identity.peer_id, message });
+    const inReplyToRaw = args.flags["in-reply-to"];
+    const inReplyTo = inReplyToRaw !== undefined ? Number.parseInt(inReplyToRaw, 10) : undefined;
+    if (inReplyTo !== undefined && (!Number.isInteger(inReplyTo) || inReplyTo < 1)) {
+      throw new Error("--in-reply-to must be a positive integer event_id");
+    }
+    const response = await sendGroupMessage(client, {
+      name,
+      senderPeerId: identity.peer_id,
+      message,
+      ...(inReplyTo !== undefined ? { inReplyTo } : {}),
+    });
     printCliRealtimeWarning();
     console.log(JSON.stringify(response.event, null, 2));
     return;
@@ -87,7 +97,16 @@ export async function run(argv: string[]): Promise<void> {
     if (!args.flags.as) throw new Error("group history requires --as SESSION_NAME to confirm the CLI peer identity");
     const client = await ensureDaemon();
     const identity = await requireIdentity(client, args.flags.as);
-    const response = await getGroupHistory(client, { name, peerId: identity.peer_id });
+    const threadOfRaw = args.flags["thread-of"];
+    const threadOf = threadOfRaw !== undefined ? Number.parseInt(threadOfRaw, 10) : undefined;
+    if (threadOf !== undefined && (!Number.isInteger(threadOf) || threadOf < 1)) {
+      throw new Error("--thread-of must be a positive integer event_id");
+    }
+    const response = await getGroupHistory(client, {
+      name,
+      peerId: identity.peer_id,
+      ...(threadOf !== undefined ? { threadOf } : {}),
+    });
     console.log(JSON.stringify(response, null, 2));
     return;
   }
