@@ -11,16 +11,20 @@ interface MessageRowProps {
   agents: Agent[];
   groupedWithPrev: boolean;
   onOpenThread?(parentId: string): void;
+  /** Hide the avatar gutter (used in ThreadPane to reclaim horizontal space —
+   *  the colored author-name pill above the bubble is enough identity there). */
+  hideAvatar?: boolean;
 }
 
-export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread }: MessageRowProps) {
+export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, hideAvatar }: MessageRowProps) {
   const isYou = author.id === "you";
   const openMenu = useContextMenu();
   const me = useMe();
   return (
     <div
       id={`msg-${message.id}`}
-      className={`message-row${isYou ? " is-you" : ""}${groupedWithPrev ? " is-grouped" : ""}`}
+      data-vim-item={`msg-${message.id}`}
+      className={`message-row${isYou ? " is-you" : ""}${groupedWithPrev ? " is-grouped" : ""}${hideAvatar ? " no-avatar" : ""}`}
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
@@ -34,9 +38,11 @@ export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThr
         ])
       }
     >
-      <div className="message-gutter">
-        {!groupedWithPrev && <Avatar agent={author} size={34} />}
-      </div>
+      {!hideAvatar && (
+        <div className="message-gutter">
+          {!groupedWithPrev && <Avatar agent={author} size={34} />}
+        </div>
+      )}
       <div className="message-body">
         {!groupedWithPrev && (
           <div className="author-chip">

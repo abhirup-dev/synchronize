@@ -153,12 +153,18 @@ button { font-family: inherit; cursor: pointer; }
   min-width: 0;
   border-left: var(--line);
   background: var(--paper);
+  /* Anchor for absolute-positioned overlays (e.g. .toast-stack). */
+  position: relative;
 }
 
 .main-body {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px 260px;
+  /* Two columns by default: chat-column (which internally hosts the timeline
+     rail beside the chat list, so the timeline ends at the composer top, not
+     at the bottom of the panel) + roster. When a thread is open, App.tsx
+     overrides this inline to a 3-column grid with the resize handle. */
+  grid-template-columns: minmax(0, 1fr) 260px;
   min-height: 0;
   overflow: hidden;
 }
@@ -393,15 +399,44 @@ button { font-family: inherit; cursor: pointer; }
 }
 .room-item.active .unread { background: var(--yellow); }
 
-.user-footer {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 14px 16px;
-  border-top: var(--line);
-  background: var(--paper-3);
+/* Compact user bubble — replaces the old full-width user-footer. A small
+   circular avatar pinned to the bottom-left of the sidebar; click for the
+   default action, right-click for the full options menu (status, profile,
+   sign-out, etc.). */
+.user-bubble {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 10px 14px 14px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2.5px solid var(--rule);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
 }
+.user-bubble:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--rule);
+}
+.user-bubble-avatar {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.user-bubble .status-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+}
+
 .user-info { flex: 1; min-width: 0; }
 .user-name { font-weight: 700; font-size: 13.5px; }
 .user-handle { font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--ink-soft); }
@@ -865,8 +900,8 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px 8px;
-  border-top: 1.5px dashed var(--ink);
+  padding: 2px 0 0;
+  border-top: none;
 }
 .hint {
   font-family: "JetBrains Mono", monospace;
@@ -1521,14 +1556,15 @@ button { font-family: inherit; cursor: pointer; }
 
 /* responsive */
 @media (max-width: 1280px) {
-  .main-body { grid-template-columns: minmax(0, 1fr) 96px 240px; }
+  .main-body { grid-template-columns: minmax(0, 1fr) 240px; }
+  .chat-region { grid-template-columns: minmax(0, 1fr) 96px; }
 }
 @media (max-width: 1100px) {
-  .main-body { grid-template-columns: minmax(0, 1fr) 88px; }
-  .roster { display: none; }
+  .main-body { grid-template-columns: minmax(0, 1fr); }
+  .agent-roster { display: none; }
 }
 @media (max-width: 760px) {
-  .main-body { grid-template-columns: minmax(0, 1fr); }
+  .chat-region { grid-template-columns: minmax(0, 1fr); }
   .timeline-rail { display: none; }
 }
 @media (max-width: 880px) {

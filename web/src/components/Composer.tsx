@@ -6,9 +6,12 @@ import { inkFor } from "./primitives.tsx";
 interface ComposerProps {
   roomId: string;
   parentMessageId?: string;
+  /** When true, the composer mounts in collapsed state. Used by ChatView to
+   *  reclaim vertical real estate when a thread pane is open. */
+  collapsedDefault?: boolean;
 }
 
-export function Composer({ roomId, parentMessageId }: ComposerProps) {
+export function Composer({ roomId, parentMessageId, collapsedDefault = false }: ComposerProps) {
   const agents = useAgents();
   const sendMessage = useSendMessage();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -17,7 +20,7 @@ export function Composer({ roomId, parentMessageId }: ComposerProps) {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const [popRect, setPopRect] = useState<{ left: number; bottom: number; width: number } | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(collapsedDefault);
 
   useLayoutEffect(() => {
     if (mentionQuery === null) {

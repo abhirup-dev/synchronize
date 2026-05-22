@@ -214,10 +214,19 @@
 .composer {
   border-top: var(--line);
   background: var(--paper);
-  padding: 12px 18px 14px;
+  /* Horizontal centering: the composer's content tops out at the same width
+     as a message bubble (DESIGN.md `bubble-maxw: 880px`) and sits centered
+     within whatever column it lives in. So it expands as the chat column
+     expands, and shrinks naturally when the thread pane opens and the chat
+     column narrows. Compact vertical padding — the composer is a heavy
+     consumer of real estate so we keep it tight. */
+  padding: 6px max(18px, calc((100% - 880px) / 2)) 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+}
+@media (max-width: 920px) {
+  .composer { padding: 6px 18px 8px; }
 }
 .composer-toolbar {
   display: flex;
@@ -250,8 +259,8 @@
 .composer-input {
   width: 100%;
   resize: vertical;
-  min-height: 56px;
-  padding: 10px 12px;
+  min-height: 38px;
+  padding: 8px 12px;
   background: transparent;
   color: var(--ink);
   border: none;
@@ -267,16 +276,18 @@
   align-items: center;
   gap: 12px;
   justify-content: space-between;
+  padding: 0 2px;
+  border-top: none;
 }
-.composer-hint { font-size: 11px; color: var(--ink-soft); }
+.composer-hint { font-size: 10.5px; color: var(--ink-soft); }
 .composer-send {
   background: var(--ink);
   color: var(--on-ink);
   border: var(--line-2);
   border-radius: 5px;
-  padding: 8px 16px;
+  padding: 4px 14px;
   font-family: "Archivo Black", sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.05em;
   box-shadow: var(--shadow-sm);
 }
@@ -389,6 +400,20 @@
   min-height: 0;
   height: 100%;
 }
+/* Top region of the chat column: chat scroll area + timeline rail beside it.
+   Sits above the composer; the composer spans the full chat-column width
+   below this row, which is why the timeline visually ends at the composer
+   top rather than running the entire panel height. */
+.chat-region {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+.chat-region:has(.timeline-rail[hidden]),
+.chat-region:not(:has(.timeline-rail)) {
+  grid-template-columns: minmax(0, 1fr);
+}
 .chat-scroll-wrap,
 .thread-scroll-wrap {
   position: relative;
@@ -426,9 +451,16 @@
 }
 .message-row.is-grouped { margin-top: -10px; }
 .message-row.is-you { justify-self: end; grid-template-columns: minmax(0, 880px) 34px; }
+/* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
+   colored author-name pill above the bubble carries the identity instead. */
+.message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
+.message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
 .message-row.is-you .message-gutter { order: 2; }
 .message-row.is-you .message-body { order: 1; align-items: flex-end; }
-.message-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* Tight gap between the author pill and the bubble it labels — they should
+   read as a single unit. Inter-message spacing is governed by the parent
+   container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
+.message-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .author-chip {
   display: flex;
@@ -611,6 +643,196 @@
 .timeline-rail { overflow: visible; }
 .timeline-track { overflow-x: visible; }
 
+/* ─── Toast stack ────────────────────────────────────────────────────────── */
+/* Pill-shaped notifications anchored to the top-center of the chat region.
+   Mount point is `.main` (position: relative is added in styles.css) so toasts
+   live OVER the chat content, never over the sidebar or roster. Multiple
+   toasts stack vertically with a small gap. Click to dismiss. */
+.toast-stack {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1800;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: min(560px, 80vw);
+  padding: 8px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px;
+  border: 2px solid var(--rule);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  animation: toast-in 180ms ease;
+  text-align: center;
+}
+.toast:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow);
+}
+.toast-warn  { background: color-mix(in srgb, var(--yellow) 30%, var(--paper)); }
+.toast-error { background: color-mix(in srgb, var(--red) 26%, var(--paper)); }
+.toast-success { background: color-mix(in srgb, var(--lime) 30%, var(--paper)); }
+@keyframes toast-in {
+  from { transform: translate(-50%, -12px); opacity: 0; }
+  to   { transform: translate(-50%, 0);     opacity: 1; }
+}
+/* Override the centering transform that toast-in animates, so the stack's
+   center-transform isn't double-applied to each child after the keyframe
+   ends. The stack already provides the X-centering; individual toasts just
+   need their Y. */
+.toast-stack .toast { transform: none; animation-fill-mode: both; }
+
+/* ─── Agent color picker ─────────────────────────────────────────────────── */
+.agent-color-picker {
+  width: 240px;
+  background: var(--paper);
+  border: 2.5px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: "JetBrains Mono", monospace;
+}
+.acp-head { display: flex; align-items: center; justify-content: space-between; }
+.acp-title {
+  font-family: "Archivo Black", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.acp-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.acp-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 2px solid var(--rule);
+  border-radius: 5px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-family: "Archivo Black", sans-serif;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.acp-swatch:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--rule);
+}
+.acp-swatch.is-current {
+  outline: 2px dashed var(--ink);
+  outline-offset: 2px;
+}
+.acp-custom {
+  border-top: 1.5px dashed var(--rule);
+  padding-top: 8px;
+}
+.acp-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.acp-custom-row input[type="color"] {
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--rule);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+.acp-custom-hex { margin-left: auto; font-weight: 600; color: var(--ink); }
+.acp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1.5px dashed var(--rule);
+  padding-top: 8px;
+}
+.acp-reset {
+  background: transparent;
+  border: 1.5px solid var(--rule);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.acp-reset:hover { background: var(--paper-2); }
+.acp-default-chip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1.5px solid var(--rule);
+  border-radius: 4px;
+}
+
+/* ─── Vim navigation focus ──────────────────────────────────────────────────
+   A subtle steady yellow ring on the item under the J/K cursor. Explicitly
+   NOT animated — the timeline-click `.flash-highlight` is the loud one;
+   this stays calm so the eye can rest while moving through items.
+
+   Each panel applies the ring to its semantic "card" element:
+   - Message rows → on the .bubble (so the avatar/pill don't get a ring too)
+   - Sidebar room items → on the button itself
+   - Roster cards → on the button itself
+*/
+.message-row[data-vim-focused="true"] .bubble {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tangerine) 55%, transparent),
+    0 0 12px 0 color-mix(in srgb, var(--tangerine) 28%, transparent),
+    var(--shadow);
+  transition: box-shadow 140ms ease;
+}
+.room-item[data-vim-focused="true"],
+.roster-card[data-vim-focused="true"] {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tangerine) 60%, transparent),
+    0 0 12px 0 color-mix(in srgb, var(--tangerine) 28%, transparent),
+    var(--shadow-sm);
+}
+
+/* ─── Vim mode chip (rides above the user bubble) ────────────────────────── */
+.vim-mode-chip {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: "Archivo Black", sans-serif;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  pointer-events: none;
+}
+.vim-mode-chip.vim-mode-navigate {
+  background: var(--tangerine);
+  color: var(--ink);
+}
+.vim-mode-chip.vim-mode-typing {
+  background: var(--lime);
+  color: var(--ink);
+}
+
 /* ─── Flash highlight when scrolled to via timeline ──────────────────────── */
 /* Three-cycle throb with a soft yellow glow ring, plus an opacity pulse on the
    bubble itself so the eye unambiguously catches the jump target even on long
@@ -733,9 +955,43 @@
 .thread-badge-time { color: var(--ink-soft); }
 
 /* ─── Thread pane (right-side) ───────────────────────────────────────────── */
-.app-shell.thread-open .main-body {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
+/* When a thread is open, App.tsx sets the grid template inline based on the
+   user-resizable thread width. We don't override it here. */
+
+/* ─── Resize handle (between chat column and thread pane) ────────────────── */
+.resize-handle {
+  position: relative;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
 }
+/* A 12px-wide invisible overlay makes the handle easy to grab without the
+   visible bar itself being thick. */
+.resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+.resize-handle-grip {
+  display: block;
+  width: 2px;
+  height: 36px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 999px;
+  transition: background 140ms ease, height 140ms ease;
+}
+.resize-handle:hover .resize-handle-grip,
+.resize-handle:focus-visible .resize-handle-grip,
+.resize-handle.is-dragging .resize-handle-grip {
+  background: var(--rule);
+  height: 60px;
+}
+.resize-handle:focus-visible { outline: none; }
 .thread-pane {
   display: flex;
   flex-direction: column;
@@ -748,7 +1004,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: var(--line);
   background: var(--paper-2);
 }
@@ -780,10 +1036,17 @@
 .thread-pane-body {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 14px 6px;
+  padding: 12px 12px 4px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* Without avatar gutters, consecutive messages need more vertical air so the
+     next author's pill doesn't run into the previous bubble. */
+  gap: 20px;
+}
+.thread-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 .thread-divider {
   display: flex;
@@ -809,6 +1072,14 @@
 }
 .thread-parent .bubble {
   background: var(--paper-2);
+}
+/* Slightly tighter bubble padding inside the thread pane — the pane itself is
+   narrower than the main chat, so 16px horizontal padding eats too much. */
+.thread-pane-body .bubble {
+  padding: 10px 12px;
+}
+.thread-pane-body .thread-divider {
+  margin: 4px 0;
 }
 
 /* ─── Poll widget ────────────────────────────────────────────────────────── */

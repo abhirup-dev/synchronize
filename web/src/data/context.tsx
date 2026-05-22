@@ -34,3 +34,8 @@ export function useSendMessage() {
   const ds = useDataSource();
   return ds.sendMessage.bind(ds);
 }
+
+export function useSetAgentColor() {
+  const ds = useDataSource();
+  return ds.setAgentColor.bind(ds);
+}

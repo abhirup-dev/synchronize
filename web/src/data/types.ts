@@ -140,6 +140,9 @@ export interface DataSource {
 
   // commands
   sendMessage(input: SendMessageInput): Promise<Message>;
+  /** Override an agent's identity color. Pass `null` to revert to the seeded
+   *  color. Mutates the agents snapshot so every component re-renders. */
+  setAgentColor(agentId: string, hex: string | null): void;
 
   // lifecycle
   connect(): Promise<void>;

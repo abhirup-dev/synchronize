@@ -26,10 +26,38 @@ import {
   TIMELINE,
 } from "./seed.ts";
 
+// Persistent overrides for agent identity colors. Stored in localStorage so the
+// user's customizations survive reloads; we restore them on construction.
+const COLOR_OVERRIDES_KEY = "synchronize.agentColors";
+function readColorOverrides(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(COLOR_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function writeColorOverrides(overrides: Record<string, string>): void {
+  try {
+    localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch {
+    /* localStorage full / blocked — ignore */
+  }
+}
+const SEEDED_COLOR_BY_ID = new Map(AGENTS.map((a) => [a.id, a.color] as const));
+
 export class MockDataSource implements DataSource {
   readonly kind = "mock" as const;
 
-  private readonly _agents = createSnapshot<Agent[]>(AGENTS);
+  private readonly _agents = createSnapshot<Agent[]>(
+    AGENTS.map((a) => {
+      const overrides = readColorOverrides();
+      const override = overrides[a.id];
+      return override ? { ...a, color: override } : a;
+    }),
+  );
   private readonly _rooms = createSnapshot<Room[]>([...GROUPS, ...DMS]);
   private readonly _messages = new Map<string, MutableSnapshot<Message[]>>();
   private readonly _threadReplies = new Map<string, MutableSnapshot<Message[]>>();
@@ -116,6 +144,25 @@ export class MockDataSource implements DataSource {
       target.update((prev) => prev.map((m) => (m.id === msg.id ? ack : m)));
     }, 280);
     return msg;
+  }
+
+  setAgentColor(agentId: string, hex: string | null): void {
+    const overrides = readColorOverrides();
+    if (hex === null) {
+      delete overrides[agentId];
+    } else {
+      overrides[agentId] = hex;
+    }
+    writeColorOverrides(overrides);
+    const fallback = SEEDED_COLOR_BY_ID.get(agentId);
+    const next = hex ?? fallback;
+    this._agents.update((prev) =>
+      prev.map((a) => (a.id === agentId ? { ...a, color: next ?? a.color } : a)),
+    );
+    // Mirror onto `me` if it's the same agent.
+    if (this._me.get().id === agentId) {
+      this._me.set({ ...this._me.get(), color: next ?? this._me.get().color });
+    }
   }
 
   async connect(): Promise<void> { /* mock has no live connection */ }

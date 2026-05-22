@@ -8,9 +8,10 @@ import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 interface SidebarProps {
   activeRoomId: string;
   onSelect(id: string): void;
+  mode?: "navigate" | "typing";
 }
 
-export function Sidebar({ activeRoomId, onSelect }: SidebarProps) {
+export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarProps) {
   const rooms = useRooms();
   const me = useMe();
   const agents = useAgents();
@@ -29,9 +30,10 @@ export function Sidebar({ activeRoomId, onSelect }: SidebarProps) {
   const dmUnread = dms.reduce((acc, r) => acc + r.unread, 0);
   const groupsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
+  const openMenu = useContextMenu();
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-vim-panel="sidebar">
       <div className="brand">
         <div className="brand-mark">S</div>
         <div className="brand-text">
@@ -79,24 +81,39 @@ export function Sidebar({ activeRoomId, onSelect }: SidebarProps) {
                 active={r.id === activeRoomId}
                 onSelect={onSelect}
                 {...(other?.status ? { otherStatus: other.status } : {})}
+              {...(other?.color ? { otherColor: other.color } : {})}
               />
             );
           })}
         </div>
       </section>
 
-      <div className="user-footer">
-        <div className="avatar" style={{
-          width: 36, height: 36, background: "var(--paper)", color: "var(--ink)",
-          border: "2.5px solid var(--ink)", borderRadius: 6, display: "grid", placeItems: "center",
-          fontFamily: "Archivo Black, sans-serif", fontSize: 14, boxShadow: "1.5px 1.5px 0 var(--ink)",
-        }}>{me.avatar}</div>
-        <div className="user-info">
-          <div className="user-name">{me.name}</div>
-          <div className="user-handle">@{me.handle} · online</div>
-        </div>
-        <StatusDot status={me.status} size={10} />
-      </div>
+      <button
+        type="button"
+        className="user-bubble"
+        title={`${me.name} · @${me.handle}`}
+        onClick={() => console.log("user-bubble click", me.id)}
+        onContextMenu={(e) =>
+          openMenu(e, [
+            { label: `Signed in as ${me.name}`, onSelect: () => console.log("profile", me.id) },
+            { divider: true },
+            { label: "Set status: ready",   onSelect: () => console.log("status online") },
+            { label: "Set status: working", onSelect: () => console.log("status busy") },
+            { label: "Set status: idle",    onSelect: () => console.log("status idle") },
+            { divider: true },
+            { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${me.handle}`) },
+            { label: "View profile", onSelect: () => console.log("profile", me.id) },
+            { divider: true },
+            { label: "Sign out", danger: true, onSelect: () => console.log("sign out") },
+          ])
+        }
+      >
+        <span className="user-bubble-avatar">{me.avatar}</span>
+        <StatusDot status={me.status} size={11} />
+        <span className={`vim-mode-chip vim-mode-${mode}`} aria-label={`vim mode: ${mode}`}>
+          {mode === "navigate" ? "NAV" : "INS"}
+        </span>
+      </button>
     </aside>
   );
 }
@@ -106,16 +123,19 @@ function RoomItem({
   active,
   onSelect,
   otherStatus,
+  otherColor,
 }: {
   room: Room;
   active: boolean;
   onSelect(id: string): void;
   otherStatus?: import("../data/types.ts").AgentStatus;
+  otherColor?: string;
 }) {
   const openMenu = useContextMenu();
   return (
     <button
       className={`room-item${active ? " active" : ""}`}
+      data-vim-item={`room-${room.id}`}
       onClick={() => onSelect(room.id)}
       onContextMenu={(e) =>
         openMenu(e, [
@@ -129,7 +149,7 @@ function RoomItem({
         ])
       }
     >
-      <div className="room-icon" style={{ background: room.color }}>
+      <div className="room-icon" style={{ background: otherColor ?? room.color }}>
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
           <span

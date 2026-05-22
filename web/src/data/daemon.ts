@@ -41,6 +41,7 @@ export class DaemonDataSource implements DataSource {
   tasks(_id: string): Snapshot<Task[]> { throw new Error("not implemented"); }
   artifacts(_id: string): Snapshot<Artifact[]> { throw new Error("not implemented"); }
   sendMessage(_input: SendMessageInput): Promise<Message> { throw new Error("not implemented"); }
+  setAgentColor(_id: string, _hex: string | null): void { throw new Error("not implemented"); }
   async connect(): Promise<void> { throw new Error("not implemented"); }
   disconnect(): void { /* noop */ }
 }

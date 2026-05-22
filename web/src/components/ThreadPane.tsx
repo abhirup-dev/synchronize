@@ -28,7 +28,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
   if (!parent || !parentAuthor) return null;
 
   return (
-    <aside className="thread-pane" aria-label="thread">
+    <aside className="thread-pane" aria-label="thread" data-vim-panel="thread">
       <header className="thread-pane-head">
         <div className="thread-pane-title">
           <strong>Thread</strong>
@@ -55,7 +55,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
       <div className="thread-scroll-wrap">
       <div className="thread-pane-body autoscroll" ref={bodyRef}>
         <div className="thread-parent">
-          <MessageRow message={parent} author={parentAuthor} agents={agents} groupedWithPrev={false} />
+          <MessageRow message={parent} author={parentAuthor} agents={agents} groupedWithPrev={false} hideAvatar />
         </div>
 
         <div className="thread-divider">
@@ -81,6 +81,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
                   author={author}
                   agents={agents}
                   groupedWithPrev={false}
+                  hideAvatar
                 />
               );
             })}
