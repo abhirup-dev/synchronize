@@ -188,6 +188,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     });
   }
 
+  if (request.method === "GET" && (url.pathname === "/web" || url.pathname === "/web/" || url.pathname.startsWith("/web/"))) {
+    return serveWebAsset(url.pathname);
+  }
+
   requireAuth(request, ctx);
 
   if (request.method === "GET" && url.pathname === "/status") {
@@ -1069,6 +1073,50 @@ async function main(): Promise<void> {
   await writeJson(paths.discoveryPath, discovery);
 
   console.error(`synchronize daemon listening on ${discovery.baseUrl}`);
+}
+
+// ─── Web UI static serving ────────────────────────────────────────────────
+// Resolves the web/dist directory relative to this source file. Override with
+// SYNCHRONIZE_WEB_DIST. In V0 we serve unauthenticated under /web/* because the
+// daemon binds to 127.0.0.1 by default; for non-localhost binds the API still
+// requires the bearer token, so the bundle would just fail to fetch data.
+
+const WEB_DIST = process.env["SYNCHRONIZE_WEB_DIST"] ?? new URL("../web/dist", import.meta.url).pathname;
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".map":  "application/json",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
+
+async function serveWebAsset(pathname: string): Promise<Response> {
+  // Strip leading /web (and optional trailing /). Default to index.html.
+  let rel = pathname.replace(/^\/web\/?/, "");
+  if (rel === "" || rel.endsWith("/")) rel = "index.html";
+  // Block traversal.
+  if (rel.includes("..")) return new Response("forbidden", { status: 403 });
+  const filePath = join(WEB_DIST, rel);
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) {
+    // Fallback to index.html so client routing works once we add it.
+    const fallback = Bun.file(join(WEB_DIST, "index.html"));
+    if (!(await fallback.exists())) {
+      return new Response(
+        "web bundle not built — run `bun run web/build.ts`",
+        { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
+    }
+    return new Response(fallback, { headers: { "content-type": "text/html; charset=utf-8" } });
+  }
+  const ext = extname(rel).toLowerCase();
+  const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream";
+  return new Response(file, { headers: { "content-type": contentType, "cache-control": "no-cache" } });
 }
 
 main().catch((error) => {
