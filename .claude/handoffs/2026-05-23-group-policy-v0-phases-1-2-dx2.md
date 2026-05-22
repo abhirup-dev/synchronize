@@ -302,3 +302,62 @@ Key references that should survive this session:
 - **Phase 3c (ACL) was deferred from v0 as a deliberate scoping call.** Rationale captured in section 4 above. Design intact in the plan doc.
 - **No migrations.** No production data; schema changes land in `CREATE TABLE` bodies; `make daemon-relaunch` wipes any local dev state.
 - **CLI verification was treated as sufficient.** User waived manual smoke; integration tests + typecheck are the bar.
+- **Master merge will preserve history, not bundle-squash.** Decision taken 2026-05-23 after the audit. The master commit graph should reflect the iteration order (Phase 1 → 2 → 3a → 3b → 3d → handoff → integrity doc → skills polish → testing harness merge) so future archaeology can pin behaviors to phases. Use `git merge --no-ff`, not `git merge --squash`.
+- **Integration harness lives on master, not on a tooling sideband.** The `group-policy-v0-additional-testing` branch was merged into the integration branch (commit `1658b08`, two parents) before the master merge. Rationale: keeping the harness with the daemon source means a regression to the daemon trips the right scenario in the same checkout, and the master commit graph carries the harness alongside the behavior it tests.
+
+---
+
+## 12. Addendum — post-audit polish (2026-05-23 evening)
+
+After the integration-harness audit (see section 6 successor) the following landed on the integration branch before the master merge:
+
+### Skills + plan-doc polish (commit `96b2e41`)
+
+- `skills/synchronize-claude/SKILL.md` and `skills/synchronize-pi/SKILL.md` gained thread (`in_reply_to` / `thread_of`), mention (`@alias` + warnings shape), and CLI-only-description guidance. CLI fallback examples now show `--in-reply-to`, `--thread-of`, `--description`, `group describe`, and `group rename`.
+- The Pi skill's "Replying — recipe by event type" section has explicit thread-reply and mention examples. A linter-style fix replaced a leftover `group_id=` parameter with the correct name-based group tool signature.
+- `session-tracker/plan-group-policy-v0.md` "Access control" section gained a `DEFERRED FROM V0 — tracked under sync-aeb (P3)` callout. Design preserved verbatim; rationale points at this handoff and `docs/group-sync-integrity.md`.
+- **`skills/synchronize-codex/SKILL.md` was NOT updated.** Per operator decision 2026-05-23, Codex is no longer maintained. Leave the file as-is unless that call is reversed.
+
+### Testing harness folded into the integration branch (merge commit `1658b08`)
+
+Branch `group-policy-v0-additional-testing` (commits `02ee16d`, `194373f`) was merged with `--no-ff`. Brings in:
+
+- `scripts/integration-aoe/sync_itest_aoe/` — the shared AoE/tmux/Pi integration runtime.
+- Five scenarios under `scripts/integration-aoe/sync_itest_aoe/scenarios/`: `cli_dm.py`, `group_policy_cli.py`, `pi_mcp_dm.py`, `pi_mcp_group_policy.py`, `pi_mcp_thread_baton.py`.
+- Top-level wrapper scripts: `scripts/integration_{tmux,pi,group_policy_tmux,group_policy_pi,thread_baton_pi}.py`.
+- `docs/integration-tmux.md`, `scripts/README.md`, and an AoE/tmux integration handoff under `.claude/handoffs/`.
+- Minor edits to `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `skills/synchronize-pi/SKILL.md`, `src/mcp/tools/messaging.ts`, `tests/mcp-e2e.test.ts`.
+
+Test state at the merge commit: **33 pass, 0 fail** (`bun test`), typecheck clean.
+
+### Beads filed post-audit
+
+- **`sync-6p4`** (epic, P3) — Integration harness coverage gaps for group policy v0. Children:
+  - `sync-r4q` B6 default-alias path; `sync-uqa` B7 alias-collision UX; `sync-or7` B11 fresh-join history boundary; `sync-hdt` D4 thread-reply push fanout; `sync-2ic` D7 stale-mention no-push.
+  - Brittle-assertion fixes: `sync-egw` forbidden-tool detection; `sync-4nv` loop guard run_id dependency; `sync-3as` warning-shape assertion bypasses MCP/CLI layer.
+  - Epic description explicitly enumerates the seven audit gaps that were deliberately NOT filed because they are covered by `tests/api.test.ts` (A3, B3, B4, C4, C7, C8, E1).
+- **`sync-b8p`** (chore, P3) — Refactor synchronize SKILL.md files to progressive-discovery format. The monolithic Claude and Pi SKILL.md files should split into a thin SKILL.md router + `reference/*.md` topic docs (groups, threads, mentions, dms, media, inbox, event-delivery, cli-fallback, do-and-dont, troubleshooting; plus possibles for peers, security-posture, v0-known-limits). Codex skill is out of scope.
+
+### Pre-master-merge state
+
+```
+integration tip:  1658b08  (merge commit: 96b2e41 + 194373f)
+master tip:       813b5e3  (unchanged — auto-register hook merge)
+tests:            33 pass, 0 fail
+typecheck:        clean
+working tree:     clean
+```
+
+### What's left before master merge
+
+1. **Manual verification with live agents** (operator-driven; harness can't model model-driven variation).
+2. **Master merge as plain `--no-ff`**, not a squash. Preserve the phase-by-phase commit history.
+3. **Worktree cleanup post-merge:**
+   - `git worktree remove --force .claude/worktrees/phase1-identity-join-hardening`
+   - `git worktree remove --force .claude/worktrees/phase2-bug-cluster`
+   - `git worktree remove --force .claude/worktrees/sync-dx2-tui-suffix`
+   - `git worktree remove --force .claude/worktrees/group-policy-v0-additional-testing`
+   - `git worktree remove --force .claude/worktrees/plan-group-policy-v0`
+   - Delete the corresponding branches with `git branch -D`.
+
+After cleanup, the master commit graph carries: the v0 epic (Phases 1, 2, 3a, 3b, 3d, dx2 TUI) + integration harness + integrity reference doc + updated skills + plan doc with explicit 3c deferral. Open at master tip: `sync-aeb` (ACL deferred), `sync-cg8` (daemon identity enforcement deferred), `sync-jix` (DaemonDataSource), `sync-dx2` web half (gated on `sync-jix`), `sync-6p4` (harness coverage gaps), `sync-b8p` (skill refactor).
