@@ -67,3 +67,47 @@ Every run writes a log directory. On failure, the directory includes:
 
 REST state is the pass/fail source. Direct SQLite inspection is reserved for
 future diagnostics and should not become the primary assertion path.
+
+## Real Pi Agent Smoke
+
+`scripts/integration_pi.py` is the manual production-like smoke. It launches
+real interactive Pi coding-agent sessions through AoE and asks one Pi agent to
+send another Pi agent a `synchronize` DM through MCP.
+
+Run it explicitly:
+
+```bash
+uv run scripts/integration_pi.py
+```
+
+The Pi harness is intentionally not part of `bun test` or CI. It uses the real
+local `pi` binary and the copied OAuth credentials from `~/.pi/agent/auth.json`.
+
+By default it writes worktree-local state under `.synchronize-itest/runs/<id>`:
+
+- a temporary `PI_CODING_AGENT_DIR`
+- a temporary `PI_CODING_AGENT_SESSION_DIR`
+- a temporary `SYNCHRONIZE_HOME`
+- AoE, tmux, REST, pane, and Pi transcript diagnostics
+
+It never writes to the real `~/.pi/agent` directory. The temporary Pi config
+loads only:
+
+- `npm:pi-mcp-adapter`
+- this worktree's `extensions/pi-synchronize/src/index.ts`
+- this worktree's `skills/synchronize-pi`
+- this worktree's `bin/synchronize-mcp`
+
+Useful flags:
+
+```bash
+uv run scripts/integration_pi.py --keep
+uv run scripts/integration_pi.py --profile sync-pi-debug
+uv run scripts/integration_pi.py --model gpt-5.4-mini
+uv run scripts/integration_pi.py --auth-source ~/.pi/agent/auth.json
+```
+
+Use `--keep` to preserve the AoE profile, tmux sessions, temporary Pi home,
+temporary Pi sessions, and synchronize daemon state for manual inspection. The
+Pi TUI must be submitted with tmux's named `Enter` key; `C-m` does not reliably
+submit prompts in this setup.
