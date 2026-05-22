@@ -103,6 +103,7 @@ function migrate(db: Database): void {
       group_id INTEGER REFERENCES groups(group_id) ON DELETE CASCADE,
       body TEXT,
       media_id TEXT,
+      parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
@@ -111,6 +112,9 @@ function migrate(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_events_recipient_event
       ON events (recipient_peer_id, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_group_parent_event
+      ON events (group_id, parent_event_id, event_id);
 
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,

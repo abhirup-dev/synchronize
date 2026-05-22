@@ -56,20 +56,26 @@ export function leaveGroup(client: ClientConfig, input: { name: string; peerId: 
 
 export function sendGroupMessage(
   client: ClientConfig,
-  input: { name: string; senderPeerId: string; message: string },
+  input: { name: string; senderPeerId: string; message: string; inReplyTo?: number },
 ): Promise<{ event: Event }> {
   return requestJson<{ event: Event }>(client, `/groups/${encodeURIComponent(input.name)}/messages`, {
     method: "POST",
-    body: JSON.stringify({ sender_peer_id: input.senderPeerId, message: input.message }),
+    body: JSON.stringify({
+      sender_peer_id: input.senderPeerId,
+      message: input.message,
+      ...(input.inReplyTo !== undefined ? { in_reply_to: input.inReplyTo } : {}),
+    }),
   });
 }
 
 export function getGroupHistory(
   client: ClientConfig,
-  input: { name: string; peerId: string },
+  input: { name: string; peerId: string; threadOf?: number },
 ): Promise<{ events: Event[]; next_cursor: number }> {
+  const params = new URLSearchParams({ peer_id: input.peerId });
+  if (input.threadOf !== undefined) params.set("thread_of", String(input.threadOf));
   return requestJson<{ events: Event[]; next_cursor: number }>(
     client,
-    `/groups/${encodeURIComponent(input.name)}/history?peer_id=${encodeURIComponent(input.peerId)}`,
+    `/groups/${encodeURIComponent(input.name)}/history?${params.toString()}`,
   );
 }

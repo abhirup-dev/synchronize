@@ -9,6 +9,7 @@ import {
   joinGroup,
   leaveGroup,
   renameInGroup,
+  sendGroupMessage,
 } from "../src/api/groups.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { registerPeer } from "../src/api/peers.ts";
@@ -406,6 +407,121 @@ test("group member listings carry host_session_id when an agent_sessions binding
     const plainRow = peersBody.peers.find((row) => row.peer_id === plain.peer.peer_id);
     expect(boundRow?.host_session_id).toBe("claude-host-xyz");
     expect(plainRow?.host_session_id).toBeNull();
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("thread replies collapse to root and main-channel history excludes them", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-threads-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "thread-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "root",
+    });
+    expect(root.event.parent_event_id).toBeNull();
+
+    const reply1 = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: bob.peer.peer_id,
+      message: "reply-to-root",
+      inReplyTo: root.event.event_id,
+    });
+    expect(reply1.event.parent_event_id).toBe(root.event.event_id);
+
+    // Reply to reply normalizes to root.
+    const reply2 = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "reply-to-reply",
+      inReplyTo: reply1.event.event_id,
+    });
+    expect(reply2.event.parent_event_id).toBe(root.event.event_id);
+
+    // Unrelated main-channel message.
+    await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "another root",
+    });
+
+    // Main-channel history hides thread replies; both roots remain.
+    const mainHistory = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    const mainMessages = mainHistory.events.filter((event) => event.type === "group_message");
+    expect(mainMessages.map((event) => event.body)).toEqual(["root", "another root"]);
+    expect(mainMessages.every((event) => event.parent_event_id === null)).toBe(true);
+
+    // Thread view returns root + replies in chronological order.
+    const threadHistory = await getGroupHistory(daemon.client, {
+      name: groupName,
+      peerId: alice.peer.peer_id,
+      threadOf: root.event.event_id,
+    });
+    const threadMessages = threadHistory.events.filter((event) => event.type === "group_message");
+    expect(threadMessages.map((event) => event.body)).toEqual(["root", "reply-to-root", "reply-to-reply"]);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("thread_of rejects non-root and non-existent events", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-threads-validation-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const groupName = "thread-validation-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "root",
+    });
+    const reply = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "reply",
+      inReplyTo: root.event.event_id,
+    });
+
+    await expect(
+      getGroupHistory(daemon.client, {
+        name: groupName,
+        peerId: alice.peer.peer_id,
+        threadOf: reply.event.event_id,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      getGroupHistory(daemon.client, {
+        name: groupName,
+        peerId: alice.peer.peer_id,
+        threadOf: 999_999,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      sendGroupMessage(daemon.client, {
+        name: groupName,
+        senderPeerId: alice.peer.peer_id,
+        message: "orphan",
+        inReplyTo: 999_999,
+      }),
+    ).rejects.toThrow();
   } finally {
     await daemon.stop();
   }
