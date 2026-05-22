@@ -75,6 +75,7 @@ function migrate(db: Database): void {
       durable INTEGER NOT NULL DEFAULT 1,
       media_dir TEXT NOT NULL,
       creator_peer_id TEXT,
+      description TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 

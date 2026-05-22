@@ -64,6 +64,7 @@ export interface Group {
   durable: boolean;
   media_dir: string;
   creator_peer_id: string | null;
+  description: string | null;
   created_at: string;
 }
 
