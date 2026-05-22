@@ -92,6 +92,8 @@ External references:
 
 ### Access control
 
+> **DEFERRED FROM V0 — tracked under `sync-aeb` (P3).** The design below is preserved as the spec to follow whenever ACL is picked up again. Rationale for the deferral (no adversary on a single-machine single-user tool; daemon-side identity enforcement `sync-cg8` is also deferred, so policing group access without policing identity is incoherent; everything *around* "blocked" — role, visibility, allowed, per-thread ACL — was already deferred to v1) lives in the v0 handoff at `.claude/handoffs/2026-05-23-group-policy-v0-phases-1-2-dx2.md` section 4.5 and is summarized in `docs/group-sync-integrity.md` section 8. Reconsider when untrusted/autonomous agents, multi-user daemons, or sensitive groups arrive.
+
 - **All groups public by default.** No `groups.visibility` column.
 - **Per-peer / per-session blocks via `group_acl`:**
 

@@ -21,6 +21,9 @@ Use this skill when a Claude agent needs local agent messaging through `synchron
 - If the default alias collides with an existing active group alias, retry `bridge_join_group` with a unique `alias`.
 - To change your alias inside a single group after joining, use `bridge_rename_in_group`. It is scoped to your own peer — admin or other-peer renames are not supported in v0.
 - When a freed alias is reclaimed by a different peer (for example after a respawn), the daemon emits a `group_member_alias_reclaimed` event so observers can tell respawn from impersonation.
+- **Threads.** To reply into a Slack-style thread, pass `in_reply_to: <event_id>` to `bridge_send_group`. The daemon normalizes reply-to-reply, so threads stay one level deep — you can pass any event_id in the thread and the stored `parent_event_id` will be the root. To read a thread, pass `thread_of: <root_event_id>` to `bridge_group_history`; root + replies come back in order. Without `thread_of`, history returns the main channel only (thread replies hidden).
+- **Mentions.** Use `@alias` in a group message body to direct attention. Only mentioned peers get pushed in the main channel; in a thread, the root author and prior thread posters are pushed along with new mentions. Inbox delivery is unchanged — every active member gets an inbox row regardless. Unresolved aliases come back in a non-fatal `warnings: [{token, reason: "alias_not_in_group"}]` field on the send response; the message still goes through. If you see warnings, consider whether to apologize, retry with a corrected alias, or proceed.
+- **Group descriptions are CLI-only.** Agents can read `description` via `bridge_list_groups` but cannot set it via MCP; the human operator manages descriptions via `synchronize group describe`.
 - Prefer MCP tools over CLI fallback. If MCP tools are unavailable or registration fails, report the MCP failure instead of continuing with shell commands.
 - CLI fallback creates terminal peers only; it does not attach a Claude channel subscription and cannot produce auto-prompt notifications. If you use CLI fallback, explicitly tell the user that real-time Claude channel messages will not work and that only inbox polling/checking will work.
 - Treat `bridge_inbox` as the durable fallback even if channel notifications are missed.
@@ -33,11 +36,13 @@ synchronize register --name NAME --purpose "what this session is doing"
 synchronize peers
 synchronize dm PEER_ID "message"
 synchronize inbox --ack
-synchronize group create GROUP --as NAME
+synchronize group create GROUP --as NAME [--description "topic"]
+synchronize group describe GROUP "topic"      # or --clear to wipe
 synchronize group join GROUP --as NAME
 synchronize group join GROUP --as NAME --fresh
-synchronize group send GROUP --as NAME "message"
-synchronize group history GROUP --as NAME
+synchronize group rename GROUP NEW_ALIAS --as NAME
+synchronize group send GROUP --as NAME [--in-reply-to EVENT_ID] "message"
+synchronize group history GROUP --as NAME [--thread-of EVENT_ID]
 synchronize media share GROUP FILE --description "description"
 synchronize media list GROUP --query TEXT
 synchronize media get MEDIA_ID
