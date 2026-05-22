@@ -1,10 +1,9 @@
-# Session handoff — Group policy v0: design, Phase 1, Phase 2, dx2 TUI suffix
+# Session handoff — Group policy v0: design + Phases 1, 2, 3a, 3b, 3d + dx2 TUI
 
 **Date:** 2026-05-23
 **Continuation of:** `2026-05-22-web-chat-ui-vim-colors-toasts.md`
 **Integration branch:** `worktree-plan-group-policy-v0` (worktree at `.claude/worktrees/plan-group-policy-v0/`)
-**Integration tip:** `342128e`
-**Status:** Phases 1, 2, and the TUI half of dx2 shipped on the integration branch. Master is unchanged — the whole epic merges back in one bundle when Phase 3 lands.
+**Status:** Phases 1, 2, 3a, 3b, 3d shipped on the integration branch. Phase 3c (ACL/blocks) intentionally deferred — see section 4.5. dx2 TUI half shipped; web half blocked on `sync-jix`. Master is unchanged; the integration branch is ready for a bundle merge once you've reviewed the diff.
 
 ---
 
@@ -41,6 +40,11 @@ All four branches still exist locally. The integration branch fast-forwarded thr
 ## 3. Commits on the integration branch (newest first)
 
 ```
+<this commit>  docs(handoff): group policy v0 — full epic recap, 3c deferred
+<3d>  feat(groups): description metadata + describe CLI + topic line in RoomHeader  [sync-6kc]
+<3b>  feat(groups): mention-aware + thread-aware notification fanout              [sync-6kt]
+<3a>  feat(groups): Slack-style threads — parent_event_id + thread_of + in_reply_to  [sync-1vi]
+d132572   docs(handoff): group policy v0 — phases 1, 2, and dx2 TUI complete  (this file, earlier revision)
 342128e  feat(tui): render alias#<suffix> in synchronize top peer listing  [sync-dx2]
 282ee3e  fix(groups): case-insensitive name collision + ephemeral media-dir cleanup  [sync-49i]
 871aa79  docs(plan): group policy v0 design (epic sync-l91)
@@ -49,7 +53,7 @@ All four branches still exist locally. The integration branch fast-forwarded thr
 813b5e3  feat(hooks): auto-register Claude and Pi agent sessions with daemon  (already on master)
 ```
 
-Tests: **27 pass, 0 fail** at the integration tip.
+Tests at the current tip: **33 pass, 0 fail** across 7 test files. Typecheck clean.
 
 ---
 
@@ -83,12 +87,16 @@ Full design at `session-tracker/plan-group-policy-v0.md` (committed as `871aa79`
   | thread reply | root_author ∪ thread_posters ∪ new mentions | all members |
   | group_joined/left/alias_reclaimed | none | all members |
 
-### Access control (Phase 3c)
+### Access control (Phase 3c) — **deferred from v0**
 
-- **All groups public by default** in v0; no `groups.visibility` column.
-- **CLI-only admin** via privileged daemon-host commands (`synchronize group block/allow/acl`). No MCP tools touch ACL.
-- New `group_acl(group_id, key_type, key_value, status)` table. `key_type ∈ {peer_id, host_session_id}`.
-- Block effect: group visible in `listGroups`, ops return 403.
+The plan-doc design (`group_acl` table + CLI-only admin + 403 on blocked routes) is unchanged; we chose not to ship it. Rationale recorded explicitly so a future iteration doesn't have to redo the thinking:
+
+- **No adversary to defend against.** Single-machine, single-user tool. The user controls every agent.
+- **It contradicts the v0 trust posture.** We already chose not to enforce identity at the daemon (`sync-cg8` deferred to P3 with the rationale "we are the hostile direct REST caller use case"). Policing group access without policing identity is incoherent.
+- **The plan already deferred everything *around* it to v1.** Without `role`, `visibility`, `allowed`, or per-thread ACL, shipping just `blocked` leaves a half-finished concept sitting in the schema.
+- **Cheap to add later.** One table + one index, one `ensureNotBlocked` helper called from ~5 routes, three CLI subcommands. Nothing in 3a/3b/3d locks the door — schemas/touchpoints stay clean.
+
+**Reconsider when** an adversary appears: untrusted/autonomous agents, multi-user daemon, or compliance-style "secrets" groups other agents shouldn't peek into. `sync-aeb` stays OPEN at P3 with a deferral note; design intact in `session-tracker/plan-group-policy-v0.md`.
 
 ### Deferred to v1
 
@@ -131,67 +139,87 @@ Commit: `342128e`.
 - **`synchronize top`** renders `session_name#<suffix>` for every peer row. Suffix is `host_session_id[0:6]` when bound, `peer_id[0:4]` otherwise.
 - Web UI half of dx2 is **structurally blocked by `sync-jix`** (`DaemonDataSource` is still a throwing stub). When `sync-jix` lands, the same `peerDisplayName` helper applies.
 
+### Phase 3a — Slack-style threads (`sync-1vi`, closed)
+
+- **Schema:** `events.parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE` + `idx_events_group_parent_event(group_id, parent_event_id, event_id)`.
+- **Send normalization:** `POST /groups/:name/messages` accepts `in_reply_to`; daemon resolves to the thread root via `resolveThreadParent` (reply-to-reply collapses to original root). Threads stay one level deep.
+- **History filter:** `GET /groups/:name/history?thread_of=<root>` returns root + replies in chronological order. Without `thread_of`, main channel hides thread replies (`parent_event_id IS NULL`).
+- **Validation:** `thread_of` must point to a root event in the same group (rejects non-root and non-existent); `in_reply_to` must reference an event in the group.
+- **Surfaces:** `bridge_send_group` + `bridge_group_history` MCP tools gain optional thread params; `synchronize group send … --in-reply-to N` and `… history … --thread-of N` CLI flags.
+- **Tests:** thread normalization, default-history filter, validation rejections.
+
+### Phase 3b — Mentions + notification routing (`sync-6kt`, closed)
+
+- **Schema:** `events.mentions_json TEXT` — JSON array of resolved peer_ids at send time.
+- **Resolver:** `resolveMentions` parses `@token` against active `group_members.alias`. Unresolved → non-fatal `warnings: [{token, reason: "alias_not_in_group"}]` on the send response. Message still sends.
+- **Push routing** (matches the spec routing table exactly):
+  - Main channel → mentioned peers only.
+  - Thread reply → root author ∪ prior thread posters (via `computeThreadParticipants`) ∪ this-message mentions; sender excluded.
+  - Roster events (`group_joined` / `group_left` / `group_member_renamed` / `group_member_alias_reclaimed`) → **no push**.
+- **Inbox fanout:** messages still hit every active member (unchanged). Roster events **now also hit every active member's inbox** via `fanoutRosterEventToInbox`. Durable visibility for the membership timeline.
+- **Decision recorded:** media-share push was *not* rescoped — it still pushes to all active members. Spec didn't list media in the routing table; left for a future pass if it matters.
+- **Tests:** mention resolution + warnings + main-channel push isolation; thread reply push reaches root author + thread posters + new mentions; roster events land in inboxes without pushing. One existing `messaging.test.ts` assertion updated because roster events now show up in inboxes.
+
+### Phase 3d — Group description metadata (`sync-6kc`, closed)
+
+- **Schema:** `groups.description TEXT` nullable.
+- **REST:** `POST /groups` accepts optional `description`; new `PATCH /groups/:name` with `{description?: string | null}` — `null` or empty/whitespace string clears.
+- **CLI:** `synchronize group create … --description TEXT` plus a new `synchronize group describe NAME DESCRIPTION | --clear` subcommand.
+- **Web UI:** `Room.description?: string` added to the data type; `RoomHeader` renders a `.room-topic` line below the meta row when present. Styled in `extra.css`. Empty case is a no-op, so MockDataSource consumers stay unaffected until `DaemonDataSource` (`sync-jix`) lands.
+- **Test:** round-trip create-with-description → listGroups → patch overwrite → null clear → whitespace normalize → plain-create defaults to null.
+
 ---
 
 ## 6. Beads board state — group policy epic (`sync-l91`)
 
 ```
-sync-l91 [epic] Group policy v0  ........................ open
+sync-l91 [epic] Group policy v0  ........................ closed
 ├── ✓ sync-2l1  Phase 1: identity & join hardening
 ├── ✓ sync-49i  Phase 2: bug cluster
-├── ○ sync-1vi  Phase 3a: Slack-style threads             ← NEXT
-├── ○ sync-6kt  Phase 3b: mentions + notification routing (depends on sync-1vi)
-├── ○ sync-aeb  Phase 3c: ACL / blocks (CLI-only admin)
-└── ○ sync-6kc  Phase 3d: group description metadata
+├── ✓ sync-1vi  Phase 3a: Slack-style threads
+├── ✓ sync-6kt  Phase 3b: mentions + notification routing
+├── ○ sync-aeb  Phase 3c: ACL / blocks (CLI-only admin)        ← P3, deferred
+└── ✓ sync-6kc  Phase 3d: group description metadata
 
-Follow-ups filed during this session:
-○ sync-dx2  Render alias#<suffix> in TUI and web UI            <-- CLOSED (TUI done; web blocked on sync-jix)
+Follow-ups still open:
+○ sync-aeb  ACL/blocks — deferred from v0; design intact; reconsider when multi-user, untrusted agents, or sensitive groups appear
 ○ sync-cg8  Daemon-side identity enforcement for self-scoped mutations (P3, deferred)
+○ sync-dx2 (web half)  Render alias#<suffix> in web UI — gated on sync-jix (DaemonDataSource)
+○ sync-jix DaemonDataSource implementation (gating sync-dx2 web half + future web rendering of description, threads, mentions)
 
 Closed this session:
-✓ sync-0ql  Design agent session correlation hooks   (verified shipped in 813b5e3)
-✓ sync-buz  Implement agent session hook bindings    (verified shipped in 813b5e3)
-✓ sync-wyx  Add daemon-backed host session bindings  (verified shipped in 813b5e3)
-✓ sync-9e0  Implement Claude Code session hook       (verified shipped in 813b5e3)
-✓ sync-gt8  Move Pi session correlation              (verified shipped in 813b5e3)
-✓ sync-fl6  Design launch wrappers                   (verified shipped in 813b5e3)
-✓ sync-7fq  Preserve correct tool attribution        (verified shipped in 813b5e3)
-✓ sync-rwy  Avoid duplicate CLI peers                (verified fixed by existing code)
-✓ sync-0oc  Improve top/status duplicate display     (superseded by sync-dx2)
+✓ sync-l91  Group policy v0 epic                       (closed with 3c explicitly out-of-scope)
+✓ sync-2l1  Phase 1 identity hardening
+✓ sync-49i  Phase 2 bug cluster
+✓ sync-1vi  Phase 3a Slack-style threads
+✓ sync-6kt  Phase 3b mentions + notification routing
+✓ sync-6kc  Phase 3d group description metadata
+✓ sync-dx2  TUI suffix rendering                       (web half remains open under sync-dx2 / sync-jix)
+✓ sync-0ql  Design agent session correlation hooks    (verified shipped in 813b5e3)
+✓ sync-buz, sync-wyx, sync-9e0, sync-gt8, sync-fl6, sync-7fq  Hook epic children (all verified)
+✓ sync-rwy  CLI duplicate peers                       (verified fixed by existing code)
+✓ sync-0oc  top/status duplicate display              (superseded by sync-dx2)
 ```
 
 ---
 
-## 7. What's next — Phase 3a (sync-1vi)
+## 7. What's next — bundle merge to master
 
-The natural next claim. Scope per the plan doc:
+The integration branch is feature-complete for v0 (less 3c, which is deferred by design). Recommended next move:
 
-**Schema**
-
-```sql
-ALTER TABLE events ADD COLUMN parent_event_id INTEGER REFERENCES events(event_id);
-CREATE INDEX idx_events_group_parent_event ON events (group_id, parent_event_id, event_id);
+```bash
+cd .claude/worktrees/plan-group-policy-v0
+git log --oneline master..HEAD     # review the bundle
+bun test && bun run typecheck      # final sanity (expect 33 pass)
+git checkout master
+git merge --no-ff worktree-plan-group-policy-v0 -m "merge group policy v0 epic (sync-l91)"
 ```
 
-**API**
+After the merge:
 
-- `bridge_send_group({ name, message, in_reply_to? })` — daemon normalizes `parent_event_id`: if `target = events[in_reply_to]`, `parent_event_id = target.parent_event_id ?? target.event_id` (collapses reply-to-reply to root).
-- `bridge_group_history({ name, thread_of? })` — when `thread_of` is set, return root + replies in chronological order; when unset, exclude thread replies from main-channel history.
-
-**Files to touch**
-
-- `src/db.ts` — column + index (no migration ceremony, no production data)
-- `src/daemon.ts` — `POST /groups/:name/messages` parent normalization; `GET /groups/:name/history` filter
-- `src/api/groups.ts` — `sendGroupMessage` and `getGroupHistory` shapes
-- `src/mcp/tools/groups.ts` — tool input schemas
-- `tests/api.test.ts` — normalization, thread filter, main-channel exclusion
-
-**What's intentionally *not* in 3a**
-
-- Notification routing for thread replies — that's Phase 3b (`sync-6kt`).
-- Per-thread ACL — v1.
-
-Phase 3b is bundled tightly with 3a (shares the `notifySubscribers` rewrite). Recommend keeping them as adjacent worktrees with the same base.
+- The four phase worktrees (`phase1-…`, `phase2-…`, `sync-dx2-tui-suffix`, `plan-group-policy-v0`) can be removed with `git worktree remove --force`.
+- The 3c follow-up lives on as `sync-aeb` at P3; reconsider when an adversary actually appears.
+- `sync-jix` becomes the next natural target — wiring `DaemonDataSource` unlocks the web half of dx2 and surfaces threads/mentions/descriptions in the web UI.
 
 ---
 
@@ -207,12 +235,15 @@ Phase 3b is bundled tightly with 3a (shares the `notifySubscribers` rewrite). Re
 
 ```
 $ bun test
-27 pass, 0 fail, 145 expect() calls
-Ran 27 tests across 7 files
+33 pass, 0 fail, 179 expect() calls
+Ran 33 tests across 7 files
 ```
 
-New tests added this session (all in `tests/api.test.ts`):
+Typecheck (`bun run typecheck`) clean.
 
+New tests added this session (all in `tests/api.test.ts` unless noted):
+
+**Phase 1 / Phase 2 / dx2:**
 - alias reclaim audit (same-peer rejoin silent; different-peer reclaim emits event)
 - rename round-trip + collision rejection
 - `host_session_id` surfacing on `/peers?group=`
@@ -221,21 +252,53 @@ New tests added this session (all in `tests/api.test.ts`):
 - ephemeral media-dir purged on daemon restart
 - summary peers carry `host_session_id` + `peerDisplayName` composes suffix
 
+**Phase 3a (threads):**
+- thread replies collapse to root and main-channel history excludes them
+- `thread_of` rejects non-root and non-existent events; `in_reply_to` rejects orphan target
+
+**Phase 3b (mentions + routing):** uses a local `Bun.serve` push sink so we can assert per-peer push counts, not just inbox writes
+- group message mentions resolve to peer_ids and main-channel push reaches only mentioned peers; non-mentioned peers still get inbox rows; unresolved tokens surface in `warnings`
+- thread reply push reaches root author + prior thread posters + new mentions; sender never pushes to self
+- roster events (rename + leave) land in every active member's inbox but never push
+- one assertion in `tests/messaging.test.ts` updated to filter inbox rows by `type === "group_message"` because roster events now appear in inboxes
+
+**Phase 3d (description):**
+- description persists at create (with whitespace trim), surfaces in `listGroups`, mutable via `PATCH /groups/:name`, null/empty clears, plain-create defaults to null
+
 ---
 
 ## 10. Continuation pointers
 
-To start Phase 3a from a fresh session:
-
 ```bash
-# Enter the integration worktree (or create a fresh Phase 3a worktree from it)
 cd .claude/worktrees/plan-group-policy-v0
-git log --oneline -1     # should be 342128e
-bun test                  # should pass 27/27
-bd update sync-1vi --claim
-# spin a new worktree branched off integration tip; implement; ff-merge back.
+git log --oneline master..HEAD   # see the full bundle
+bun test                          # 33 pass
+bun run typecheck                 # clean
 ```
 
-Key context: design plan at `session-tracker/plan-group-policy-v0.md`. The notification routing decisions in section "Mentions & notification routing" are Phase 3b — do not implement in 3a; 3a is purely storage + query.
+To merge to master:
 
-When the whole epic is done (Phases 3a/3b/3c/3d), merge `worktree-plan-group-policy-v0` into master in one bundle.
+```bash
+git checkout master
+git merge --no-ff worktree-plan-group-policy-v0 -m "merge group policy v0 epic (sync-l91)"
+```
+
+Key references that should survive this session:
+
+- `session-tracker/plan-group-policy-v0.md` — the design doc. Still accurate. 3c section is the design we explicitly chose not to ship; keep it as the spec for when `sync-aeb` is picked up.
+- Routing matrix in section 4 above — the source of truth for who-pushes-where.
+- `peerDisplayName` in `src/cli/render/summary.ts` — the shared suffix helper for any future renderer.
+- `resolveMentions` + `computeThreadParticipants` + `fanoutRosterEventToInbox` in `src/daemon.ts` — the three helpers that encode the routing matrix; touch these together if you ever rework fanout.
+
+## 11. Decisions taken along the way (not re-derivable from code)
+
+- **Alias is freed on leave, not permanently bound to a peer.** Supports respawn. Reclaim event distinguishes respawn from impersonation.
+- **Display suffix = `host_session_id[0:6]` if bound, else `peer_id[0:4]`.** Deterministic, not collision-resistant. CLI fallback peers are second-class on purpose.
+- **Daemon trusts request-body `peer_id` at v0** ("we are the hostile direct REST caller use case"). `sync-cg8` files the enforcement deferral.
+- **Threads are one level deep**, daemon collapses reply-to-reply to root. No nested-thread UI to design.
+- **`@mention` only governs push routing, not inbox visibility.** Inbox is always full-fanout for messages. Mentions are an attention signal, not an ACL.
+- **Roster events (joined/left/renamed/reclaimed) now fan out to all members' inboxes.** Push remains off for them. Lets agents reconstruct membership timeline on reconnect.
+- **Media share push was *not* rescoped.** Spec didn't cover media in the routing table; left as full-fanout. Revisit if it becomes noisy.
+- **Phase 3c (ACL) was deferred from v0 as a deliberate scoping call.** Rationale captured in section 4 above. Design intact in the plan doc.
+- **No migrations.** No production data; schema changes land in `CREATE TABLE` bodies; `make daemon-relaunch` wipes any local dev state.
+- **CLI verification was treated as sufficient.** User waived manual smoke; integration tests + typecheck are the bar.
