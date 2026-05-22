@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "synchronize-daemon",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "src/daemon.ts"],
+      "port": 47823,
+      "env": {
+        "SYNCHRONIZE_PORT": "47823",
+        "SYNCHRONIZE_HOME": "/tmp/synchronize-preview"
+      }
+    }
+  ]
+}
