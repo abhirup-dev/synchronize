@@ -351,21 +351,27 @@ test("groups support durable restart, ephemeral cleanup, aliases, fanout, and hi
     });
     expect(after.event.event_id).toBeGreaterThan(prior.event.event_id);
 
-    const aliceInbox = await json<{ events: Array<{ body: string | null }> }>(
+    const aliceInbox = await json<{ events: Array<{ type: string; body: string | null }> }>(
       daemon.baseUrl,
       `/peers/${encodeURIComponent(alice.peer.peer_id)}/inbox`,
     );
-    const carolInbox = await json<{ events: Array<{ body: string | null }> }>(
+    const carolInbox = await json<{ events: Array<{ type: string; body: string | null }> }>(
       daemon.baseUrl,
       `/peers/${encodeURIComponent(carol.peer.peer_id)}/inbox`,
     );
-    const bobInbox = await json<{ events: Array<{ body: string | null }> }>(
+    const bobInbox = await json<{ events: Array<{ type: string; body: string | null }> }>(
       daemon.baseUrl,
       `/peers/${encodeURIComponent(bob.peer.peer_id)}/inbox`,
     );
-    expect(aliceInbox.events).toEqual([expect.objectContaining({ body: "after joins" })]);
-    expect(carolInbox.events).toEqual([expect.objectContaining({ body: "after joins" })]);
-    expect(bobInbox.events.some((event) => event.body === "after joins")).toBe(false);
+    // Roster events (joins/leaves/etc.) also land in member inboxes for durable
+    // visibility (phase 3b). Filter to group_message rows for the message
+    // assertions; the message itself should not push to its own sender (bob).
+    const aliceMessages = aliceInbox.events.filter((event) => event.type === "group_message");
+    const carolMessages = carolInbox.events.filter((event) => event.type === "group_message");
+    const bobMessages = bobInbox.events.filter((event) => event.type === "group_message");
+    expect(aliceMessages).toEqual([expect.objectContaining({ body: "after joins" })]);
+    expect(carolMessages).toEqual([expect.objectContaining({ body: "after joins" })]);
+    expect(bobMessages.some((event) => event.body === "after joins")).toBe(false);
   } finally {
     await daemon.stop();
   }

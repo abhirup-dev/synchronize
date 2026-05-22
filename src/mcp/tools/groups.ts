@@ -85,7 +85,11 @@ export function registerGroupTools(ctx: ToolContext): void {
     {
       description:
         "Send a durable message to a group. Pass in_reply_to=<event_id> to post into a Slack-style thread; " +
-        "the daemon normalizes reply-to-reply to the original thread root, so threads stay one level deep.",
+        "the daemon normalizes reply-to-reply to the original thread root, so threads stay one level deep. " +
+        "Use @alias tokens in the body to mention members; in the main channel only mentioned peers get push " +
+        "notifications. In a thread, the root author and prior thread posters are notified along with new " +
+        "mentions. Inbox delivery is unchanged — all active members get an inbox row regardless of mention " +
+        "status. Unresolved aliases are returned in a non-fatal warnings array.",
       inputSchema: { name: z.string().min(1), message: z.string().min(1), in_reply_to: z.number().int().positive().optional() },
     },
     async (args) => {

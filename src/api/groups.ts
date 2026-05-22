@@ -54,18 +54,27 @@ export function leaveGroup(client: ClientConfig, input: { name: string; peerId: 
   });
 }
 
+export interface MentionWarning {
+  token: string;
+  reason: "alias_not_in_group";
+}
+
 export function sendGroupMessage(
   client: ClientConfig,
   input: { name: string; senderPeerId: string; message: string; inReplyTo?: number },
-): Promise<{ event: Event }> {
-  return requestJson<{ event: Event }>(client, `/groups/${encodeURIComponent(input.name)}/messages`, {
-    method: "POST",
-    body: JSON.stringify({
-      sender_peer_id: input.senderPeerId,
-      message: input.message,
-      ...(input.inReplyTo !== undefined ? { in_reply_to: input.inReplyTo } : {}),
-    }),
-  });
+): Promise<{ event: Event; warnings?: MentionWarning[] }> {
+  return requestJson<{ event: Event; warnings?: MentionWarning[] }>(
+    client,
+    `/groups/${encodeURIComponent(input.name)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        sender_peer_id: input.senderPeerId,
+        message: input.message,
+        ...(input.inReplyTo !== undefined ? { in_reply_to: input.inReplyTo } : {}),
+      }),
+    },
+  );
 }
 
 export function getGroupHistory(

@@ -104,6 +104,7 @@ function migrate(db: Database): void {
       body TEXT,
       media_id TEXT,
       parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
+      mentions_json TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
