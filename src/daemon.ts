@@ -52,6 +52,32 @@ interface PeerRow {
   updated_at: string;
 }
 
+interface AgentSessionRow {
+  binding_id: string;
+  peer_id: string;
+  host_tool: string;
+  host_session_id: string;
+  host_session_file: string | null;
+  cwd: string | null;
+  pid: number | null;
+  source: string | null;
+  model: string | null;
+  agent_type: string | null;
+  metadata_json: string | null;
+  launch_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+}
+
+interface AgentSessionJoinedRow extends AgentSessionRow {
+  peer_tool: string;
+  peer_session_name: string;
+  peer_purpose: string | null;
+  peer_lease_expires_at: string;
+  peer_online: number;
+}
+
 interface EventRow {
   event_id: number;
   type: string;
@@ -332,6 +358,97 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     });
   }
 
+  if (request.method === "POST" && url.pathname === "/agent-sessions/register") {
+    const body = await readBody(request);
+    const hostTool = requireString(body, "host_tool");
+    const hostSessionId = requireString(body, "host_session_id");
+    const requestedPeerId = optionalString(body, "peer_id");
+    const sessionName = optionalString(body, "session_name") ?? `${hostTool}-${hostSessionId.slice(0, 8)}`;
+    const tool = optionalString(body, "tool") ?? hostTool;
+    const purpose = optionalString(body, "purpose");
+    const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
+    const machineId = optionalString(body, "machine_id") ?? hostname();
+    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const metadata = optionalObjectJson(body, "metadata");
+    const bindingId = `${hostTool}:${hostSessionId}`;
+
+    ctx.db.transaction(() => {
+      upsertPeer(ctx.db, {
+        peerId,
+        tool,
+        sessionName,
+        purpose: purpose ?? null,
+        machineId,
+        leaseExpiresAt,
+      });
+      ctx.db
+        .query(
+          `INSERT INTO agent_sessions (
+             binding_id, peer_id, host_tool, host_session_id, host_session_file, cwd, pid,
+             source, model, agent_type, metadata_json, launch_id, last_seen_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+           ON CONFLICT(host_tool, host_session_id) DO UPDATE SET
+             peer_id = excluded.peer_id,
+             host_session_file = excluded.host_session_file,
+             cwd = excluded.cwd,
+             pid = excluded.pid,
+             source = excluded.source,
+             model = excluded.model,
+             agent_type = excluded.agent_type,
+             metadata_json = excluded.metadata_json,
+             launch_id = excluded.launch_id,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             last_seen_at = excluded.last_seen_at`,
+        )
+        .run(
+          bindingId,
+          peerId,
+          hostTool,
+          hostSessionId,
+          optionalString(body, "host_session_file") ?? null,
+          optionalString(body, "cwd") ?? null,
+          optionalInteger(body, "pid") ?? null,
+          optionalString(body, "source") ?? null,
+          optionalString(body, "model") ?? null,
+          optionalString(body, "agent_type") ?? null,
+          metadata,
+          optionalString(body, "launch_id") ?? null,
+        );
+    })();
+
+    log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
+    return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
+  }
+
+  if (request.method === "GET" && url.pathname === "/agent-sessions") {
+    const hostTool = url.searchParams.get("tool");
+    const peerId = url.searchParams.get("peer_id");
+    const launchId = url.searchParams.get("launch_id");
+    return jsonResponse({ bindings: listAgentSessions(ctx.db, { hostTool, peerId, launchId }) });
+  }
+
+  const agentSessionGet = url.pathname.match(/^\/agent-sessions\/([^/]+)\/([^/]+)$/);
+  if (request.method === "GET" && agentSessionGet) {
+    const hostTool = decodeURIComponent(agentSessionGet[1] ?? "");
+    const hostSessionId = decodeURIComponent(agentSessionGet[2] ?? "");
+    return jsonResponse({ binding: getAgentSessionByHost(ctx.db, hostTool, hostSessionId) });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/rename") {
+    const body = await readBody(request);
+    const sessionName = requireString(body, "session_name");
+    const peerId =
+      optionalString(body, "peer_id") ??
+      findPeerByRequiredHostSession(ctx.db, requireString(body, "host_tool"), requireString(body, "host_session_id"));
+    ensurePeer(ctx.db, peerId);
+    ctx.db
+      .query("UPDATE peers SET session_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE peer_id = ?")
+      .run(sessionName, peerId);
+    log(`agent session renamed peer_id=${peerId} session_name=${sessionName}`);
+    return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
+  }
+
   if (request.method === "POST" && url.pathname === "/peers/register") {
     const body = await readBody(request);
     const sessionName = requireString(body, "session_name");
@@ -341,19 +458,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const machineId = optionalString(body, "machine_id") ?? hostname();
     const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
 
-    ctx.db
-      .query(
-        `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(peer_id) DO UPDATE SET
-           tool = excluded.tool,
-           session_name = excluded.session_name,
-           purpose = excluded.purpose,
-           machine_id = excluded.machine_id,
-           lease_expires_at = excluded.lease_expires_at,
-           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-      )
-      .run(peerId, tool, sessionName, purpose ?? null, machineId, leaseExpiresAt);
+    upsertPeer(ctx.db, {
+      peerId,
+      tool,
+      sessionName,
+      purpose: purpose ?? null,
+      machineId,
+      leaseExpiresAt,
+    });
 
     log(`peer registered peer_id=${peerId} session_name=${sessionName} tool=${tool} lease_expires_at=${leaseExpiresAt}`);
     return jsonResponse({ peer: getPeer(ctx.db, peerId) }, { status: 201 });
@@ -821,6 +933,24 @@ function optionalString(body: Record<string, unknown>, key: string): string | un
   return trimmed === "" ? undefined : trimmed;
 }
 
+function optionalInteger(body: Record<string, unknown>, key: string): number | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value)) {
+    throw new HttpError(400, "invalid_request", `${key} must be an integer`);
+  }
+  return value as number;
+}
+
+function optionalObjectJson(body: Record<string, unknown>, key: string): string | null {
+  const value = body[key];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new HttpError(400, "invalid_request", `${key} must be an object`);
+  }
+  return JSON.stringify(value);
+}
+
 function optionalNumberArray(body: Record<string, unknown>, key: string): number[] | undefined {
   const value = body[key];
   if (value === undefined || value === null) return undefined;
@@ -881,6 +1011,155 @@ function getPeer(db: Database, peerId: string): PeerRow {
 
 function ensurePeer(db: Database, peerId: string): void {
   getPeer(db, peerId);
+}
+
+function upsertPeer(
+  db: Database,
+  input: {
+    peerId: string;
+    tool: string;
+    sessionName: string;
+    purpose: string | null;
+    machineId: string;
+    leaseExpiresAt: string;
+  },
+): void {
+  db.query(
+    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(peer_id) DO UPDATE SET
+       tool = excluded.tool,
+       session_name = excluded.session_name,
+       purpose = excluded.purpose,
+       machine_id = excluded.machine_id,
+       lease_expires_at = excluded.lease_expires_at,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
+}
+
+function findPeerByHostSession(db: Database, hostTool: string, hostSessionId: string): string | undefined {
+  return db
+    .query<{ peer_id: string }, [string, string]>(
+      "SELECT peer_id FROM agent_sessions WHERE host_tool = ? AND host_session_id = ?",
+    )
+    .get(hostTool, hostSessionId)?.peer_id;
+}
+
+function findPeerByRequiredHostSession(db: Database, hostTool: string, hostSessionId: string): string {
+  const peerId = findPeerByHostSession(db, hostTool, hostSessionId);
+  if (!peerId) {
+    throw new HttpError(404, "agent_session_not_found", `Agent session not found: ${hostTool}/${hostSessionId}`);
+  }
+  return peerId;
+}
+
+function listAgentSessions(
+  db: Database,
+  input: { hostTool: string | null; peerId: string | null; launchId?: string | null },
+): ReturnType<typeof formatAgentSession>[] {
+  const now = new Date().toISOString();
+  if (input.launchId) {
+    return db
+      .query<AgentSessionJoinedRow, [string, string]>(
+        `${agentSessionSelectSql()} WHERE s.launch_id = ? ORDER BY s.updated_at DESC`,
+      )
+      .all(now, input.launchId)
+      .map(formatAgentSession);
+  }
+  if (input.hostTool && input.peerId) {
+    return db
+      .query<AgentSessionJoinedRow, [string, string, string]>(
+        `${agentSessionSelectSql()} WHERE s.host_tool = ? AND s.peer_id = ? ORDER BY s.updated_at DESC`,
+      )
+      .all(now, input.hostTool, input.peerId)
+      .map(formatAgentSession);
+  }
+  if (input.hostTool) {
+    return db
+      .query<AgentSessionJoinedRow, [string, string]>(
+        `${agentSessionSelectSql()} WHERE s.host_tool = ? ORDER BY s.updated_at DESC`,
+      )
+      .all(now, input.hostTool)
+      .map(formatAgentSession);
+  }
+  if (input.peerId) {
+    return db
+      .query<AgentSessionJoinedRow, [string, string]>(
+        `${agentSessionSelectSql()} WHERE s.peer_id = ? ORDER BY s.updated_at DESC`,
+      )
+      .all(now, input.peerId)
+      .map(formatAgentSession);
+  }
+  return db
+    .query<AgentSessionJoinedRow, [string]>(`${agentSessionSelectSql()} ORDER BY s.updated_at DESC`)
+    .all(now)
+    .map(formatAgentSession);
+}
+
+function getAgentSessionByHost(db: Database, hostTool: string, hostSessionId: string): ReturnType<typeof formatAgentSession> {
+  const now = new Date().toISOString();
+  const row = db
+    .query<AgentSessionJoinedRow, [string, string, string]>(
+      `${agentSessionSelectSql()} WHERE s.host_tool = ? AND s.host_session_id = ?`,
+    )
+    .get(now, hostTool, hostSessionId);
+  if (!row) throw new HttpError(404, "agent_session_not_found", `Agent session not found: ${hostTool}/${hostSessionId}`);
+  return formatAgentSession(row);
+}
+
+function getAgentSessionByPeer(db: Database, peerId: string): ReturnType<typeof formatAgentSession> {
+  const now = new Date().toISOString();
+  const row = db
+    .query<AgentSessionJoinedRow, [string, string]>(
+      `${agentSessionSelectSql()} WHERE s.peer_id = ? ORDER BY s.updated_at DESC LIMIT 1`,
+    )
+    .get(now, peerId);
+  if (!row) throw new HttpError(404, "agent_session_not_found", `Agent session not found for peer: ${peerId}`);
+  return formatAgentSession(row);
+}
+
+function agentSessionSelectSql(): string {
+  return `SELECT
+      s.*,
+      p.tool AS peer_tool,
+      p.session_name AS peer_session_name,
+      p.purpose AS peer_purpose,
+      p.lease_expires_at AS peer_lease_expires_at,
+      p.lease_expires_at > ? AS peer_online
+    FROM agent_sessions s
+    JOIN peers p ON p.peer_id = s.peer_id`;
+}
+
+function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { peer: PeerRow & { online: boolean } } {
+  return {
+    binding_id: row.binding_id,
+    peer_id: row.peer_id,
+    host_tool: row.host_tool,
+    host_session_id: row.host_session_id,
+    host_session_file: row.host_session_file,
+    cwd: row.cwd,
+    pid: row.pid,
+    source: row.source,
+    model: row.model,
+    agent_type: row.agent_type,
+    metadata_json: row.metadata_json,
+    launch_id: row.launch_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    last_seen_at: row.last_seen_at,
+    peer: {
+      peer_id: row.peer_id,
+      tool: row.peer_tool,
+      session_name: row.peer_session_name,
+      purpose: row.peer_purpose,
+      machine_id: "",
+      lease_expires_at: row.peer_lease_expires_at,
+      last_cursor: 0,
+      created_at: "",
+      updated_at: "",
+      online: Boolean(row.peer_online),
+    },
+  };
 }
 
 function getEvent(db: Database, eventId: number): EventRow {

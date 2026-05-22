@@ -13,6 +13,7 @@ Direct messages arrive through the Claude channel with the original message as c
 
 Available tools:
 - bridge_register: Register this session with a stable session_name before messaging.
+- bridge_rename_session: Rename this session's visible alias while preserving its peer_id.
 - bridge_list_peers: Discover peers and their peer_id values.
 - bridge_dm: Reply to or send a direct message to another peer.
 - bridge_inbox: Manually check durable inbox fallback if channel delivery was missed.
@@ -28,6 +29,7 @@ export async function resolveMcpRegisterPeerId(
   const envPeerId = process.env[ENV_PEER_ID];
   if (envPeerId) return envPeerId;
   if (state.peer?.session_name === sessionName && state.peer.tool === tool) return state.peer.peer_id;
+  if (tool === "claude" || tool === "pi") return undefined;
   return findReusablePeer(client, { sessionName, tool });
 }
 

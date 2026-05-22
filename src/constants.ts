@@ -15,6 +15,15 @@ export const ENV_PORT = "SYNCHRONIZE_PORT";
 export const ENV_TOKEN = "SYNCHRONIZE_TOKEN";
 export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
 export const ENV_PEER_ID = "SYNCHRONIZE_PEER_ID";
+export const ENV_SESSION_NAME = "SYNCHRONIZE_SESSION_NAME";
+export const ENV_HOOK_ENABLE = "SYNCHRONIZE_HOOK_ENABLE";
+// Temporary launch-scoped correlation key shared by `synchronize launch`,
+// Claude's SessionStart hook, and the spawned synchronize MCP process.
+// It is not a durable identity: peer_id remains synchronize's identity and
+// host_session_id remains the native Claude/Pi session identity. The daemon
+// stores this only so MCP can discover the proactively registered peer before
+// bridge_register has run; it should not be used as a session-store key.
+export const ENV_LAUNCH_ID = "SYNCHRONIZE_LAUNCH_ID";
 
 export const STARTUP_TIMEOUT_MS = 5_000;
 export const HEALTH_TIMEOUT_MS = 500;

@@ -1,6 +1,8 @@
 import * as dm from "./commands/dm.ts";
 import * as group from "./commands/group.ts";
+import * as hook from "./commands/hook.ts";
 import * as inbox from "./commands/inbox.ts";
+import * as launch from "./commands/launch.ts";
 import * as media from "./commands/media.ts";
 import * as peers from "./commands/peers.ts";
 import * as register from "./commands/register.ts";
@@ -41,6 +43,12 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "group":
       await group.run(rest);
+      return;
+    case "hook":
+      await hook.run(rest);
+      return;
+    case "launch":
+      await launch.run(rest);
       return;
     case "media":
       await media.run(rest);

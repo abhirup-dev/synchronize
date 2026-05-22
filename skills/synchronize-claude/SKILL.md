@@ -10,6 +10,9 @@ Use this skill when a Claude agent needs local agent messaging through `synchron
 ## Rules
 
 - Register before any messaging or group action: call `bridge_register` with a non-empty `session_name`.
+- If this session was launched through `synchronize launch claude`, call `bridge_whoami` first. It should show the native Claude session binding (`host_tool`, `host_session_id`), `peer_id`, and current `session_name`.
+- To change the visible alias without changing identity, use `bridge_rename_session` or call `bridge_register` with the desired `session_name` plus the known `host_tool` and `host_session_id`.
+- Treat `session_name` as a human alias, not a unique identity. If another session has the same name, use `peer_id` or `host_session_id` to disambiguate.
 - Include `purpose` when it helps other agents understand your role.
 - Use `bridge_dm` for direct messages.
 - Use `bridge_create_group`, `bridge_join_group`, `bridge_send_group`, and `bridge_group_history` for groups.

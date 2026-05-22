@@ -25,6 +25,24 @@ export interface Peer {
   online?: boolean;
 }
 
+export interface AgentSessionBinding {
+  binding_id: string;
+  peer_id: string;
+  host_tool: string;
+  host_session_id: string;
+  host_session_file: string | null;
+  cwd: string | null;
+  pid: number | null;
+  source: string | null;
+  model: string | null;
+  agent_type: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string;
+  peer: Peer;
+}
+
 export interface PiSyncClient {
   baseUrl: string;
   token: string | null;
@@ -73,6 +91,26 @@ export function registerPeer(
       session_name: input.sessionName,
       tool: input.tool,
       purpose: input.purpose,
+    }),
+  });
+}
+
+export function registerAgentSession(
+  client: PiSyncClient,
+  input: { peerId: string; sessionName: string; hostSessionId: string; cwd?: string },
+): Promise<{ binding: AgentSessionBinding }> {
+  return requestJson<{ binding: AgentSessionBinding }>(client, "/agent-sessions/register", {
+    method: "POST",
+    body: JSON.stringify({
+      peer_id: input.peerId,
+      session_name: input.sessionName,
+      tool: "pi",
+      purpose: "pi-coding-agent session",
+      host_tool: "pi",
+      host_session_id: input.hostSessionId,
+      cwd: input.cwd,
+      pid: process.pid,
+      source: "session_start",
     }),
   });
 }

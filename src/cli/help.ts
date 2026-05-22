@@ -17,6 +17,8 @@ Usage:
   synchronize media share GROUP FILE --description TEXT
   synchronize media list GROUP [--query TEXT]
   synchronize media get MEDIA_ID
+  synchronize hook claude-session
+  synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]
   synchronize --help
 
 Commands:
@@ -29,6 +31,8 @@ Commands:
   inbox     Read the registered CLI peer inbox; --ack acknowledges returned rows
   group     Create, join, leave, send to, and read group history
   media     Share, list, and inspect group media
+  hook      Internal host-agent hook ingestion commands
+  launch    Start an agent with synchronize daemon/env setup
 
 Environment:
   SYNCHRONIZE_HOME    Runtime directory (default: ~/.synchronize)

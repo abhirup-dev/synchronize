@@ -1,5 +1,6 @@
 node_modules/
 .demo-synchronize/
+.dev-synchronize/
 *.log
 .DS_Store
 

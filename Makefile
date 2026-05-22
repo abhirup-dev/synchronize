@@ -1,4 +1,5 @@
 DEMO_HOME := $(CURDIR)/.demo-synchronize
+DEV_SYNC_HOME := $(CURDIR)/.dev-synchronize
 SYNC_HOME ?= $(HOME)/.synchronize
 
 MCP_BIN      := synchronize-mcp
@@ -7,6 +8,7 @@ CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
 .PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch \
+        dev-daemon-kill dev-daemon-relaunch reinstall-books dev-reset \
         link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
@@ -48,6 +50,26 @@ daemon-kill:
 daemon-relaunch: daemon-kill
 	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bun run synchronize status
 
+dev-daemon-kill:
+	@if [ -f "$(DEV_SYNC_HOME)/daemon.json" ]; then \
+		pid=$$(jq -r '.pid // empty' "$(DEV_SYNC_HOME)/daemon.json"); \
+		if [ -n "$$pid" ] && kill -0 "$$pid" 2>/dev/null; then \
+			kill "$$pid" 2>/dev/null || true; \
+			sleep 0.5; \
+			kill -0 "$$pid" 2>/dev/null && kill -9 "$$pid" 2>/dev/null || true; \
+			echo "Killed dev synchronize daemon pid $$pid"; \
+		fi; \
+	fi
+	@rm -rf "$(DEV_SYNC_HOME)"
+	@echo "Removed dev synchronize runtime $(DEV_SYNC_HOME)"
+
+dev-daemon-relaunch: dev-daemon-kill link reinstall-books
+	@SYNCHRONIZE_HOME="$(DEV_SYNC_HOME)" bun run synchronize status
+
+reinstall-books: install-claude install-pi
+
+dev-reset: dev-daemon-relaunch
+
 # --- install targets -------------------------------------------------------
 
 link:
@@ -60,10 +82,11 @@ install-claude: link
 	@command -v claude >/dev/null || { echo "claude CLI not found"; exit 1; }
 	@claude mcp remove synchronize -s user 2>/dev/null || true
 	@claude mcp add synchronize $(MCP_BIN) --scope user -e SYNCHRONIZE_MCP_MODE=claude
+	@bun run scripts/claude-hooks-config.ts $(CLAUDE_DIR)/settings.json
 	@mkdir -p $(CLAUDE_DIR)/skills
 	@rm -rf $(CLAUDE_DIR)/skills/synchronize
 	@cp -R skills/synchronize-claude $(CLAUDE_DIR)/skills/synchronize
-	@echo "Claude: MCP server registered + skill copied to $(CLAUDE_DIR)/skills/synchronize"
+	@echo "Claude: MCP server registered + hook configured + skill copied to $(CLAUDE_DIR)/skills/synchronize"
 
 install-codex: link
 	@command -v codex >/dev/null || { echo "codex CLI not found"; exit 1; }
@@ -93,6 +116,7 @@ install-all: install-claude install-codex install-pi
 
 uninstall-claude:
 	@command -v claude >/dev/null && claude mcp remove synchronize -s user 2>/dev/null || true
+	@bun run scripts/claude-hooks-config.ts --remove $(CLAUDE_DIR)/settings.json
 	@rm -rf $(CLAUDE_DIR)/skills/synchronize
 	@echo "Claude: removed"
 

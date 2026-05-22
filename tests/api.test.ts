@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { listAgentSessions, registerAgentSession, renameAgentSession } from "../src/api/agent-sessions.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { registerPeer } from "../src/api/peers.ts";
 import { findReusablePeer } from "../src/api/status.ts";
@@ -11,6 +12,97 @@ const homes: string[] = [];
 
 afterAll(async () => {
   await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
+});
+
+test("agent session bindings upsert by native session and rename by peer id", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-agent-session-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const registered = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-native-1",
+      hostSessionFile: "/tmp/claude-native-1.jsonl",
+      cwd: "/tmp/project",
+      sessionName: "backend-review",
+      tool: "claude",
+      purpose: "claude session",
+      metadata: { source: "startup" },
+      launchId: "launch-abc",
+    });
+
+    expect(registered.binding.host_session_id).toBe("claude-native-1");
+    expect(registered.binding.peer.session_name).toBe("backend-review");
+    expect(registered.binding.peer.tool).toBe("claude");
+
+    const renamed = await renameAgentSession(daemon.client, {
+      peerId: registered.binding.peer_id,
+      sessionName: "backend-renamed",
+    });
+    expect(renamed.binding.peer_id).toBe(registered.binding.peer_id);
+    expect(renamed.binding.peer.session_name).toBe("backend-renamed");
+
+    const byPeer = await listAgentSessions(daemon.client, { peerId: registered.binding.peer_id });
+    expect(byPeer.bindings).toHaveLength(1);
+    expect(byPeer.bindings[0]).toMatchObject({
+      host_tool: "claude",
+      host_session_id: "claude-native-1",
+      peer_id: registered.binding.peer_id,
+    });
+
+    const byLaunch = await listAgentSessions(daemon.client, { launchId: "launch-abc" });
+    expect(byLaunch.bindings).toHaveLength(1);
+    expect(byLaunch.bindings[0]?.peer_id).toBe(registered.binding.peer_id);
+
+    const upserted = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-native-1",
+      sessionName: "backend-renamed",
+      tool: "claude",
+      cwd: "/tmp/project-2",
+    });
+    expect(upserted.binding.peer_id).toBe(registered.binding.peer_id);
+    expect(upserted.binding.cwd).toBe("/tmp/project-2");
+
+    const allClaude = await listAgentSessions(daemon.client, { hostTool: "claude" });
+    expect(allClaude.bindings).toHaveLength(1);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("duplicate session names remain distinct when host session ids differ", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-duplicate-session-name-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const first = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-duplicate-a",
+      sessionName: "same-alias",
+      tool: "claude",
+    });
+    const second = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-duplicate-b",
+      sessionName: "same-alias",
+      tool: "claude",
+    });
+
+    expect(first.binding.peer_id).not.toBe(second.binding.peer_id);
+    expect(first.binding.peer.session_name).toBe("same-alias");
+    expect(second.binding.peer.session_name).toBe("same-alias");
+
+    const bindings = await listAgentSessions(daemon.client, { hostTool: "claude" });
+    expect(bindings.bindings.map((binding) => binding.host_session_id).sort()).toEqual([
+      "claude-duplicate-a",
+      "claude-duplicate-b",
+    ]);
+  } finally {
+    await daemon.stop();
+  }
 });
 
 async function startDaemon(home: string): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {

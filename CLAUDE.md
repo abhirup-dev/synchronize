@@ -47,7 +47,6 @@ Key invariants:
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Task tracking via `bd` (beads). Don't use TodoWrite/markdown TODOs. Run `bd prime` for the full workflow.
-- Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
 
 ## Agent skills
 
