@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { appendFile, copyFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, extname, join } from "node:path";
 import {
@@ -15,7 +15,7 @@ import {
   MAX_PAGE_LIMIT,
   API_VERSION,
 } from "./constants.ts";
-import { openDatabase } from "./db.ts";
+import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
@@ -578,9 +578,27 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const creatorPeerId = optionalString(body, "creator_peer_id");
     const durable = body.ephemeral === true ? 0 : 1;
     if (creatorPeerId) ensurePeer(ctx.db, creatorPeerId);
-    const mediaDir = `${ctx.paths.mediaPath}/${name}`;
+    // media_dir is always lowercased so case-only differences cannot collide
+    // on case-insensitive filesystems (macOS APFS, Windows). Display name keeps
+    // original case via groups.name.
+    const mediaDir = `${ctx.paths.mediaPath}/${name.toLowerCase()}`;
 
     const groupId = ctx.db.transaction(() => {
+      // Case-insensitive collision check. SQLite's UNIQUE constraint is
+      // case-sensitive, so 'Foo' and 'foo' would otherwise both insert but
+      // share the same lowercased media_dir on disk.
+      const caseConflict = ctx.db
+        .query<{ name: string }, [string]>(
+          "SELECT name FROM groups WHERE LOWER(name) = LOWER(?)",
+        )
+        .get(name);
+      if (caseConflict) {
+        throw new HttpError(
+          409,
+          "group_exists",
+          `Group already exists (case-insensitive match): ${caseConflict.name}`,
+        );
+      }
       try {
         ctx.db
           .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id) VALUES (?, ?, ?, ?)")
@@ -1397,6 +1415,13 @@ async function main(): Promise<void> {
   await ensureDir(paths.mediaPath);
 
   const { db } = await openDatabase(paths.dbPath);
+  await pruneEphemeralGroups(db, async (mediaDir) => {
+    try {
+      await rm(mediaDir, { recursive: true, force: true });
+    } catch (error) {
+      log(`ephemeral media_dir cleanup failed: ${mediaDir}: ${formatError(error)}`);
+    }
+  });
   const startedAt = new Date().toISOString();
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);

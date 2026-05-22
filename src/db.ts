@@ -143,6 +143,24 @@ function migrate(db: Database): void {
 
     INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
   `);
+}
 
+/**
+ * Drop ephemeral group rows AND their media directories on daemon startup.
+ * Kept separate from migrate() so callers can pass an FS-cleanup callback —
+ * the schema layer should not know how media is laid out on disk.
+ */
+export async function pruneEphemeralGroups(
+  db: Database,
+  removeMediaDir: (mediaDir: string) => Promise<void>,
+): Promise<void> {
+  const rows = db
+    .query<{ media_dir: string }, []>("SELECT media_dir FROM groups WHERE durable = 0")
+    .all();
   db.exec("DELETE FROM groups WHERE durable = 0");
+  // Filesystem cleanup is best-effort; failure is logged by the caller via the
+  // callback. We do not want a stale dir to block daemon startup.
+  for (const row of rows) {
+    if (row.media_dir) await removeMediaDir(row.media_dir);
+  }
 }

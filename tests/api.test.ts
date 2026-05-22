@@ -262,6 +262,59 @@ test("rename_in_group renames the requesting peer and emits an audit event", asy
   }
 });
 
+test("group create rejects case-insensitive name collisions", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-group-case-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  try {
+    const owner = await registerPeer(daemon.client, { sessionName: "owner", tool: "cli" });
+    await createGroup(daemon.client, { name: "Standup", creatorPeerId: owner.peer.peer_id });
+    await expect(
+      createGroup(daemon.client, { name: "standup", creatorPeerId: owner.peer.peer_id }),
+    ).rejects.toThrow(/case-insensitive/);
+    await expect(
+      createGroup(daemon.client, { name: "STANDUP", creatorPeerId: owner.peer.peer_id }),
+    ).rejects.toThrow(/case-insensitive/);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("ephemeral groups and their media directories are purged on daemon restart", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-ephemeral-cleanup-"));
+  homes.push(home);
+  let daemon = await startDaemon(home);
+  const groupName = "scratchpad";
+  let mediaDir = "";
+  try {
+    const owner = await registerPeer(daemon.client, { sessionName: "owner", tool: "cli" });
+    const created = await createGroup(daemon.client, {
+      name: groupName,
+      ephemeral: true,
+      creatorPeerId: owner.peer.peer_id,
+    });
+    mediaDir = created.group.media_dir;
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    await mkdir(mediaDir, { recursive: true });
+    await writeFile(`${mediaDir}/marker.txt`, "hello");
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(mediaDir)).toBe(true);
+  } finally {
+    await daemon.stop();
+  }
+  daemon = await startDaemon(home);
+  try {
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(mediaDir)).toBe(false);
+    const groups = (await (await fetch(`${daemon.client.baseUrl}/groups`)).json()) as {
+      groups: Array<{ name: string }>;
+    };
+    expect(groups.groups.find((g) => g.name === groupName)).toBeUndefined();
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("events.type CHECK constraint rejects unknown event types at the storage layer", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-event-check-"));
   homes.push(home);
