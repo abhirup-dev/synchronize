@@ -87,7 +87,13 @@ interface EventRow {
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
+  mentions_json: string | null;
   created_at: string;
+}
+
+interface MentionWarning {
+  token: string;
+  reason: "alias_not_in_group";
 }
 
 interface EventSubscriber {
@@ -665,11 +671,16 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
             group.group_id,
             JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }),
           );
+        const reclaimEventId = Number(
+          ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id,
+        );
+        fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peerId);
       }
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
         .run(peerId, group.group_id, JSON.stringify({ alias, fresh }));
       const eventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, eventId, peerId);
       const firstEventId =
         ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
           ?.event_id ?? eventId;
@@ -738,7 +749,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            VALUES ('group_member_renamed', ?, ?, ?)`,
         )
         .run(peerId, group.group_id, JSON.stringify({ old_alias: oldAlias, new_alias: newAlias }));
-      return Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
+      return id;
     })();
 
     return jsonResponse({
@@ -762,7 +775,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(group.group_id, peerId);
       ctx.db.query("INSERT INTO events (type, sender_peer_id, group_id) VALUES ('group_left', ?, ?)").run(peerId, group.group_id);
-      return Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
+      return id;
     })();
     return jsonResponse({ ok: true, event: getEvent(ctx.db, eventId) });
   }
@@ -779,28 +794,51 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
+    const { peerIds: mentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    const mentionsJson = mentionedPeerIds.length > 0 ? JSON.stringify(mentionedPeerIds) : null;
 
-    let recipients: string[] = [];
+    let pushTargets: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
-        .query("INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id) VALUES ('group_message', ?, ?, ?, ?)")
-        .run(senderPeerId, group.group_id, message, parentEventId);
+        .query(
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+        )
+        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      recipients = ctx.db
+      // Durable inbox fanout: every active member except the sender, regardless
+      // of mention status — durable visibility is the same as v0; only push
+      // is mention/thread-aware.
+      const allRecipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
         )
         .all(group.group_id, senderPeerId)
         .map((recipient) => recipient.peer_id);
       const insertInbox = ctx.db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
-      for (const recipient of recipients) insertInbox.run(recipient, id);
+      for (const recipient of allRecipients) insertInbox.run(recipient, id);
+
+      // Push fanout. Main channel: mentioned peers only. Thread reply: root
+      // author ∪ prior thread posters ∪ this-message mentions, excluding the
+      // sender. Intersect with the active roster so a stale alias resolving
+      // to a since-left peer doesn't push to someone who can't see the group.
+      const mentionedActive = mentionedPeerIds.filter((peerId) => peerId !== senderPeerId && allRecipients.includes(peerId));
+      let pushSet: Set<string>;
+      if (parentEventId === null) {
+        pushSet = new Set(mentionedActive);
+      } else {
+        const threadPosters = computeThreadParticipants(ctx.db, parentEventId, senderPeerId);
+        pushSet = new Set([...threadPosters, ...mentionedActive].filter((peerId) => allRecipients.includes(peerId)));
+      }
+      pushTargets = [...pushSet];
       return id;
     })();
     const event = getEvent(ctx.db, eventId);
-    log(`group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} recipients=${recipients.length}`);
-    void notifySubscribers(ctx, recipients, event);
+    log(
+      `group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} thread=${parentEventId ?? "main"} unresolved=${warnings.length}`,
+    );
+    void notifySubscribers(ctx, pushTargets, event);
 
-    return jsonResponse({ event }, { status: 201 });
+    return jsonResponse(warnings.length > 0 ? { event, warnings } : { event }, { status: 201 });
   }
 
   const groupHistory = url.pathname.match(/^\/groups\/([^/]+)\/history$/);
@@ -1140,6 +1178,62 @@ function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): 
     throw new HttpError(404, "reply_target_not_found", `No such event in group: ${inReplyTo}`);
   }
   return target.parent_event_id ?? target.event_id;
+}
+
+const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+
+// Resolve @-mentions in a message body against the active member roster of
+// the group. Returns deduped resolved peer_ids and a warning per unresolved
+// token (no-op tokens, e.g. "@self", still warn — the daemon does not
+// special-case the sender). Send still succeeds; warnings are advisory.
+function resolveMentions(
+  db: Database,
+  groupId: number,
+  message: string,
+): { peerIds: string[]; warnings: MentionWarning[] } {
+  const tokens = new Set<string>();
+  for (const match of message.matchAll(MENTION_TOKEN_RE)) {
+    if (match[1]) tokens.add(match[1]);
+  }
+  if (tokens.size === 0) return { peerIds: [], warnings: [] };
+  const lookup = db.query<{ peer_id: string }, [number, string]>(
+    "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND alias = ?",
+  );
+  const peerIds: string[] = [];
+  const warnings: MentionWarning[] = [];
+  for (const token of tokens) {
+    const row = lookup.get(groupId, token);
+    if (row) peerIds.push(row.peer_id);
+    else warnings.push({ token: `@${token}`, reason: "alias_not_in_group" });
+  }
+  return { peerIds, warnings };
+}
+
+// Members of a thread for push fanout: the root author plus every distinct
+// peer who has posted into the thread so far (the new reply has not yet been
+// inserted at the time this is called). Excludes the current sender; callers
+// union in this-message mentions separately.
+function computeThreadParticipants(db: Database, rootEventId: number, sender: string): string[] {
+  const rows = db
+    .query<{ peer_id: string }, [number, number]>(
+      `SELECT DISTINCT sender_peer_id AS peer_id FROM events
+       WHERE (event_id = ? OR parent_event_id = ?) AND sender_peer_id IS NOT NULL`,
+    )
+    .all(rootEventId, rootEventId);
+  return rows.map((row) => row.peer_id).filter((peerId) => peerId !== sender);
+}
+
+// Roster events (group_joined / group_left / group_member_renamed /
+// group_member_alias_reclaimed) land in every active member's inbox for
+// durable visibility but never push. Excludes the actor.
+function fanoutRosterEventToInbox(db: Database, groupId: number, eventId: number, actor: string): void {
+  const recipients = db
+    .query<{ peer_id: string }, [number, string]>(
+      "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
+    )
+    .all(groupId, actor);
+  const insertInbox = db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
+  for (const recipient of recipients) insertInbox.run(recipient.peer_id, eventId);
 }
 
 function getPeer(db: Database, peerId: string): PeerRow {

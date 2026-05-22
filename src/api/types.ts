@@ -51,6 +51,7 @@ export interface Event {
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
+  mentions_json: string | null;
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;

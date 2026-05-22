@@ -11,6 +11,7 @@ import {
   renameInGroup,
   sendGroupMessage,
 } from "../src/api/groups.ts";
+import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { registerPeer } from "../src/api/peers.ts";
 import { findReusablePeer } from "../src/api/status.ts";
@@ -408,6 +409,190 @@ test("group member listings carry host_session_id when an agent_sessions binding
     expect(boundRow?.host_session_id).toBe("claude-host-xyz");
     expect(plainRow?.host_session_id).toBeNull();
   } finally {
+    await daemon.stop();
+  }
+});
+
+async function startPushSink(): Promise<{
+  url: (peerId: string) => string;
+  hits: Map<string, number>;
+  stop: () => Promise<void>;
+}> {
+  const hits = new Map<string, number>();
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request: Request) {
+      const peerId = new URL(request.url).pathname.slice(1);
+      hits.set(peerId, (hits.get(peerId) ?? 0) + 1);
+      return new Response("ok");
+    },
+  });
+  return {
+    url: (peerId: string) => `http://127.0.0.1:${server.port}/${peerId}`,
+    hits,
+    stop: async () => {
+      server.stop(true);
+    },
+  };
+}
+
+async function flushPushQueue(): Promise<void> {
+  // notifySubscribers fires-and-forgets; give Bun's event loop a tick to drain
+  // the fetch callbacks before asserting on the per-peer hit counters.
+  await Bun.sleep(80);
+}
+
+test("group message mentions resolve to peer_ids and main-channel push reaches only mentioned peers", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mentions-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  const sink = await startPushSink();
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "cli" });
+    const groupName = "mentions-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+    await joinGroup(daemon.client, { name: groupName, peerId: carol.peer.peer_id, alias: "carol" });
+
+    for (const peer of [alice, bob, carol]) {
+      await subscribeToEvents(daemon.client, {
+        peerId: peer.peer.peer_id,
+        callbackUrl: sink.url(peer.peer.peer_id),
+        token: "test-token",
+      });
+    }
+
+    const sent = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "ping @bob and @ghost",
+    });
+    await flushPushQueue();
+
+    expect(sent.event.mentions_json).toBe(JSON.stringify([bob.peer.peer_id]));
+    expect(sent.warnings).toEqual([{ token: "@ghost", reason: "alias_not_in_group" }]);
+
+    // Inbox: durable visibility regardless of mention.
+    const bobInbox = await readInbox(daemon.client, bob.peer.peer_id);
+    const carolInbox = await readInbox(daemon.client, carol.peer.peer_id);
+    expect(bobInbox.events.map((event) => event.event_id)).toContain(sent.event.event_id);
+    expect(carolInbox.events.map((event) => event.event_id)).toContain(sent.event.event_id);
+
+    // Push: mentioned only.
+    expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(1);
+    expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+    expect(sink.hits.get(alice.peer.peer_id) ?? 0).toBe(0);
+  } finally {
+    await sink.stop();
+    await daemon.stop();
+  }
+});
+
+test("thread reply push reaches root author and prior thread posters along with new mentions", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-thread-fanout-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  const sink = await startPushSink();
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "cli" });
+    const dave = await registerPeer(daemon.client, { sessionName: "dave", tool: "cli" });
+    const groupName = "thread-fanout-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    for (const peer of [alice, bob, carol, dave]) {
+      await joinGroup(daemon.client, { name: groupName, peerId: peer.peer.peer_id, alias: peer.peer.session_name });
+      await subscribeToEvents(daemon.client, {
+        peerId: peer.peer.peer_id,
+        callbackUrl: sink.url(peer.peer.peer_id),
+        token: "test-token",
+      });
+    }
+
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "thread start",
+    });
+    await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: bob.peer.peer_id,
+      message: "bob chimes in",
+      inReplyTo: root.event.event_id,
+    });
+    await flushPushQueue();
+    // Pre-reply state: alice was root author (no mentions); bob's reply
+    // should ping alice. Reset for clarity on the next assertion.
+    const aliceHitsBeforeReply = sink.hits.get(alice.peer.peer_id) ?? 0;
+    expect(aliceHitsBeforeReply).toBe(1);
+    expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(0);
+    expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+
+    // Carol replies and mentions dave. Push should reach: alice (root author),
+    // bob (prior thread poster), dave (new mention). Carol is sender, no push.
+    const carolReply = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: carol.peer.peer_id,
+      message: "carol replies @dave",
+      inReplyTo: root.event.event_id,
+    });
+    await flushPushQueue();
+
+    expect(carolReply.event.parent_event_id).toBe(root.event.event_id);
+    expect((sink.hits.get(alice.peer.peer_id) ?? 0) - aliceHitsBeforeReply).toBe(1);
+    expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(1);
+    expect(sink.hits.get(dave.peer.peer_id) ?? 0).toBe(1);
+    expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+  } finally {
+    await sink.stop();
+    await daemon.stop();
+  }
+});
+
+test("roster events land in every member's inbox but never push", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-roster-fanout-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  const sink = await startPushSink();
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "roster-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+
+    for (const peer of [alice, bob]) {
+      await subscribeToEvents(daemon.client, {
+        peerId: peer.peer.peer_id,
+        callbackUrl: sink.url(peer.peer.peer_id),
+        token: "test-token",
+      });
+    }
+
+    // Rename alice -> alice2: bob must see the rename event in inbox, neither party gets push.
+    await renameInGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, newAlias: "alice2" });
+    // Alice leaves: bob must see the leave event.
+    await leaveGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    await flushPushQueue();
+
+    const bobInbox = await readInbox(daemon.client, bob.peer.peer_id);
+    const types = bobInbox.events.map((event) => event.type);
+    expect(types).toContain("group_member_renamed");
+    expect(types).toContain("group_left");
+
+    // No push for any roster event.
+    expect(sink.hits.get(alice.peer.peer_id) ?? 0).toBe(0);
+    expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(0);
+  } finally {
+    await sink.stop();
     await daemon.stop();
   }
 });
