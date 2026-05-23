@@ -296,6 +296,88 @@ A few traps that already snared the previous session, worth flagging:
 
 ---
 
+## 7.5. Addendum — round 2 of the operator loop (same day, later)
+
+Resumed agent ran another customer-driven pass and shipped the deferred MCP-adapter work the original handoff prescribed. Captured here as one section rather than a new handoff because the methodology and live runtime state are unchanged — only the catalog has grown.
+
+### What got built and shipped in round 2
+
+| Commit | What |
+|---|---|
+| `87e9bfe` | **MCP adapter pass**: structured error envelope (`ApiError` + `wrap()` in `src/mcp/util.ts`), parsed `mentions: string[]` at MCP boundary, `event_ids: number[]` filter on `bridge_group_history`, `bridge_list_peers` description + response shape, Returns: blocks + Idempotency lines on every `bridge_*` tool. Closes `sync-2zl`, `sync-cp5`, `sync-si2`, `sync-nsk`, `sync-n53`. |
+| `416dad7` | **Pi resilience**: `extensions/pi-synchronize/src/client.ts` now retries-with-rediscover on transport errors (`fetch failed`, `ECONNREFUSED`, etc.), mirroring the Claude-side lazy-discovery pattern. Closes `sync-2sr` — Pi is no longer fragile to daemon port changes. |
+| `2a50588` | **Inline-event consistency**: `bridge_join_group` / `_leave_group` / `_rename_in_group` / `_share_media` inline `event` fields now also run through `formatEventForMcp` (bob caught the gap; previously their inline events still showed `mentions_json: null`). |
+| `44d52a0` | **Karel-driven description fix**: `bridge_group_history` description rewritten as an explicit 3-mode table (default / thread_of / event_ids) after Karel's canary signal flagged the inline prose as ambiguous. |
+
+### Live customer signals captured (and what they cost)
+
+- **Bob** (Opus, 2026-05-23 round 2): caught the inline-event `mentions_json` consistency gap on `bridge_join_group` — exactly the kind of bug a reviewer-eye finds on first pass. Real bug, fixed in same session.
+- **Alice** (Opus): produced a 9-point PR-grade review on the new shapes. 1 false alarm (mentions_json on read paths — already covered). 5 genuine findings filed as bd: `sync-hwg` (P2 — event.body dual-encoded across group_message vs system events, her sharpest catch), `sync-5t0` (resolved-alias receipt), `sync-spq` (drop dead `recipient_peer_id` on group_message), `sync-235` (`include_inactive` on list_peers), `sync-9cf` (doc send-time delivery resolution).
+- **Karel** (Pi GPT-5.4-mini): canary signal — *"bridge_group_history made me pause because I had to map when thread replies are hidden vs directly fetched."* That one sentence is the operating definition of small-model friction: the mode-disambiguation that Opus models infer in one tokenizer cycle costs Karel real cognitive load. The rewrite as a numbered-mode table directly addresses it.
+
+### Closed this round
+
+- `sync-2zl` P1, `sync-cp5` P2, `sync-si2` P2, `sync-nsk` P2, `sync-n53` P3 — MCP adapter pass.
+- `sync-2sr` P1 — Pi extension URL cache fix.
+
+### New bd issues filed
+
+| ID | Pri | Title |
+|---|---|---|
+| `sync-hwg` | P2 | `event.body` dual-encoded across event types (alice's sharpest catch) |
+| `sync-5t0` | P3 | Alias-to-peer-id resolution receipt on `bridge_send_group` |
+| `sync-spq` | P3 | Drop `recipient_peer_id` from `group_message` event shape |
+| `sync-235` | P3 | `bridge_list_peers` should support `include_inactive=true` |
+| `sync-9cf` | P3 | `bridge_send_group` description should note send-time delivery resolution |
+
+### Updated live runtime state
+
+```
+Daemon:    ~/.synchronize/daemon.json — port 58405 (unchanged)
+Peers:
+  - bob     Claude Opus    peer 612c79ac-15d7-4b37-9e02-73d1353a34a9   tmux sync-bob
+            (claude --resume f4b0b7f3-4260-425a-8396-e8c8d3da0d99)
+  - alice   Claude Opus    peer c1affbce-0e5c-445c-87fe-fc9131d1074f   tmux sync-alice
+            (claude --resume f699f130-3ecb-4024-b675-d9af51f0c494)
+  - karel   Pi GPT-5.4-mini peer 3fe46bbf-dcc0-4a6a-b8d3-647f2036f1ff   tmux sync-karel
+            (fresh; karel's prior peer was hard-deleted by sync-dmc — full re-register)
+  - operator Claude Opus   peer 507784dc / ac8be6ed (two zombies, harmless)
+
+Test groups now present: bob-mentions-verify (id=2), alice-mentions-verify (id=3)
+Latest event_id: ~110
+```
+
+The MCP code is reinstalled (`make install-claude install-pi`). All three agents are back online via `synchronize launch claude --resume <id>` / `synchronize launch pi --name karel`. All running the new MCP code; operator session itself is on the old MCP and would benefit from a session restart before the next round.
+
+### What's now next
+
+The handoff's original plan stands:
+
+3. ✅ MCP adapter pass (done this round)
+4. ✅ Interactive validation (done this round)
+5. ⏭ **Master merge — plain `--no-ff`**, preserving the phase-by-phase commit history. This is now the only remaining big step before v0 is unblocked. Pre-merge state:
+   - Tests: 26/26 in `tests/api.test.ts`, 3/3 in `tests/mcp-e2e.test.ts`, all Pi extension tests green.
+   - Open P1 bd issues: `sync-9e0`, `sync-gt8`, `sync-wyx`, `sync-7fq`, `sync-dmc` — all orthogonal to v0 group policy (host bindings + cascade-delete); v0 ships without them, but `sync-dmc` should not be forgotten because it's the bug that hard-deleted Karel.
+   - `sync-anr` (P2 port collision in tests) and `sync-pmi` (P3 slow tests) remain workarounds-applied; defer.
+   - Skill refactor under `sync-b8p` still deferred until after merge — touching skills now would conflict with the in-flight progressive-discovery refactor.
+
+After the master merge, the natural next loop iteration is `sync-hwg` (the event.body dual-encoding wart). That's a server-side change with a small surface area; it would be the cheapest follow-up customer pass for the next session.
+
+### One more meta-observation
+
+This round confirmed the central tenet from §1: **Karel is the canary, and her friction is rarer + more important than Opus structural critique.** Bob caught a code consistency bug. Alice produced design feedback. Karel produced one sentence: *"the split between main-channel history, thread_of, and event_ids made me pause."* That sentence was the highest-leverage friction signal of the round — because every future small-model agent who reads that description will pause too, and the rewrite fixes them all at once. **When tempted to over-engineer, ask "would Karel have asked for this?" and "would Karel struggle if we didn't ship this?" If both are no, defer.**
+
+---
+
+## 8. Self-evolving loop status — round count
+
+- Round 1 (handoff sections 0-7): server-side hot-reloadable improvements driven by bob/alice/karel customer feedback.
+- Round 2 (this addendum): MCP adapter pass + Pi resilience + inline-event consistency + Karel canary description fix.
+
+Open question for round 3: should the operator session itself be re-launched on the new MCP between rounds, so the orchestrator sees the new shapes too? Currently the operator runs on the *previous* round's MCP, which is fine for orchestration (DM/inbox semantics unchanged) but means the operator can't validate parsed-mentions or structured-error shapes from its own bridge_* calls. Cheap fix next round: restart the operator session first, then re-engage agents.
+
+---
+
 ## 7. One-paragraph summary if you only read one section
 
 You are `operator`, a Claude Code session orchestrating a live multi-agent test campaign against the `synchronize` daemon at port 58405. Three live agents (bob = Claude Opus, alice = Claude Opus, karel = Pi GPT-5.4-mini) are running in tmux and acting as customers of the MCP API. Your last session shipped 14 server-side hot-reloadable improvements based directly on their feedback (commits `576bef4` → `6e11a8e`), filed 9 bd issues for deferred work, and locked everything in `tests/api.test.ts` (26/26 pass). The next step is the **MCP adapter pass** — implement the deferred `sync-2zl` / `sync-cp5` / `sync-si2` / `sync-nsk` / `sync-n53` fixes, reinstall, relaunch agents, run **one more interactive validation round with Karel-as-canary**, then master-merge with plain `--no-ff`. The self-evolving loop is the product methodology: live agents are the customers, their friction is the spec, the daemon's hot-reloadability is what makes the loop tight enough to converge in a single session.
