@@ -1,7 +1,11 @@
 export const APP_NAME = "synchronize";
 export const API_VERSION = 1;
 export const DEFAULT_BIND_HOST = "127.0.0.1";
-export const DEFAULT_PORT = 0;
+// Stable default port so long-lived clients (Pi extension especially)
+// don't need to re-resolve the daemon URL on every restart. Tests still
+// pass SYNCHRONIZE_PORT=0 explicitly to get a random free port and avoid
+// collisions when many test processes spin up daemons in parallel.
+export const DEFAULT_PORT = 58405;
 export const DISCOVERY_FILE = "daemon.json";
 export const LOCK_DIR = "daemon.lock";
 export const DB_FILE = "synchronize.db";
@@ -36,3 +40,20 @@ export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
 export const MCP_HEARTBEAT_MS = 15_000;
+
+// Canonical event types stored on events.type. Adding a new type here also
+// requires updating the CHECK constraint in src/db.ts so the daemon stays in
+// sync with the schema. Use the EventType union below to make TS callers
+// type-safe at insert sites.
+export const EVENT_TYPES = [
+  "dm",
+  "group_created",
+  "group_joined",
+  "group_left",
+  "group_message",
+  "media_shared",
+  "media_changed",
+  "group_member_alias_reclaimed",
+  "group_member_renamed",
+] as const;
+export type EventType = (typeof EVENT_TYPES)[number];

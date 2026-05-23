@@ -50,6 +50,8 @@ export interface Event {
   group_id: number | null;
   body: string | null;
   media_id: string | null;
+  parent_event_id: number | null;
+  mentions_json: string | null;
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;
@@ -62,6 +64,7 @@ export interface Group {
   durable: boolean;
   media_dir: string;
   creator_peer_id: string | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -77,6 +80,7 @@ export interface GroupMember {
   left_at: string | null;
   session_name: string;
   tool: string;
+  host_session_id: string | null;
 }
 
 export interface MediaItem {
@@ -126,6 +130,7 @@ export interface SummaryResponse {
     pending_inbox: number;
     groups: number;
     updated_at: string;
+    host_session_id: string | null;
   }>;
   groups: Array<{
     name: string;

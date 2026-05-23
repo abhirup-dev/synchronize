@@ -1,6 +1,11 @@
 import { Database } from "bun:sqlite";
 import { dirname } from "node:path";
+import { EVENT_TYPES } from "./constants.ts";
 import { ensureDir } from "./fs.ts";
+
+// SQL-fragment list for the CHECK constraint on events.type. Single source of
+// truth for the canonical event-type set; see EVENT_TYPES in constants.ts.
+const EVENT_TYPE_CHECK = EVENT_TYPES.map((value) => `'${value}'`).join(",");
 
 export interface DatabaseHandle {
   db: Database;
@@ -70,6 +75,7 @@ function migrate(db: Database): void {
       durable INTEGER NOT NULL DEFAULT 1,
       media_dir TEXT NOT NULL,
       creator_peer_id TEXT,
+      description TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
@@ -92,12 +98,14 @@ function migrate(db: Database): void {
 
     CREATE TABLE IF NOT EXISTS events (
       event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN (${EVENT_TYPE_CHECK})),
       sender_peer_id TEXT,
       recipient_peer_id TEXT,
       group_id INTEGER REFERENCES groups(group_id) ON DELETE CASCADE,
       body TEXT,
       media_id TEXT,
+      parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
+      mentions_json TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
@@ -106,6 +114,9 @@ function migrate(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_events_recipient_event
       ON events (recipient_peer_id, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_group_parent_event
+      ON events (group_id, parent_event_id, event_id);
 
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
@@ -139,5 +150,43 @@ function migrate(db: Database): void {
     INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
   `);
 
+  // Migration v2 — peers.deleted_at for soft-delete (closes sync-dmc).
+  // DELETE /peers/:id used to cascade through group_members.peer_id and drop
+  // every group membership the peer ever had, killing the reclaim-audit
+  // trail and turning past events into orphans with null senders. Soft-delete
+  // by setting deleted_at; all peer reads filter `deleted_at IS NULL`, and
+  // re-register through upsertPeer clears the column to "resurrect" the peer.
+  const hasV2 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 2")
+    .get();
+  if (!hasV2) {
+    const hasDeletedAt = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('peers') WHERE name = 'deleted_at'")
+      .get();
+    if (!hasDeletedAt) {
+      db.exec(`ALTER TABLE peers ADD COLUMN deleted_at TEXT`);
+    }
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_deleted_at ON peers (deleted_at)`);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)`);
+  }
+}
+
+/**
+ * Drop ephemeral group rows AND their media directories on daemon startup.
+ * Kept separate from migrate() so callers can pass an FS-cleanup callback —
+ * the schema layer should not know how media is laid out on disk.
+ */
+export async function pruneEphemeralGroups(
+  db: Database,
+  removeMediaDir: (mediaDir: string) => Promise<void>,
+): Promise<void> {
+  const rows = db
+    .query<{ media_dir: string }, []>("SELECT media_dir FROM groups WHERE durable = 0")
+    .all();
   db.exec("DELETE FROM groups WHERE durable = 0");
+  // Filesystem cleanup is best-effort; failure is logged by the caller via the
+  // callback. We do not want a stale dir to block daemon startup.
+  for (const row of rows) {
+    if (row.media_dir) await removeMediaDir(row.media_dir);
+  }
 }

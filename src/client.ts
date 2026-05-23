@@ -58,6 +58,21 @@ export async function ensureDaemon(): Promise<ClientConfig> {
   return { baseUrl: discovery.baseUrl, token, paths, started: true };
 }
 
+// Carries the daemon's structured error envelope across the client boundary so
+// MCP/CLI consumers can branch on `code` instead of substring-matching the
+// human message. Bridges client-originated validation errors too — anything
+// thrown as ApiError gets a deterministic `code` in the MCP error JSON.
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function requestJson<T>(config: ClientConfig, path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
@@ -68,8 +83,9 @@ export async function requestJson<T>(config: ClientConfig, path: string, init: R
   const response = await fetch(`${config.baseUrl}${path}`, { ...init, headers });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    const code = body?.error?.code ?? "http_error";
     const message = body?.error?.message ?? `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    throw new ApiError(response.status, code, message);
   }
   return body as T;
 }

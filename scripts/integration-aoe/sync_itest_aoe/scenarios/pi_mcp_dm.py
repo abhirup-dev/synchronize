@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import time
@@ -16,6 +17,7 @@ from ..tmux import AgentPane, TmuxController, require_libtmux
 
 DEFAULT_PROVIDER = "openai-codex"
 DEFAULT_MODEL = "gpt-5.4-mini"
+DEFAULT_THINKING = "low"
 DEFAULT_AGENTS = 2
 
 
@@ -37,6 +39,7 @@ class PiMcpDmScenario:
         self.pi_sessions = self.run_dir / "pi-sessions"
         self.sync_home = self.run_dir / "synchronize-home"
         self.profile = args.profile or f"sync-pi-itest-{self.repo.name}-{self.run_id.lower()}"
+        self.profile_cleanup_prefix = args.profile or f"sync-pi-itest-{self.repo.name}-"
         self.agent_names = [f"{args.agent_prefix}-{index}" for index in range(1, args.agents + 1)]
         self.env = synchronize_env(self.sync_home)
         self.writer = ArtifactWriter(self.run_dir)
@@ -49,6 +52,7 @@ class PiMcpDmScenario:
             paths=PiPaths(pi_home=self.pi_home, pi_sessions=self.pi_sessions, sync_home=self.sync_home),
             provider=self.args.provider,
             model=self.args.model,
+            thinking=self.args.thinking,
             auth_source=self.args.auth_source,
             writer=self.writer,
         )
@@ -57,6 +61,7 @@ class PiMcpDmScenario:
         self.aoe_session_ids: dict[str, str] = {}
 
     def run(self) -> None:
+        self.cleanup_dirty_state_before_run()
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.pi_home.mkdir(parents=True, exist_ok=True)
         self.pi_sessions.mkdir(parents=True, exist_ok=True)
@@ -74,6 +79,7 @@ class PiMcpDmScenario:
                 "sync_home": str(self.sync_home),
                 "provider": self.args.provider,
                 "model": self.args.model,
+                "thinking": self.args.thinking,
                 "keep": self.args.keep,
             },
         )
@@ -81,10 +87,12 @@ class PiMcpDmScenario:
         try:
             self.preflight()
             self.pi_env.provision()
+            self.install_pi_packages()
             self.start_daemon()
             self.setup_aoe()
             self.discover_tmux_panes()
             self.wait_for_pi_registration()
+            self.warm_up_pi_agents()
             self.run_mcp_dm_smoke()
             self.collect_diagnostics("success")
             print(f"PASS real Pi AoE/tmux smoke run_id={self.run_id} log_dir={self.run_dir}")
@@ -93,6 +101,7 @@ class PiMcpDmScenario:
             raise
         finally:
             if self.args.keep:
+                self.prepare_kept_sessions_for_inspection()
                 print(f"KEEP enabled: AoE profile '{self.profile}' and run state remain at {self.run_dir}")
             else:
                 self.cleanup()
@@ -116,6 +125,10 @@ class PiMcpDmScenario:
     def start_daemon(self) -> None:
         result = self.runner.run(["bun", "run", "src/cli.ts", "status"], log_name="synchronize-status-start")
         self.writer.write_text("synchronize-status-start.txt", result.stdout)
+
+    def install_pi_packages(self) -> None:
+        result = self.runner.run(self.pi_env.install_package_command(), log_name="pi-package-install")
+        self.writer.write_text("pi-package-install.txt", result.stdout)
 
     def setup_aoe(self) -> None:
         self.aoe.launch_sessions(
@@ -174,7 +187,7 @@ class PiMcpDmScenario:
         return mapped
 
     def run_mcp_dm_smoke(self) -> None:
-        sender_name = self.wait_for_mcp_ready_agent()
+        sender_name = self.agent_names[0]
         sender = self.pi_peers[sender_name]
         other_peer_ids = [peer.peer_id for name, peer in self.pi_peers.items() if name != sender_name]
         if not other_peer_ids:
@@ -196,18 +209,32 @@ class PiMcpDmScenario:
             raise HarnessError("Pi transcript did not show bridge_whoami, bridge_list_peers, and bridge_dm MCP calls")
         self.tmux.capture_all_panes("after-pi-mcp-dm", self.agent_panes, lines=700)
 
-    def wait_for_mcp_ready_agent(self) -> str:
-        deadline = time.time() + self.args.mcp_timeout
+    def warm_up_pi_agents(self) -> None:
+        warmed: list[str] = []
+        for name in self.agent_names:
+            marker = f"PI_WARM_READY {self.run_id} {name}"
+            prompt = (
+                "This is a harness liveness check before the real workflow. "
+                "Do not use tools. Do not inspect files. Do not send messages. "
+                f"Reply exactly: {marker}"
+            )
+            self.tmux.send_pi_prompt(self.agent_panes[name], prompt)
+            self.wait_for_pane_text(name, marker, self.args.warmup_timeout, f"warmup-{name}")
+            warmed.append(name)
+        self.writer.write_json("pi-warmup-agents.json", warmed)
+        self.tmux.capture_all_panes("after-pi-warmup", self.agent_panes, lines=700)
+
+    def wait_for_pane_text(self, agent_name: str, text: str, timeout: int, label: str) -> None:
+        deadline = time.time() + timeout
+        pane = self.agent_panes[agent_name]
         while time.time() < deadline:
-            for name in self.agent_names:
-                pane = self.agent_panes[name]
-                output = self.tmux.capture_pane(pane.pane_id, lines=250)
-                if "MCP: 1/1" in output or "MCP: 1 servers connected" in output:
-                    self.writer.write_text("mcp-ready-agent.txt", name)
-                    return name
+            output = self.tmux.capture_pane(pane.pane_id, lines=700)
+            if text in output:
+                self.writer.write_text(f"{label}.txt", output)
+                return
             time.sleep(1)
-        self.tmux.capture_all_panes("mcp-timeout", self.agent_panes, lines=700)
-        raise HarnessError(f"No Pi pane reported MCP ready within {self.args.mcp_timeout}s")
+        self.tmux.capture_all_panes(f"{label}-timeout", self.agent_panes, lines=700)
+        raise HarnessError(f"Pi pane {agent_name} did not produce warmup marker within {timeout}s")
 
     def wait_for_dm_event(self, sender_peer_id: str, recipient_peer_ids: list[str], body: str) -> dict[str, Any]:
         deadline = time.time() + self.args.command_timeout
@@ -258,6 +285,15 @@ class PiMcpDmScenario:
         except Exception as error:  # noqa: BLE001
             self.writer.write_text(f"{label}-pi-transcripts-error.txt", str(error))
 
+    def prepare_kept_sessions_for_inspection(self) -> None:
+        if not self.agent_panes:
+            return
+        try:
+            self.tmux.expand_all_pi_tool_outputs(self.agent_panes)
+            self.tmux.capture_all_panes("kept-expanded", self.agent_panes, lines=1200)
+        except Exception as error:  # noqa: BLE001
+            self.writer.write_text("kept-expanded-error.txt", str(error))
+
     def cleanup(self) -> None:
         if shutil.which("aoe") is not None:
             self.aoe.cleanup(self.agent_names)
@@ -265,6 +301,53 @@ class PiMcpDmScenario:
         shutil.rmtree(self.pi_home, ignore_errors=True)
         shutil.rmtree(self.pi_sessions, ignore_errors=True)
         shutil.rmtree(self.sync_home, ignore_errors=True)
+
+    def cleanup_dirty_state_before_run(self) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        cleaned: dict[str, Any] = {"profiles": [], "tmux_sessions": [], "run_dirs": []}
+        stale_runs = self.find_stale_run_summaries()
+        for stale in stale_runs:
+            profile = str(stale.get("profile") or "")
+            run_dir_value = str(stale.get("run_dir") or "")
+            sync_home_value = str(stale.get("sync_home") or "")
+            run_dir = Path(run_dir_value) if run_dir_value else None
+            sync_home = Path(sync_home_value) if sync_home_value else None
+            if sync_home is not None:
+                stop_daemon(sync_home, self.writer)
+            if profile and shutil.which("aoe") is not None:
+                self.runner.run(["aoe", "profile", "delete", profile], check=False, log_name=f"cleanup-stale-profile-{profile}", input_text="y\n")
+                cleaned["profiles"].append(profile)
+            if run_dir is not None and run_dir != self.run_dir:
+                shutil.rmtree(run_dir, ignore_errors=True)
+                cleaned["run_dirs"].append(str(run_dir))
+        if self.run_dir.exists():
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+            cleaned["run_dirs"].append(str(self.run_dir))
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+        cleaned["tmux_sessions"] = self.tmux.kill_sessions_matching(self.cleanup_tmux_needles())
+        self.writer.write_json("pre-run-cleanup.json", cleaned)
+
+    def find_stale_run_summaries(self) -> list[dict[str, Any]]:
+        runs_dir = self.state_root / "runs"
+        if not runs_dir.exists():
+            return []
+        stale: list[dict[str, Any]] = []
+        for summary_path in runs_dir.glob("*/run-summary.json"):
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            if str(summary.get("repo") or "") != str(self.repo):
+                continue
+            profile = str(summary.get("profile") or "")
+            if profile == self.profile or profile.startswith(self.profile_cleanup_prefix):
+                stale.append(summary)
+        return stale
+
+    def cleanup_tmux_needles(self) -> list[str]:
+        base_prefix = str(self.args.agent_prefix).removesuffix("-agent")
+        compact_prefix = base_prefix.replace("-", "_")
+        return [base_prefix, compact_prefix, self.profile]
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -277,11 +360,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agent-prefix", default="sync-pi-agent", help="Prefix for Pi session titles.")
     parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="Pi provider to use for the smoke.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
+    parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=90, help="Seconds to wait for Pi extension auto-registration.")
-    parser.add_argument("--mcp-timeout", type=int, default=90, help="Seconds to wait for at least one Pi pane to report MCP ready.")
+    parser.add_argument("--warmup-timeout", type=int, default=90, help="Seconds to wait for each Pi pane to answer the liveness warmup prompt.")
     parser.add_argument("--command-timeout", type=int, default=180, help="Seconds to wait for real Pi MCP behavior.")
     args = parser.parse_args(argv)
     if args.agents < 2:

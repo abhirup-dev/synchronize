@@ -10,6 +10,10 @@ This directory contains local integration harnesses that exercise
 - `integration_pi.py` launches real interactive Pi agents through AoE and asks
   them to use the `synchronize` MCP tools. Use it for production-like workflow
   tests.
+- `integration_group_policy_tmux.py` runs deterministic fake-shell group-policy
+  workflows through AoE/tmux.
+- `integration_group_policy_pi.py` runs a real Pi MCP group-policy workflow
+  through AoE/tmux.
 
 Both harnesses treat AoE as the cockpit and tmux as the automation substrate.
 The executable files are stable wrappers; shared support code lives under
@@ -57,6 +61,60 @@ This lets multiple worktrees run different versions of the integration code
 without sharing Pi sessions, Pi config, AoE profiles, or synchronize daemon
 state.
 
+The harness installs `npm:pi-mcp-adapter` into the temporary Pi home before
+launching interactive panes. Pi's MCP adapter can connect lazily: a pane may
+start with `MCP: 0/1 servers` and still be healthy because tool metadata is
+cached and the first MCP tool call connects the server. Do not use startup
+`MCP: 1/1` as a readiness requirement. Use extension auto-registration,
+warmup prompt response, REST state changes, and transcript evidence instead.
+
+## Group Policy Workflows
+
+Use the deterministic CLI workflow first:
+
+```bash
+uv run scripts/integration_group_policy_tmux.py --command-timeout 45 --start-timeout 90
+```
+
+It covers group creation, descriptions, alias join/rename/leave/reclaim,
+threaded history, mention resolution, inbox routing, and roster events without
+depending on LLM behavior.
+
+Use the real Pi MCP workflow for production-like agent behavior:
+
+```bash
+uv run scripts/integration_group_policy_pi.py --command-timeout 180 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+```
+
+That scenario launches two Pi agents, waits for pi-extension registration,
+sends a no-tool liveness prompt to each pane, then asks the creator agent to
+create/join/send to a group and the replier agent to join/read history/send a
+thread reply containing an `@alias` mention. The harness validates group
+membership aliases, root and reply senders, `parent_event_id`, resolved
+`mentions_json`, and thread history through REST.
+
+For a three-agent threaded fanout check, use the thread-baton workflow:
+
+```bash
+uv run scripts/integration_thread_baton_pi.py --command-timeout 240 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+```
+
+It creates a group thread where alpha starts the baton, beta replies with an
+`@gamma` mention, gamma replies with an `@alpha` mention, then alpha posts a
+final validation reply with no mentions. The harness waits for beta and gamma
+to receive that no-mention validation event before prompting them to acknowledge
+it, which exercises thread participant push fanout separately from mention
+resolution.
+
+Run with `--keep` when you want to inspect the live AoE/tmux session:
+
+```bash
+uv run scripts/integration_group_policy_pi.py --keep
+aoe -p <profile> list
+aoe -p <profile> session attach <session-name>
+tmux capture-pane -p -S -500 -t <pane-id>
+```
+
 ## Extending Scenarios
 
 For a new workflow scenario:
@@ -80,6 +138,24 @@ prompt unless the scenario is specifically testing low-level identity handling.
 For normal workflows, make the agent use `bridge_whoami` for self-awareness and
 `bridge_list_peers` / group tools for discovery, then let REST assertions verify
 that it selected the right peer.
+
+Prompts must also be explicit about constraints and failure behavior. When a
+scenario sends prompts to multiple agents, each prompt should say:
+
+- which tools may be used and which surfaces are forbidden;
+- how many times a send/action should happen;
+- what the agent should do if a tool call fails or validation is unclear;
+- when to stop and report failure instead of retrying;
+- whether injected `<synchronize_event>` messages should be ignored or handled.
+
+Do not rely on the agent to infer these boundaries. Ambiguous prompts can create
+cyclic reply loops where agents keep treating each other's test messages as new
+instructions. Harnesses should detect this from synchronize state early, before
+manual pane inspection is needed. For group workflows, prefer a REST-side loop
+guard that polls recent group events and warns/fails if the same body or
+alternating bodies repeat above a small threshold in a short window. Pane
+captures and transcripts should explain the loop after the fact, not be the
+first place the maintainer learns it happened.
 
 ## tmux Input Caveat
 

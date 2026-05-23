@@ -86,10 +86,11 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     ctxRef = ctx;
     client = await discoverDaemon();
     const piSessionId = ctx.sessionManager?.getSessionId?.() ?? null;
-    const sessionName = resolveSessionName({
-      piSessionId,
-      envSessionName: process.env.SYNCHRONIZE_SESSION_NAME ?? null,
-    });
+    const envSessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? null;
+    const sessionName = resolveSessionName({ piSessionId, envSessionName });
+    log(
+      `identity resolved session_name=${sessionName} env_session_name=${envSessionName ?? "<unset>"} pi_session_id=${piSessionId ?? "<unset>"}`,
+    );
     const { peer } = await registerPeer(client, {
       tool: "pi",
       sessionName,

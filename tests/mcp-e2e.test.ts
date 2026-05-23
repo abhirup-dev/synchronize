@@ -32,7 +32,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     command: process.execPath,
     args: ["run", "src/mcp.ts"],
     cwd: process.cwd(),
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "codex" },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_MCP_MODE: "codex" },
     stderr: "pipe",
   });
 
@@ -109,7 +109,7 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     command: join(process.cwd(), "bin/synchronize-mcp"),
     args: [],
     cwd: process.cwd(),
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "claude" },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_MCP_MODE: "claude" },
     stderr: "pipe",
   });
 
@@ -139,6 +139,106 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     ]);
     expect(notifications[0]?.params.meta).not.toHaveProperty("source");
     expect(Object.values(notifications[0]?.params.meta ?? {}).every((value) => typeof value === "string")).toBe(true);
+  } finally {
+    await client.close();
+  }
+});
+
+test("MCP errors surface as structured {error:{code,message,status?}} JSON with isError; events expose parsed mentions; bridge_group_history accepts event_ids", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-structured-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-structured-test", version: "0.1.0" });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: ["run", "src/mcp.ts"],
+    cwd: process.cwd(),
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_MCP_MODE: "codex" },
+    stderr: "pipe",
+  });
+
+  function parseError(result: unknown): { code: string; message: string; status?: number } {
+    const typed = result as { content: Array<{ type: string; text?: string }>; isError?: boolean };
+    expect(typed.isError).toBe(true);
+    const text = typed.content?.find((item) => item.type === "text")?.text;
+    expect(typeof text).toBe("string");
+    const parsed = JSON.parse(text!);
+    return parsed.error;
+  }
+
+  try {
+    await client.connect(transport);
+
+    // Pre-register so the error comes from server-side, not from missing-peer guard.
+    const registered = parseToolText(
+      await client.callTool({ name: "bridge_register", arguments: { session_name: "structured-canary" } }),
+    ) as { peer: { peer_id: string } };
+
+    // 1. Server-side error preserves daemon `code`.
+    const joinErr = parseError(
+      await client.callTool({ name: "bridge_join_group", arguments: { name: "no-such-group" } }),
+    );
+    expect(joinErr.code).toBe("group_not_found");
+    expect(joinErr.status).toBe(404);
+    expect(joinErr.message).toMatch(/no-such-group/);
+
+    // 2. Client-side validation error uses invalid_argument code.
+    const dmErr = parseError(
+      await client.callTool({ name: "bridge_dm", arguments: { message: "no recipient" } }),
+    );
+    expect(dmErr.code).toBe("invalid_argument");
+    expect(dmErr.message).toMatch(/recipient_peer_id/);
+
+    // 3. Mentions parsing + event_ids filter.
+    await client.callTool({ name: "bridge_create_group", arguments: { name: "structured-room" } });
+    await client.callTool({ name: "bridge_join_group", arguments: { name: "structured-room", alias: "canary" } });
+    const sent = parseToolText(
+      await client.callTool({ name: "bridge_send_group", arguments: { name: "structured-room", message: "ping @canary nobody" } }),
+    ) as { event: { event_id: number; mentions: string[]; mentions_json?: unknown } };
+    // Sender is excluded from mentions even though @canary matched the sender — verified server-side.
+    expect(Array.isArray(sent.event.mentions)).toBe(true);
+    expect(sent.event.mentions).toEqual([]);
+    expect(sent.event).not.toHaveProperty("mentions_json");
+    expect(sent.event.event_id).toBeGreaterThan(0);
+
+    const fetched = parseToolText(
+      await client.callTool({
+        name: "bridge_group_history",
+        arguments: { name: "structured-room", event_ids: [sent.event.event_id] },
+      }),
+    ) as { events: Array<{ event_id: number; mentions: string[] }> };
+    expect(fetched.events.map((event) => event.event_id)).toEqual([sent.event.event_id]);
+    expect(Array.isArray(fetched.events[0]?.mentions)).toBe(true);
+
+    // 3b. Inline events on join/leave/rename/share also carry parsed mentions
+    //     (caught in 2026-05-23 customer round — bob noticed bridge_join_group's
+    //     inline event still had mentions_json, not mentions).
+    const joined = parseToolText(
+      await client.callTool({ name: "bridge_join_group", arguments: { name: "structured-room", alias: "canary" } }),
+    ) as { event: { mentions?: string[]; mentions_json?: unknown } | null };
+    // Idempotent re-join returns event=null, which is fine.
+    if (joined.event) {
+      expect(joined.event).not.toHaveProperty("mentions_json");
+      expect(Array.isArray(joined.event.mentions)).toBe(true);
+    }
+    const left = parseToolText(
+      await client.callTool({ name: "bridge_leave_group", arguments: { name: "structured-room" } }),
+    ) as { event: { mentions?: string[]; mentions_json?: unknown } | null };
+    if (left.event) {
+      expect(left.event).not.toHaveProperty("mentions_json");
+      expect(Array.isArray(left.event.mentions)).toBe(true);
+    }
+
+    // 4. event_ids + thread_of together → invalid_argument from the adapter.
+    const conflictErr = parseError(
+      await client.callTool({
+        name: "bridge_group_history",
+        arguments: { name: "structured-room", event_ids: [sent.event.event_id], thread_of: sent.event.event_id },
+      }),
+    );
+    expect(conflictErr.code).toBe("invalid_argument");
+
+    // Use `registered.peer.peer_id` to silence the unused-var lint.
+    expect(registered.peer.peer_id).toMatch(/^[0-9a-f-]+$/);
   } finally {
     await client.close();
   }

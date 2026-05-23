@@ -5,13 +5,17 @@ import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_SESSION_NAME } from "../../constant
 export async function run(argv: string[]): Promise<void> {
   const { target, name, rest } = parseLaunchArgs(argv);
   await ensureDaemon();
+  const launchId = crypto.randomUUID();
   const env = {
     ...process.env,
     [ENV_HOOK_ENABLE]: "1",
-    [ENV_LAUNCH_ID]: crypto.randomUUID(),
+    [ENV_LAUNCH_ID]: launchId,
     ...(name ? { [ENV_SESSION_NAME]: name } : {}),
   };
   const cmd = buildCommand(target, rest);
+  process.stderr.write(
+    `[synchronize launch] target=${target} name=${name ?? "<unset>"} launch_id=${launchId} ${ENV_SESSION_NAME}=${name ?? "<unset>"} argv=${JSON.stringify(cmd)}\n`,
+  );
   const child = spawn(cmd[0]!, cmd.slice(1), {
     stdio: "inherit",
     env,

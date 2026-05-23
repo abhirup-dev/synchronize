@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { appendFile, copyFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, extname, join } from "node:path";
 import {
@@ -15,7 +15,7 @@ import {
   MAX_PAGE_LIMIT,
   API_VERSION,
 } from "./constants.ts";
-import { openDatabase } from "./db.ts";
+import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
@@ -86,7 +86,14 @@ interface EventRow {
   group_id: number | null;
   body: string | null;
   media_id: string | null;
+  parent_event_id: number | null;
+  mentions_json: string | null;
   created_at: string;
+}
+
+interface MentionWarning {
+  token: string;
+  reason: "alias_not_in_group";
 }
 
 interface EventSubscriber {
@@ -108,6 +115,7 @@ interface GroupRow {
   durable: number;
   media_dir: string;
   creator_peer_id: string | null;
+  description: string | null;
   created_at: string;
 }
 
@@ -136,6 +144,7 @@ interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  host_session_id: string | null;
 }
 
 interface SummaryPeerRow {
@@ -147,6 +156,7 @@ interface SummaryPeerRow {
   pending_inbox: number;
   groups: number;
   updated_at: string;
+  host_session_id: string | null;
 }
 
 interface SummaryGroupRow {
@@ -221,7 +231,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   requireAuth(request, ctx);
 
   if (request.method === "GET" && url.pathname === "/status") {
-    const peerCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM peers").get()?.count ?? 0;
+    const peerCount = ctx.db
+      .query<{ count: number }, []>("SELECT COUNT(*) AS count FROM peers WHERE deleted_at IS NULL")
+      .get()?.count ?? 0;
     const groupCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM groups").get()?.count ?? 0;
     const eventCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM events").get()?.count ?? 0;
     return jsonResponse({
@@ -249,7 +261,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerTotals =
       ctx.db
         .query<{ total: number; online: number }, [string]>(
-          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers",
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers WHERE deleted_at IS NULL",
         )
         .get(now) ?? { total: 0, online: 0 };
     const groupTotals =
@@ -290,10 +302,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            p.lease_expires_at > ? AS online,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
-           p.updated_at
+           p.updated_at,
+           (SELECT s.host_session_id FROM agent_sessions s
+            WHERE s.peer_id = p.peer_id
+            ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id
          FROM peers p
          LEFT JOIN inbox i ON i.recipient_peer_id = p.peer_id
          LEFT JOIN group_members gm ON gm.peer_id = p.peer_id
+         WHERE p.deleted_at IS NULL
          GROUP BY p.peer_id
          ORDER BY online DESC, pending_inbox DESC, p.updated_at DESC
          LIMIT 12`,
@@ -494,7 +510,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       const group = getGroup(ctx.db, groupName);
       const rows = ctx.db
         .query<MemberRow & { online: number }, [string, number]>(
-          `SELECT gm.*, p.session_name, p.tool, p.lease_expires_at > ? AS online
+          `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
            FROM group_members gm
            JOIN peers p ON p.peer_id = gm.peer_id
            WHERE gm.group_id = ? AND gm.active = 1
@@ -507,6 +523,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       .query<PeerRow & { online: number }, [string]>(
         `SELECT *, lease_expires_at > ? AS online
          FROM peers
+         WHERE deleted_at IS NULL
          ORDER BY updated_at DESC, session_name ASC`,
       )
       .all(now);
@@ -517,9 +534,24 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "DELETE" && peerDelete) {
     const peerId = decodeURIComponent(peerDelete[1] ?? "");
     ensurePeer(ctx.db, peerId);
-    ctx.db.query("DELETE FROM peers WHERE peer_id = ?").run(peerId);
+    // Soft-delete: mark the peer as deleted but keep the row so
+    // group_members.peer_id remains resolvable and the reclaim audit trail
+    // survives. Flip every active group_member row to inactive so rosters
+    // and alias-collision checks don't trip over a peer that is no longer
+    // online. left_at uses the same timestamp the peer was deleted at.
+    ctx.db.transaction(() => {
+      const now = new Date().toISOString();
+      ctx.db
+        .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ? WHERE peer_id = ?")
+        .run(now, now, peerId);
+      ctx.db
+        .query(
+          "UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1",
+        )
+        .run(now, peerId);
+    })();
     ctx.subscribers.delete(peerId);
-    log(`peer deleted peer_id=${peerId}; removed any in-memory subscriber`);
+    log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
     return jsonResponse({ ok: true, peer_id: peerId });
   }
 
@@ -575,15 +607,34 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const body = await readBody(request);
     const name = requireGroupName(requireString(body, "name"));
     const creatorPeerId = optionalString(body, "creator_peer_id");
+    const description = optionalString(body, "description") ?? null;
     const durable = body.ephemeral === true ? 0 : 1;
     if (creatorPeerId) ensurePeer(ctx.db, creatorPeerId);
-    const mediaDir = `${ctx.paths.mediaPath}/${name}`;
+    // media_dir is always lowercased so case-only differences cannot collide
+    // on case-insensitive filesystems (macOS APFS, Windows). Display name keeps
+    // original case via groups.name.
+    const mediaDir = `${ctx.paths.mediaPath}/${name.toLowerCase()}`;
 
     const groupId = ctx.db.transaction(() => {
+      // Case-insensitive collision check. SQLite's UNIQUE constraint is
+      // case-sensitive, so 'Foo' and 'foo' would otherwise both insert but
+      // share the same lowercased media_dir on disk.
+      const caseConflict = ctx.db
+        .query<{ name: string }, [string]>(
+          "SELECT name FROM groups WHERE LOWER(name) = LOWER(?)",
+        )
+        .get(name);
+      if (caseConflict) {
+        throw new HttpError(
+          409,
+          "group_exists",
+          `Group already exists (case-insensitive match): ${caseConflict.name}`,
+        );
+      }
       try {
         ctx.db
-          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id) VALUES (?, ?, ?, ?)")
-          .run(name, durable, mediaDir, creatorPeerId ?? null);
+          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, ?, ?, ?, ?)")
+          .run(name, durable, mediaDir, creatorPeerId ?? null, description);
       } catch (error) {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }
@@ -594,7 +645,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
 
-    return jsonResponse({ group: getGroupById(ctx.db, groupId) }, { status: 201 });
+    return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
@@ -617,11 +668,60 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const alias = optionalString(body, "alias") ?? peer.session_name;
     const fresh = body.fresh === true;
 
+    // Idempotent short-circuit: if this peer is already an active member of
+    // the group with the exact same alias, return current state without
+    // emitting a phantom group_joined event. A naive re-join (e.g. "join
+    // just to be safe") would otherwise pollute the event stream and the
+    // inboxes of every other active member.
+    const existing = ctx.db
+      .query<{ alias: string; active: number }, [number, string]>(
+        "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (existing && existing.active === 1 && existing.alias === alias) {
+      return jsonResponse({
+        member: getGroupMember(ctx.db, group.group_id, peerId),
+        event: null,
+        already_member: true,
+      });
+    }
+
+    let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
     const joinEventId = ctx.db.transaction(() => {
+      // Detect alias reclaim: the most-recently-departed prior holder of this
+      // alias belongs to a different peer_id. Respawn (same peer_id) is not a
+      // reclaim. v0 storage policy frees the alias on leave; the event leaves
+      // an audit trail so observers can distinguish respawn from a new peer.
+      const previousHolder = ctx.db
+        .query<{ peer_id: string }, [number, string]>(
+          `SELECT peer_id FROM group_members
+           WHERE group_id = ? AND alias = ? AND active = 0
+           ORDER BY COALESCE(left_at, joined_at) DESC
+           LIMIT 1`,
+        )
+        .get(group.group_id, alias);
+      if (previousHolder && previousHolder.peer_id !== peerId) {
+        ctx.db
+          .query(
+            `INSERT INTO events (type, sender_peer_id, group_id, body)
+             VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
+          )
+          .run(
+            peerId,
+            group.group_id,
+            JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }),
+          );
+        const reclaimEventId = Number(
+          ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id,
+        );
+        fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peerId);
+        reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
+      }
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
         .run(peerId, group.group_id, JSON.stringify({ alias, fresh }));
       const eventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, eventId, peerId);
       const firstEventId =
         ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
           ?.event_id ?? eventId;
@@ -652,7 +752,80 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return eventId;
     })();
 
-    return jsonResponse({ member: getGroupMember(ctx.db, group.group_id, peerId), event: getEvent(ctx.db, joinEventId) });
+    return jsonResponse({
+      member: getGroupMember(ctx.db, group.group_id, peerId),
+      event: getEvent(ctx.db, joinEventId),
+      ...(reclaimed ? { reclaimed_from: reclaimed } : {}),
+    });
+  }
+
+  const groupRename = url.pathname.match(/^\/groups\/([^/]+)\/rename$/);
+  if (request.method === "POST" && groupRename) {
+    const group = getGroup(ctx.db, decodeURIComponent(groupRename[1] ?? ""));
+    const body = await readBody(request);
+    const peerId = requireString(body, "peer_id");
+    const newAlias = requireString(body, "new_alias");
+    ensureActiveMember(ctx.db, group.group_id, peerId);
+
+    const renameEventId = ctx.db.transaction(() => {
+      const current = ctx.db
+        .query<{ alias: string }, [number, string]>(
+          "SELECT alias FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(group.group_id, peerId);
+      const oldAlias = current?.alias ?? "";
+      if (oldAlias === newAlias) {
+        throw new HttpError(400, "no_op_rename", `Alias is already '${newAlias}'`);
+      }
+      try {
+        ctx.db
+          .query("UPDATE group_members SET alias = ? WHERE group_id = ? AND peer_id = ?")
+          .run(newAlias, group.group_id, peerId);
+      } catch (error) {
+        throw mapSqliteConstraint(
+          error,
+          "alias_collision",
+          `Alias '${newAlias}' is already active in group '${group.name}'.`,
+        );
+      }
+      ctx.db
+        .query(
+          `INSERT INTO events (type, sender_peer_id, group_id, body)
+           VALUES ('group_member_renamed', ?, ?, ?)`,
+        )
+        .run(peerId, group.group_id, JSON.stringify({ old_alias: oldAlias, new_alias: newAlias }));
+      const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
+      return id;
+    })();
+
+    return jsonResponse({
+      member: getGroupMember(ctx.db, group.group_id, peerId),
+      event: getEvent(ctx.db, renameEventId),
+    });
+  }
+
+  const groupPatch = url.pathname.match(/^\/groups\/([^/]+)$/);
+  if (request.method === "PATCH" && groupPatch) {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPatch[1] ?? ""));
+    const body = await readBody(request);
+    if (!("description" in body)) {
+      throw new HttpError(400, "invalid_request", "PATCH /groups/:name expects a body with at least one updatable field (description)");
+    }
+    const raw = body.description;
+    let description: string | null;
+    if (raw === null) {
+      description = null;
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      description = trimmed === "" ? null : trimmed;
+    } else {
+      throw new HttpError(400, "invalid_request", "description must be a string or null");
+    }
+    ctx.db
+      .query("UPDATE groups SET description = ? WHERE group_id = ?")
+      .run(description, group.group_id);
+    return jsonResponse({ group: formatGroup(getGroup(ctx.db, group.name)) });
   }
 
   const groupLeave = url.pathname.match(/^\/groups\/([^/]+)\/leave$/);
@@ -660,7 +833,17 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const group = getGroup(ctx.db, decodeURIComponent(groupLeave[1] ?? ""));
     const body = await readBody(request);
     const peerId = requireString(body, "peer_id");
-    ensureActiveMember(ctx.db, group.group_id, peerId);
+    // Idempotent: if the peer is not an active member, return ok without
+    // emitting a phantom group_left event. Mirrors bridge_join_group's
+    // already_member: true shape so the API stays consistent.
+    const currentMember = ctx.db
+      .query<{ active: number }, [number, string]>(
+        "SELECT active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (!currentMember || currentMember.active === 0) {
+      return jsonResponse({ ok: true, event: null, already_left: true });
+    }
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
@@ -670,7 +853,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(group.group_id, peerId);
       ctx.db.query("INSERT INTO events (type, sender_peer_id, group_id) VALUES ('group_left', ?, ?)").run(peerId, group.group_id);
-      return Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
+      return id;
     })();
     return jsonResponse({ ok: true, event: getEvent(ctx.db, eventId) });
   }
@@ -681,32 +866,70 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const body = await readBody(request);
     const senderPeerId = requireString(body, "sender_peer_id");
     const message = requireString(body, "message");
+    const inReplyTo = optionalInteger(body, "in_reply_to");
     if (message.length > MAX_MESSAGE_CHARS) {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
+    const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
+    const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    // Self-mentions are filtered out: `mentions_json` should reflect peers
+    // actually targeted by the mention semantics. Since the sender is always
+    // excluded from both push and inbox fanout, advertising a self-mention
+    // would mislead observers about who got notified.
+    const mentionedPeerIds = rawMentionedPeerIds.filter((peerId) => peerId !== senderPeerId);
+    const mentionsJson = mentionedPeerIds.length > 0 ? JSON.stringify(mentionedPeerIds) : null;
 
-    let recipients: string[] = [];
+    let pushTargets: string[] = [];
+    let allRecipients: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
-        .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_message', ?, ?, ?)")
-        .run(senderPeerId, group.group_id, message);
+        .query(
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+        )
+        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      recipients = ctx.db
+      // Durable inbox fanout: every active member except the sender, regardless
+      // of mention status — durable visibility is the same as v0; only push
+      // is mention/thread-aware.
+      allRecipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
         )
         .all(group.group_id, senderPeerId)
         .map((recipient) => recipient.peer_id);
       const insertInbox = ctx.db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
-      for (const recipient of recipients) insertInbox.run(recipient, id);
+      for (const recipient of allRecipients) insertInbox.run(recipient, id);
+
+      // Push fanout. Main channel: mentioned peers only. Thread reply: root
+      // author ∪ prior thread posters ∪ this-message mentions, excluding the
+      // sender. Intersect with the active roster so a stale alias resolving
+      // to a since-left peer doesn't push to someone who can't see the group.
+      const mentionedActive = mentionedPeerIds.filter((peerId) => peerId !== senderPeerId && allRecipients.includes(peerId));
+      let pushSet: Set<string>;
+      if (parentEventId === null) {
+        pushSet = new Set(mentionedActive);
+      } else {
+        const threadPosters = computeThreadParticipants(ctx.db, parentEventId, senderPeerId);
+        pushSet = new Set([...threadPosters, ...mentionedActive].filter((peerId) => allRecipients.includes(peerId)));
+      }
+      pushTargets = [...pushSet];
       return id;
     })();
     const event = getEvent(ctx.db, eventId);
-    log(`group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} recipients=${recipients.length}`);
-    void notifySubscribers(ctx, recipients, event);
+    log(
+      `group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} thread=${parentEventId ?? "main"} unresolved=${warnings.length}`,
+    );
+    void notifySubscribers(ctx, pushTargets, event);
 
-    return jsonResponse({ event }, { status: 201 });
+    // Always return `warnings` (and `delivery`) so consumers can destructure
+    // without optional-chaining. Default-undefined fields are a trap for
+    // LLM agents that may not write defensive code.
+    const delivery = {
+      pushed_to: pushTargets,
+      inbox_only: allRecipients.filter((peerId) => !pushTargets.includes(peerId)),
+    };
+    return jsonResponse({ event, warnings, delivery }, { status: 201 });
   }
 
   const groupHistory = url.pathname.match(/^\/groups\/([^/]+)\/history$/);
@@ -717,16 +940,137 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const member = ensureActiveMember(ctx.db, group.group_id, peerId);
     const limit = parseLimit(url.searchParams.get("limit"));
     const cursor = parseCursor(url.searchParams.get("cursor"));
+    const threadOf = parseOptionalPositiveInt(url.searchParams.get("thread_of"), "thread_of");
     const historyFrom = Math.max(member.history_from_event_id ?? 0, cursor + 1);
-    const rows = ctx.db
-      .query<EventRow, [number, number, number]>(
-        `SELECT * FROM events
-         WHERE group_id = ? AND event_id >= ?
-         ORDER BY event_id ASC
-         LIMIT ?`,
-      )
-      .all(group.group_id, historyFrom, limit);
+    let rows: EventRow[];
+    if (threadOf !== undefined) {
+      const root = ctx.db
+        .query<EventRow, [number, number]>("SELECT * FROM events WHERE event_id = ? AND group_id = ?")
+        .get(threadOf, group.group_id);
+      if (!root) throw new HttpError(404, "thread_root_not_found", `No such event in group: ${threadOf}`);
+      if (root.parent_event_id !== null) {
+        throw new HttpError(400, "thread_of_not_root", `thread_of must reference a thread root (event ${threadOf} is itself a reply)`);
+      }
+      rows = ctx.db
+        .query<EventRow, [number, number, number, number, number]>(
+          `SELECT * FROM events
+           WHERE group_id = ? AND event_id >= ? AND (event_id = ? OR parent_event_id = ?)
+           ORDER BY event_id ASC
+           LIMIT ?`,
+        )
+        .all(group.group_id, historyFrom, threadOf, threadOf, limit);
+    } else {
+      // Main-channel view augments each row with reply_count + last_reply_event_id
+      // so agents can discover threads without an extra per-event probe.
+      // This is the affordance that sync-0gl asked for: default history alone
+      // tells the caller which messages have replies and how to drill in.
+      type MainRow = EventRow & { reply_count: number; last_reply_event_id: number | null };
+      const mainRows = ctx.db
+        .query<MainRow, [number, number, number]>(
+          `SELECT e.*,
+                  (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
+                  (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id
+           FROM events e
+           WHERE e.group_id = ? AND e.event_id >= ? AND e.parent_event_id IS NULL
+           ORDER BY e.event_id ASC
+           LIMIT ?`,
+        )
+        .all(group.group_id, historyFrom, limit);
+      return jsonResponse({ events: mainRows, next_cursor: mainRows.at(-1)?.event_id ?? cursor });
+    }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
+  }
+
+  // GET /events/:event_id — single-event lookup with visibility enforcement.
+  // Asked for by bob and alice in the 2026-05-23 customer review: when a
+  // channel notification carries `event_id=22`, agents have no way to re-read
+  // that row to verify parent/mention/body fields without scrolling history.
+  const eventGet = url.pathname.match(/^\/events\/(\d+)$/);
+  if (request.method === "GET" && eventGet) {
+    const eventId = Number(eventGet[1]);
+    const peerId = url.searchParams.get("peer_id");
+    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const event = getEvent(ctx.db, eventId);
+    if (event.group_id !== null) {
+      // Group event: caller must be (or have been) a member of that group.
+      // Match the history endpoint's visibility model: history_from_event_id
+      // cuts off events the joiner shouldn't see.
+      const member = ctx.db
+        .query<{ history_from_event_id: number | null }, [number, string]>(
+          "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(event.group_id, peerId);
+      if (!member) throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+      if (event.event_id < (member.history_from_event_id ?? 0)) {
+        throw new HttpError(404, "event_not_found", `Event ${eventId} is before peer's history_from boundary`);
+      }
+    } else if (event.recipient_peer_id !== null) {
+      // DM: caller must be sender or recipient.
+      if (event.sender_peer_id !== peerId && event.recipient_peer_id !== peerId) {
+        throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+      }
+    }
+    return jsonResponse({ event });
+  }
+
+  // GET /threads/:root_event_id — single-call thread state: root + replies +
+  // participant alias list + last_event_id. Closes the gap alice flagged in
+  // the sustained-thread test ("I'd have to call group_history twice to pick
+  // up a stale thread"). Combines what bridge_group_history(thread_of=)
+  // returns with a derived participants list so callers can render a thread
+  // header without an extra roster call.
+  const threadGet = url.pathname.match(/^\/threads\/(\d+)$/);
+  if (request.method === "GET" && threadGet) {
+    const rootEventId = Number(threadGet[1]);
+    const peerId = url.searchParams.get("peer_id");
+    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const root = getEvent(ctx.db, rootEventId);
+    if (root.group_id === null) {
+      throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is a DM, not a group thread root`);
+    }
+    if (root.parent_event_id !== null) {
+      throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is itself a reply; pass the root event_id`);
+    }
+    const member = ctx.db
+      .query<{ history_from_event_id: number | null }, [number, string]>(
+        "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(root.group_id, peerId);
+    if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
+    if (rootEventId < (member.history_from_event_id ?? 0)) {
+      throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+    }
+    const replies = ctx.db
+      .query<EventRow, [number, number]>(
+        `SELECT * FROM events
+         WHERE group_id = ? AND parent_event_id = ?
+         ORDER BY event_id ASC`,
+      )
+      .all(root.group_id, rootEventId);
+    // Participants: deduped sender peer_ids across root + replies, with their
+    // current alias in the group (NULL when the peer has since left or never
+    // joined under an active alias). Mirrors what a thread header UI shows.
+    const senderIds = new Set<string>([root.sender_peer_id, ...replies.map((r) => r.sender_peer_id)].filter((s): s is string => s !== null));
+    const participants = [...senderIds].map((senderId) => {
+      const aliasRow = ctx.db
+        .query<{ alias: string; active: number }, [number, string]>(
+          "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(root.group_id!, senderId);
+      return {
+        peer_id: senderId,
+        alias: aliasRow?.alias ?? null,
+        active: aliasRow ? Boolean(aliasRow.active) : false,
+      };
+    });
+    const lastEventId = replies.length > 0 ? replies[replies.length - 1]!.event_id : rootEventId;
+    return jsonResponse({
+      root,
+      replies,
+      participants,
+      reply_count: replies.length,
+      last_event_id: lastEventId,
+    });
   }
 
   const groupMedia = url.pathname.match(/^\/groups\/([^/]+)\/media$/);
@@ -1003,8 +1347,118 @@ function parseCursor(raw: string | null): number {
   return value;
 }
 
+function parseOptionalPositiveInt(raw: string | null, label: string): number | undefined {
+  if (raw === null || raw === "") return undefined;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new HttpError(400, "invalid_request", `${label} must be a positive integer`);
+  }
+  return value;
+}
+
+// Normalize Slack-style thread parents to a single level: a reply to a reply
+// collapses to the original thread root. Returns the root event_id (always
+// the root, never a leaf), or throws if in_reply_to is not a visible event in
+// this group.
+function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): number {
+  const target = db
+    .query<{ event_id: number; group_id: number | null; parent_event_id: number | null; type: string }, [number]>(
+      "SELECT event_id, group_id, parent_event_id, type FROM events WHERE event_id = ?",
+    )
+    .get(inReplyTo);
+  if (!target || target.group_id !== groupId) {
+    throw new HttpError(404, "reply_target_not_found", `No such event in group: ${inReplyTo}`);
+  }
+  // Reject replies to non-message roster events (group_joined, group_left,
+  // group_member_renamed, group_member_alias_reclaimed, group_created,
+  // media_*). Bob flagged in the sustained-thread review that the spec
+  // didn't say what happens here — answer: it shouldn't be allowed, since
+  // those events have no "reply" semantic and routing rules (root_author
+  // ∪ thread_posters) become meaningless.
+  if (target.type !== "group_message") {
+    throw new HttpError(
+      400,
+      "reply_target_not_message",
+      `Cannot reply to event ${inReplyTo}: type is '${target.type}', not 'group_message'`,
+    );
+  }
+  return target.parent_event_id ?? target.event_id;
+}
+
+const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+
+// Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
+// Alice flagged this during the sustained-thread test: discussing proposed
+// syntax like `@peer:<uuid>` in prose produced false-positive
+// alias_not_in_group warnings for `@peer` / `@id` / `@alias`. Treating
+// backticked spans as code-not-prose mirrors how a reader interprets them.
+function stripBacktickedRegions(message: string): string {
+  // Fenced (```...```) first, then single (`...`). Replace with spaces of
+  // matching length so character positions don't shift (cheap correctness
+  // hedge in case anything downstream cares about positions).
+  const withoutFenced = message.replace(/```[\s\S]*?```/g, (m) => " ".repeat(m.length));
+  return withoutFenced.replace(/`[^`]*`/g, (m) => " ".repeat(m.length));
+}
+
+// Resolve @-mentions in a message body against the active member roster of
+// the group. Returns deduped resolved peer_ids and a warning per unresolved
+// token (no-op tokens, e.g. "@self", still warn — the daemon does not
+// special-case the sender). Send still succeeds; warnings are advisory.
+function resolveMentions(
+  db: Database,
+  groupId: number,
+  message: string,
+): { peerIds: string[]; warnings: MentionWarning[] } {
+  const tokens = new Set<string>();
+  const scannable = stripBacktickedRegions(message);
+  for (const match of scannable.matchAll(MENTION_TOKEN_RE)) {
+    if (match[1]) tokens.add(match[1]);
+  }
+  if (tokens.size === 0) return { peerIds: [], warnings: [] };
+  const lookup = db.query<{ peer_id: string }, [number, string]>(
+    "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND alias = ?",
+  );
+  const peerIds: string[] = [];
+  const warnings: MentionWarning[] = [];
+  for (const token of tokens) {
+    const row = lookup.get(groupId, token);
+    if (row) peerIds.push(row.peer_id);
+    else warnings.push({ token: `@${token}`, reason: "alias_not_in_group" });
+  }
+  return { peerIds, warnings };
+}
+
+// Members of a thread for push fanout: the root author plus every distinct
+// peer who has posted into the thread so far (the new reply has not yet been
+// inserted at the time this is called). Excludes the current sender; callers
+// union in this-message mentions separately.
+function computeThreadParticipants(db: Database, rootEventId: number, sender: string): string[] {
+  const rows = db
+    .query<{ peer_id: string }, [number, number]>(
+      `SELECT DISTINCT sender_peer_id AS peer_id FROM events
+       WHERE (event_id = ? OR parent_event_id = ?) AND sender_peer_id IS NOT NULL`,
+    )
+    .all(rootEventId, rootEventId);
+  return rows.map((row) => row.peer_id).filter((peerId) => peerId !== sender);
+}
+
+// Roster events (group_joined / group_left / group_member_renamed /
+// group_member_alias_reclaimed) land in every active member's inbox for
+// durable visibility but never push. Excludes the actor.
+function fanoutRosterEventToInbox(db: Database, groupId: number, eventId: number, actor: string): void {
+  const recipients = db
+    .query<{ peer_id: string }, [number, string]>(
+      "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
+    )
+    .all(groupId, actor);
+  const insertInbox = db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
+  for (const recipient of recipients) insertInbox.run(recipient.peer_id, eventId);
+}
+
 function getPeer(db: Database, peerId: string): PeerRow {
-  const peer = db.query<PeerRow, [string]>("SELECT * FROM peers WHERE peer_id = ?").get(peerId);
+  const peer = db
+    .query<PeerRow, [string]>("SELECT * FROM peers WHERE peer_id = ? AND deleted_at IS NULL")
+    .get(peerId);
   if (!peer) throw new HttpError(404, "peer_not_found", `Peer not found: ${peerId}`);
   return peer;
 }
@@ -1024,6 +1478,12 @@ function upsertPeer(
     leaseExpiresAt: string;
   },
 ): void {
+  // ON CONFLICT path also clears deleted_at — re-registering with a known
+  // peer_id resurrects a soft-deleted peer. The companion fixup below
+  // re-activates any group_members rows the peer still owns so a returning
+  // peer rejoins their old groups rather than having to re-issue join calls
+  // (which would fail with alias-taken if anyone reclaimed in the interim —
+  // resurrection is symmetric with the deletion that preceded it).
   db.query(
     `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
      VALUES (?, ?, ?, ?, ?, ?)
@@ -1033,6 +1493,7 @@ function upsertPeer(
        purpose = excluded.purpose,
        machine_id = excluded.machine_id,
        lease_expires_at = excluded.lease_expires_at,
+       deleted_at = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
 }
@@ -1228,10 +1689,15 @@ function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
 }
 
+const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool,
+  (SELECT s.host_session_id FROM agent_sessions s
+   WHERE s.peer_id = gm.peer_id
+   ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
+
 function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
   return db
-    .query<MemberRow, [number]>(
-      `SELECT gm.*, p.session_name, p.tool
+    .query<MemberRow & { host_session_id: string | null }, [number]>(
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ?
@@ -1243,8 +1709,8 @@ function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
   const member = db
-    .query<MemberRow, [number, string]>(
-      `SELECT gm.*, p.session_name, p.tool
+    .query<MemberRow & { host_session_id: string | null }, [number, string]>(
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ? AND gm.peer_id = ?`,
@@ -1257,7 +1723,7 @@ function getGroupMember(db: Database, groupId: number, peerId: string): Formatte
 function ensureActiveMember(db: Database, groupId: number, peerId: string): MemberRow {
   const member = db
     .query<MemberRow, [number, string]>(
-      `SELECT gm.*, p.session_name, p.tool
+      `SELECT ${MEMBER_SELECT_SQL}
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ? AND gm.peer_id = ? AND gm.active = 1`,
@@ -1323,6 +1789,13 @@ async function main(): Promise<void> {
   await ensureDir(paths.mediaPath);
 
   const { db } = await openDatabase(paths.dbPath);
+  await pruneEphemeralGroups(db, async (mediaDir) => {
+    try {
+      await rm(mediaDir, { recursive: true, force: true });
+    } catch (error) {
+      log(`ephemeral media_dir cleanup failed: ${mediaDir}: ${formatError(error)}`);
+    }
+  });
   const startedAt = new Date().toISOString();
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);

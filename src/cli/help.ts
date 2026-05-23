@@ -9,11 +9,13 @@ Usage:
   synchronize peers
   synchronize dm PEER MESSAGE
   synchronize inbox [--ack]
-  synchronize group create NAME --as SESSION_NAME [--ephemeral]
+  synchronize group create NAME --as SESSION_NAME [--ephemeral] [--description TEXT]
+  synchronize group describe NAME DESCRIPTION | --clear
   synchronize group join NAME --as SESSION_NAME [--alias ALIAS] [--fresh]
   synchronize group leave NAME --as SESSION_NAME
-  synchronize group send NAME --as SESSION_NAME MESSAGE
-  synchronize group history NAME --as SESSION_NAME
+  synchronize group rename NAME NEW_ALIAS --as SESSION_NAME
+  synchronize group send NAME --as SESSION_NAME [--in-reply-to EVENT_ID] MESSAGE
+  synchronize group history NAME --as SESSION_NAME [--thread-of EVENT_ID]
   synchronize media share GROUP FILE --description TEXT
   synchronize media list GROUP [--query TEXT]
   synchronize media get MEDIA_ID

@@ -24,6 +24,7 @@ class PiEnvironment:
         paths: PiPaths,
         provider: str,
         model: str,
+        thinking: str,
         auth_source: str | None,
         writer: ArtifactWriter,
     ) -> None:
@@ -31,6 +32,7 @@ class PiEnvironment:
         self.paths = paths
         self.provider = provider
         self.model = model
+        self.thinking = thinking
         self.auth_source = auth_source
         self.writer = writer
 
@@ -62,6 +64,7 @@ class PiEnvironment:
         settings = {
             "defaultProvider": self.provider,
             "defaultModel": self.model,
+            "defaultThinkingLevel": self.thinking,
             "packages": ["npm:pi-mcp-adapter"],
         }
         self.writer.write_json_at(self.paths.pi_home / "settings.json", settings)
@@ -91,6 +94,15 @@ class PiEnvironment:
             },
         )
 
+    def install_package_command(self) -> list[str]:
+        return [
+            "env",
+            f"PI_CODING_AGENT_DIR={self.paths.pi_home}",
+            "pi",
+            "install",
+            "npm:pi-mcp-adapter",
+        ]
+
     def command_for_session(self, name: str) -> str:
         env_parts = {
             "PI_CODING_AGENT_DIR": str(self.paths.pi_home),
@@ -110,6 +122,8 @@ class PiEnvironment:
                 self.provider,
                 "--model",
                 self.model,
+                "--thinking",
+                self.thinking,
                 "--mcp-config",
                 str(self.paths.pi_home / "mcp.json"),
                 "--extension",

@@ -1,6 +1,14 @@
 import { requestJson, type ClientConfig } from "../client.ts";
 import type { Event, EventSubscriptionRegistration } from "./types.ts";
 
+export function getEvent(
+  client: ClientConfig,
+  input: { eventId: number; peerId: string },
+): Promise<{ event: Event }> {
+  const params = new URLSearchParams({ peer_id: input.peerId });
+  return requestJson<{ event: Event }>(client, `/events/${input.eventId}?${params.toString()}`);
+}
+
 export function readEvents(
   client: ClientConfig,
   peerId: string,

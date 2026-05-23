@@ -59,6 +59,95 @@ uv run scripts/integration_tmux.py --log-dir /tmp/sync-itest
 Use `--keep` when debugging. It preserves the AoE profile and tmux sessions so
 you can inspect them with AoE or raw tmux.
 
+## Group Policy Scenarios
+
+Group-policy v0 has two local AoE-backed harnesses:
+
+```bash
+uv run scripts/integration_group_policy_tmux.py
+uv run scripts/integration_group_policy_pi.py
+```
+
+Use the deterministic tmux harness as the stable regression layer. It launches
+fake shell agents and drives the `synchronize` CLI directly, so it should be the
+first choice when validating daemon semantics such as:
+
+- group identity creation and description updates
+- alias join, rename, leave, and reclaim behavior
+- default history versus thread history
+- `@alias` mention resolution
+- inbox delivery for group messages and roster events
+
+Use the real Pi harness as a manual/local smoke. It launches actual interactive
+Pi agents through AoE and asks them to use MCP tools for the same kind of
+workflow. It is intentionally more expensive and less deterministic than the
+fake-shell harness, but it proves the product path where agents discover their
+own identity and coordinate through the synchronize MCP control plane.
+
+The real Pi group-policy workflow is:
+
+```text
+AoE/tmux launches two Pi agents
+        |
+        v
+pi-extension auto-registers both peers with synchronize
+        |
+        v
+harness sends a no-tool warmup prompt to each Pi pane
+        |
+        v
+creator Pi:
+  bridge_whoami
+  bridge_list_peers
+  bridge_create_group
+  bridge_join_group(alias="alpha")
+  bridge_send_group(root marker)
+        |
+        v
+replier Pi:
+  bridge_whoami
+  bridge_list_groups
+  bridge_join_group(alias="beta")
+  bridge_group_history(find root event)
+  bridge_send_group(in_reply_to=<root>, message contains @alpha)
+        |
+        v
+harness validates REST group state, aliases, mentions_json, and thread history
+```
+
+The Pi prompt should stay self-discovery based. Do not pass a Pi agent its own
+`peer_id`, native session id, or the exact destination peer id unless a scenario
+is explicitly testing low-level identity handling. Prefer `bridge_whoami`,
+`bridge_list_peers`, `bridge_list_groups`, and group history tools, then assert
+the canonical REST state from the harness.
+
+Pi's MCP adapter may connect lazily. A pane that shows `MCP: 0/1 servers` can
+still be healthy if the tool metadata cache is available; the first MCP tool
+call may connect the server and flip the footer to `MCP: 1/1 servers`. Harnesses
+should not treat startup `MCP: 0/1` as a failure. Instead, validate:
+
+- pi-extension registration appears in `/agent-sessions?tool=pi`
+- the interactive pane answers the warmup prompt
+- the workflow causes expected REST state changes
+- transcripts contain the expected MCP tool names
+
+Useful group-policy commands:
+
+```bash
+uv run scripts/integration_group_policy_tmux.py --command-timeout 45 --start-timeout 90
+uv run scripts/integration_group_policy_pi.py --command-timeout 180 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+```
+
+Use `--keep` for manual inspection:
+
+```bash
+uv run scripts/integration_group_policy_pi.py --keep
+aoe -p <profile> list
+aoe -p <profile> session attach <session-name>
+tmux list-sessions
+tmux capture-pane -p -S -500 -t <pane-id>
+```
+
 ## Diagnostics
 
 Every run writes a log directory. On failure, the directory includes:
@@ -117,6 +206,7 @@ Useful flags:
 uv run scripts/integration_pi.py --keep
 uv run scripts/integration_pi.py --profile sync-pi-debug
 uv run scripts/integration_pi.py --model gpt-5.4-mini
+uv run scripts/integration_pi.py --thinking low
 uv run scripts/integration_pi.py --auth-source ~/.pi/agent/auth.json
 ```
 
