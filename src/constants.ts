@@ -1,7 +1,11 @@
 export const APP_NAME = "synchronize";
 export const API_VERSION = 1;
 export const DEFAULT_BIND_HOST = "127.0.0.1";
-export const DEFAULT_PORT = 0;
+// Stable default port so long-lived clients (Pi extension especially)
+// don't need to re-resolve the daemon URL on every restart. Tests still
+// pass SYNCHRONIZE_PORT=0 explicitly to get a random free port and avoid
+// collisions when many test processes spin up daemons in parallel.
+export const DEFAULT_PORT = 58405;
 export const DISCOVERY_FILE = "daemon.json";
 export const LOCK_DIR = "daemon.lock";
 export const DB_FILE = "synchronize.db";
