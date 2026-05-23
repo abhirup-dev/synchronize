@@ -46,7 +46,8 @@ Key invariants:
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
-- Task tracking via `bd` (beads). Don't use TodoWrite/markdown TODOs. Run `bd prime` for the full workflow.
+- Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
+- In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
 
 ## Agent skills
