@@ -231,7 +231,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   requireAuth(request, ctx);
 
   if (request.method === "GET" && url.pathname === "/status") {
-    const peerCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM peers").get()?.count ?? 0;
+    const peerCount = ctx.db
+      .query<{ count: number }, []>("SELECT COUNT(*) AS count FROM peers WHERE deleted_at IS NULL")
+      .get()?.count ?? 0;
     const groupCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM groups").get()?.count ?? 0;
     const eventCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM events").get()?.count ?? 0;
     return jsonResponse({
@@ -259,7 +261,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerTotals =
       ctx.db
         .query<{ total: number; online: number }, [string]>(
-          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers",
+          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers WHERE deleted_at IS NULL",
         )
         .get(now) ?? { total: 0, online: 0 };
     const groupTotals =
@@ -307,6 +309,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          FROM peers p
          LEFT JOIN inbox i ON i.recipient_peer_id = p.peer_id
          LEFT JOIN group_members gm ON gm.peer_id = p.peer_id
+         WHERE p.deleted_at IS NULL
          GROUP BY p.peer_id
          ORDER BY online DESC, pending_inbox DESC, p.updated_at DESC
          LIMIT 12`,
@@ -520,6 +523,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       .query<PeerRow & { online: number }, [string]>(
         `SELECT *, lease_expires_at > ? AS online
          FROM peers
+         WHERE deleted_at IS NULL
          ORDER BY updated_at DESC, session_name ASC`,
       )
       .all(now);
@@ -530,9 +534,24 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "DELETE" && peerDelete) {
     const peerId = decodeURIComponent(peerDelete[1] ?? "");
     ensurePeer(ctx.db, peerId);
-    ctx.db.query("DELETE FROM peers WHERE peer_id = ?").run(peerId);
+    // Soft-delete: mark the peer as deleted but keep the row so
+    // group_members.peer_id remains resolvable and the reclaim audit trail
+    // survives. Flip every active group_member row to inactive so rosters
+    // and alias-collision checks don't trip over a peer that is no longer
+    // online. left_at uses the same timestamp the peer was deleted at.
+    ctx.db.transaction(() => {
+      const now = new Date().toISOString();
+      ctx.db
+        .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ? WHERE peer_id = ?")
+        .run(now, now, peerId);
+      ctx.db
+        .query(
+          "UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1",
+        )
+        .run(now, peerId);
+    })();
     ctx.subscribers.delete(peerId);
-    log(`peer deleted peer_id=${peerId}; removed any in-memory subscriber`);
+    log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
     return jsonResponse({ ok: true, peer_id: peerId });
   }
 
@@ -1437,7 +1456,9 @@ function fanoutRosterEventToInbox(db: Database, groupId: number, eventId: number
 }
 
 function getPeer(db: Database, peerId: string): PeerRow {
-  const peer = db.query<PeerRow, [string]>("SELECT * FROM peers WHERE peer_id = ?").get(peerId);
+  const peer = db
+    .query<PeerRow, [string]>("SELECT * FROM peers WHERE peer_id = ? AND deleted_at IS NULL")
+    .get(peerId);
   if (!peer) throw new HttpError(404, "peer_not_found", `Peer not found: ${peerId}`);
   return peer;
 }
@@ -1457,6 +1478,12 @@ function upsertPeer(
     leaseExpiresAt: string;
   },
 ): void {
+  // ON CONFLICT path also clears deleted_at — re-registering with a known
+  // peer_id resurrects a soft-deleted peer. The companion fixup below
+  // re-activates any group_members rows the peer still owns so a returning
+  // peer rejoins their old groups rather than having to re-issue join calls
+  // (which would fail with alias-taken if anyone reclaimed in the interim —
+  // resurrection is symmetric with the deletion that preceded it).
   db.query(
     `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
      VALUES (?, ?, ?, ?, ?, ?)
@@ -1466,6 +1493,7 @@ function upsertPeer(
        purpose = excluded.purpose,
        machine_id = excluded.machine_id,
        lease_expires_at = excluded.lease_expires_at,
+       deleted_at = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
 }

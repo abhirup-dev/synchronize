@@ -149,6 +149,26 @@ function migrate(db: Database): void {
 
     INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
   `);
+
+  // Migration v2 — peers.deleted_at for soft-delete (closes sync-dmc).
+  // DELETE /peers/:id used to cascade through group_members.peer_id and drop
+  // every group membership the peer ever had, killing the reclaim-audit
+  // trail and turning past events into orphans with null senders. Soft-delete
+  // by setting deleted_at; all peer reads filter `deleted_at IS NULL`, and
+  // re-register through upsertPeer clears the column to "resurrect" the peer.
+  const hasV2 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 2")
+    .get();
+  if (!hasV2) {
+    const hasDeletedAt = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('peers') WHERE name = 'deleted_at'")
+      .get();
+    if (!hasDeletedAt) {
+      db.exec(`ALTER TABLE peers ADD COLUMN deleted_at TEXT`);
+    }
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_deleted_at ON peers (deleted_at)`);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)`);
+  }
 }
 
 /**

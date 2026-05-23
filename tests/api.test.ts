@@ -15,7 +15,7 @@ import {
 } from "../src/api/groups.ts";
 import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
-import { registerPeer } from "../src/api/peers.ts";
+import { deletePeer, listPeers, registerPeer } from "../src/api/peers.ts";
 import { findReusablePeer } from "../src/api/status.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Event } from "../src/api/types.ts";
@@ -1188,6 +1188,117 @@ test("threads endpoint returns root, replies, participants, and last_event_id in
     const stranger = await registerPeer(daemon.client, { sessionName: "stranger", tool: "cli" });
     const strangerFetch = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${stranger.peer.peer_id}`);
     expect(strangerFetch.status).toBe(404);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("soft-deleted peer disappears from roster but keeps its group_members row so reclaim still fires", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-soft-delete-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  try {
+    const groupName = "soft-delete-room";
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const karel = await registerPeer(daemon.client, { sessionName: "karel", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: karel.peer.peer_id, alias: "karel" });
+
+    // 1. Soft-delete karel.
+    await deletePeer(daemon.client, karel.peer.peer_id);
+
+    // 2. Roster excludes the deleted peer.
+    const roster = (await listPeers(daemon.client)) as { peers: Array<{ peer_id: string }> };
+    expect(roster.peers.map((peer) => peer.peer_id)).not.toContain(karel.peer.peer_id);
+
+    // 3. Group roster also drops the inactive deleted member (active=1 filter
+    //    on bridge_list_peers?group= and on /peers?group= in the daemon).
+    const groupRoster = (await listPeers(daemon.client, { group: groupName })) as {
+      peers: Array<{ peer_id: string; alias: string; active: boolean }>;
+    };
+    expect(groupRoster.peers.map((peer) => peer.peer_id).sort()).toEqual([alice.peer.peer_id]);
+
+    // 4. group_members row is preserved (the whole point of soft-delete).
+    //    Reading it via the daemon's history endpoint is awkward; assert via
+    //    direct SQLite read.
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(join(home, "synchronize.db"), { readonly: true });
+    const memberRow = db
+      .query<{ peer_id: string; alias: string; active: number }, [string]>(
+        "SELECT peer_id, alias, active FROM group_members WHERE peer_id = ?",
+      )
+      .get(karel.peer.peer_id);
+    expect(memberRow).not.toBeNull();
+    expect(memberRow?.alias).toBe("karel");
+    expect(memberRow?.active).toBe(0);
+    db.close();
+
+    // 5. The freed alias can be reclaimed; the daemon's reclaim path still
+    //    sees the previous owner's group_members row and emits the audit
+    //    event with previous_peer_id = karel.peer.peer_id.
+    const reclaim = await joinGroup(daemon.client, {
+      name: groupName,
+      peerId: bob.peer.peer_id,
+      alias: "karel",
+    });
+    expect(reclaim.reclaimed_from?.previous_peer_id).toBe(karel.peer.peer_id);
+    expect(reclaim.reclaimed_from?.event_id).toBeGreaterThan(0);
+
+    // 6. Heartbeating a soft-deleted peer returns 404 peer_not_found —
+    //    behavior consumers can branch on deterministically.
+    const heartbeat = await fetch(`${daemon.client.baseUrl}/peers/${encodeURIComponent(karel.peer.peer_id)}/heartbeat`, {
+      method: "PATCH",
+    });
+    expect(heartbeat.status).toBe(404);
+    const heartbeatBody = (await heartbeat.json()) as { error: { code: string } };
+    expect(heartbeatBody.error.code).toBe("peer_not_found");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("re-registering with a soft-deleted peer_id resurrects the peer and clears deleted_at", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-resurrect-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  try {
+    const initial = await registerPeer(daemon.client, { sessionName: "karel", tool: "pi" });
+    const peerId = initial.peer.peer_id;
+    await deletePeer(daemon.client, peerId);
+
+    // Pre-resurrection: heartbeat fails, peer is hidden.
+    const beforeHb = await fetch(`${daemon.client.baseUrl}/peers/${encodeURIComponent(peerId)}/heartbeat`, {
+      method: "PATCH",
+    });
+    expect(beforeHb.status).toBe(404);
+
+    // Re-register with the same peer_id (this is the MCP flow when
+    // SYNCHRONIZE_PEER_ID / launch_id resolves to a previously-deleted peer).
+    const resurrected = await registerPeer(daemon.client, {
+      peerId,
+      sessionName: "karel-resurrected",
+      tool: "pi",
+    });
+    expect(resurrected.peer.peer_id).toBe(peerId);
+    expect(resurrected.peer.session_name).toBe("karel-resurrected");
+
+    // Heartbeat now succeeds.
+    const afterHb = await fetch(`${daemon.client.baseUrl}/peers/${encodeURIComponent(peerId)}/heartbeat`, {
+      method: "PATCH",
+    });
+    expect(afterHb.status).toBe(200);
+
+    // deleted_at was cleared.
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(join(home, "synchronize.db"), { readonly: true });
+    const peerRow = db
+      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
+      .get(peerId);
+    expect(peerRow?.deleted_at).toBeNull();
+    db.close();
   } finally {
     await daemon.stop();
   }
