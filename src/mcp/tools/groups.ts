@@ -127,10 +127,11 @@ export function registerGroupTools(ctx: ToolContext): void {
     "bridge_group_history",
     {
       description:
-        "Read group history visible to this peer. Without thread_of or event_ids, returns the main channel " +
-        "(thread replies hidden). Pass thread_of=<root event_id> to fetch the thread root and its replies, " +
-        "or event_ids=[<id>,...] to fetch specific events directly (skips the main-channel/thread split — useful " +
-        "for re-reading something you've already seen the id of, without a separate tool). " +
+        "Read group history visible to this peer. Three mutually exclusive modes:\n" +
+        "  (1) DEFAULT (no thread_of, no event_ids): main channel only; thread replies are HIDDEN.\n" +
+        "  (2) thread_of=<root_event_id>: ONE thread; returns the root event + every reply in posting order. Main-channel siblings are HIDDEN.\n" +
+        "  (3) event_ids=[<id>,...]: fetch SPECIFIC events by id, regardless of whether they live on the main channel or inside a thread. Skips the main-channel/thread split entirely. Use this to re-read events whose ids you already have (e.g., from a channel notification or an earlier history page).\n" +
+        "Passing both thread_of and event_ids returns invalid_argument. " +
         "Each returned event carries a parsed mentions: string[] (sender excluded). " +
         "Returns: { events: Event[], next_cursor? }. " +
         "Idempotency: pure read.",
