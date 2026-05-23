@@ -994,6 +994,66 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ event });
   }
 
+  // GET /threads/:root_event_id — single-call thread state: root + replies +
+  // participant alias list + last_event_id. Closes the gap alice flagged in
+  // the sustained-thread test ("I'd have to call group_history twice to pick
+  // up a stale thread"). Combines what bridge_group_history(thread_of=)
+  // returns with a derived participants list so callers can render a thread
+  // header without an extra roster call.
+  const threadGet = url.pathname.match(/^\/threads\/(\d+)$/);
+  if (request.method === "GET" && threadGet) {
+    const rootEventId = Number(threadGet[1]);
+    const peerId = url.searchParams.get("peer_id");
+    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const root = getEvent(ctx.db, rootEventId);
+    if (root.group_id === null) {
+      throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is a DM, not a group thread root`);
+    }
+    if (root.parent_event_id !== null) {
+      throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is itself a reply; pass the root event_id`);
+    }
+    const member = ctx.db
+      .query<{ history_from_event_id: number | null }, [number, string]>(
+        "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(root.group_id, peerId);
+    if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
+    if (rootEventId < (member.history_from_event_id ?? 0)) {
+      throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+    }
+    const replies = ctx.db
+      .query<EventRow, [number, number]>(
+        `SELECT * FROM events
+         WHERE group_id = ? AND parent_event_id = ?
+         ORDER BY event_id ASC`,
+      )
+      .all(root.group_id, rootEventId);
+    // Participants: deduped sender peer_ids across root + replies, with their
+    // current alias in the group (NULL when the peer has since left or never
+    // joined under an active alias). Mirrors what a thread header UI shows.
+    const senderIds = new Set<string>([root.sender_peer_id, ...replies.map((r) => r.sender_peer_id)].filter((s): s is string => s !== null));
+    const participants = [...senderIds].map((senderId) => {
+      const aliasRow = ctx.db
+        .query<{ alias: string; active: number }, [number, string]>(
+          "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(root.group_id!, senderId);
+      return {
+        peer_id: senderId,
+        alias: aliasRow?.alias ?? null,
+        active: aliasRow ? Boolean(aliasRow.active) : false,
+      };
+    });
+    const lastEventId = replies.length > 0 ? replies[replies.length - 1]!.event_id : rootEventId;
+    return jsonResponse({
+      root,
+      replies,
+      participants,
+      reply_count: replies.length,
+      last_event_id: lastEventId,
+    });
+  }
+
   const groupMedia = url.pathname.match(/^\/groups\/([^/]+)\/media$/);
   if (request.method === "POST" && groupMedia) {
     const group = getGroup(ctx.db, decodeURIComponent(groupMedia[1] ?? ""));
@@ -1283,17 +1343,43 @@ function parseOptionalPositiveInt(raw: string | null, label: string): number | u
 // this group.
 function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): number {
   const target = db
-    .query<{ event_id: number; group_id: number | null; parent_event_id: number | null }, [number]>(
-      "SELECT event_id, group_id, parent_event_id FROM events WHERE event_id = ?",
+    .query<{ event_id: number; group_id: number | null; parent_event_id: number | null; type: string }, [number]>(
+      "SELECT event_id, group_id, parent_event_id, type FROM events WHERE event_id = ?",
     )
     .get(inReplyTo);
   if (!target || target.group_id !== groupId) {
     throw new HttpError(404, "reply_target_not_found", `No such event in group: ${inReplyTo}`);
   }
+  // Reject replies to non-message roster events (group_joined, group_left,
+  // group_member_renamed, group_member_alias_reclaimed, group_created,
+  // media_*). Bob flagged in the sustained-thread review that the spec
+  // didn't say what happens here — answer: it shouldn't be allowed, since
+  // those events have no "reply" semantic and routing rules (root_author
+  // ∪ thread_posters) become meaningless.
+  if (target.type !== "group_message") {
+    throw new HttpError(
+      400,
+      "reply_target_not_message",
+      `Cannot reply to event ${inReplyTo}: type is '${target.type}', not 'group_message'`,
+    );
+  }
   return target.parent_event_id ?? target.event_id;
 }
 
 const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+
+// Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
+// Alice flagged this during the sustained-thread test: discussing proposed
+// syntax like `@peer:<uuid>` in prose produced false-positive
+// alias_not_in_group warnings for `@peer` / `@id` / `@alias`. Treating
+// backticked spans as code-not-prose mirrors how a reader interprets them.
+function stripBacktickedRegions(message: string): string {
+  // Fenced (```...```) first, then single (`...`). Replace with spaces of
+  // matching length so character positions don't shift (cheap correctness
+  // hedge in case anything downstream cares about positions).
+  const withoutFenced = message.replace(/```[\s\S]*?```/g, (m) => " ".repeat(m.length));
+  return withoutFenced.replace(/`[^`]*`/g, (m) => " ".repeat(m.length));
+}
 
 // Resolve @-mentions in a message body against the active member roster of
 // the group. Returns deduped resolved peer_ids and a warning per unresolved
@@ -1305,7 +1391,8 @@ function resolveMentions(
   message: string,
 ): { peerIds: string[]; warnings: MentionWarning[] } {
   const tokens = new Set<string>();
-  for (const match of message.matchAll(MENTION_TOKEN_RE)) {
+  const scannable = stripBacktickedRegions(message);
+  for (const match of scannable.matchAll(MENTION_TOKEN_RE)) {
     if (match[1]) tokens.add(match[1]);
   }
   if (tokens.size === 0) return { peerIds: [], warnings: [] };
