@@ -1,5 +1,17 @@
 import { requestJson, type ClientConfig } from "../client.ts";
-import type { Peer } from "./types.ts";
+import type { GroupMember, Peer } from "./types.ts";
+
+// /peers returns a different shape depending on whether `group` is set.
+// Without a group, it's plain Peer[] (daemon-wide roster). With a group, the
+// daemon returns enriched group_members joined with peers — alias, active,
+// joined_at, history_from_event_id, host_session_id, online, etc. Surface
+// the union so callers (and the MCP adapter) get a discriminated response.
+export interface GroupMemberListed extends GroupMember {
+  online: boolean;
+}
+export type ListPeersResponse =
+  | { peers: Peer[] }
+  | { peers: GroupMemberListed[] };
 
 export function registerPeer(
   client: ClientConfig,
@@ -35,7 +47,7 @@ export function deletePeer(client: ClientConfig, peerId: string): Promise<{ ok: 
   });
 }
 
-export function listPeers(client: ClientConfig, input: { group?: string } = {}): Promise<{ peers: Peer[] }> {
+export function listPeers(client: ClientConfig, input: { group?: string } = {}): Promise<ListPeersResponse> {
   const path = input.group ? `/peers?group=${encodeURIComponent(input.group)}` : "/peers";
-  return requestJson<{ peers: Peer[] }>(client, path);
+  return requestJson<ListPeersResponse>(client, path);
 }
