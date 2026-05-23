@@ -369,10 +369,58 @@ This round confirmed the central tenet from §1: **Karel is the canary, and her 
 
 ---
 
+## 7.6. Addendum — round 3 (soft-delete + the daemon-spawn-from-master trap)
+
+User instructed: kill all running agents, wipe state, ship the sync-dmc soft-delete fix *before* master merge. Done. Three shipped commits and one important operational gotcha to record for the next session.
+
+### What got built and shipped in round 3
+
+| Commit | What |
+|---|---|
+| `b6b75a5` | **Soft-delete peers** (`sync-dmc` P1). Migration v2 adds `peers.deleted_at TEXT` + index. DELETE handler transactionally sets `deleted_at = now()` AND flips `active = 0` on all the peer's `group_members` rows. Every peer read filters `deleted_at IS NULL` (getPeer, /peers + /peers?group=, summary counts, heartbeat). `upsertPeer`'s ON CONFLICT path clears `deleted_at` so re-register resurrects (and preserves `created_at` — verified live). Two lock-in tests in `tests/api.test.ts`. |
+
+### The daemon-spawn-from-master trap (operational gotcha — learned the hard way)
+
+When you run `make daemon-kill` from this worktree and then immediately relaunch agents via `synchronize launch`, the auto-spawned daemon's working directory depends on the resolved `synchronize-mcp` binary location. The `bun link` install in the Makefile resolves through `~/.synchronize/install/global/node_modules/synchronize/bin/synchronize-mcp` — which can symlink-resolve back to the **main checkout (`master`), not the worktree** if `bun link` was last run from master.
+
+The symptom is silent: the daemon comes up healthy, on the same port, but it's missing your worktree's commits. The next test run reports false negatives that look like the fix failed when in fact it was never loaded. Bob caught this in round 3 with a single sentence:
+
+> "Live daemon is NOT running the soft-delete fix. cwd `/Users/abhirupdas/Codes/Personal/synchronize` (master, commit 4bb91ee). The fix commit b6b75a5 exists only in the plan-group-policy-v0 worktree."
+
+**Fix for the next session:** before each test round on a code change, run `lsof -p $(jq -r .pid ~/.synchronize/daemon.json)` to confirm the daemon proc's open files include the worktree path — or just `ps -ww -o command= -p <pid>`. If it points at master, kill it and run `bun run src/daemon.ts &` directly from the worktree (or `make link install-claude install-pi` from the worktree first to re-point the symlinks).
+
+This is worth filing as `sync-???` (P3): the launch hooks should pin the daemon binary to the cwd that invoked `synchronize launch`. Defer to post-merge.
+
+### Closed this round
+
+- `sync-dmc` P1.
+
+### Live validation results (curl-driven, after the daemon trap was resolved)
+
+Direct REST validation against the post-relaunch daemon — all nine checks green:
+
+1. `peers` schema has `deleted_at` column.
+2. DELETE /peers/:id returns `{ok: true}` and does NOT cascade-drop the peer's group_members row.
+3. `peers` roster (no group) hides the soft-deleted peer.
+4. `peers?group=` hides the soft-deleted peer (via `active=1` filter on group_members).
+5. SQLite confirms the group_members row survived with `active=0`.
+6. `peer` row preserved with `deleted_at` set.
+7. Reclaim by a different peer fires with `reclaimed_from.previous_peer_id` pointing at the soft-deleted peer's id.
+8. Heartbeat on a soft-deleted peer returns `404 peer_not_found` (structured envelope).
+9. Re-register with the same peer_id resurrects (deleted_at NULL, `created_at` preserved from the original row — not a new row — this matters for audit timelines).
+
+### Live customer signals captured this round
+
+- **Bob** caught the daemon-spawn-from-master trap unprompted, in his second tool-using minute. PR-review-grade observation: the kind of failure mode that would have silently invalidated round 4+ if undiagnosed.
+- **Alice + Karel** were primed but didn't get exercised this round — the daemon trap consumed the round, and direct curl validation was faster than re-orchestrating three agents. Acceptable trade-off; we'll bring them back for the post-merge follow-up rounds.
+
+---
+
 ## 8. Self-evolving loop status — round count
 
 - Round 1 (handoff sections 0-7): server-side hot-reloadable improvements driven by bob/alice/karel customer feedback.
-- Round 2 (this addendum): MCP adapter pass + Pi resilience + inline-event consistency + Karel canary description fix.
+- Round 2 (§7.5): MCP adapter pass + Pi resilience + inline-event consistency + Karel canary description fix.
+- Round 3 (§7.6): peer soft-delete (sync-dmc) + the daemon-spawn-from-master operational gotcha discovered by bob. Validation pivoted from live agents to direct curl after the daemon trap consumed agent attention.
 
 Open question for round 3: should the operator session itself be re-launched on the new MCP between rounds, so the orchestrator sees the new shapes too? Currently the operator runs on the *previous* round's MCP, which is fine for orchestration (DM/inbox semantics unchanged) but means the operator can't validate parsed-mentions or structured-error shapes from its own bridge_* calls. Cheap fix next round: restart the operator session first, then re-engage agents.
 
