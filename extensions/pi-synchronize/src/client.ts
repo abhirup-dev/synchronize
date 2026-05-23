@@ -64,7 +64,19 @@ export async function discoverDaemon(): Promise<PiSyncClient> {
   return { baseUrl: discovery.baseUrl, token: process.env.SYNCHRONIZE_TOKEN ?? null };
 }
 
-async function requestJson<T>(client: PiSyncClient, path: string, init: RequestInit = {}): Promise<T> {
+// Network errors at the fetch layer surface as TypeError from undici with
+// `code: "ECONNREFUSED"`, "ECONNRESET", "ENOTFOUND", or as a bare
+// `fetch failed`. We treat all of these as "daemon URL might have moved" and
+// trigger a single rediscover-and-retry, mirroring the Claude-side
+// `ensureDaemon()` resilience.
+function isTransportError(error: unknown): boolean {
+  if (!(error instanceof TypeError)) return false;
+  if (error.message === "fetch failed") return true;
+  const cause = (error as { cause?: { code?: string } }).cause;
+  return cause?.code === "ECONNREFUSED" || cause?.code === "ECONNRESET" || cause?.code === "ENOTFOUND";
+}
+
+async function fetchJson(client: PiSyncClient, path: string, init: RequestInit): Promise<unknown> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
   if (init.body !== undefined && !headers.has("content-type")) {
@@ -77,7 +89,23 @@ async function requestJson<T>(client: PiSyncClient, path: string, init: RequestI
     const message = body?.error?.message ?? `${response.status} ${response.statusText}`;
     throw new Error(message);
   }
-  return body as T;
+  return body;
+}
+
+async function requestJson<T>(client: PiSyncClient, path: string, init: RequestInit = {}): Promise<T> {
+  try {
+    return (await fetchJson(client, path, init)) as T;
+  } catch (error) {
+    if (!isTransportError(error)) throw error;
+    // Daemon URL likely moved. Re-read daemon.json and retry once with the
+    // fresh baseUrl. Mutate the client object so subsequent calls also use
+    // the new URL — this matches the lazy-discovery pattern on the Claude
+    // side.
+    const fresh = await discoverDaemon().catch(() => null);
+    if (!fresh || fresh.baseUrl === client.baseUrl) throw error;
+    client.baseUrl = fresh.baseUrl;
+    return (await fetchJson(client, path, init)) as T;
+  }
 }
 
 export function registerPeer(
