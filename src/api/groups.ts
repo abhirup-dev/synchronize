@@ -73,8 +73,17 @@ export function renameInGroup(
   );
 }
 
-export function leaveGroup(client: ClientConfig, input: { name: string; peerId: string }): Promise<{ ok: boolean; event: Event }> {
-  return requestJson<{ ok: boolean; event: Event }>(client, `/groups/${encodeURIComponent(input.name)}/leave`, {
+export interface LeaveGroupResponse {
+  ok: boolean;
+  // Null when the call was an idempotent no-op (peer is not, or no longer, an
+  // active member). Inspect `already_left` to distinguish a fresh leave from
+  // a no-op.
+  event: Event | null;
+  already_left?: boolean;
+}
+
+export function leaveGroup(client: ClientConfig, input: { name: string; peerId: string }): Promise<LeaveGroupResponse> {
+  return requestJson<LeaveGroupResponse>(client, `/groups/${encodeURIComponent(input.name)}/leave`, {
     method: "POST",
     body: JSON.stringify({ peer_id: input.peerId }),
   });
@@ -85,11 +94,28 @@ export interface MentionWarning {
   reason: "alias_not_in_group";
 }
 
+// Delivery summary so callers can verify routing without having to scan
+// inbox state or watch for push callbacks. `pushed_to` is the set of active
+// members whose push subscription was triggered (driven by mentions and
+// thread-poster rules); `inbox_only` is the set of active members whose
+// inbox row was written without a push (typical for non-mentioned members
+// on a main-channel message). Sender is always excluded from both.
+export interface DeliverySummary {
+  pushed_to: string[];
+  inbox_only: string[];
+}
+
+export interface SendGroupMessageResponse {
+  event: Event;
+  warnings: MentionWarning[];
+  delivery: DeliverySummary;
+}
+
 export function sendGroupMessage(
   client: ClientConfig,
   input: { name: string; senderPeerId: string; message: string; inReplyTo?: number },
-): Promise<{ event: Event; warnings?: MentionWarning[] }> {
-  return requestJson<{ event: Event; warnings?: MentionWarning[] }>(
+): Promise<SendGroupMessageResponse> {
+  return requestJson<SendGroupMessageResponse>(
     client,
     `/groups/${encodeURIComponent(input.name)}/messages`,
     {

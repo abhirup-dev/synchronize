@@ -144,7 +144,7 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
 
   const bobRegister = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "register", "--name", "bob", "--purpose", "receiver"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(bobRegister.exitCode).toBe(0);
   expect(bobRegister.stderr.toString()).toContain("Claude channel real-time notifications do not work through CLI peers");
@@ -152,19 +152,19 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
 
   const aliceRegister = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "register", "--name", "alice", "--purpose", "sender"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(aliceRegister.exitCode).toBe(0);
   const whoami = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "whoami"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(whoami.exitCode).toBe(0);
   expect(JSON.parse(whoami.stdout.toString())).toMatchObject({ session_name: "alice" });
 
   const dm = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "dm", bob.peer_id, "hello from cli"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(dm.exitCode).toBe(0);
   expect(dm.stderr.toString()).toContain("with CLI, use inbox polling/checking");
@@ -174,7 +174,7 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
 
   const inbox = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "inbox", "--ack"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(inbox.exitCode).toBe(0);
   const inboxBody = JSON.parse(inbox.stdout.toString()) as { events: Array<{ body: string }> };
@@ -182,20 +182,20 @@ test("CLI register, dm, and inbox use the REST daemon state", async () => {
 
   const staleIdentityGuard = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "group", "create", "cli-room", "--as", "alice"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(staleIdentityGuard.exitCode).toBe(1);
   expect(staleIdentityGuard.stderr.toString()).toContain("CLI peer mismatch");
 
   const cliGroupCreate = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "group", "create", "cli-room", "--as", "bob"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(cliGroupCreate.exitCode).toBe(0);
 
   const cliGroupJoin = Bun.spawnSync({
     cmd: [process.execPath, "run", "src/cli.ts", "group", "join", "cli-room", "--as", "bob"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(cliGroupJoin.exitCode).toBe(0);
   expect(JSON.parse(cliGroupJoin.stdout.toString())).toMatchObject({ member: { alias: "bob" } });
@@ -217,7 +217,7 @@ test("Claude hook is env gated and registers native session binding when enabled
 
   const disabled = Bun.spawnSync({
     cmd: ["bash", "-lc", `printf '%s' '${input}' | bun run src/cli.ts hook claude-session`],
-    env: { ...process.env, SYNCHRONIZE_HOME: home },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(disabled.exitCode).toBe(0);
   await expect(stat(join(home, "daemon.json"))).rejects.toThrow();

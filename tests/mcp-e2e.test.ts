@@ -32,7 +32,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     command: process.execPath,
     args: ["run", "src/mcp.ts"],
     cwd: process.cwd(),
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "codex" },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_MCP_MODE: "codex" },
     stderr: "pipe",
   });
 
@@ -109,7 +109,7 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     command: join(process.cwd(), "bin/synchronize-mcp"),
     args: [],
     cwd: process.cwd(),
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_MCP_MODE: "claude" },
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_MCP_MODE: "claude" },
     stderr: "pipe",
   });
 
