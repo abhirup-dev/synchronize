@@ -5,8 +5,10 @@ import * as inbox from "./commands/inbox.ts";
 import * as launch from "./commands/launch.ts";
 import * as media from "./commands/media.ts";
 import * as peers from "./commands/peers.ts";
+import * as query from "./commands/query.ts";
 import * as register from "./commands/register.ts";
 import * as status from "./commands/status.ts";
+import * as threads from "./commands/threads.ts";
 import * as top from "./commands/top.ts";
 import * as whoami from "./commands/whoami.ts";
 import { printHelp } from "./help.ts";
@@ -52,6 +54,12 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "media":
       await media.run(rest);
+      return;
+    case "query":
+      await query.run(rest);
+      return;
+    case "threads":
+      await threads.run(rest);
       return;
     default:
       console.error(`Unknown command: ${command}`);

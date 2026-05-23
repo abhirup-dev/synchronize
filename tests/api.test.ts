@@ -16,7 +16,9 @@ import {
 import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { deletePeer, listPeers, registerPeer } from "../src/api/peers.ts";
+import { queryEvents } from "../src/api/query.ts";
 import { findReusablePeer } from "../src/api/status.ts";
+import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Event } from "../src/api/types.ts";
 
@@ -1188,6 +1190,138 @@ test("threads endpoint returns root, replies, participants, and last_event_id in
     const stranger = await registerPeer(daemon.client, { sessionName: "stranger", tool: "cli" });
     const strangerFetch = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${stranger.peer.peer_id}`);
     expect(strangerFetch.status).toBe(404);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("event SQL query endpoint exposes views and rejects non-read-only SQL", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-query-events-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "query-events-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "sql root",
+    });
+    const reply = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: bob.peer.peer_id,
+      message: "sql reply",
+      inReplyTo: root.event.event_id,
+    });
+
+    const eventLog = await queryEvents(daemon.client, {
+      sql: "select event_id, group_name, sender_session_name from event_log where event_id = ?",
+      params: [root.event.event_id],
+    });
+    expect(eventLog.columns).toEqual(["event_id", "group_name", "sender_session_name"]);
+    expect(eventLog.rows).toEqual([
+      { event_id: root.event.event_id, group_name: groupName, sender_session_name: "alice" },
+    ]);
+
+    const threadEvents = await queryEvents(daemon.client, {
+      sql: "select event_id, body from thread_events where thread_root_event_id = ? order by created_at, event_id",
+      params: [root.event.event_id],
+    });
+    expect(threadEvents.rows.map((row) => row.event_id)).toEqual([root.event.event_id, reply.event.event_id]);
+    expect(threadEvents.truncated).toBe(false);
+
+    const discovered = await queryEvents(daemon.client, {
+      sql: "select root_event_id, reply_count from discoverable_threads where root_event_id = ?",
+      params: [root.event.event_id],
+    });
+    expect(discovered.rows).toEqual([{ root_event_id: root.event.event_id, reply_count: 1 }]);
+
+    const limited = await queryEvents(daemon.client, { sql: "select event_id from event_log order by event_id", limit: 1 });
+    expect(limited.row_count).toBe(1);
+    expect(limited.truncated).toBe(true);
+
+    const write = await fetch(`${daemon.client.baseUrl}/query/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sql: "delete from events" }),
+    });
+    expect(write.status).toBe(400);
+
+    const multi = await fetch(`${daemon.client.baseUrl}/query/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sql: "select 1; select 2" }),
+    });
+    expect(multi.status).toBe(400);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("thread discovery status and transcript APIs expose first-class thread workflows", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-thread-workflows-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
+    const groupName = "thread-workflows-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+    const standalone = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "standalone",
+    });
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "thread root",
+    });
+    const reply = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: bob.peer.peer_id,
+      message: "thread reply",
+      inReplyTo: root.event.event_id,
+    });
+
+    const listed = await listThreads(daemon.client, { group: groupName });
+    expect(listed.threads.map((thread) => thread.root_event_id)).toContain(root.event.event_id);
+    expect(listed.threads.map((thread) => thread.root_event_id)).not.toContain(standalone.event.event_id);
+    expect(listed.threads[0]).toMatchObject({
+      group_name: groupName,
+      root_sender_session_name: "alice",
+      reply_count: 1,
+      participant_count: 2,
+      preview: "thread root",
+    });
+
+    const byParticipant = await listThreads(daemon.client, { participatedBySessionName: "bob" });
+    expect(byParticipant.threads.map((thread) => thread.root_event_id)).toContain(root.event.event_id);
+
+    const { status } = await getThreadStatus(daemon.client, root.event.event_id);
+    expect(status).toMatchObject({
+      root_event_id: root.event.event_id,
+      group_name: groupName,
+      root_sender_session_name: "alice",
+      last_event_id: reply.event.event_id,
+      reply_count: 1,
+      event_count: 2,
+      participant_count: 2,
+    });
+    expect(status.participants.map((participant) => participant.session_name).sort()).toEqual(["alice", "bob"]);
+
+    const thread = await getThread(daemon.client, { rootEventId: root.event.event_id, format: "transcript" });
+    expect(thread.events.map((event) => event.event_id)).toEqual([root.event.event_id, reply.event.event_id]);
+    expect(thread.transcript).toContain("alice: thread root");
+    expect(thread.transcript).toContain("bob: thread reply");
   } finally {
     await daemon.stop();
   }

@@ -131,6 +131,15 @@ synchronize media share demo ./some-file.txt --description "notes for the demo g
 synchronize media list demo --query notes
 ```
 
+Discover deeper thread conversations and inspect event state:
+
+```bash
+synchronize threads list --group demo
+synchronize threads status 123
+synchronize threads show 123 --format transcript
+synchronize query --format table 'select event_id, body from thread_events where thread_root_event_id = 123'
+```
+
 ## Group Join Semantics
 
 Normal join gets history:
@@ -262,6 +271,7 @@ POST   /dm
 GET    /peers/{peer_id}/inbox
 POST   /peers/{peer_id}/inbox/ack
 GET    /events/{peer_id}?cursor=0&limit=50
+POST   /query/events
 
 POST   /groups
 GET    /groups
@@ -270,6 +280,9 @@ POST   /groups/{name}/join
 POST   /groups/{name}/leave
 POST   /groups/{name}/messages
 GET    /groups/{name}/history?peer_id={peer_id}
+GET    /threads
+GET    /threads/{root_event_id}
+GET    /threads/{root_event_id}/status
 
 POST   /groups/{name}/media
 GET    /groups/{name}/media

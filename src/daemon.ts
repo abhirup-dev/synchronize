@@ -19,6 +19,7 @@ import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
+import { runEventQuery } from "./query/events.ts";
 
 interface DaemonContext {
   paths: RuntimePaths;
@@ -167,6 +168,45 @@ interface SummaryGroupRow {
   messages: number;
   media: number;
   last_activity_at: string | null;
+}
+
+interface ThreadDiscoveryRow {
+  root_event_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_activity_at: string;
+  reply_count: number;
+  participant_count: number;
+  preview: string | null;
+}
+
+interface ThreadParticipantRow {
+  peer_id: string;
+  session_name: string | null;
+  alias: string | null;
+  active: number | null;
+  event_count: number;
+  first_event_id: number;
+  last_event_id: number;
+  last_activity_at: string;
+}
+
+interface ThreadStatusRow {
+  root_event_id: number;
+  group_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_event_id: number;
+  last_activity_at: string;
+  reply_count: number;
+  event_count: number;
+  participant_count: number;
 }
 
 function log(message: string): void {
@@ -570,6 +610,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ctx.subscribers.set(peerId, subscriber);
     log(`subscription registered peer_id=${peerId} callback_url=${callbackUrl}`);
     return jsonResponse({ subscription: subscriber }, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/query/events") {
+    const body = await readBody(request);
+    const sql = requireString(body, "sql");
+    const params = optionalSqlParams(body, "params");
+    const limit = optionalInteger(body, "limit");
+    return jsonResponse(runEventQuery(ctx.db, { sql, ...(params ? { params } : {}), ...(limit !== undefined ? { limit } : {}) }));
   }
 
   if (request.method === "POST" && url.pathname === "/dm") {
@@ -1013,17 +1061,25 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ event });
   }
 
-  // GET /threads/:root_event_id — single-call thread state: root + replies +
-  // participant alias list + last_event_id. Closes the gap alice flagged in
-  // the sustained-thread test ("I'd have to call group_history twice to pick
-  // up a stale thread"). Combines what bridge_group_history(thread_of=)
-  // returns with a derived participants list so callers can render a thread
-  // header without an extra roster call.
+  if (request.method === "GET" && url.pathname === "/threads") {
+    return jsonResponse({ threads: listThreadDiscoveries(ctx.db, url) });
+  }
+
+  const threadStatusGet = url.pathname.match(/^\/threads\/(\d+)\/status$/);
+  if (request.method === "GET" && threadStatusGet) {
+    return jsonResponse({ status: getThreadStatus(ctx.db, Number(threadStatusGet[1])) });
+  }
+
+  // GET /threads/:root_event_id — single-call thread state: status + events
+  // and optional transcript. Kept global for v0; callers that need strict
+  // per-peer visibility should continue using group history with peer_id.
   const threadGet = url.pathname.match(/^\/threads\/(\d+)$/);
   if (request.method === "GET" && threadGet) {
     const rootEventId = Number(threadGet[1]);
-    const peerId = url.searchParams.get("peer_id");
-    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const format = url.searchParams.get("format") ?? "json";
+    if (format !== "json" && format !== "transcript") {
+      throw new HttpError(400, "invalid_request", "format must be json or transcript");
+    }
     const root = getEvent(ctx.db, rootEventId);
     if (root.group_id === null) {
       throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is a DM, not a group thread root`);
@@ -1031,14 +1087,17 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     if (root.parent_event_id !== null) {
       throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is itself a reply; pass the root event_id`);
     }
-    const member = ctx.db
-      .query<{ history_from_event_id: number | null }, [number, string]>(
-        "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
-      )
-      .get(root.group_id, peerId);
-    if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
-    if (rootEventId < (member.history_from_event_id ?? 0)) {
-      throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+    const peerId = url.searchParams.get("peer_id");
+    if (peerId) {
+      const member = ctx.db
+        .query<{ history_from_event_id: number | null }, [number, string]>(
+          "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(root.group_id, peerId);
+      if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
+      if (rootEventId < (member.history_from_event_id ?? 0)) {
+        throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+      }
     }
     const replies = ctx.db
       .query<EventRow, [number, number]>(
@@ -1070,6 +1129,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       participants,
       reply_count: replies.length,
       last_event_id: lastEventId,
+      status: getThreadStatus(ctx.db, rootEventId),
+      events: [root, ...replies],
+      ...(format === "transcript" ? { transcript: renderThreadTranscript(ctx.db, [root, ...replies]) } : {}),
     });
   }
 
@@ -1284,6 +1346,18 @@ function optionalInteger(body: Record<string, unknown>, key: string): number | u
     throw new HttpError(400, "invalid_request", `${key} must be an integer`);
   }
   return value as number;
+}
+
+function optionalSqlParams(body: Record<string, unknown>, key: string): Array<string | number | boolean | null> | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => item !== null && typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean")
+  ) {
+    throw new HttpError(400, "invalid_request", `${key} must be an array of strings, numbers, booleans, or nulls`);
+  }
+  return value as Array<string | number | boolean | null>;
 }
 
 function optionalObjectJson(body: Record<string, unknown>, key: string): string | null {
@@ -1627,6 +1701,136 @@ function getEvent(db: Database, eventId: number): EventRow {
   const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
   return event;
+}
+
+function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
+  const limit = parseLimit(url.searchParams.get("limit"));
+  const clauses: string[] = [];
+  const params: Array<string | number> = [];
+  const group = url.searchParams.get("group")?.trim();
+  const startedByPeerId = url.searchParams.get("started_by_peer_id")?.trim();
+  const startedBySessionName = url.searchParams.get("started_by_session_name")?.trim();
+  const participatedByPeerId = url.searchParams.get("participated_by_peer_id")?.trim();
+  const participatedBySessionName = url.searchParams.get("participated_by_session_name")?.trim();
+  const activeSince = url.searchParams.get("active_since")?.trim();
+
+  if (group) {
+    clauses.push("dt.group_name = ?");
+    params.push(group);
+  }
+  if (startedByPeerId) {
+    clauses.push("dt.root_sender_peer_id = ?");
+    params.push(startedByPeerId);
+  }
+  if (startedBySessionName) {
+    clauses.push("dt.root_sender_session_name = ?");
+    params.push(startedBySessionName);
+  }
+  if (participatedByPeerId) {
+    clauses.push(
+      `EXISTS (
+        SELECT 1 FROM thread_events te
+        WHERE te.thread_root_event_id = dt.root_event_id AND te.sender_peer_id = ?
+      )`,
+    );
+    params.push(participatedByPeerId);
+  }
+  if (participatedBySessionName) {
+    clauses.push(
+      `EXISTS (
+        SELECT 1 FROM thread_events te
+        WHERE te.thread_root_event_id = dt.root_event_id AND te.sender_session_name = ?
+      )`,
+    );
+    params.push(participatedBySessionName);
+  }
+  if (activeSince) {
+    clauses.push("dt.last_activity_at >= ?");
+    params.push(activeSince);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  return db
+    .query<ThreadDiscoveryRow, Array<string | number>>(
+      `SELECT
+         dt.root_event_id,
+         dt.group_name,
+         dt.root_sender_peer_id,
+         dt.root_sender_session_name,
+         dt.root_sender_alias,
+         dt.created_at,
+         dt.last_activity_at,
+         dt.reply_count,
+         dt.participant_count,
+         dt.preview
+       FROM discoverable_threads dt
+       ${where}
+       ORDER BY dt.last_activity_at DESC, dt.root_event_id DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit);
+}
+
+function getThreadStatus(db: Database, rootEventId: number): ThreadStatusRow & { participants: Array<Omit<ThreadParticipantRow, "active"> & { active: boolean }> } {
+  const root = getEvent(db, rootEventId);
+  if (root.group_id === null || root.parent_event_id !== null || root.type !== "group_message") {
+    throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is not a thread root`);
+  }
+  const status = db
+    .query<ThreadStatusRow, [number]>(
+      `SELECT
+         dt.root_event_id,
+         dt.group_id,
+         dt.group_name,
+         dt.root_sender_peer_id,
+         dt.root_sender_session_name,
+         dt.root_sender_alias,
+         dt.created_at,
+         COALESCE(MAX(te.event_id), dt.root_event_id) AS last_event_id,
+         dt.last_activity_at,
+         dt.reply_count,
+         COUNT(te.event_id) AS event_count,
+         dt.participant_count
+       FROM discoverable_threads dt
+       JOIN thread_events te ON te.thread_root_event_id = dt.root_event_id
+       WHERE dt.root_event_id = ?
+       GROUP BY dt.root_event_id`,
+    )
+    .get(rootEventId);
+  if (!status) throw new HttpError(404, "thread_not_found", `Thread not found: ${rootEventId}`);
+  const participants = db
+    .query<ThreadParticipantRow, [number]>(
+      `SELECT
+         te.sender_peer_id AS peer_id,
+         p.session_name,
+         gm.alias,
+         gm.active,
+         COUNT(*) AS event_count,
+         MIN(te.event_id) AS first_event_id,
+         MAX(te.event_id) AS last_event_id,
+         MAX(te.created_at) AS last_activity_at
+       FROM thread_events te
+       LEFT JOIN peers p ON p.peer_id = te.sender_peer_id
+       LEFT JOIN group_members gm ON gm.group_id = te.group_id AND gm.peer_id = te.sender_peer_id
+       WHERE te.thread_root_event_id = ? AND te.sender_peer_id IS NOT NULL
+       GROUP BY te.sender_peer_id
+       ORDER BY last_activity_at ASC, first_event_id ASC`,
+    )
+    .all(rootEventId)
+    .map(({ active, ...row }) => ({ ...row, active: Boolean(active) }));
+  return { ...status, participants };
+}
+
+function renderThreadTranscript(db: Database, events: EventRow[]): string {
+  return events
+    .map((event) => {
+      const sender = event.sender_peer_id
+        ? db.query<{ session_name: string }, [string]>("SELECT session_name FROM peers WHERE peer_id = ?").get(event.sender_peer_id)
+            ?.session_name ?? event.sender_peer_id
+        : "system";
+      return `[${event.created_at}] ${sender}: ${event.body ?? ""}`;
+    })
+    .join("\n");
 }
 
 async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: EventRow): Promise<void> {

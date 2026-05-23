@@ -6,3 +6,5 @@ export * from "./inbox.ts";
 export * from "./events.ts";
 export * from "./groups.ts";
 export * from "./media.ts";
+export * from "./query.ts";
+export * from "./threads.ts";

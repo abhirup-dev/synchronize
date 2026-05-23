@@ -13,7 +13,9 @@ import { registerGroupTools } from "./tools/groups.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
+import { registerQueryTools } from "./tools/query.ts";
 import { registerRegisterTools } from "./tools/register.ts";
+import { registerThreadTools } from "./tools/threads.ts";
 
 export function createMcpServer(): SynchronizeMcpServer {
   const mcp = new McpServer(
@@ -36,6 +38,8 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerMessagingTools(ctx);
   registerGroupTools(ctx);
   registerMediaTools(ctx);
+  registerQueryTools(ctx);
+  registerThreadTools(ctx);
 
   return Object.assign(mcp, { cleanup: lifecycle.cleanup });
 }
