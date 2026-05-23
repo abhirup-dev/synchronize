@@ -8,6 +8,13 @@ import { log } from "../util.ts";
 // `.mentions ?? []`. Drop the raw field to keep the response lean.
 export type McpEvent = Omit<Event, "mentions_json"> & { mentions: string[] };
 
+// Helper for responses that carry an `event: Event | null` field. Returns
+// null verbatim so idempotent no-ops (already_member, already_left) don't
+// invent a phantom event.
+export function formatNullableEventForMcp(event: Event | null): McpEvent | null {
+  return event === null ? null : formatEventForMcp(event);
+}
+
 export function formatEventForMcp(event: Event): McpEvent {
   const { mentions_json, ...rest } = event;
   let mentions: string[] = [];

@@ -4,7 +4,7 @@ import { getEvent } from "../../api/events.ts";
 import { ApiError } from "../../client.ts";
 import { getClient, requirePeer } from "../state.ts";
 import { invalidArgument, text, wrap } from "../util.ts";
-import { formatEventForMcp } from "./event-format.ts";
+import { formatEventForMcp, formatNullableEventForMcp } from "./event-format.ts";
 import type { ToolContext } from "./context.ts";
 
 export function registerGroupTools(ctx: ToolContext): void {
@@ -48,14 +48,13 @@ export function registerGroupTools(ctx: ToolContext): void {
     wrap(async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(
-        await joinGroup(client, {
-          name: args.name,
-          peerId: peer.peer_id,
-          ...(args.alias ? { alias: args.alias } : {}),
-          ...(args.fresh !== undefined ? { fresh: args.fresh } : {}),
-        }),
-      );
+      const response = await joinGroup(client, {
+        name: args.name,
+        peerId: peer.peer_id,
+        ...(args.alias ? { alias: args.alias } : {}),
+        ...(args.fresh !== undefined ? { fresh: args.fresh } : {}),
+      });
+      return text({ ...response, event: formatNullableEventForMcp(response.event) });
     }),
   );
 
@@ -71,7 +70,8 @@ export function registerGroupTools(ctx: ToolContext): void {
     wrap(async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(await leaveGroup(client, { name: args.name, peerId: peer.peer_id }));
+      const response = await leaveGroup(client, { name: args.name, peerId: peer.peer_id });
+      return text({ ...response, event: formatNullableEventForMcp(response.event) });
     }),
   );
 
@@ -87,13 +87,12 @@ export function registerGroupTools(ctx: ToolContext): void {
     wrap(async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(
-        await renameInGroup(client, {
-          name: args.name,
-          peerId: peer.peer_id,
-          newAlias: args.new_alias,
-        }),
-      );
+      const response = await renameInGroup(client, {
+        name: args.name,
+        peerId: peer.peer_id,
+        newAlias: args.new_alias,
+      });
+      return text({ ...response, event: formatEventForMcp(response.event) });
     }),
   );
 

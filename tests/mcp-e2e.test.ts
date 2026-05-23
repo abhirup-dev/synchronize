@@ -209,6 +209,25 @@ test("MCP errors surface as structured {error:{code,message,status?}} JSON with 
     expect(fetched.events.map((event) => event.event_id)).toEqual([sent.event.event_id]);
     expect(Array.isArray(fetched.events[0]?.mentions)).toBe(true);
 
+    // 3b. Inline events on join/leave/rename/share also carry parsed mentions
+    //     (caught in 2026-05-23 customer round — bob noticed bridge_join_group's
+    //     inline event still had mentions_json, not mentions).
+    const joined = parseToolText(
+      await client.callTool({ name: "bridge_join_group", arguments: { name: "structured-room", alias: "canary" } }),
+    ) as { event: { mentions?: string[]; mentions_json?: unknown } | null };
+    // Idempotent re-join returns event=null, which is fine.
+    if (joined.event) {
+      expect(joined.event).not.toHaveProperty("mentions_json");
+      expect(Array.isArray(joined.event.mentions)).toBe(true);
+    }
+    const left = parseToolText(
+      await client.callTool({ name: "bridge_leave_group", arguments: { name: "structured-room" } }),
+    ) as { event: { mentions?: string[]; mentions_json?: unknown } | null };
+    if (left.event) {
+      expect(left.event).not.toHaveProperty("mentions_json");
+      expect(Array.isArray(left.event.mentions)).toBe(true);
+    }
+
     // 4. event_ids + thread_of together → invalid_argument from the adapter.
     const conflictErr = parseError(
       await client.callTool({

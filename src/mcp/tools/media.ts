@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getMedia, listMedia, shareMedia } from "../../api/media.ts";
 import { getClient, requirePeer } from "../state.ts";
 import { text, wrap } from "../util.ts";
+import { formatEventForMcp } from "./event-format.ts";
 import type { ToolContext } from "./context.ts";
 
 export function registerMediaTools(ctx: ToolContext): void {
@@ -23,14 +24,13 @@ export function registerMediaTools(ctx: ToolContext): void {
     wrap(async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      return text(
-        await shareMedia(client, {
-          group: args.group,
-          sharedByPeerId: peer.peer_id,
-          path: args.path,
-          ...(args.description ? { description: args.description } : {}),
-        }),
-      );
+      const response = await shareMedia(client, {
+        group: args.group,
+        sharedByPeerId: peer.peer_id,
+        path: args.path,
+        ...(args.description ? { description: args.description } : {}),
+      });
+      return text({ ...response, event: formatEventForMcp(response.event) });
     }),
   );
 
