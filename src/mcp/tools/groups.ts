@@ -33,7 +33,11 @@ export function registerGroupTools(ctx: ToolContext): void {
         "Join a group; alias defaults to this agent's registered session name. " +
         "History is included by default; set fresh=true for join-group-fork behavior. " +
         "Use bridge_rename_in_group later if you need to change your alias inside the group. " +
-        "When a freed alias is claimed by a different peer (e.g. respawn), the daemon emits a group_member_alias_reclaimed event so observers can distinguish respawn from impersonation.",
+        "Idempotent: re-joining a group where you are already an active member with the same alias is a no-op " +
+        "(response has event=null, already_member=true) and does NOT emit a phantom group_joined event. " +
+        "When you claim a freed alias previously held by a different peer, the response includes " +
+        "reclaimed_from: { previous_peer_id, event_id } pointing at the audit event the daemon emitted; " +
+        "use it to distinguish respawn from impersonation without polling the events table.",
       inputSchema: { name: z.string().min(1), alias: z.string().optional(), fresh: z.boolean().optional() },
     },
     async (args) => {

@@ -400,3 +400,56 @@ These are deliberate v0 deferrals, not bugs:
 - **Push delivery is fire-and-forget.** If the callback URL goes stale between subscribe and notify, the daemon logs and moves on. Recovery is by polling inbox. This is intentional: push is an attention signal, inbox is the contract.
 
 The system's correctness story rests on **single-writer daemon + transactional commits + inbox as durable channel.** Push, mentions, and threads are all layered *on top* of that core invariant without compromising it.
+
+---
+
+## 9. Architectural strength — discovery-based resilience
+
+`synchronize` has an underrated operational property worth calling out: **the daemon can be killed and restarted at will, and live clients reconnect on their next call without manual intervention.** This is not a happy accident — it falls out of three design choices working together:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                                                                      │
+│   ~/.synchronize/daemon.json   ◄── single source of truth for        │
+│   { pid, baseUrl, ... }            "where is the daemon right now?"  │
+│                                                                      │
+│              ▲             ▲                ▲                        │
+│              │             │                │                        │
+│     ┌────────┴────┐ ┌──────┴──────┐ ┌───────┴────────┐               │
+│     │   CLI       │ │ MCP adapter │ │ Pi extension   │               │
+│     │ (per-cmd)   │ │ (long-lived)│ │ (long-lived)   │               │
+│     └─────────────┘ └─────────────┘ └────────────────┘               │
+│                                                                      │
+│   Each client, on every outbound call, reads daemon.json, checks     │
+│   pid is alive, spawns a fresh daemon if not. Idempotent.            │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+The three contributors:
+
+1. **Filesystem-based discovery.** `~/.synchronize/daemon.json` is the registry — a single small file containing `pid`, `host`, `port`, `baseUrl`. Every client reads it on every call. No DNS, no service mesh, no port hardcoding.
+
+2. **Spawn-on-stale.** The discovery helper checks `kill -0 pid`. If the pid is dead or the file is missing, the next caller spawns a daemon and waits ≈half a second for it to be reachable. The cost of a stale state is amortized across the very next call. No degraded-mode middle state.
+
+3. **Stateless adapter, durable daemon.** All real state (peers, groups, events, inbox, media) lives in SQLite on the daemon side. The MCP adapter and Pi extension hold only their own `peer_id` and an HTTP base URL. On a daemon restart, the adapter's next call rediscovers the new port and re-registers; the daemon recreates the peer row with the same `peer_id` via UPSERT, and history continues. Across the 2026-05-23 v0 manual-test campaign we ran `make daemon-kill` mid-session and Claude-side adapters (bob, alice, operator) reconnected on their next `bridge_*` call without intervention.
+
+> ### ⚠️ Resilience caveat — currently single-sided
+>
+> The Pi extension captures the daemon `baseUrl` at startup via `discoverDaemon()` and reuses it for the lifetime of the Pi process. On a daemon restart with a new port, Pi's heartbeats hit the dead port and fail with `fetch failed`; Pi does **not** re-resolve `~/.synchronize/daemon.json` on connection errors. Combined with the peer cascade-delete (`sync-dmc`), this is what makes Pi agents appear to "vanish" silently — we hit it twice in one test session. Tracked separately; the Pi extension needs a retry-with-rediscover helper analogous to what `src/client.ts` already does for Claude/CLI.
+>
+> So the property as shipped is currently **single-sided**: Claude side handles daemon restart gracefully; Pi side requires a process restart. The architecture supports the two-sided story — we just haven't shipped the Pi half yet.
+
+### Caveat — what does NOT hot-reload
+
+The resilience property applies to the **daemon and CLI source**, not the entire stack. Specifically:
+
+| Component                            | Source location                   | Picks up changes on… |
+|--------------------------------------|-----------------------------------|----------------------|
+| Daemon (`src/daemon.ts` + imports)   | this worktree                     | Next `make daemon-relaunch` (one command) |
+| CLI (`src/cli.ts` + commands)        | this worktree via `bun link`      | Every invocation     |
+| MCP adapter (`src/mcp.ts` + tools)   | bundled into `synchronize-mcp`    | Restart of the **host** session (Claude / Codex / Pi) |
+| Pi extension (`extensions/pi-...`)   | worktree path in Pi's extension shim | Next Pi process startup |
+| Skills (`skills/synchronize-*`)      | copied to `~/.claude/skills/...`  | After `make install-*` + next host session |
+
+So changes to MCP tool descriptions, skill docs, and Pi extension code all require the agent session to be relaunched. The daemon itself is fluid. This split is *desirable* — long-running adapters with stable contracts on top of a freely-restartable backend.

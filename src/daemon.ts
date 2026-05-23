@@ -626,7 +626,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
 
-    return jsonResponse({ group: getGroupById(ctx.db, groupId) }, { status: 201 });
+    return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
@@ -649,6 +649,25 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const alias = optionalString(body, "alias") ?? peer.session_name;
     const fresh = body.fresh === true;
 
+    // Idempotent short-circuit: if this peer is already an active member of
+    // the group with the exact same alias, return current state without
+    // emitting a phantom group_joined event. A naive re-join (e.g. "join
+    // just to be safe") would otherwise pollute the event stream and the
+    // inboxes of every other active member.
+    const existing = ctx.db
+      .query<{ alias: string; active: number }, [number, string]>(
+        "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (existing && existing.active === 1 && existing.alias === alias) {
+      return jsonResponse({
+        member: getGroupMember(ctx.db, group.group_id, peerId),
+        event: null,
+        already_member: true,
+      });
+    }
+
+    let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
     const joinEventId = ctx.db.transaction(() => {
       // Detect alias reclaim: the most-recently-departed prior holder of this
       // alias belongs to a different peer_id. Respawn (same peer_id) is not a
@@ -677,6 +696,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
           ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id,
         );
         fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peerId);
+        reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
       }
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
@@ -713,7 +733,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return eventId;
     })();
 
-    return jsonResponse({ member: getGroupMember(ctx.db, group.group_id, peerId), event: getEvent(ctx.db, joinEventId) });
+    return jsonResponse({
+      member: getGroupMember(ctx.db, group.group_id, peerId),
+      event: getEvent(ctx.db, joinEventId),
+      ...(reclaimed ? { reclaimed_from: reclaimed } : {}),
+    });
   }
 
   const groupRename = url.pathname.match(/^\/groups\/([^/]+)\/rename$/);
@@ -782,7 +806,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ctx.db
       .query("UPDATE groups SET description = ? WHERE group_id = ?")
       .run(description, group.group_id);
-    return jsonResponse({ group: getGroup(ctx.db, group.name) });
+    return jsonResponse({ group: formatGroup(getGroup(ctx.db, group.name)) });
   }
 
   const groupLeave = url.pathname.match(/^\/groups\/([^/]+)\/leave$/);
@@ -790,7 +814,17 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const group = getGroup(ctx.db, decodeURIComponent(groupLeave[1] ?? ""));
     const body = await readBody(request);
     const peerId = requireString(body, "peer_id");
-    ensureActiveMember(ctx.db, group.group_id, peerId);
+    // Idempotent: if the peer is not an active member, return ok without
+    // emitting a phantom group_left event. Mirrors bridge_join_group's
+    // already_member: true shape so the API stays consistent.
+    const currentMember = ctx.db
+      .query<{ active: number }, [number, string]>(
+        "SELECT active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (!currentMember || currentMember.active === 0) {
+      return jsonResponse({ ok: true, event: null, already_left: true });
+    }
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
@@ -819,10 +853,16 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
-    const { peerIds: mentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    // Self-mentions are filtered out: `mentions_json` should reflect peers
+    // actually targeted by the mention semantics. Since the sender is always
+    // excluded from both push and inbox fanout, advertising a self-mention
+    // would mislead observers about who got notified.
+    const mentionedPeerIds = rawMentionedPeerIds.filter((peerId) => peerId !== senderPeerId);
     const mentionsJson = mentionedPeerIds.length > 0 ? JSON.stringify(mentionedPeerIds) : null;
 
     let pushTargets: string[] = [];
+    let allRecipients: string[] = [];
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
@@ -833,7 +873,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       // Durable inbox fanout: every active member except the sender, regardless
       // of mention status — durable visibility is the same as v0; only push
       // is mention/thread-aware.
-      const allRecipients = ctx.db
+      allRecipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
         )
@@ -863,7 +903,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     );
     void notifySubscribers(ctx, pushTargets, event);
 
-    return jsonResponse(warnings.length > 0 ? { event, warnings } : { event }, { status: 201 });
+    // Always return `warnings` (and `delivery`) so consumers can destructure
+    // without optional-chaining. Default-undefined fields are a trap for
+    // LLM agents that may not write defensive code.
+    const delivery = {
+      pushed_to: pushTargets,
+      inbox_only: allRecipients.filter((peerId) => !pushTargets.includes(peerId)),
+    };
+    return jsonResponse({ event, warnings, delivery }, { status: 201 });
   }
 
   const groupHistory = url.pathname.match(/^\/groups\/([^/]+)\/history$/);
@@ -894,16 +941,57 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .all(group.group_id, historyFrom, threadOf, threadOf, limit);
     } else {
-      rows = ctx.db
-        .query<EventRow, [number, number, number]>(
-          `SELECT * FROM events
-           WHERE group_id = ? AND event_id >= ? AND parent_event_id IS NULL
-           ORDER BY event_id ASC
+      // Main-channel view augments each row with reply_count + last_reply_event_id
+      // so agents can discover threads without an extra per-event probe.
+      // This is the affordance that sync-0gl asked for: default history alone
+      // tells the caller which messages have replies and how to drill in.
+      type MainRow = EventRow & { reply_count: number; last_reply_event_id: number | null };
+      const mainRows = ctx.db
+        .query<MainRow, [number, number, number]>(
+          `SELECT e.*,
+                  (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
+                  (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id
+           FROM events e
+           WHERE e.group_id = ? AND e.event_id >= ? AND e.parent_event_id IS NULL
+           ORDER BY e.event_id ASC
            LIMIT ?`,
         )
         .all(group.group_id, historyFrom, limit);
+      return jsonResponse({ events: mainRows, next_cursor: mainRows.at(-1)?.event_id ?? cursor });
     }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
+  }
+
+  // GET /events/:event_id — single-event lookup with visibility enforcement.
+  // Asked for by bob and alice in the 2026-05-23 customer review: when a
+  // channel notification carries `event_id=22`, agents have no way to re-read
+  // that row to verify parent/mention/body fields without scrolling history.
+  const eventGet = url.pathname.match(/^\/events\/(\d+)$/);
+  if (request.method === "GET" && eventGet) {
+    const eventId = Number(eventGet[1]);
+    const peerId = url.searchParams.get("peer_id");
+    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const event = getEvent(ctx.db, eventId);
+    if (event.group_id !== null) {
+      // Group event: caller must be (or have been) a member of that group.
+      // Match the history endpoint's visibility model: history_from_event_id
+      // cuts off events the joiner shouldn't see.
+      const member = ctx.db
+        .query<{ history_from_event_id: number | null }, [number, string]>(
+          "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(event.group_id, peerId);
+      if (!member) throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+      if (event.event_id < (member.history_from_event_id ?? 0)) {
+        throw new HttpError(404, "event_not_found", `Event ${eventId} is before peer's history_from boundary`);
+      }
+    } else if (event.recipient_peer_id !== null) {
+      // DM: caller must be sender or recipient.
+      if (event.sender_peer_id !== peerId && event.recipient_peer_id !== peerId) {
+        throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+      }
+    }
+    return jsonResponse({ event });
   }
 
   const groupMedia = url.pathname.match(/^\/groups\/([^/]+)\/media$/);

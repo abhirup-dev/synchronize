@@ -32,11 +32,24 @@ export function listGroups(client: ClientConfig): Promise<{ groups: Group[] }> {
   return requestJson<{ groups: Group[] }>(client, "/groups");
 }
 
+export interface JoinGroupResponse {
+  member: GroupMember;
+  // Null when the call was an idempotent no-op (peer already a member of the
+  // group with the same alias); the join event is the original join, not a
+  // fresh one. Inspect `already_member` to distinguish.
+  event: Event | null;
+  // Present when this join took over an alias previously held by a different
+  // peer. The reclaim audit event was already emitted and fanned out; this
+  // pointer lets the caller surface it without polling the events table.
+  reclaimed_from?: { previous_peer_id: string; event_id: number };
+  already_member?: boolean;
+}
+
 export function joinGroup(
   client: ClientConfig,
   input: { name: string; peerId: string; alias?: string; fresh?: boolean },
-): Promise<{ member: GroupMember; event: Event }> {
-  return requestJson<{ member: GroupMember; event: Event }>(client, `/groups/${encodeURIComponent(input.name)}/join`, {
+): Promise<JoinGroupResponse> {
+  return requestJson<JoinGroupResponse>(client, `/groups/${encodeURIComponent(input.name)}/join`, {
     method: "POST",
     body: JSON.stringify({
       peer_id: input.peerId,
