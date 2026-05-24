@@ -50,7 +50,7 @@ export function Markdown({ children, agents }: { children: string; agents?: Agen
             const isInline = !className || !/language-/.test(className);
             if (isInline && agents) {
               const text = String(children ?? "");
-              const m = text.match(/^@@(\w+)$/);
+              const m = text.match(/^@@([a-zA-Z0-9._-]+)$/);
               if (m) {
                 const agent = agents.find((a) => a.handle === m[1]);
                 if (agent) return <MentionChip agent={agent} />;

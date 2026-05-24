@@ -52,8 +52,20 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let ctxRef: PiExtensionContext | null = null;
   let sessionFile: string | null = null;
 
-  async function teardown(): Promise<void> {
-    log(`teardown begin peer_id=${peerId ?? "-"}`);
+  // Process-lifetime peer. teardownSession runs on Pi's internal session
+  // boundaries (before-switch) and only releases per-session state — the peer
+  // row and heartbeat are preserved so the Pi process stays online across
+  // Pi's internal session rotations. teardownProcess runs on actual process
+  // shutdown and is the only path that deletes the peer.
+  async function teardownSession(): Promise<void> {
+    log(`session teardown peer_id=${peerId ?? "-"} (peer preserved)`);
+    sub?.stop();
+    sub = null;
+    ctxRef = null;
+  }
+
+  async function teardownProcess(): Promise<void> {
+    log(`process teardown begin peer_id=${peerId ?? "-"}`);
     if (heartbeat) {
       clearInterval(heartbeat);
       heartbeat = null;
@@ -84,8 +96,36 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
 
   async function startup(ctx: PiExtensionContext): Promise<void> {
     ctxRef = ctx;
-    client = await discoverDaemon();
     const piSessionId = ctx.sessionManager?.getSessionId?.() ?? null;
+
+    // Idempotent path: if this process already registered a peer in a
+    // previous session_start, reuse it. Only refresh the per-session
+    // agent_session binding and event subscription. This makes the peer
+    // process-lifetime instead of Pi-session-lifetime.
+    if (client && peerId) {
+      log(`startup reusing peer_id=${peerId} pi_session_id=${piSessionId ?? "<unset>"}`);
+      if (piSessionId) {
+        const sessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? `pi-${peerId}`;
+        try {
+          await registerAgentSession(client, {
+            peerId,
+            sessionName,
+            hostSessionId: piSessionId,
+            cwd: process.cwd(),
+          });
+          log(`refreshed agent_session host_session_id=${piSessionId} peer_id=${peerId}`);
+        } catch (error) {
+          log(`agent_session refresh failed: ${formatError(error)}`);
+        }
+      }
+      sub?.stop();
+      sub = buildSubscription(peerId, client);
+      await sub.start();
+      return;
+    }
+
+    // Fresh registration path.
+    client = await discoverDaemon();
     const envSessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? null;
     const sessionName = resolveSessionName({ piSessionId, envSessionName });
     log(
@@ -119,9 +159,22 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
       JSON.stringify({ peer_id: peerId, session_name: sessionName, pid: process.pid }, null, 2),
     );
 
-    sub = new PiEventSubscription({
-      peerId,
-      client,
+    sub = buildSubscription(peerId, client);
+    await sub.start();
+
+    heartbeat = setInterval(() => {
+      if (!client || !peerId) return;
+      heartbeatPeer(client, peerId).catch((error) => log(`heartbeat failed: ${formatError(error)}`));
+    }, HEARTBEAT_MS);
+
+    log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
+    ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
+  }
+
+  function buildSubscription(currentPeerId: string, currentClient: PiSyncClient): PiEventSubscription {
+    return new PiEventSubscription({
+      peerId: currentPeerId,
+      client: currentClient,
       onEvent: async (event: Event) => {
         const idle = ctxRef?.isIdle?.() ?? true;
         const delivery = mapEventToDelivery(event, ctxRef ?? {});
@@ -139,15 +192,6 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
         }
       },
     });
-    await sub.start();
-
-    heartbeat = setInterval(() => {
-      if (!client || !peerId) return;
-      heartbeatPeer(client, peerId).catch((error) => log(`heartbeat failed: ${formatError(error)}`));
-    }, HEARTBEAT_MS);
-
-    log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
-    ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -156,15 +200,19 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     } catch (error) {
       log(`session_start failed: ${formatError(error)}`);
       ctx.ui?.notify?.(`synchronize: ${formatError(error)}`, "warning");
-      await teardown();
+      // Failure here is per-session — don't delete the peer if one was already
+      // registered in a previous startup. Just release per-session state.
+      await teardownSession();
     }
   });
 
-  pi.on("session_before_switch", async () => {
-    await teardown();
-  });
+  // Intentionally not handling session_before_switch — the peer is
+  // process-lifetime, not Pi-session-lifetime. Pi rotates its internal
+  // sessions during normal operation (context window, tool flows, etc.) and
+  // reacting to that event was the root cause of peers being soft-deleted
+  // out from under live Pi processes.
 
   pi.on("session_shutdown", async () => {
-    await teardown();
+    await teardownProcess();
   });
 }

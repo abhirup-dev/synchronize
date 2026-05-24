@@ -1303,3 +1303,98 @@ test("re-registering with a soft-deleted peer_id resurrects the peer and clears 
     await daemon.stop();
   }
 });
+
+test("web state endpoint returns summaries and room-scoped event history", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-state-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const web = await registerPeer(daemon.client, { peerId: "web:test", sessionName: "web-ui", tool: "web" });
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-room";
+    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: web.peer.peer_id, alias: "web" });
+    const sent = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "hello web state",
+    });
+
+    const summary = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`);
+    expect(summary.status).toBe(200);
+    expect(summary.headers.get("etag")).toBe(`W/"${sent.event.event_id}"`);
+    const summaryBody = await summary.json() as {
+      groups: Array<{ group_id: number; name: string }>;
+      room_summaries: Array<{ group_id: number; last_event_id: number | null; last_preview: string | null }>;
+      events: unknown[];
+    };
+    expect(summaryBody.groups).toContainEqual(expect.objectContaining({ group_id: group.group.group_id, name: groupName }));
+    expect(summaryBody.room_summaries).toContainEqual(expect.objectContaining({
+      group_id: group.group.group_id,
+      last_event_id: sent.event.event_id,
+      last_preview: "hello web state",
+    }));
+    expect(summaryBody.events).toHaveLength(0);
+
+    const notModified = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
+      headers: { "if-none-match": `W/"${sent.event.event_id}"` },
+    });
+    expect(notModified.status).toBe(304);
+
+    const room = await fetch(
+      `${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}&room=group:${group.group.group_id}`,
+    );
+    const roomBody = await room.json() as { events: Array<{ event_id: number; body: string | null }> };
+    expect(roomBody.events).toContainEqual(expect.objectContaining({
+      event_id: sent.event.event_id,
+      body: "hello web state",
+    }));
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("web events stream emits state_changed after a room message", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-events-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "codex" });
+    const groupName = "web-events-room";
+    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+
+    const controller = new AbortController();
+    const stream = await fetch(`${daemon.client.baseUrl}/web/events`, { signal: controller.signal });
+    expect(stream.status).toBe(200);
+    const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+    await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "stream me",
+    });
+
+    const deadline = Date.now() + 2_000;
+    let seen = false;
+    let buffer = "";
+    while (Date.now() < deadline && !seen) {
+      const result = await Promise.race([
+        reader.read(),
+        Bun.sleep(100).then(() => null),
+      ]);
+      if (!result) continue;
+      const { value } = result;
+      buffer += value ?? "";
+      seen = buffer.includes("event: state_changed") && buffer.includes(`\"group_id\":${group.group.group_id}`);
+    }
+    controller.abort();
+    expect(seen).toBe(true);
+  } finally {
+    await daemon.stop();
+  }
+});

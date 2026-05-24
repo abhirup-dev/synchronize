@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
-import { useAgents, useSendMessage } from "../data/context.tsx";
+import { useAgents, useMe, useRooms, useSendMessage } from "../data/context.tsx";
 import type { Agent } from "../data/types.ts";
+import { roomAgents } from "../data/roomAgents.ts";
 import { inkFor } from "./primitives.tsx";
 
 interface ComposerProps {
@@ -13,6 +14,10 @@ interface ComposerProps {
 
 export function Composer({ roomId, parentMessageId, collapsedDefault = false }: ComposerProps) {
   const agents = useAgents();
+  const me = useMe();
+  const rooms = useRooms();
+  const room = rooms.find((candidate) => candidate.id === roomId);
+  const mentionAgents = useMemo(() => room ? roomAgents(agents, room) : agents, [agents, room]);
   const sendMessage = useSendMessage();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -48,15 +53,15 @@ export function Composer({ roomId, parentMessageId, collapsedDefault = false }: 
   const candidates = useMemo(() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase();
-    return agents.filter((a) => a.id !== "you" && (q === "" || a.handle.toLowerCase().startsWith(q))).slice(0, 6);
-  }, [mentionQuery, agents]);
+    return mentionAgents.filter((a) => a.id !== me.id && (q === "" || a.handle.toLowerCase().startsWith(q))).slice(0, 6);
+  }, [mentionQuery, mentionAgents, me.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value;
     setValue(v);
     const caret = e.target.selectionStart;
     const upTo = v.slice(0, caret);
-    const m = /@(\w*)$/.exec(upTo);
+    const m = /@([a-zA-Z0-9._-]*)$/.exec(upTo);
     if (m) {
       setMentionQuery(m[1] ?? "");
       setMentionIdx(0);
@@ -69,7 +74,7 @@ export function Composer({ roomId, parentMessageId, collapsedDefault = false }: 
     const ta = taRef.current;
     if (!ta) return;
     const caret = ta.selectionStart;
-    const before = value.slice(0, caret).replace(/@\w*$/, `@${a.handle} `);
+    const before = value.slice(0, caret).replace(/@[a-zA-Z0-9._-]*$/, `@${a.handle} `);
     const after = value.slice(caret);
     const next = before + after;
     setValue(next);
@@ -102,10 +107,10 @@ export function Composer({ roomId, parentMessageId, collapsedDefault = false }: 
   const submit = async () => {
     const body = value.trim();
     if (!body) return;
-    const mentions = Array.from(body.matchAll(/@(\w+)/g))
+    const mentions = Array.from(body.matchAll(/@([a-zA-Z0-9._-]+)/g))
       .map((m) => m[1])
       .filter((h): h is string => Boolean(h))
-      .map((h) => agents.find((a) => a.handle === h)?.id)
+      .map((h) => mentionAgents.find((a) => a.handle === h)?.id)
       .filter((id): id is string => Boolean(id));
     setValue("");
     setMentionQuery(null);

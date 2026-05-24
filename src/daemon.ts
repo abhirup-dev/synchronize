@@ -27,6 +27,8 @@ interface DaemonContext {
   token: string | null;
   server: Bun.Server<unknown>;
   subscribers: Map<string, EventSubscriber>;
+  webStateClients: Set<WebStateClient>;
+  stateVersion: number;
 }
 
 interface DiscoveryFile {
@@ -102,6 +104,22 @@ interface EventSubscriber {
   token: string;
   created_at: string;
 }
+
+interface WebStateClient {
+  id: string;
+  send(change: WebStateChange): void;
+}
+
+interface WebStateChange {
+  cursor: number;
+  type: "connected" | "state_changed";
+  domains: string[];
+  event_id?: number;
+  group_id?: number | null;
+  peer_id?: string | null;
+}
+
+const WEB_PEER_LEASE_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
 
 interface InboxRow extends EventRow {
   delivered_at: string | null;
@@ -222,6 +240,21 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       pid: process.pid,
       started_at: ctx.startedAt,
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/web/state") {
+    requireAuth(request, ctx);
+    const state = buildWebState(ctx, url);
+    const etag = `W/"${state.cursor}"`;
+    if (request.headers.get("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { etag } });
+    }
+    return jsonResponse(state, { headers: { etag, "cache-control": "no-cache" } });
+  }
+
+  if (request.method === "GET" && url.pathname === "/web/events") {
+    requireAuth(request, ctx);
+    return openWebEvents(ctx);
   }
 
   if (request.method === "GET" && (url.pathname === "/web" || url.pathname === "/web/" || url.pathname.startsWith("/web/"))) {
@@ -434,6 +467,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
 
     log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
+    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
   }
 
@@ -462,6 +496,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       .query("UPDATE peers SET session_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE peer_id = ?")
       .run(sessionName, peerId);
     log(`agent session renamed peer_id=${peerId} session_name=${sessionName}`);
+    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
   }
 
@@ -472,7 +507,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = optionalString(body, "peer_id") ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const leaseExpiresAt = leaseExpiresAtForTool(tool);
 
     upsertPeer(ctx.db, {
       peerId,
@@ -484,14 +519,15 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     });
 
     log(`peer registered peer_id=${peerId} session_name=${sessionName} tool=${tool} lease_expires_at=${leaseExpiresAt}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
     return jsonResponse({ peer: getPeer(ctx.db, peerId) }, { status: 201 });
   }
 
   const peerHeartbeat = url.pathname.match(/^\/peers\/([^/]+)\/heartbeat$/);
   if (request.method === "PATCH" && peerHeartbeat) {
     const peerId = decodeURIComponent(peerHeartbeat[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const peer = getPeer(ctx.db, peerId);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
     ctx.db
       .query(
         `UPDATE peers
@@ -500,6 +536,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       )
       .run(leaseExpiresAt, peerId);
     log(`peer heartbeat peer_id=${peerId} lease_expires_at=${leaseExpiresAt}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
     return jsonResponse({ peer: getPeer(ctx.db, peerId) });
   }
 
@@ -552,6 +589,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
     ctx.subscribers.delete(peerId);
     log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups"], peerId });
     return jsonResponse({ ok: true, peer_id: peerId });
   }
 
@@ -598,6 +636,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
     const event = getEvent(ctx.db, eventId);
     log(`dm stored event_id=${eventId} sender=${senderPeerId} recipient=${recipientPeerId} body_chars=${message.length}`);
+    emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, peerId: recipientPeerId });
     void notifySubscribers(ctx, [recipientPeerId], event);
 
     return jsonResponse({ event }, { status: 201 });
@@ -645,6 +684,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
     return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
   }
 
@@ -752,6 +792,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return eventId;
     })();
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId: joinEventId, groupId: group.group_id, peerId });
     return jsonResponse({
       member: getGroupMember(ctx.db, group.group_id, peerId),
       event: getEvent(ctx.db, joinEventId),
@@ -799,6 +840,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId: renameEventId, groupId: group.group_id, peerId });
     return jsonResponse({
       member: getGroupMember(ctx.db, group.group_id, peerId),
       event: getEvent(ctx.db, renameEventId),
@@ -825,6 +867,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ctx.db
       .query("UPDATE groups SET description = ? WHERE group_id = ?")
       .run(description, group.group_id);
+    emitWebStateChanged(ctx, { domains: ["groups"], groupId: group.group_id });
     return jsonResponse({ group: formatGroup(getGroup(ctx.db, group.name)) });
   }
 
@@ -857,6 +900,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
       return id;
     })();
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId, groupId: group.group_id, peerId });
     return jsonResponse({ ok: true, event: getEvent(ctx.db, eventId) });
   }
 
@@ -920,6 +964,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     log(
       `group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} thread=${parentEventId ?? "main"} unresolved=${warnings.length}`,
     );
+    emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, groupId: group.group_id, peerId: senderPeerId });
     void notifySubscribers(ctx, pushTargets, event);
 
     // Always return `warnings` (and `delivery`) so consumers can destructure
@@ -1124,6 +1169,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     await writeMediaReadme(group, ctx.db);
     const event = getEvent(ctx.db, eventId);
     log(`media shared event_id=${eventId} group=${group.name} media_id=${mediaId} sender=${sharedByPeerId} recipients=${recipients.length}`);
+    emitWebStateChanged(ctx, { domains: ["events", "media", "inbox"], eventId, groupId: group.group_id, peerId: sharedByPeerId });
     void notifySubscribers(ctx, recipients, event);
     return jsonResponse({ media, event }, { status: 201 });
   }
@@ -1184,6 +1230,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            WHERE recipient_peer_id = ? AND event_id IN (${rows.map(() => "?").join(",")})`,
         )
         .run(now, peerId, ...rows.map((row) => row.event_id));
+      emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? after });
   }
@@ -1213,6 +1260,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(now, peerId).changes;
     }
+    if (changed > 0) emitWebStateChanged(ctx, { domains: ["inbox"], peerId });
     return jsonResponse({ ok: true, acked: changed });
   }
 
@@ -1242,6 +1290,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(now, peerId, ...rows.map((row) => row.event_id));
       ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
+      emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
   }
@@ -1467,6 +1516,10 @@ function ensurePeer(db: Database, peerId: string): void {
   getPeer(db, peerId);
 }
 
+function leaseExpiresAtForTool(tool: string): string {
+  return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+}
+
 function upsertPeer(
   db: Database,
   input: {
@@ -1627,6 +1680,239 @@ function getEvent(db: Database, eventId: number): EventRow {
   const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
   return event;
+}
+
+function emitWebStateChanged(
+  ctx: DaemonContext,
+  input: { domains: string[]; eventId?: number; groupId?: number | null; peerId?: string | null },
+): void {
+  ctx.stateVersion += 1;
+  const change: WebStateChange = {
+    cursor: input.eventId ?? ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? ctx.stateVersion,
+    type: "state_changed",
+    domains: input.domains,
+    ...(input.eventId !== undefined ? { event_id: input.eventId } : {}),
+    ...(input.groupId !== undefined ? { group_id: input.groupId } : {}),
+    ...(input.peerId !== undefined ? { peer_id: input.peerId } : {}),
+  };
+  for (const client of [...ctx.webStateClients]) client.send(change);
+}
+
+function openWebEvents(ctx: DaemonContext): Response {
+  const encoder = new TextEncoder();
+  const id = crypto.randomUUID();
+  let cleanup: (() => void) | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      const client: WebStateClient = {
+        id,
+        send(change) {
+          try {
+            write(formatSse(change));
+          } catch {
+            ctx.webStateClients.delete(client);
+          }
+        },
+      };
+      const heartbeat = setInterval(() => {
+        try {
+          write(`: heartbeat ${new Date().toISOString()}\n\n`);
+        } catch {
+          ctx.webStateClients.delete(client);
+          clearInterval(heartbeat);
+        }
+      }, 15_000);
+      cleanup = () => {
+        clearInterval(heartbeat);
+        ctx.webStateClients.delete(client);
+      };
+      ctx.webStateClients.add(client);
+      client.send({ cursor: ctx.stateVersion, type: "connected", domains: [] });
+    },
+    cancel() {
+      cleanup?.();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  });
+}
+
+function formatSse(change: WebStateChange): string {
+  return [
+    `id: ${change.cursor}`,
+    `event: ${change.type}`,
+    `data: ${JSON.stringify(change)}`,
+    "",
+    "",
+  ].join("\n");
+}
+
+interface WebStateResponse {
+  ok: true;
+  generated_at: string;
+  cursor: number;
+  daemon: {
+    pid: number;
+    base_url: string;
+    started_at: string;
+    token_required: boolean;
+  };
+  peers: Array<PeerRow & { online: boolean }>;
+  groups: FormattedGroup[];
+  memberships: Array<FormattedMember & { online: boolean }>;
+  room_summaries: WebRoomSummary[];
+  events: WebEventRow[];
+  media: MediaRow[];
+}
+
+interface WebRoomSummary {
+  group_id: number;
+  last_event_id: number | null;
+  last_event_at: string | null;
+  last_preview: string | null;
+  message_count: number;
+}
+
+type WebEventRow = EventRow & {
+  reply_count: number;
+  last_reply_event_id: number | null;
+  delivered_count: number;
+  read_count: number;
+  acked_count: number;
+};
+
+function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
+  const now = new Date().toISOString();
+  const limit = parseLimit(url.searchParams.get("limit"));
+  const since = parseCursor(url.searchParams.get("since"));
+  const room = url.searchParams.get("room");
+  const webPeerId = url.searchParams.get("peer_id");
+  const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
+  const peers = ctx.db
+    .query<PeerRow & { online: number }, [string]>(
+      `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+              last_cursor, created_at, updated_at, lease_expires_at > ? AS online
+       FROM peers
+       WHERE deleted_at IS NULL
+       ORDER BY updated_at DESC, session_name ASC`,
+    )
+    .all(now)
+    .map((peer) => ({ ...peer, online: Boolean(peer.online) }));
+  const groups = ctx.db
+    .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
+    .all()
+    .map(formatGroup);
+  const memberships = ctx.db
+    .query<MemberRow & { online: number }, [string]>(
+      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
+       FROM group_members gm
+       JOIN peers p ON p.peer_id = gm.peer_id
+       ORDER BY gm.group_id ASC, gm.alias ASC`,
+    )
+    .all(now)
+    .map((member) => ({ ...member, active: Boolean(member.active), online: Boolean(member.online) }));
+  const roomSummaries = ctx.db
+    .query<WebRoomSummary, []>(
+      `SELECT
+         g.group_id,
+         MAX(e.event_id) AS last_event_id,
+         MAX(e.created_at) AS last_event_at,
+         (SELECT body FROM events latest
+          WHERE latest.group_id = g.group_id AND latest.parent_event_id IS NULL
+          ORDER BY latest.event_id DESC LIMIT 1) AS last_preview,
+         COUNT(CASE WHEN e.type = 'group_message' AND e.parent_event_id IS NULL THEN 1 END) AS message_count
+       FROM groups g
+       LEFT JOIN events e ON e.group_id = g.group_id
+       GROUP BY g.group_id
+       ORDER BY last_event_id DESC, g.name ASC`,
+    )
+    .all();
+  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId });
+  const media = readWebRoomMedia(ctx, { room, limit });
+  return {
+    ok: true,
+    generated_at: now,
+    cursor,
+    daemon: {
+      pid: process.pid,
+      base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
+      started_at: ctx.startedAt,
+      token_required: Boolean(ctx.token),
+    },
+    peers,
+    groups,
+    memberships,
+    room_summaries: roomSummaries,
+    events,
+    media,
+  };
+}
+
+function webEventSelectSql(where: string): string {
+  return `SELECT e.*,
+                 (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
+                 (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.delivered_at IS NOT NULL) AS delivered_count,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.read_at IS NOT NULL) AS read_count,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.acked_at IS NOT NULL) AS acked_count
+          FROM events e
+          ${where}
+          ORDER BY e.event_id DESC
+          LIMIT ?`;
+}
+
+function readWebRoomEvents(
+  ctx: DaemonContext,
+  input: { room: string | null; since: number; limit: number; webPeerId: string | null },
+): WebEventRow[] {
+  if (!input.room) return [];
+  if (input.room.startsWith("group:")) {
+    const groupId = Number.parseInt(input.room.slice("group:".length), 10);
+    if (!Number.isInteger(groupId) || groupId < 1) {
+      throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+    }
+    return ctx.db
+      .query<WebEventRow, [number, number, number]>(
+        webEventSelectSql("WHERE e.group_id = ? AND e.event_id > ?"),
+      )
+      .all(groupId, input.since, input.limit)
+      .reverse();
+  }
+  if (input.room.startsWith("dm:")) {
+    if (!input.webPeerId) throw new HttpError(400, "invalid_request", "peer_id is required for dm room state");
+    const otherPeerId = input.room.slice("dm:".length);
+    ensurePeer(ctx.db, input.webPeerId);
+    ensurePeer(ctx.db, otherPeerId);
+    return ctx.db
+      .query<WebEventRow, [string, string, string, string, number, number]>(
+        webEventSelectSql(
+          `WHERE e.type = 'dm'
+             AND ((e.sender_peer_id = ? AND e.recipient_peer_id = ?)
+               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))
+             AND e.event_id > ?`,
+        ),
+      )
+      .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, input.since, input.limit)
+      .reverse();
+  }
+  throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+}
+
+function readWebRoomMedia(ctx: DaemonContext, input: { room: string | null; limit: number }): MediaRow[] {
+  if (!input.room?.startsWith("group:")) return [];
+  const groupId = Number.parseInt(input.room.slice("group:".length), 10);
+  if (!Number.isInteger(groupId) || groupId < 1) return [];
+  return ctx.db
+    .query<MediaRow, [number, number]>(
+      "SELECT * FROM media_items WHERE group_id = ? ORDER BY created_at DESC LIMIT ?",
+    )
+    .all(groupId, input.limit);
 }
 
 async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: EventRow): Promise<void> {
@@ -1810,7 +2096,7 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, server, subscribers: new Map() };
+  ctx = { paths, db, startedAt, token, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0 };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,
@@ -1868,7 +2154,13 @@ async function serveWebAsset(pathname: string): Promise<Response> {
   }
   const ext = extname(rel).toLowerCase();
   const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream";
-  return new Response(file, { headers: { "content-type": contentType, "cache-control": "no-cache" } });
+  const immutable = /\.[A-Za-z0-9_-]{8,}\.(js|css|map|png|svg|woff2?)$/.test(rel);
+  return new Response(file, {
+    headers: {
+      "content-type": contentType,
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    },
+  });
 }
 
 main().catch((error) => {

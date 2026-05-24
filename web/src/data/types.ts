@@ -25,6 +25,7 @@ export interface Room {
   emoji?: string;
   color: string;
   members: string[]; // agent ids; for DMs always [you, other]
+  memberAliases?: Record<string, string>; // group-scoped peer_id -> alias
   description?: string;
   lastPreview?: string;
   unread: number;

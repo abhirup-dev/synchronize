@@ -267,6 +267,8 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--ink);
+  transform: rotate(-1.5deg);
+  transform-origin: left center;
 }
 
 .count-chip {

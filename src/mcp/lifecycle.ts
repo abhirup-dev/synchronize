@@ -92,6 +92,17 @@ export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
     state.subscription?.stop();
     state.subscription = null;
     if (state.peer && state.client) {
+      // Borrowed-peer guard: when SYNCHRONIZE_PEER_ID was set in the env at
+      // adapter startup (e.g. by the Pi extension which owns the peer
+      // lifetime), this adapter is using a borrowed peer. The owner — not
+      // us — controls when to delete it. Skipping deletePeer here prevents
+      // Pi agents from being soft-deleted out from under their own live
+      // process whenever Pi rotates its internal MCP subprocess.
+      const borrowedPeerId = process.env[ENV_PEER_ID];
+      if (borrowedPeerId && borrowedPeerId === state.peer.peer_id) {
+        log(`skip unregister peer ${state.peer.peer_id} (borrowed via ${ENV_PEER_ID})`);
+        return;
+      }
       try {
         await deletePeer(state.client, state.peer.peer_id);
         log(`unregistered peer ${state.peer.peer_id}`);

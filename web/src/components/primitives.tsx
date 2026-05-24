@@ -1,5 +1,6 @@
 // Small, reusable UI primitives shared across the app.
 
+import type { CSSProperties } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
 
 // WCAG-style relative luminance; used to pick black-or-white text on a tinted
@@ -67,22 +68,24 @@ export function StatusDot({ status, size = 12 }: { status: AgentStatus; size?: n
   );
 }
 
-export function Sticker({ label, color }: { label: string; color?: string; tilt?: number }) {
+export function Sticker({ label, color, tilt = -2 }: { label: string; color?: string; tilt?: number }) {
   return (
     <span
       className="sticker"
       style={{
         display: "inline-flex",
         alignItems: "center",
-        padding: "2px 7px",
+        padding: "4px 10px",
         background: color ?? "var(--paper-3)",
         border: "2px solid var(--rule)",
-        borderRadius: 3,
-        boxShadow: "1.5px 1.5px 0 var(--rule)",
+        borderRadius: 0,
+        boxShadow: "3px 3px 0 var(--rule)",
         fontFamily: "Archivo Black, sans-serif",
-        fontSize: 10,
-        letterSpacing: "0.05em",
-        color: "var(--on-accent)",
+        fontSize: 11,
+        letterSpacing: "0.08em",
+        color: "var(--ink)",
+        textTransform: "uppercase",
+        transform: `rotate(${tilt}deg)`,
       }}
     >
       {label}
@@ -93,20 +96,8 @@ export function Sticker({ label, color }: { label: string; color?: string; tilt?
 export function MentionChip({ agent }: { agent: Agent }) {
   return (
     <span
-      className="mention-chip"
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        padding: "1px 6px",
-        background: agent.color,
-        color: inkFor(agent.color),
-        border: "1.5px solid var(--rule)",
-        borderRadius: 3,
-        fontFamily: "JetBrains Mono, monospace",
-        fontSize: 12,
-        fontWeight: 600,
-        boxShadow: "1px 1px 0 var(--rule)",
-      }}
+      className={`mention-chip${agent.handle === "you" ? " mention-chip-self" : ""}`}
+      style={{ "--mention-color": agent.color } as CSSProperties}
     >
       @{agent.handle}
     </span>

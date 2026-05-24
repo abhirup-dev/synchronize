@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { useAgents, useTimeline } from "../data/context.tsx";
+import { useAgents, useRooms, useTimeline } from "../data/context.tsx";
 import type { TimelineEvent, TimelineEventType } from "../data/types.ts";
+import { roomAgents } from "../data/roomAgents.ts";
 
 interface TimelineRailProps {
   roomId: string;
@@ -44,6 +45,9 @@ interface HoverState {
 export function TimelineRail({ roomId }: TimelineRailProps) {
   const events = useTimeline(roomId);
   const agents = useAgents();
+  const rooms = useRooms();
+  const room = rooms.find((candidate) => candidate.id === roomId);
+  const displayAgents = useMemo(() => room ? roomAgents(agents, room) : agents, [agents, room]);
   const [hover, setHover] = useState<HoverState | null>(null);
 
   const sorted = useMemo(
@@ -103,7 +107,11 @@ export function TimelineRail({ roomId }: TimelineRailProps) {
             transform: "translateY(-50%)",
           }}
         >
-          <Tooltip ev={hover.ev} authorName={agents.find((a) => a.id === hover.ev.agentId)?.name ?? hover.ev.agentId} authorRole={agents.find((a) => a.id === hover.ev.agentId)?.role ?? ""} />
+          <Tooltip
+            ev={hover.ev}
+            authorName={displayAgents.find((a) => a.id === hover.ev.agentId)?.name ?? hover.ev.agentId}
+            authorRole={displayAgents.find((a) => a.id === hover.ev.agentId)?.role ?? ""}
+          />
         </div>
       )}
     </aside>

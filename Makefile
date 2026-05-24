@@ -7,8 +7,8 @@ CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
-.PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch \
-        dev-daemon-kill dev-daemon-relaunch reinstall-books dev-reset \
+.PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch clean-slate \
+        dev-daemon-kill dev-daemon-relaunch dev-clean-slate reinstall-books dev-reset \
         link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
@@ -44,6 +44,8 @@ daemon-kill:
 		fi; \
 	fi
 	@pkill -f "$(CURDIR)/src/daemon.ts" 2>/dev/null || true
+
+clean-slate: daemon-kill
 	@rm -rf "$(SYNC_HOME)"
 	@echo "Removed synchronize runtime $(SYNC_HOME)"
 
@@ -60,6 +62,8 @@ dev-daemon-kill:
 			echo "Killed dev synchronize daemon pid $$pid"; \
 		fi; \
 	fi
+
+dev-clean-slate: dev-daemon-kill
 	@rm -rf "$(DEV_SYNC_HOME)"
 	@echo "Removed dev synchronize runtime $(DEV_SYNC_HOME)"
 

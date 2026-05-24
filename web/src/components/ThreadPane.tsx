@@ -1,10 +1,12 @@
-import { useMemo } from "react";
-import { useAgents, useMessages, useThreadReplies } from "../data/context.tsx";
+import { useEffect, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useAgents, useMe, useMessages, useThreadReplies } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
 import { MessageRow } from "./MessageRow.tsx";
 import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
+import { roomAgents } from "../data/roomAgents.ts";
 
 interface ThreadPaneProps {
   room: Room;
@@ -16,14 +18,35 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
   const messages = useMessages(room.id);
   const replies = useThreadReplies(parentId);
   const agents = useAgents();
+  const me = useMe();
+  const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const bodyRef = useAutoScrollbar<HTMLDivElement>();
+  const lastSeenReplyId = useRef<string | null>(null);
+  const agentById = useMemo(() => new Map(displayAgents.map((agent) => [agent.id, agent] as const)), [displayAgents]);
   const parent = useMemo(() => messages.find((m) => m.id === parentId), [messages, parentId]);
-  const parentAuthor = parent ? agents.find((a) => a.id === parent.authorId) : undefined;
+  const parentAuthor = parent ? agentById.get(parent.authorId) : undefined;
   const participants = useMemo(() => {
     const ids = new Set<string>();
     replies.forEach((r) => ids.add(r.authorId));
-    return [...ids].map((id) => agents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
-  }, [replies, agents]);
+    return [...ids].map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
+  }, [replies, displayAgents]);
+  const virtualizer = useVirtualizer({
+    count: replies.length,
+    getScrollElement: () => bodyRef.current,
+    estimateSize: () => 150,
+    overscan: 6,
+  });
+
+  useEffect(() => {
+    const last = replies.at(-1);
+    if (!last) return;
+    const seen = lastSeenReplyId.current;
+    lastSeenReplyId.current = last.id;
+    if (seen === null || seen === last.id || last.authorId !== me.id) return;
+    requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(replies.length - 1, { align: "end" });
+    });
+  }, [replies, me.id, virtualizer]);
 
   if (!parent || !parentAuthor) return null;
 
@@ -55,7 +78,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
       <div className="thread-scroll-wrap">
       <div className="thread-pane-body autoscroll" ref={bodyRef}>
         <div className="thread-parent">
-          <MessageRow message={parent} author={parentAuthor} agents={agents} groupedWithPrev={false} hideAvatar />
+          <MessageRow message={parent} author={parentAuthor} agents={displayAgents} groupedWithPrev={false} hideAvatar />
         </div>
 
         <div className="thread-divider">
@@ -70,25 +93,34 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
         {replies.length === 0 ? (
           <div className="thread-empty">no replies yet — start the conversation below.</div>
         ) : (
-          <div className="thread-replies">
-            {replies.map((r) => {
-              const author = agents.find((a) => a.id === r.authorId);
+          <div className="thread-replies virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const r = replies[item.index];
+              if (!r) return null;
+              const author = agentById.get(r.authorId);
               if (!author) return null;
               return (
-                <MessageRow
+                <div
                   key={r.id}
-                  message={r}
-                  author={author}
-                  agents={agents}
-                  groupedWithPrev={false}
-                  hideAvatar
-                />
+                  className="virtualized-row thread-virtual-row"
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  <MessageRow
+                    message={r}
+                    author={author}
+                    agents={displayAgents}
+                    groupedWithPrev={false}
+                    hideAvatar
+                  />
+                </div>
               );
             })}
           </div>
         )}
       </div>
-        <ScrollControls targetRef={bodyRef} />
+        <ScrollControls targetRef={bodyRef} newItemsKey={replies.at(-1)?.id ?? null} />
       </div>
 
       <Composer roomId={room.id} parentMessageId={parentId} />

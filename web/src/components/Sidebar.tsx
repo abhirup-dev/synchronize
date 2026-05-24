@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useMe, useRooms, useAgents } from "../data/context.tsx";
 import { StatusDot } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
@@ -16,18 +16,21 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const me = useMe();
   const agents = useAgents();
   const [filter, setFilter] = useState("");
+  const deferredFilter = useDeferredValue(filter);
 
   const filtered = useMemo(() => {
-    const f = filter.trim().toLowerCase();
+    const f = deferredFilter.trim().toLowerCase();
     if (!f) return rooms;
     return rooms.filter((r) => r.name.toLowerCase().includes(f));
-  }, [rooms, filter]);
+  }, [rooms, deferredFilter]);
 
+  const allGroups = rooms.filter((r) => r.kind === "group");
+  const allDms = rooms.filter((r) => r.kind === "dm");
   const groups = filtered.filter((r) => r.kind === "group");
   const dms = filtered.filter((r) => r.kind === "dm");
 
-  const groupUnread = groups.reduce((acc, r) => acc + r.unread, 0);
-  const dmUnread = dms.reduce((acc, r) => acc + r.unread, 0);
+  const groupCount = allGroups.length;
+  const dmCount = allDms.length;
   const groupsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const openMenu = useContextMenu();
@@ -55,7 +58,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       <section className="sidebar-section">
         <div className="section-head">
           GROUPS
-          <span className="count-chip">{groupUnread}</span>
+          <span className="count-chip">{groupCount}</span>
           <button className="plus-btn" title="new group" aria-label="new group">+</button>
         </div>
         <div className="list autoscroll" ref={groupsScrollRef}>
@@ -67,8 +70,8 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
 
       <section className="sidebar-section">
         <div className="section-head">
-          DIRECT MESSAGES
-          <span className="count-chip">{dmUnread}</span>
+          DMs
+          <span className="count-chip">{dmCount}</span>
           <button className="plus-btn" title="new dm" aria-label="new dm">+</button>
         </div>
         <div className="list autoscroll" ref={dmsScrollRef}>
