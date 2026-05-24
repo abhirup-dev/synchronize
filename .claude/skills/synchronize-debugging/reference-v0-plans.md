@@ -140,6 +140,33 @@ Also cite related bd issue IDs in the Topic column when the relationship
 is non-obvious — e.g. `Group policy v0: durable vs ephemeral... (sync-dmc,
 sync-2sr)`. This lets readers trace skill → plan → bd in one hop.
 
+**Chain citations.** When a plan is part of a series of handoffs or rounds
+(e.g. "round 2 continues round 1", "v1 supersedes v0"), cite the
+predecessor (and successor, if known) in the Topic column:
+`Round 2 of soft-delete shipping — continues round-1.md; followed by
+round-3.md (sync-dmc)`. This makes the chain discoverable without
+loading any of the linked files. Do NOT create a separate chronology
+index — the citation pattern is the index.
+
+### Deriving chronology when it's not annotated
+
+For plans that predate this convention or where chain citations are
+missing, derive order from git:
+
+```bash
+# Creation order of all plans under a directory
+git log --diff-filter=A --reverse --format='%ai %H %s' -- session-tracker/
+
+# Or: when did THIS file first appear, and what referenced it after?
+git log --diff-filter=A --format='%ai' -- session-tracker/plan-group-policy-v0.md
+git log -S 'plan-group-policy-v0' --format='%ai %s'
+```
+
+File-name conventions (`round-N`, `v0`/`v1`, dated prefixes) usually
+carry logical order even when git history is ambiguous (rebases, file
+moves). Trust the conventions; fall back to `git log --follow` if a
+file was renamed.
+
 ### Forbidden in entries
 
 - ❌ Quoting or summarizing the plan's contents (defeats the gating purpose
