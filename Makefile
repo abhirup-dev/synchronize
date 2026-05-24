@@ -7,8 +7,11 @@ CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
-.PHONY: demo demo-top demo-json demo-clean daemon-kill daemon-relaunch clean-slate \
-        dev-daemon-kill dev-daemon-relaunch dev-clean-slate reinstall-books dev-reset \
+.PHONY: demo demo-top demo-json demo-clean \
+        daemon-kill daemon-relaunch clean-slate \
+        dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
+        reinstall-books dev-reset \
+        doctor inspect-daemon inspect-peers inspect-groups inspect-events \
         link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
@@ -33,6 +36,10 @@ demo-clean:
 	fi
 	@rm -rf "$(DEMO_HOME)"
 
+# daemon-kill stops the daemon but preserves runtime state (DB, media, logs).
+# Use `clean-slate` when you actually want to wipe state. This split matters
+# because production debugging sessions need to stop/restart the daemon
+# without losing peers, groups, and message history.
 daemon-kill:
 	@if [ -f "$(SYNC_HOME)/daemon.json" ]; then \
 		pid=$$(jq -r '.pid // empty' "$(SYNC_HOME)/daemon.json"); \
@@ -73,6 +80,25 @@ dev-daemon-relaunch: dev-daemon-kill link reinstall-books
 reinstall-books: install-claude install-pi
 
 dev-reset: dev-daemon-relaunch
+
+# --- diagnostics -----------------------------------------------------------
+# All targets honor SYNCHRONIZE_HOME; in dev-server mode call as
+# `SYNCHRONIZE_HOME=$(DEV_SYNC_HOME) make doctor` to target the dev runtime.
+
+doctor:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bash scripts/doctor.sh all
+
+inspect-daemon:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bash scripts/doctor.sh daemon
+
+inspect-peers:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bash scripts/doctor.sh peers
+
+inspect-groups:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bash scripts/doctor.sh groups
+
+inspect-events:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" N="$(N)" bash scripts/doctor.sh events
 
 # --- install targets -------------------------------------------------------
 
