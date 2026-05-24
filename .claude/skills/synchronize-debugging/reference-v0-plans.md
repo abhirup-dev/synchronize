@@ -90,6 +90,76 @@ document to load (or whether the answer is in current code instead):
 
 ---
 
+## Adding new plans to this index
+
+This index is the only gated entry point through which the rest of the
+skill points at historical plans and handoffs. **A plan that exists on
+disk but is not indexed here is invisible to future sessions** — the
+other detail files deliberately do not link directly to plan files, so
+agents who never read this index never see the plan.
+
+### When to add an entry
+
+Add a plan to this index when **all** of the following are true:
+1. You authored a new plan, handoff, design doc, or ADR.
+2. You created bd issues that scope the implementation work derived from
+   that plan.
+3. The bd issues have been filed (not merely drafted).
+
+That ordering matters. A plan without bd issues isn't yet a unit of work
+this index should advertise. Adding the entry is the final step that
+makes the plan discoverable.
+
+### Where to add it
+
+Pick the matching section in the index:
+
+| Section | Use when the plan is… |
+|---|---|
+| Top-level platform plan & overview | Platform-wide scope; cross-cuts most subsystems |
+| Goals-tracker plans | Tracked in `goals/<feature>/`; scoped to a single goal with brief/plan/blockers/verification |
+| Session-tracker plans | A multi-session implementation plan with phase breakdown; lives in `session-tracker/` |
+| Design docs | Subsystem-level design (`web/DESIGN.md`-style); not phase-driven |
+| Per-extension READMEs | Documents a single extension's surface |
+
+If no section fits, add a new one — but only if you have at least two
+plans that would live there. Single-plan sections create noise.
+
+### Entry format
+
+One table row, columns matching the section's existing schema:
+
+| Column | Content |
+|---|---|
+| `File` | Relative path, in backticks |
+| `Lines` | `wc -l` count at write time (rounded is fine) |
+| `Topic` | **One sentence**. Describe what the plan is *for*, not what it *says*. No quotes, no excerpts. |
+| `Authoritative for` (in cross-reference table) | The specific topics this plan is the ground-truth source for. Used by future readers to decide whether they actually need to load it. |
+
+Also cite related bd issue IDs in the Topic column when the relationship
+is non-obvious — e.g. `Group policy v0: durable vs ephemeral... (sync-dmc,
+sync-2sr)`. This lets readers trace skill → plan → bd in one hop.
+
+### Forbidden in entries
+
+- ❌ Quoting or summarizing the plan's contents (defeats the gating purpose
+  — agents will read the summary and skip the warning).
+- ❌ Multi-sentence topics.
+- ❌ Linking to the plan from any other skill file (only this index links
+  to plans; other detail files cite the index by name).
+- ❌ Adding the entry before bd issues exist (the index advertises work
+  that has been scoped, not ideas that have been jotted down).
+
+### Maintenance
+
+When a plan becomes obsolete (superseded by a newer plan, or fully
+implemented and the implementation now diverges from the plan's intent),
+mark it `(superseded by <new-file>)` or `(historical — code is canonical)`
+in the Topic column rather than removing the row. Removing rows breaks
+the audit trail; annotating them preserves it while warning readers.
+
+---
+
 ## How to load (when you do)
 
 ```bash

@@ -49,6 +49,7 @@ Key invariants:
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
+- **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, you MUST then add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The skill index is the gated discovery surface for historical references; a plan that exists on disk but is not indexed there is effectively invisible to future sessions. The order is strict: write the plan → create bd issues → add the index entry. Never the other way around.
 
 ## Agent skills
 
