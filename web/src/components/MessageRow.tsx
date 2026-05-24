@@ -41,7 +41,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
     >
       {!hideAvatar && (
         <div className="message-gutter">
-          {!groupedWithPrev && <Avatar agent={author} size={34} />}
+          {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
       <div className="message-body">
@@ -52,13 +52,13 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
               style={{
                 background: author.color,
                 color: inkFor(author.color),
-                fontFamily: "Archivo Black, sans-serif",
-                fontSize: 12,
-                letterSpacing: "0.02em",
-                padding: "3px 9px",
-                border: "2px solid var(--rule)",
-                borderRadius: 5,
-                boxShadow: "2px 2px 0 var(--rule)",
+                fontFamily: "var(--font-display)",
+                fontSize: "var(--text-12)",
+                letterSpacing: "var(--tracking-xs)",
+                padding: "var(--space-author-chip-pad)",
+                border: "var(--line-sm)",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "var(--shadow-sm)",
                 display: "inline-flex",
                 alignItems: "center",
                 lineHeight: 1.2,

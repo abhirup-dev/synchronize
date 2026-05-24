@@ -7,6 +7,7 @@ import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
+import { inkFor } from "./primitives.tsx";
 
 interface ThreadPaneProps {
   room: Room;
@@ -61,12 +62,13 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
             className="author-name"
             style={{
               background: parentAuthor.color,
-              padding: "2px 8px",
-              border: "2px solid var(--rule)",
-              borderRadius: 4,
-              boxShadow: "1.5px 1.5px 0 var(--rule)",
-              fontFamily: "Archivo Black, sans-serif",
-              fontSize: 11,
+              color: inkFor(parentAuthor.color),
+              padding: "var(--space-thread-author-chip-pad)",
+              border: "var(--line-sm)",
+              borderRadius: "var(--radius-sm)",
+              boxShadow: "var(--shadow-chip)",
+              fontFamily: "var(--font-display)",
+              fontSize: "var(--text-11)",
             }}
           >
             {parentAuthor.name}

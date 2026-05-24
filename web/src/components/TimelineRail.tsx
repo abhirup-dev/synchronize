@@ -150,7 +150,7 @@ function Node({ ev, isFirst, isLast, onHover, onClick }: NodeProps) {
         data-edge={isFirst ? "first" : undefined}
       />
       <div className="timeline-marker" style={{ background: bg }} aria-hidden>
-        <span style={{ fontSize: 13, lineHeight: 1, color: "var(--ink)" }}>{glyph}</span>
+        <span className="timeline-marker-glyph">{glyph}</span>
       </div>
       <span className="timeline-time">{formatTime(ev.createdAt)}</span>
       <div

@@ -14,6 +14,30 @@ import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
 
+const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
+const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
+const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
+
+type ThemeName = (typeof ALL_THEMES)[number];
+
+function isThemeName(value: string | null): value is ThemeName {
+  return ALL_THEMES.includes(value as ThemeName);
+}
+
+function themeFamily(theme: ThemeName): "light" | "dark" {
+  return LIGHT_THEMES.includes(theme as (typeof LIGHT_THEMES)[number]) ? "light" : "dark";
+}
+
+function cycleTheme(theme: ThemeName): ThemeName {
+  const family = themeFamily(theme) === "light" ? LIGHT_THEMES : DARK_THEMES;
+  const index = (family as readonly ThemeName[]).indexOf(theme);
+  return family[(index + 1) % family.length] as ThemeName;
+}
+
+function toggleThemeFamily(theme: ThemeName): ThemeName {
+  return themeFamily(theme) === "light" ? "dark" : "light";
+}
+
 function pickDataSource(): DataSource {
   if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "mock") {
     return new MockDataSource();
@@ -84,8 +108,9 @@ function Shell() {
   useEffect(() => {
     localStorage.setItem("synchronize.threadWidth", String(threadWidth));
   }, [threadWidth]);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return (localStorage.getItem("synchronize.theme") as "light" | "dark" | null) ?? "light";
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const stored = localStorage.getItem("synchronize.theme");
+    return isThemeName(stored) ? stored : "light";
   });
 
   useEffect(() => {
@@ -232,10 +257,10 @@ function Shell() {
       </main>
       <button
         className="theme-toggle"
-        onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-        title="toggle theme"
+        onClick={(event) => setTheme((t) => (event.shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
+        title={`${theme} · click toggles light/dark, shift-click cycles variants`}
       >
-        {theme === "light" ? "🌙" : "☀️"}
+        {themeFamily(theme) === "light" ? "🌙" : "☀️"}
       </button>
     </div>
   );

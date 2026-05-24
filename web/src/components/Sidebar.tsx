@@ -1,6 +1,6 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type CSSProperties } from "react";
 import { useMe, useRooms, useAgents } from "../data/context.tsx";
-import { StatusDot } from "./primitives.tsx";
+import { StatusDot, inkFor } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
@@ -135,6 +135,8 @@ function RoomItem({
   otherColor?: string;
 }) {
   const openMenu = useContextMenu();
+  const iconColor = otherColor ?? room.color;
+  const iconInk = inkFor(iconColor);
   return (
     <button
       className={`room-item${active ? " active" : ""}`}
@@ -152,7 +154,13 @@ function RoomItem({
         ])
       }
     >
-      <div className="room-icon" style={{ background: otherColor ?? room.color }}>
+      <div
+        className="room-icon identity-icon"
+        style={{
+          background: iconColor,
+          color: iconInk,
+        } as CSSProperties}
+      >
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
           <span

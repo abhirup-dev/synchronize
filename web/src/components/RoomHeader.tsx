@@ -1,6 +1,6 @@
 import { useAgents } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
-import { Avatar, Sticker } from "./primitives.tsx";
+import { Avatar, Sticker, inkFor } from "./primitives.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 
 export type RoomTab = "chat" | "board" | "artifacts";
@@ -21,7 +21,7 @@ export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
     <header className="room-header">
       <div className="room-header-top">
         <div className="room-id">
-          <div className="room-id-icon" style={{ background: room.color }}>
+          <div className="room-id-icon" style={{ background: room.color, color: inkFor(room.color) }}>
             {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
           </div>
           <div className="room-id-text">
@@ -44,7 +44,7 @@ export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
 
         <div className="member-pile">
           {members.slice(0, 6).map((a, i) => (
-            <span key={a.id} className="member-pile-item" style={{ marginLeft: i === 0 ? 0 : -8, zIndex: members.length - i }}>
+            <span key={a.id} className="member-pile-item" style={{ zIndex: members.length - i }}>
               <Avatar agent={a} size={28} />
             </span>
           ))}

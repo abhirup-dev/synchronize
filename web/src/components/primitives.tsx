@@ -17,33 +17,46 @@ export function inkFor(bgHex: string): string {
   return relLum(bgHex) > 0.55 ? "#111111" : "#FFFFFF";
 }
 
-export function Avatar({ agent, size = 32, ring = false }: { agent: Agent; size?: number; ring?: boolean }) {
+export function Avatar({
+  agent,
+  size = 32,
+  ring = false,
+  showStatus = false,
+}: {
+  agent: Agent;
+  size?: number;
+  ring?: boolean;
+  showStatus?: boolean;
+}) {
   const isYou = agent.id === "you";
   return (
     <div
-      className={`avatar${ring ? " avatar-ring" : ""}`}
+      className={`avatar identity-icon${ring ? " avatar-ring" : ""}`}
       style={{
-        width: size,
-        height: size,
+        "--identity-size": `${size}px`,
+        "--identity-font-size": `${Math.round(size * 0.45)}px`,
         background: isYou ? "var(--paper-3)" : agent.color,
         color: isYou ? "var(--ink)" : inkFor(agent.color),
-        borderRadius: 5,
-        border: "2.5px solid var(--rule)",
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "Archivo Black, sans-serif",
-        fontSize: Math.round(size * 0.45),
-        boxShadow: "1.5px 1.5px 0 var(--rule)",
-        flexShrink: 0,
-      }}
+      } as CSSProperties}
       title={`${agent.name} · ${agent.handle}`}
     >
       {agent.avatar}
+      {showStatus && <StatusDot status={agent.status} className="identity-status-dot" pulse />}
     </div>
   );
 }
 
-export function StatusDot({ status, size = 12 }: { status: AgentStatus; size?: number }) {
+export function StatusDot({
+  status,
+  size = 12,
+  className = "",
+  pulse = false,
+}: {
+  status: AgentStatus;
+  size?: number;
+  className?: string;
+  pulse?: boolean;
+}) {
   const fill = (
     {
       online: "var(--lime)",
@@ -54,15 +67,15 @@ export function StatusDot({ status, size = 12 }: { status: AgentStatus; size?: n
   )[status];
   return (
     <span
-      className={`status-dot status-${status}`}
+      className={`status-dot status-${status}${className ? ` ${className}` : ""}`}
       style={{
         display: "inline-block",
         width: size,
         height: size,
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         background: fill,
-        border: "2px solid var(--rule)",
-        animation: status === "busy" ? "pulse-busy 1.6s infinite ease-in-out" : undefined,
+        border: "2px solid var(--status-dot-border, var(--rule))",
+        animation: pulse && status !== "offline" ? "status-badge-pulse 1.8s infinite ease-in-out" : undefined,
       }}
     />
   );
@@ -75,14 +88,14 @@ export function Sticker({ label, color, tilt = -2 }: { label: string; color?: st
       style={{
         display: "inline-flex",
         alignItems: "center",
-        padding: "4px 10px",
+        padding: "var(--space-sticker-pad)",
         background: color ?? "var(--paper-3)",
-        border: "2px solid var(--rule)",
-        borderRadius: 0,
-        boxShadow: "3px 3px 0 var(--rule)",
-        fontFamily: "Archivo Black, sans-serif",
-        fontSize: 11,
-        letterSpacing: "0.08em",
+        border: "var(--line-sm)",
+        borderRadius: "var(--radius-none)",
+        boxShadow: "var(--shadow-hover)",
+        fontFamily: "var(--font-display)",
+        fontSize: "var(--text-11)",
+        letterSpacing: "var(--tracking-lg)",
         color: "var(--ink)",
         textTransform: "uppercase",
         transform: `rotate(${tilt}deg)`,
@@ -97,7 +110,7 @@ export function MentionChip({ agent }: { agent: Agent }) {
   return (
     <span
       className={`mention-chip${agent.handle === "you" ? " mention-chip-self" : ""}`}
-      style={{ "--mention-color": agent.color } as CSSProperties}
+      style={{ "--mention-color": agent.color, "--mention-ink": inkFor(agent.color) } as CSSProperties}
     >
       @{agent.handle}
     </span>
