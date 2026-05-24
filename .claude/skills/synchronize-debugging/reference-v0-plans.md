@@ -167,6 +167,18 @@ carry logical order even when git history is ambiguous (rebases, file
 moves). Trust the conventions; fall back to `git log --follow` if a
 file was renamed.
 
+### Ambiguity — ask, don't assume
+
+If you can't confidently fill in a field (which section the plan belongs
+to, what its predecessor in a chain is, which bd IDs are related, whether
+it supersedes an existing entry), **ask the user**. A wrong entry is
+worse than a missing entry — it leads future sessions astray.
+
+The exception: if the answer is discoverable from the codebase, git
+history, or bd issues, do the discovery yourself first. Don't ask the
+user about things you can `grep`, `git log`, or `bd show` your way to.
+Ask only after that path is exhausted.
+
 ### Forbidden in entries
 
 - ❌ Quoting or summarizing the plan's contents (defeats the gating purpose
