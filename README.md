@@ -5,10 +5,11 @@ Local-first messaging for Claude and Codex agents.
 `synchronize` gives multiple agent sessions on the same machine a shared message bus:
 
 - direct messages with durable inbox fallback
-- group chats with history or fresh-fork joins
+- group chats with history or fresh-fork joins, aliases, descriptions, threads, and mentions
 - copied group media with a searchable filesystem index
 - one REST daemon used by both MCP tools and the CLI
 - Claude channel notifications and Codex MCP logging notifications
+- a local web operator surface served by the daemon at `/web`
 
 The daemon stores state locally under `~/.synchronize` by default. Nothing leaves your machine unless you explicitly bind the daemon to a non-localhost address.
 
@@ -43,6 +44,10 @@ The daemon stores state locally under `~/.synchronize` by default. Nothing leave
 ```
 
 The MCP server is intentionally thin. It registers a peer and converts daemon events into client notifications. Claude mode opens one local event callback subscription for channel delivery; Codex mode keeps one peer-level polling bridge for standard MCP notifications. The daemon owns durable state and durable inbox fallback.
+
+The Pi coding-agent extension is a fourth adapter: it discovers the same daemon,
+registers a peer, opens a callback subscription, and injects delivered events
+into Pi sessions as user messages.
 
 ## Requirements
 
@@ -112,6 +117,20 @@ synchronize group send demo --as terminal "hello from the CLI"
 synchronize group history demo --as terminal
 ```
 
+Group messages support Slack-style threads and `@alias` mentions:
+
+```bash
+synchronize group send demo --as terminal --in-reply-to 42 "replying in a thread"
+synchronize group history demo --as terminal --thread-of 42
+```
+
+Add or update a group description:
+
+```bash
+synchronize group describe demo "launch coordination"
+synchronize group describe demo --clear
+```
+
 Read durable inbox messages:
 
 ```bash
@@ -160,6 +179,32 @@ This maps to the skill-level commands:
 
 Aliases are unique within a group. If two peers try to join the same group with the same alias, the daemon returns an alias collision error.
 
+Members can rename their group alias later:
+
+```bash
+synchronize group rename demo reviewer --as terminal
+```
+
+Group names are matched case-insensitively for collision checks. Thread replies
+are hidden from the main-channel history by default; use `--thread-of` to read a
+thread. Mentions are resolved from active group aliases, ignore text inside
+single-backtick and triple-backtick code regions, and exclude the sender from
+live push notifications. Durable inbox rows remain the fallback visibility path.
+
+## Web UI
+
+Build and serve the local operator UI:
+
+```bash
+bun run web/build.ts
+synchronize status
+open "$(jq -r .baseUrl ~/.synchronize/daemon.json)/web"
+```
+
+The web app is an operator surface, not an agent runtime. It currently ships with
+the mock data source wired; daemon-backed live data is still a follow-up. The
+daemon serves built assets from `web/dist` or `SYNCHRONIZE_WEB_DIST`.
+
 ## MCP Setup
 
 Each agent needs (a) the `synchronize` MCP server registered and (b) the
@@ -204,6 +249,26 @@ injected by `@synchronize/pi-extension` (see `extensions/pi-synchronize/`),
 not as a native channel notification — the extension owns the push path; the
 MCP server only serves outbound tool calls.
 
+## Agent Session Auto-Registration
+
+`synchronize` can correlate native host sessions with daemon peers. This is used
+by Claude hooks, Pi extension registration, and operator workflows that need to
+see which external session owns a peer.
+
+```bash
+synchronize hook claude-session
+synchronize launch claude --name backend-reviewer -- --dangerously-load-development-channels server:synchronize
+```
+
+Relevant environment variables:
+
+- `SYNCHRONIZE_SESSION_NAME` sets the stable session name for hook/Pi registration.
+- `SYNCHRONIZE_PEER_ID` pins a stable peer id for MCP/Pi restarts.
+- `SYNCHRONIZE_HOOK_ENABLE=1` enables hook ingestion commands.
+- `SYNCHRONIZE_LAUNCH_ID` groups launch/hook events from the same spawned session.
+
+See `AUTO_REGISTRATION.md` for the full flow.
+
 ## Skills
 
 Each agent gets its own `SKILL.md` with rules tailored to its notification
@@ -231,7 +296,7 @@ cp -R skills/synchronize-<agent> ~/<agent-skills-dir>/synchronize
 
 The CLI and MCP adapter both use the daemon REST API internally.
 
-Start the daemon and discover its random local port:
+Start the daemon and discover its local base URL:
 
 ```bash
 synchronize status
@@ -251,6 +316,13 @@ Core endpoints:
 ```text
 GET    /health
 GET    /status
+GET    /summary
+
+POST   /agent-sessions/register
+GET    /agent-sessions
+GET    /agent-sessions?tool={tool}
+GET    /agent-sessions/{tool}/{host_session_id}
+POST   /agent-sessions/rename
 
 POST   /peers/register
 PATCH  /peers/{peer_id}/heartbeat
@@ -258,18 +330,26 @@ GET    /peers
 GET    /peers?group={group_name}
 DELETE /peers/{peer_id}
 
+POST   /subscriptions
+
 POST   /dm
 GET    /peers/{peer_id}/inbox
 POST   /peers/{peer_id}/inbox/ack
 GET    /events/{peer_id}?cursor=0&limit=50
+GET    /events/{event_id}
 
 POST   /groups
 GET    /groups
 GET    /groups/{name}
 POST   /groups/{name}/join
+POST   /groups/{name}/rename
+PATCH  /groups/{name}
 POST   /groups/{name}/leave
 POST   /groups/{name}/messages
 GET    /groups/{name}/history?peer_id={peer_id}
+GET    /groups/{name}/history?peer_id={peer_id}&thread_of={root_event_id}
+
+GET    /threads/{root_event_id}?peer_id={peer_id}
 
 POST   /groups/{name}/media
 GET    /groups/{name}/media
@@ -322,6 +402,7 @@ Important details:
 - SQLite uses WAL mode.
 - Ephemeral groups are removed when the daemon starts.
 - Durable groups and messages are retained forever in v0.
+- Peer deletion is soft-delete (`deleted_at`) so audit/history can remain intact.
 - Media files are copied into the group MediaStore by default.
 - `index.jsonl` is intentionally easy to inspect with `rg`, `jq`, or `find`.
 
@@ -330,9 +411,14 @@ Important details:
 ```text
 SYNCHRONIZE_HOME   Runtime directory. Default: ~/.synchronize
 SYNCHRONIZE_BIND   Daemon bind host. Default: 127.0.0.1
-SYNCHRONIZE_PORT   Daemon port. Default: 0, random free port
+SYNCHRONIZE_PORT   Daemon port. Default: 58405
 SYNCHRONIZE_TOKEN  Bearer token. Required when SYNCHRONIZE_BIND is not localhost
 SYNCHRONIZE_MCP_MODE  codex or claude. Default: codex
+SYNCHRONIZE_PEER_ID   Stable MCP/Pi peer id across restarts
+SYNCHRONIZE_SESSION_NAME  Stable host-agent session name for hooks/Pi
+SYNCHRONIZE_HOOK_ENABLE   Enables hook ingestion when set to 1
+SYNCHRONIZE_LAUNCH_ID     Correlates launch/hook registration events
+SYNCHRONIZE_WEB_DIST      Override built web asset directory
 ```
 
 Use a separate test environment:
@@ -390,6 +476,19 @@ Run the MCP adapter from source:
 SYNCHRONIZE_MCP_MODE=codex bun run src/mcp.ts
 SYNCHRONIZE_MCP_MODE=claude bun run src/mcp.ts
 ```
+
+Run integration harnesses:
+
+```bash
+python3 scripts/integration_tmux.py --help
+python3 scripts/integration_group_policy_tmux.py --help
+python3 scripts/integration_group_policy_pi.py --help
+python3 scripts/integration_thread_baton_pi.py --help
+```
+
+See `scripts/README.md` and `docs/integration-tmux.md` before running the real
+tmux/AoE/Pi harnesses; they exercise live agent sessions and write JSON
+artifacts for debugging.
 
 ## Fresh Manual Test Setup
 
@@ -468,8 +567,12 @@ Implemented for v0:
 - durable DMs and inbox
 - durable and ephemeral groups
 - join-with-history and join-fresh modes
+- group aliases, alias rename audit events, and descriptions
+- Slack-style group threads and mention-aware push routing
+- agent-session auto-registration hooks
 - filesystem MediaStore
 - Claude, Codex, and Pi notification paths
+- local web operator UI served at `/web`
 
 Not included in v0:
 
@@ -477,6 +580,6 @@ Not included in v0:
 - cloud sync
 - encryption
 - backup automation
-- GUI
+- daemon-backed live web data source
 - retention/pruning policies
 - remote peer discovery
