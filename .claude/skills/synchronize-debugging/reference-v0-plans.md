@@ -52,6 +52,7 @@
 | File | Lines | Topic |
 |---|---|---|
 | `web/DESIGN.md` | 427 | Web UI design — DataSource interface, ChatView/MessageRow/Sidebar component layout, theme tokens. |
+| `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
 
@@ -86,6 +87,7 @@ document to load (or whether the answer is in current code instead):
 | SessionStart hook & launch-id correlation | `src/cli/commands/hook.ts`, `scripts/claude-hooks-config.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
 | agent_sessions table | `src/db.ts`, `src/api/agent-sessions.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
 | Web UI data flow | `src/web/*` + `web/DESIGN.md` | `web/DESIGN.md` itself is current; load it directly when the question is UI-design |
+| Local web session identity | `src/daemon.ts`, `web/src/data/daemon.ts`, plus `glossary.md` | `docs/plans/web-local-session-store.md` |
 | tmux integration harness | `scripts/integration-*.py`, `scripts/integration-aoe/` | `docs/integration-tmux.md` |
 
 ---

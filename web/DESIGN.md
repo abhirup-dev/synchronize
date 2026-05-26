@@ -397,17 +397,18 @@ From the daemon's perspective (`src/daemon.ts` + `.serena/memories/architecture.
   - **Push** — `POST /subscriptions { peer_id, callback_url, token }`. Daemon stores the subscriber; after each insert, `notifySubscribers(ctx, recipientPeerIds, event)` POSTs the event JSON to the registered local callback. Used by the Claude MCP `EventSubscription` and the Pi extension.
 - The inbox is the authoritative fallback. Push delivery is best-effort; whatever the daemon couldn't deliver stays in the inbox until the next poll or `ack`.
 
-Browsers can't accept inbound POSTs, so we cannot use the `/subscriptions` push transport directly. Two viable paths for the web UI:
+Browsers can't accept inbound POSTs, so we cannot use the `/subscriptions` push transport directly. The web UI uses the daemon as the local session store and then consumes daemon state:
 
-1. **Polling (initial cut)** — `DaemonDataSource` registers a stable web peer (id `web:<uuid>` persisted in `localStorage`), then runs a `GET /peers/:peer_id/inbox` (or `/events/:peer_id`) loop every 1–2 s. Zero daemon changes. Sufficient for a single human operator's UI; the inbox + cursor mechanics give us "exactly-once" semantics for free.
-2. **SSE (follow-up)** — add a new daemon route `GET /events/stream?peer_id=...&token=...` that holds the connection open and writes `text/event-stream` frames whenever `notifySubscribers` fires for that peer. The route reuses the existing `subscribers` map (the SSE controller becomes another sink alongside the HTTP-POST callback). The polling code path stays as fallback for reconnect/gap-fill.
+1. **Local web session** — `DaemonDataSource` calls `POST /web/session` and receives the daemon-owned local web peer. Browser tabs and browser profiles share that peer and therefore share the visible `you` group membership.
+2. **Web state + SSE** — `DaemonDataSource` reads snapshots from `GET /web/state` and listens for invalidation frames from `GET /web/events`. Polling remains the reconnect/gap-fill fallback.
 
 The `DataSource` interface hides which transport is in use. Components only ever observe `messages(roomId).get()` and a `subscribe(fn)` callback.
 
 ## REST surface (consumed by `DaemonDataSource`)
 
-Verbatim from `src/api/`:
+Primary daemon routes:
 - `GET /status`, `GET /summary`
+- `POST /web/session`, `GET /web/state`, `GET /web/events`
 - `GET /peers`, `POST /peers/register`, `PATCH /peers/:id/heartbeat`
 - `GET /groups`, `POST /groups`, `GET /groups/:id`, `GET /groups/:id/history`, `POST /groups/:id/messages`
 - `POST /groups/:id/join`, `POST /groups/:id/leave`
@@ -418,7 +419,8 @@ Verbatim from `src/api/`:
 
 New surfaces added by this PR (daemon changes):
 - `GET /web` and `GET /web/*` — static asset serving (the built React bundle from `web/dist/`).
-- `GET /events/stream` (follow-up bead) — SSE long-poll endpoint; see above.
+- `POST /web/session` — resolves the daemon-owned local human web peer.
+- `GET /web/state` and `GET /web/events` — web snapshot and invalidation streams.
 
 Translation from daemon `Event` rows → client model is owned by `DaemonDataSource`:
 
@@ -430,7 +432,7 @@ Translation from daemon `Event` rows → client model is owned by `DaemonDataSou
 | `group.created`     | upsert into rooms list                                                         |
 | `peer.registered` / `peer.heartbeat` | update agent presence (busy / idle / off)                      |
 
-The web client identifies itself with a sticky peer id stored in `localStorage` (`synchronize.peer_id`, prefix `web:`). On first load it `POST /peers/register`s itself with `tool = "web"`, then joins (or peeks at) the rooms it cares about.
+The web client identifies itself by asking the daemon for the local web session. `localStorage` may cache UI preferences, but it is not the source of group participation identity.
 
 ## Seeing the UI in action: `make demo-web`
 
@@ -454,7 +456,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 **In V0:**
 
 - Web bundle + Bun.build pipeline; daemon serves `/web` and `/web/*`.
-- `DataSource` interface with `MockDataSource` (always available) and `DaemonDataSource` (polling-based event sync, sticky web peer id).
+- `DataSource` interface with `MockDataSource` (always available) and `DaemonDataSource` (daemon-owned local web session via `POST /web/session`, plus polling/SSE state sync).
 - Sidebar (brand, search, GROUPS, DMS, user footer).
 - RoomHeader with the CHAT / BOARD / ARTIFACTS tab strip (only CHAT renders; the other two are placeholder panels).
 - ChatView: grouped bubbles, author chip, identity colors, status row, markdown body (GFM + code highlight + sanitized).
@@ -482,7 +484,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - **Image uploads** from the web composer. The artifacts view will render media that other peers shared, but the web UI is not a media-producing surface in this iteration. Paperclip stays as a disabled glyph.
 - Message editing / deletion (the durable event log is append-only — edits would need a new event type and is a separate design).
 - Read receipts originating from the web peer (the web peer auto-ack's whatever it reads; agents see "delivered" but never "read by you").
-- Multi-window / multi-tab presence reconciliation (one tab = one web peer; opening two tabs registers two peers).
+- Remote multi-device principal identity. Local multi-tab and multi-browser use shares the daemon-owned local web session.
 - Mobile / responsive layout below 1024 px wide.
 
 **Complexity flags (where we expect to slow down):**

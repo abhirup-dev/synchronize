@@ -1356,6 +1356,97 @@ test("web state endpoint returns summaries and room-scoped event history", async
   }
 });
 
+test("web session endpoint returns a stable daemon-owned local web peer", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-session-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const first = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    expect(first.status).toBe(200);
+    const firstBody = await first.json() as {
+      peer: { peer_id: string; tool: string; session_name: string; purpose: string | null; lease_expires_at: string };
+    };
+
+    const second = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    expect(second.status).toBe(200);
+    const secondBody = await second.json() as {
+      peer: { peer_id: string; tool: string; session_name: string; purpose: string | null; lease_expires_at: string };
+    };
+
+    expect(firstBody.peer.peer_id).toBe("web:local-human");
+    expect(secondBody.peer.peer_id).toBe(firstBody.peer.peer_id);
+    expect(secondBody.peer.tool).toBe("web");
+    expect(secondBody.peer.session_name).toBe("web-ui");
+    expect(secondBody.peer.purpose).toBe("local human web participant");
+    expect(secondBody.peer.lease_expires_at).toBe("9999-12-31T23:59:59.999Z");
+
+    const state = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(secondBody.peer.peer_id)}`);
+    const stateBody = await state.json() as { peers: Array<{ peer_id: string }> };
+    expect(stateBody.peers).toContainEqual(expect.objectContaining({ peer_id: "web:local-human" }));
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("local web session can reclaim stale web-held you alias", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-reclaim-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const oldWeb = await registerPeer(daemon.client, { peerId: "web:old", sessionName: "web-ui", tool: "web" });
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-reclaim-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: oldWeb.peer.peer_id, alias: "you" });
+
+    const session = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    const sessionBody = await session.json() as { peer: { peer_id: string } };
+    const joined = await joinGroup(daemon.client, { name: groupName, peerId: sessionBody.peer.peer_id, alias: "you" });
+
+    expect(joined.member.peer_id).toBe("web:local-human");
+    expect(joined.member.alias).toBe("you");
+    expect(joined.reclaimed_from?.previous_peer_id).toBe("web:old");
+
+    const roster = await listPeers(daemon.client, { group: groupName }) as {
+      peers: Array<{ peer_id: string; alias: string; active: boolean }>;
+    };
+    const activeYou = roster.peers.filter((member) => member.alias === "you" && member.active);
+    expect(activeYou).toHaveLength(1);
+    expect(activeYou[0]?.peer_id).toBe("web:local-human");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("local web session does not reclaim non-web-held you alias", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-reclaim-non-web-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-reclaim-non-web-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "you" });
+    const session = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    const sessionBody = await session.json() as { peer: { peer_id: string } };
+
+    const response = await fetch(`${daemon.client.baseUrl}/groups/${encodeURIComponent(groupName)}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ peer_id: sessionBody.peer.peer_id, alias: "you" }),
+    });
+    const body = await response.json() as { error?: { code: string } };
+
+    expect(response.status).toBe(409);
+    expect(body.error?.code).toBe("alias_collision");
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("web events stream emits state_changed after a room message", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-web-events-"));
   homes.push(home);

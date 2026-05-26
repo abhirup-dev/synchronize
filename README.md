@@ -67,14 +67,14 @@ git --version
 ```bash
 git clone https://github.com/abhirup-dev/synchronize.git
 cd synchronize
-bun install
+make setup
 bun test
 ```
 
 For convenient CLI use, link the package:
 
 ```bash
-bun link
+make link
 synchronize --help
 ```
 
@@ -324,6 +324,10 @@ GET    /agent-sessions?tool={tool}
 GET    /agent-sessions/{tool}/{host_session_id}
 POST   /agent-sessions/rename
 
+POST   /web/session
+GET    /web/state
+GET    /web/events
+
 POST   /peers/register
 PATCH  /peers/{peer_id}/heartbeat
 GET    /peers
@@ -453,8 +457,10 @@ Authorization: Bearer <SYNCHRONIZE_TOKEN>
 ## Development
 
 ```bash
-bun install
+make setup
 bun run typecheck
+cd web && bun run typecheck
+cd web && bun run build
 bun test
 ```
 
@@ -495,7 +501,7 @@ artifacts for debugging.
 From the repo you want to test:
 
 ```bash
-bun install
+make setup
 make daemon-relaunch
 make install-all          # wires Codex + Claude + Pi (link, MCP register, copy skills)
 synchronize status        # confirm daemon is healthy

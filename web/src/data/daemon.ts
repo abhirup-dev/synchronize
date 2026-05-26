@@ -102,6 +102,7 @@ interface WebStateChange {
 }
 
 const PEER_KEY = "synchronize.web.peerId";
+const PENDING_WEB_PEER_ID = "web:pending";
 const COLORS = ["#FFD23F", "#FF5DA2", "#4D7CFE", "#7BE389", "#FF8A3D", "#B49BFF", "#F45B69", "#2EC4B6"];
 const EMPTY_AGENT: Agent = {
   id: "web:pending",
@@ -146,7 +147,7 @@ export class DaemonDataSource implements DataSource {
     this.token = opts.token || undefined;
     this.pollMs = opts.pollMs ?? 2_000;
     this.stateLimit = opts.stateLimit ?? 500;
-    this.peerId = readStickyPeerId();
+    this.peerId = PENDING_WEB_PEER_ID;
   }
 
   agents(): Snapshot<Agent[]> { return this._agents; }
@@ -280,15 +281,7 @@ export class DaemonDataSource implements DataSource {
   }
 
   private async registerWebPeer(): Promise<void> {
-    const result = await this.request<{ peer: DaemonPeer }>("/peers/register", {
-      method: "POST",
-      body: JSON.stringify({
-        peer_id: this.peerId,
-        session_name: "web-ui",
-        purpose: "web observer",
-        tool: "web",
-      }),
-    });
+    const result = await this.request<{ peer: DaemonPeer }>("/web/session", { method: "POST" });
     this.peerId = result.peer.peer_id;
     localStorage.setItem(PEER_KEY, this.peerId);
   }
@@ -365,7 +358,7 @@ export class DaemonDataSource implements DataSource {
       peer_id: this.peerId,
       tool: "web",
       session_name: "web-ui",
-      purpose: "web observer",
+      purpose: "local human web participant",
       lease_expires_at: new Date(Date.now() + 60_000).toISOString(),
       online: true,
     }, this.peerId);
@@ -562,14 +555,6 @@ export class DaemonDataSource implements DataSource {
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
     return fetch(`${this.baseUrl}${path}`, { ...init, headers });
   }
-}
-
-function readStickyPeerId(): string {
-  const existing = localStorage.getItem(PEER_KEY);
-  if (existing) return existing;
-  const id = `web:${crypto.randomUUID()}`;
-  localStorage.setItem(PEER_KEY, id);
-  return id;
 }
 
 function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {

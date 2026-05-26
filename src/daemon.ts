@@ -120,6 +120,9 @@ interface WebStateChange {
 }
 
 const WEB_PEER_LEASE_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
+const LOCAL_WEB_PEER_ID = "web:local-human";
+const LOCAL_WEB_SESSION_NAME = "web-ui";
+const LOCAL_WEB_PURPOSE = "local human web participant";
 
 interface InboxRow extends EventRow {
   delivered_at: string | null;
@@ -250,6 +253,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return new Response(null, { status: 304, headers: { etag } });
     }
     return jsonResponse(state, { headers: { etag, "cache-control": "no-cache" } });
+  }
+
+  if (request.method === "POST" && url.pathname === "/web/session") {
+    requireAuth(request, ctx);
+    const peer = ensureLocalWebPeer(ctx);
+    log(`local web session resolved peer_id=${peer.peer_id}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId: peer.peer_id });
+    return jsonResponse({ peer });
   }
 
   if (request.method === "GET" && url.pathname === "/web/events") {
@@ -728,6 +739,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
 
     let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
     const joinEventId = ctx.db.transaction(() => {
+      if (peerId === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
+        deactivateWebAliasHolders(ctx.db, group.group_id, alias, peerId);
+      }
       // Detect alias reclaim: the most-recently-departed prior holder of this
       // alias belongs to a different peer_id. Respawn (same peer_id) is not a
       // reclaim. v0 storage policy frees the alias on leave; the event leaves
@@ -1514,6 +1528,31 @@ function getPeer(db: Database, peerId: string): PeerRow {
 
 function ensurePeer(db: Database, peerId: string): void {
   getPeer(db, peerId);
+}
+
+function ensureLocalWebPeer(ctx: DaemonContext): PeerRow {
+  upsertPeer(ctx.db, {
+    peerId: LOCAL_WEB_PEER_ID,
+    tool: "web",
+    sessionName: LOCAL_WEB_SESSION_NAME,
+    purpose: LOCAL_WEB_PURPOSE,
+    machineId: hostname(),
+    leaseExpiresAt: WEB_PEER_LEASE_EXPIRES_AT,
+  });
+  return getPeer(ctx.db, LOCAL_WEB_PEER_ID);
+}
+
+function deactivateWebAliasHolders(db: Database, groupId: number, alias: string, peerId: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 0,
+         left_at = COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     WHERE group_id = ?
+       AND alias = ?
+       AND active = 1
+       AND peer_id != ?
+       AND peer_id IN (SELECT peer_id FROM peers WHERE tool = 'web')`,
+  ).run(groupId, alias, peerId);
 }
 
 function leaseExpiresAtForTool(tool: string): string {

@@ -7,13 +7,18 @@ CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
-.PHONY: demo demo-top demo-json demo-clean \
+.PHONY: setup demo demo-top demo-json demo-clean \
         daemon-kill daemon-relaunch clean-slate \
         dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
         reinstall-books dev-reset \
         doctor inspect-daemon inspect-peers inspect-groups inspect-events \
         link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
+
+setup:
+	@bun install
+	@cd web && bun install
+	@echo "Installed root and web dependencies"
 
 demo: demo-clean
 	@mkdir -p "$(DEMO_HOME)"
@@ -102,8 +107,7 @@ inspect-events:
 
 # --- install targets -------------------------------------------------------
 
-link:
-	@bun install >/dev/null
+link: setup
 	@bun link >/dev/null
 	@command -v $(MCP_BIN) >/dev/null || { echo "$(MCP_BIN) not on PATH after 'bun link'"; exit 1; }
 	@echo "linked $(MCP_BIN) -> $$(readlink $$(command -v $(MCP_BIN)))"

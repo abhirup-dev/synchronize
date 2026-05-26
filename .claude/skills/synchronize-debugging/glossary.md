@@ -32,9 +32,11 @@ concept.
 | Thread normalization (parent_event_id collapse) | `src/daemon.ts` (search for `parent_event_id`) |
 | Subscriber callback map (push delivery) | `src/daemon.ts` (`ctx.subscribers`) |
 | Event types + DB CHECK constraint coupling | `src/constants.ts` (`EVENT_TYPES`) ↔ `src/db.ts` |
-| Web UI bundle + assets | `src/web/*` |
+| Web UI bundle + assets | `web/src/*`, served from `web/dist/*` by `src/daemon.ts` |
+| Local web session store | `src/daemon.ts` (`POST /web/session`, `LOCAL_WEB_PEER_ID`) + `web/src/data/daemon.ts` |
 | Demo seed script | `scripts/seed-demo.ts` |
 | Diagnostic doctor script | `scripts/doctor.sh` |
+| Fresh worktree dependency setup | `Makefile` (`setup`, `link`) |
 
 ## Surface map
 
@@ -43,7 +45,7 @@ concept.
 | REST API | `src/api/*.ts`, mounted in `src/daemon.ts` |
 | MCP tools (stdio) | `src/mcp/tools/*.ts` |
 | CLI commands | `src/cli/commands/*.ts` |
-| Web UI | `src/web/*` (bundled by `scripts/build-web.ts` if present) |
+| Web UI | `web/src/*`, bundled by `web/build.ts`, served by `src/daemon.ts` |
 | Pi extension | `extensions/pi-synchronize/src/*.ts` |
 | Claude Code skills | `skills/synchronize-claude/`, deployed to `$CLAUDE_DIR/skills/` |
 | Codex skills | `skills/synchronize-codex/` |
@@ -56,6 +58,7 @@ concept.
 | **peer** | A registered agent identity. Has a UUID `peer_id`, a `tool` (claude/codex/pi/web), and a `session_name`. Stored in `peers` table. |
 | **agent_session** | A binding between a peer and a host session (Pi session id, Claude Code session id). One peer can have multiple agent_sessions over time. |
 | **group_member** | Membership of a peer in a group, with an `alias` that's unique-per-group-when-active. |
+| **local web session** | The daemon-owned local human web participant (`web:local-human`). Browser tabs/profiles use it through `POST /web/session` so they share one visible `you` membership. |
 | **channel** | The push delivery path. Real-time only; only fires for subscribed callbacks. |
 | **inbox** | The durable delivery path. Always written for targeted recipients regardless of push success. |
 | **subscriber** | An in-memory entry in the daemon's `ctx.subscribers` map mapping `peer_id` → callback URL. Lost on daemon restart; re-registered by clients on connect. |
@@ -102,7 +105,8 @@ For Makefile env conventions:
 | Where is the lease set? | `src/api/peers.ts` (registerPeer/heartbeatPeer use `DEFAULT_LEASE_MS`) |
 | Where are inbox rows created? | `src/daemon.ts` event-write path; `src/api/inbox.ts` for read |
 | Where is `pushed_to` decided? | `src/daemon.ts` send path — search for `pushed_to` |
-| Where does the web UI get its data? | `src/web/data/*` (DaemonDataSource polling) |
+| Where does the web UI get its data? | `web/src/data/daemon.ts` (`DaemonDataSource`, `/web/session`, `/web/state`, `/web/events`) |
+| How do I install dependencies in a fresh worktree? | `make setup` from the worktree root |
 | Where is the MCP notification format chosen? | `src/mcp/state.ts` (`getMode()`), wired in `src/mcp/lifecycle.ts` |
 
 ## See also
