@@ -21,6 +21,13 @@ export interface Discovery {
   dbPath: string;
   mediaPath: string;
   startedAt: string;
+  provenance?: {
+    api_version: number;
+    entrypoint_path: string;
+    source_root: string;
+    git_sha: string | null;
+    git_dirty: boolean | null;
+  };
 }
 
 export interface ClientConfig {
@@ -41,6 +48,7 @@ export async function ensureDaemon(): Promise<ClientConfig> {
     return { baseUrl: existing.baseUrl, token, paths, started: false };
   }
 
+  let started = false;
   await withLaunchLock(paths, async () => {
     const refreshed = await readJson<Discovery>(paths.discoveryPath);
     if (refreshed && (await isHealthy(refreshed.baseUrl))) {
@@ -49,13 +57,14 @@ export async function ensureDaemon(): Promise<ClientConfig> {
     }
     log(`starting daemon home=${paths.home}`);
     await startDaemon(paths);
+    started = true;
     await waitForDaemon(paths);
   });
 
   const discovery = await readJson<Discovery>(paths.discoveryPath);
   if (!discovery) throw new Error("Daemon did not write discovery file");
-  log(`started daemon base_url=${discovery.baseUrl} pid=${discovery.pid}`);
-  return { baseUrl: discovery.baseUrl, token, paths, started: true };
+  log(`${started ? "started" : "using"} daemon base_url=${discovery.baseUrl} pid=${discovery.pid}`);
+  return { baseUrl: discovery.baseUrl, token, paths, started };
 }
 
 // Carries the daemon's structured error envelope across the client boundary so

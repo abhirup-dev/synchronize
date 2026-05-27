@@ -7,6 +7,13 @@ export interface StatusResponse {
   home: string;
   db_path: string;
   media_path: string;
+  provenance: {
+    api_version: number;
+    entrypoint_path: string;
+    source_root: string;
+    git_sha: string | null;
+    git_dirty: boolean | null;
+  };
   counts: {
     peers: number;
     groups: number;
@@ -113,6 +120,13 @@ export interface SummaryResponse {
     home: string;
     db_path: string;
     media_path: string;
+    provenance?: {
+      api_version: number;
+      entrypoint_path: string;
+      source_root: string;
+      git_sha: string | null;
+      git_dirty: boolean | null;
+    };
   };
   totals: {
     peers: { total: number; online: number; stale: number };

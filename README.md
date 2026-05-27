@@ -410,6 +410,7 @@ Default runtime directory:
 ~/.synchronize/
   daemon.json
   daemon.lock/
+  daemon.log
   synchronize.db
   synchronize.db-wal
   synchronize.db-shm
@@ -420,6 +421,13 @@ Default runtime directory:
       README.md
       <copied files>
 ```
+
+`daemon.json`, `/status`, and each `daemon.log` startup record include daemon
+provenance: runtime home, source root, entrypoint path, API version, git SHA,
+and whether the source tree was dirty when the daemon started. Integration
+runs should set their own `SYNCHRONIZE_HOME` and `SYNCHRONIZE_PORT=0`; that
+gives each run an isolated discovery file, database, log, lock, and random
+daemon port.
 
 Important details:
 

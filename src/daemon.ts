@@ -19,12 +19,14 @@ import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
+import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
 
 interface DaemonContext {
   paths: RuntimePaths;
   db: Database;
   startedAt: string;
   token: string | null;
+  provenance: DaemonProvenance;
   server: Bun.Server<unknown>;
   subscribers: Map<string, EventSubscriber>;
   webStateClients: Set<WebStateClient>;
@@ -40,6 +42,7 @@ interface DiscoveryFile {
   dbPath: string;
   mediaPath: string;
   startedAt: string;
+  provenance: DaemonProvenance;
 }
 
 interface PeerRow {
@@ -242,6 +245,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ],
       pid: process.pid,
       started_at: ctx.startedAt,
+      provenance: ctx.provenance,
     });
   }
 
@@ -292,6 +296,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       home: ctx.paths.home,
       db_path: ctx.paths.dbPath,
       media_path: ctx.paths.mediaPath,
+      provenance: ctx.provenance,
       counts: {
         peers: peerCount,
         groups: groupCount,
@@ -390,6 +395,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         home: ctx.paths.home,
         db_path: ctx.paths.dbPath,
         media_path: ctx.paths.mediaPath,
+        provenance: ctx.provenance,
       },
       totals: {
         peers: {
@@ -2122,6 +2128,7 @@ async function main(): Promise<void> {
     }
   });
   const startedAt = new Date().toISOString();
+  const provenance = collectDaemonProvenance();
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);
   assertLanModeIsProtected(host, token);
@@ -2135,7 +2142,7 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0 };
+  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0 };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,
@@ -2146,10 +2153,22 @@ async function main(): Promise<void> {
     dbPath: paths.dbPath,
     mediaPath: paths.mediaPath,
     startedAt,
+    provenance,
   };
   await writeJson(paths.discoveryPath, discovery);
+  await appendDaemonStartupLog(paths, discovery);
 
   console.error(`synchronize daemon listening on ${discovery.baseUrl}`);
+}
+
+async function appendDaemonStartupLog(paths: RuntimePaths, discovery: DiscoveryFile): Promise<void> {
+  const record = {
+    event: "daemon_start",
+    written_at: new Date().toISOString(),
+    ...discovery,
+    home: paths.home,
+  };
+  await appendFile(paths.logPath, `${JSON.stringify(record)}\n`, "utf8");
 }
 
 // ─── Web UI static serving ────────────────────────────────────────────────
