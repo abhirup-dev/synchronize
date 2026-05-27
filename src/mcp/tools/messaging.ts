@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ackInbox, readInbox, sendDm } from "../../api/inbox.ts";
-import { getClient, requirePeer } from "../state.ts";
+import { ensurePeer, getClient } from "../state.ts";
 import { invalidArgument, text, wrap } from "../util.ts";
 import { formatEventForMcp } from "./event-format.ts";
 import type { ToolContext } from "./context.ts";
@@ -21,7 +21,7 @@ export function registerMessagingTools(ctx: ToolContext): void {
       const recipientPeerId = args.recipient_peer_id ?? args.peer_id;
       if (!recipientPeerId) invalidArgument("bridge_dm requires recipient_peer_id");
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const response = await sendDm(client, {
         senderPeerId: peer.peer_id,
         recipientPeerId,
@@ -42,7 +42,7 @@ export function registerMessagingTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const inbox = await readInbox(client, peer.peer_id);
       if (args.ack && inbox.events.length > 0) {
         await ackInbox(client, peer.peer_id, inbox.events.map((event) => event.event_id));

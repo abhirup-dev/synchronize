@@ -14,6 +14,10 @@ This directory contains local integration harnesses that exercise
   workflows through AoE/tmux.
 - `integration_group_policy_pi.py` runs a real Pi MCP group-policy workflow
   through AoE/tmux.
+- `integration_thread_baton_pi.py` runs the real three-agent Pi thread-baton
+  workflow using the legacy tmux-pane assertion path.
+- `integration_thread_baton_pi_logs.py` runs the same real Pi thread-baton
+  workflow but validates through stateful Pi JSONL session watchers.
 
 Both harnesses treat AoE as the cockpit and tmux as the automation substrate.
 The executable files are stable wrappers; shared support code lives under
@@ -30,6 +34,8 @@ The executable files are stable wrappers; shared support code lives under
 - `integration-aoe/sync_itest_aoe/sync_rest.py` owns synchronize REST access.
 - `integration-aoe/sync_itest_aoe/pi_env.py` owns isolated Pi config/session
   provisioning and transcript reads.
+- `integration-aoe/sync_itest_aoe/pi_session_*` owns structured Pi JSONL
+  watching, normalized session events, and reusable query helpers.
 - `integration-aoe/sync_itest_aoe/scenarios/` contains the workflow-specific
   tests.
 
@@ -105,6 +111,18 @@ final validation reply with no mentions. The harness waits for beta and gamma
 to receive that no-mention validation event before prompting them to acknowledge
 it, which exercises thread participant push fanout separately from mention
 resolution.
+
+Use the watcher-backed sibling when validating the same behavior through Pi's
+native session logs instead of terminal text:
+
+```bash
+uv run scripts/integration_thread_baton_pi_logs.py --command-timeout 240 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+```
+
+That runner maps daemon `agent_sessions?tool=pi` bindings to Pi JSONL files,
+creates one watcher per session, and asserts assistant markers, actual MCP
+tool calls, forbidden tool calls, and injected `<synchronize_event>` envelopes
+through structured queries. Pane captures remain diagnostics only.
 
 Run with `--keep` when you want to inspect the live AoE/tmux session:
 

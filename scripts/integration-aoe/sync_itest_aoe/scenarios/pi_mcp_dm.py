@@ -131,6 +131,8 @@ class PiMcpDmScenario:
         self.writer.write_text("pi-package-install.txt", result.stdout)
 
     def setup_aoe(self) -> None:
+        session_homes = {name: str(self.pi_env.prepare_session_home(name)) for name in self.agent_names}
+        self.writer.write_json("pi-session-homes.json", session_homes)
         self.aoe.launch_sessions(
             self.agent_names,
             "pi",

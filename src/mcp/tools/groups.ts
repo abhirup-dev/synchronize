@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
 import { getEvent } from "../../api/events.ts";
 import { ApiError } from "../../client.ts";
-import { getClient, requirePeer } from "../state.ts";
+import { ensurePeer, getClient } from "../state.ts";
 import { invalidArgument, text, wrap } from "../util.ts";
 import { formatEventForMcp, formatNullableEventForMcp } from "./event-format.ts";
 import type { ToolContext } from "./context.ts";
@@ -47,7 +47,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const response = await joinGroup(client, {
         name: args.name,
         peerId: peer.peer_id,
@@ -69,7 +69,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const response = await leaveGroup(client, { name: args.name, peerId: peer.peer_id });
       return text({ ...response, event: formatNullableEventForMcp(response.event) });
     }),
@@ -86,7 +86,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const response = await renameInGroup(client, {
         name: args.name,
         peerId: peer.peer_id,
@@ -112,7 +112,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       const response = await sendGroupMessage(client, {
         name: args.name,
         senderPeerId: peer.peer_id,
@@ -143,7 +143,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     },
     wrap(async (args) => {
       const client = await getClient(state);
-      const peer = requirePeer(state);
+      const peer = await ensurePeer(state, client);
       if (args.event_ids && args.event_ids.length > 0) {
         if (args.thread_of !== undefined) {
           invalidArgument("bridge_group_history: pass either thread_of or event_ids, not both");

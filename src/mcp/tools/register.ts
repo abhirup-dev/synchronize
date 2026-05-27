@@ -2,11 +2,10 @@ import { z } from "zod";
 import { listAgentSessions, renameAgentSession } from "../../api/agent-sessions.ts";
 import { registerPeer } from "../../api/peers.ts";
 import type { Peer } from "../../api/types.ts";
-import { ENV_LAUNCH_ID, ENV_PEER_ID } from "../../constants.ts";
 import { EventSubscription } from "../claude-subscription.ts";
 import { NotificationBridge } from "../codex-notifier.ts";
 import { resolveMcpRegisterPeerId } from "../lifecycle.ts";
-import { getClient, getMode } from "../state.ts";
+import { findEnvBoundPeer, getClient, getMode } from "../state.ts";
 import { invalidArgument, log, text, wrap } from "../util.ts";
 import type { ToolContext } from "./context.ts";
 
@@ -90,25 +89,6 @@ export function registerRegisterTools(ctx: ToolContext): void {
     });
   }),
   );
-
-  async function findEnvBoundPeer(client: Awaited<ReturnType<typeof getClient>>): Promise<Peer | null> {
-    // `SYNCHRONIZE_LAUNCH_ID` is a short-lived process correlation key, not an
-    // identity. The launcher, Claude SessionStart hook, and MCP process inherit
-    // the same value; the hook stores it on the daemon binding so bridge_whoami
-    // can attach to the peer that was registered before MCP had any in-memory
-    // state. Once found, all real logic uses peer_id / host_session_id.
-    const launchId = process.env[ENV_LAUNCH_ID];
-    if (launchId) {
-      const binding = (await listAgentSessions(client, { launchId })).bindings.at(0);
-      if (binding) return binding.peer;
-    }
-    const peerId = process.env[ENV_PEER_ID];
-    if (peerId) {
-      const binding = (await listAgentSessions(client, { peerId })).bindings.at(0);
-      if (binding) return binding.peer;
-    }
-    return null;
-  }
 
   async function activatePeer(peer: Peer, client: Awaited<ReturnType<typeof getClient>>): Promise<void> {
     state.peer = peer;

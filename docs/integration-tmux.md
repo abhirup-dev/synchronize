@@ -130,13 +130,23 @@ should not treat startup `MCP: 0/1` as a failure. Instead, validate:
 - the interactive pane answers the warmup prompt
 - the workflow causes expected REST state changes
 - transcripts contain the expected MCP tool names
+- for watcher-backed tests, Pi JSONL session watchers see assistant markers,
+  actual MCP tool calls, and injected `<synchronize_event>` envelopes
 
 Useful group-policy commands:
 
 ```bash
 uv run scripts/integration_group_policy_tmux.py --command-timeout 45 --start-timeout 90
 uv run scripts/integration_group_policy_pi.py --command-timeout 180 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+uv run scripts/integration_thread_baton_pi.py --command-timeout 240 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
+uv run scripts/integration_thread_baton_pi_logs.py --command-timeout 240 --registration-timeout 120 --warmup-timeout 120 --start-timeout 120
 ```
+
+`integration_thread_baton_pi_logs.py` is the parser-backed sibling of the
+legacy thread-baton runner. It still uses AoE/tmux to launch and type into Pi,
+but pass/fail assertions query one stateful watcher per Pi JSONL session. Use
+it when checking that a scenario can prove behavior without relying on terminal
+pane text.
 
 Use `--keep` for manual inspection:
 
@@ -157,9 +167,15 @@ Every run writes a log directory. On failure, the directory includes:
 - tmux pane discovery output
 - captured pane output for all test agents
 - synchronize `/status`, `/peers`, and scenario validation data when available
+- for watcher-backed Pi runs, structured watcher summaries with assistant text,
+  tool calls, tool results, synchronize push events, and parser diagnostics
 
 REST state is the pass/fail source. Direct SQLite inspection is reserved for
 future diagnostics and should not become the primary assertion path.
+
+For watcher-backed Pi runs, REST state remains the daemon-level assertion
+surface and Pi JSONL watcher state is the agent-session assertion surface.
+tmux pane captures are retained for debugging only.
 
 ## Extending the Suite
 

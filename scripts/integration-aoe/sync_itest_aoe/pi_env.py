@@ -104,6 +104,19 @@ class PiEnvironment:
             "npm:pi-mcp-adapter",
         ]
 
+    def session_home(self, name: str) -> Path:
+        return self.paths.pi_home / "sessions" / name
+
+    def prepare_session_home(self, name: str) -> Path:
+        home = self.session_home(name)
+        home.mkdir(parents=True, exist_ok=True)
+        for filename in ("auth.json", "settings.json", "mcp.json"):
+            shutil.copy2(self.paths.pi_home / filename, home / filename)
+        npm_source = self.paths.pi_home / "npm"
+        if npm_source.exists():
+            shutil.copytree(npm_source, home / "npm", dirs_exist_ok=True)
+        return home
+
     def resilient_mcp_command(self) -> str:
         configured_cli = shlex.quote(str(self.repo / "bin" / "synchronize"))
         configured_mcp = shlex.quote(str(self.repo / "bin" / "synchronize-mcp"))
@@ -126,8 +139,9 @@ class PiEnvironment:
         )
 
     def command_for_session(self, name: str) -> str:
+        pi_home = self.session_home(name)
         env_parts = {
-            "PI_CODING_AGENT_DIR": str(self.paths.pi_home),
+            "PI_CODING_AGENT_DIR": str(pi_home),
             "PI_CODING_AGENT_SESSION_DIR": str(self.paths.pi_sessions),
             "SYNCHRONIZE_HOME": str(self.paths.sync_home),
             "SYNCHRONIZE_CLI": str(self.repo / "bin" / "synchronize"),
