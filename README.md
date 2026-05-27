@@ -260,6 +260,13 @@ synchronize hook claude-session
 synchronize launch claude --name backend-reviewer -- --dangerously-load-development-channels server:synchronize
 ```
 
+Install the Claude `SessionStart` hook with `scripts/claude-hooks-config.ts`.
+The generated hook exits before binary resolution unless
+`SYNCHRONIZE_HOOK_ENABLE=1`, then checks candidate `synchronize` binaries,
+runs `synchronize status`, and only proceeds to `hook claude-session` if that
+status check succeeds. This keeps normal Claude launches quiet when a global
+shim or configured checkout path is stale.
+
 Relevant environment variables:
 
 - `SYNCHRONIZE_SESSION_NAME` sets the stable session name for hook/Pi registration.

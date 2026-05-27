@@ -1,15 +1,17 @@
 #!/usr/bin/env bun
 /**
  * Merge or remove the synchronize Claude SessionStart hook in settings.json.
- * The hook is env-gated by the CLI command itself: without
- * SYNCHRONIZE_HOOK_ENABLE=1 it exits successfully without registration.
+ * The installed hook is env-gated before resolving the synchronize binary:
+ * without SYNCHRONIZE_HOOK_ENABLE=1 it exits successfully without touching
+ * PATH, Bun shims, or the daemon.
  *
  * Usage:
  *   bun run scripts/claude-hooks-config.ts <path>
  *   bun run scripts/claude-hooks-config.ts --remove <path>
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface HookCommand {
   type: string;
@@ -28,7 +30,9 @@ interface ClaudeSettings {
 }
 
 const EVENT = "SessionStart";
-const COMMAND = "synchronize hook claude-session";
+const LEGACY_COMMAND = "synchronize hook claude-session";
+const CONFIGURED_CLI = join(dirname(dirname(fileURLToPath(import.meta.url))), "bin", "synchronize");
+const COMMAND = buildHookCommand(CONFIGURED_CLI);
 
 function parseArgs(argv: string[]): { remove: boolean; path: string } {
   const args = argv.slice(2);
@@ -60,10 +64,19 @@ function writeSettings(path: string, settings: ClaudeSettings): void {
 function applyAdd(settings: ClaudeSettings): string {
   settings.hooks ??= {};
   const entries = settings.hooks[EVENT] ?? [];
+  let changed = false;
+  for (const entry of entries) {
+    for (const hook of entry.hooks ?? []) {
+      if (hook.command === LEGACY_COMMAND) {
+        hook.command = COMMAND;
+        changed = true;
+      }
+    }
+  }
   const existing = entries.some((entry) => entry.hooks?.some((hook) => hook.command === COMMAND));
   if (existing) {
     settings.hooks[EVENT] = entries;
-    return "synchronize SessionStart hook already present";
+    return changed ? "updated synchronize SessionStart hook" : "synchronize SessionStart hook already present";
   }
   entries.push({
     matcher: "",
@@ -79,11 +92,29 @@ function applyRemove(settings: ClaudeSettings): string {
   const next = entries
     .map((entry) => ({
       ...entry,
-      hooks: entry.hooks?.filter((hook) => hook.command !== COMMAND),
+      hooks: entry.hooks?.filter((hook) => hook.command !== COMMAND && hook.command !== LEGACY_COMMAND),
     }))
     .filter((entry) => (entry.hooks?.length ?? 0) > 0);
   settings.hooks![EVENT] = next;
   return next.length === entries.length ? "synchronize SessionStart hook not present" : "removed synchronize SessionStart hook";
+}
+
+function buildHookCommand(configuredCli: string): string {
+  const script = [
+    '[ "${SYNCHRONIZE_HOOK_ENABLE:-}" = "1" ] || exit 0',
+    'for candidate in "${SYNCHRONIZE_CLI:-}" "${SYNCHRONIZE_CONFIGURED_CLI:-}" "$(command -v synchronize 2>/dev/null)"; do',
+    '  [ -n "$candidate" ] || continue',
+    '  [ -x "$candidate" ] || continue',
+    '  "$candidate" status >/dev/null 2>&1 || continue',
+    '  exec "$candidate" hook claude-session',
+    "done",
+    "exit 0",
+  ].join("\n");
+  return `SYNCHRONIZE_CONFIGURED_CLI=${shellQuote(configuredCli)} sh -c ${shellQuote(script)}`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 const { remove, path } = parseArgs(process.argv);
