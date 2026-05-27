@@ -5,14 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sync_itest_aoe.pi_session_queries import (
+from sync_itest_aoe.pi_session.watcher import PiSessionWatcher, PiSessionWatcherRegistry
+from sync_itest_aoe.queries.pi_session import (
     forbidden_tool_calls,
     has_assistant_marker,
     has_pushed_event,
     has_tool_call,
-    pushed_events,
 )
-from sync_itest_aoe.pi_session_watcher import PiSessionWatcher, PiSessionWatcherRegistry
 
 
 def json_line(value: dict[str, object]) -> str:

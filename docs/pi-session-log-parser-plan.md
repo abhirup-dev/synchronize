@@ -34,10 +34,17 @@ only in scenario code.
 Raw file IO
    |
    v
+utils.JsonlTail
+   - owns byte offset / partial trailing line handling
+   - returns complete appended JSONL lines only
+   |
+   v
+pi_session.parser
+   - converts PI JSONL entries into normalized events
+   |
+   v
 PiSessionWatcher
    - owns one PI session file
-   - remembers parsed byte offset
-   - tolerates partial trailing lines
    - appends normalized events to in-memory state
    |
    v
@@ -50,7 +57,7 @@ PiSessionState
    - parser diagnostics
    |
    v
-Query methods
+queries.pi_session
    - has_assistant_marker(...)
    - tool_calls(...)
    - has_tool_call(...)

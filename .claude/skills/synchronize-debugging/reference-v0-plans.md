@@ -55,7 +55,7 @@
 | `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
-| `docs/pi-session-log-parser-plan.md` | 195 | Pi JSONL session watcher plan — parser-backed assertions for real Pi integration tests. |
+| `docs/pi-session-log-parser-plan.md` | 202 | Pi JSONL session watcher plan — parser-backed assertions for real Pi integration tests. |
 
 ### Per-extension READMEs
 

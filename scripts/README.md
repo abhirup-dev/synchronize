@@ -34,8 +34,12 @@ The executable files are stable wrappers; shared support code lives under
 - `integration-aoe/sync_itest_aoe/sync_rest.py` owns synchronize REST access.
 - `integration-aoe/sync_itest_aoe/pi_env.py` owns isolated Pi config/session
   provisioning and transcript reads.
-- `integration-aoe/sync_itest_aoe/pi_session_*` owns structured Pi JSONL
-  watching, normalized session events, and reusable query helpers.
+- `integration-aoe/sync_itest_aoe/pi_session/` owns structured Pi JSONL
+  state, parsing, and watcher lifecycle.
+- `integration-aoe/sync_itest_aoe/queries/` owns assertion-facing reusable
+  queries over structured harness state.
+- `integration-aoe/sync_itest_aoe/utils/` owns small shared parsing/tailing
+  utilities that are not scenario-specific.
 - `integration-aoe/sync_itest_aoe/scenarios/` contains the workflow-specific
   tests.
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .pi_session_events import PiSessionState, SynchronizePushEvent, ToolCallEvent
+from ..pi_session.state import PiSessionState, SynchronizePushEvent, ToolCallEvent
 
 
 def has_assistant_marker(state: PiSessionState, marker: str) -> bool:

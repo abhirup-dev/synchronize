@@ -9,8 +9,8 @@ from typing import Any
 
 from .pi_mcp_dm import PiPeer
 from .pi_mcp_thread_baton import PiMcpThreadBatonScenario, parse_args
-from ..pi_session_queries import forbidden_tool_calls, has_assistant_marker, has_pushed_event, has_tool_call
-from ..pi_session_watcher import PiSessionWatcherRegistry
+from ..pi_session.watcher import PiSessionWatcherRegistry
+from ..queries.pi_session import forbidden_tool_calls, has_assistant_marker, has_pushed_event, has_tool_call
 from ..runtime import HarnessError
 
 
@@ -95,7 +95,6 @@ class PiMcpThreadBatonLogScenario(PiMcpThreadBatonScenario):
             time.sleep(1)
         self.tmux.capture_all_panes(f"{label}-timeout", self.agent_panes, lines=700)
         raise HarnessError(f"Pi pane {agent_name} did not produce warmup marker within {timeout}s")
-
 
     def wait_for_pane_text(self, agent_name: str, text: str, timeout: int, label: str) -> None:
         event_match = EVENT_ID_RE.search(text)
