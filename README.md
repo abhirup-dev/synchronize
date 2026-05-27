@@ -241,13 +241,26 @@ this entry into `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`)
 without touching other servers:
 
 ```json
-{ "mcpServers": { "synchronize": { "command": "synchronize-mcp", "env": { "SYNCHRONIZE_MCP_MODE": "codex" } } } }
+{
+  "mcpServers": {
+    "synchronize": {
+      "command": "sh",
+      "args": ["-c", "SYNCHRONIZE_CONFIGURED_CLI=...\\nSYNCHRONIZE_CONFIGURED_MCP=...\\n..."],
+      "env": { "SYNCHRONIZE_MCP_MODE": "codex" }
+    }
+  }
+}
 ```
 
 Pi mode is `codex` because Pi receives synchronize events as user messages
 injected by `@synchronize/pi-extension` (see `extensions/pi-synchronize/`),
 not as a native channel notification — the extension owns the push path; the
 MCP server only serves outbound tool calls.
+
+The generated Pi MCP entry is resilient to stale global shims: it checks
+candidate `synchronize` binaries with `synchronize status`, then execs a
+verified `synchronize-mcp` adapter. The Pi extension runs the same
+`synchronize status` preflight before auto-registering its session.
 
 ## Agent Session Auto-Registration
 

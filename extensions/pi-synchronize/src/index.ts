@@ -13,6 +13,7 @@ import {
 import { formatExternalEvent, mapEventToDelivery } from "./delivery.ts";
 import { resolveSessionName } from "./identity.ts";
 import { formatError, getLogPath, log } from "./log.ts";
+import { ensureSynchronizeCliReady } from "./preflight.ts";
 import { PiEventSubscription } from "./subscription.ts";
 
 /**
@@ -125,6 +126,8 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     }
 
     // Fresh registration path.
+    const cliPath = await ensureSynchronizeCliReady();
+    log(`synchronize CLI preflight passed cli=${cliPath}`);
     client = await discoverDaemon();
     const envSessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? null;
     const sessionName = resolveSessionName({ piSessionId, envSessionName });

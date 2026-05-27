@@ -71,7 +71,8 @@ class PiEnvironment:
         mcp_config = {
             "mcpServers": {
                 "synchronize": {
-                    "command": str(self.repo / "bin" / "synchronize-mcp"),
+                    "command": "sh",
+                    "args": ["-c", self.resilient_mcp_command()],
                     "env": {
                         "SYNCHRONIZE_HOME": str(self.paths.sync_home),
                         "SYNCHRONIZE_MCP_MODE": "codex",
@@ -103,11 +104,34 @@ class PiEnvironment:
             "npm:pi-mcp-adapter",
         ]
 
+    def resilient_mcp_command(self) -> str:
+        configured_cli = shlex.quote(str(self.repo / "bin" / "synchronize"))
+        configured_mcp = shlex.quote(str(self.repo / "bin" / "synchronize-mcp"))
+        return "\n".join(
+            [
+                f"SYNCHRONIZE_CONFIGURED_CLI={configured_cli}",
+                f"SYNCHRONIZE_CONFIGURED_MCP={configured_mcp}",
+                'for cli in "${SYNCHRONIZE_CLI:-}" "${SYNCHRONIZE_CONFIGURED_CLI:-}" "$(command -v synchronize 2>/dev/null)"; do',
+                '  [ -n "$cli" ] || continue',
+                '  [ -x "$cli" ] || continue',
+                '  "$cli" status >/dev/null 2>&1 || continue',
+                '  for mcp in "${SYNCHRONIZE_MCP:-}" "${SYNCHRONIZE_CONFIGURED_MCP:-}" "$(command -v synchronize-mcp 2>/dev/null)"; do',
+                '    [ -n "$mcp" ] || continue',
+                '    [ -x "$mcp" ] || continue',
+                '    exec "$mcp"',
+                "  done",
+                "done",
+                "exit 1",
+            ]
+        )
+
     def command_for_session(self, name: str) -> str:
         env_parts = {
             "PI_CODING_AGENT_DIR": str(self.paths.pi_home),
             "PI_CODING_AGENT_SESSION_DIR": str(self.paths.pi_sessions),
             "SYNCHRONIZE_HOME": str(self.paths.sync_home),
+            "SYNCHRONIZE_CLI": str(self.repo / "bin" / "synchronize"),
+            "SYNCHRONIZE_MCP": str(self.repo / "bin" / "synchronize-mcp"),
             "SYNCHRONIZE_PORT": "0",
             "SYNCHRONIZE_SESSION_NAME": name,
             "SYNCHRONIZE_PI_DEBUG": "1",

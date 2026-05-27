@@ -9,7 +9,8 @@
  *   bun run scripts/pi-mcp-config.ts --remove <path>   # remove synchronize
  */
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface ServerEntry {
   command: string;
@@ -59,7 +60,8 @@ function writeConfig(path: string, config: PiMcpConfig): void {
 }
 
 const SYNCHRONIZE_ENTRY: ServerEntry = {
-  command: "synchronize-mcp",
+  command: "sh",
+  args: ["-c", buildMcpCommand()],
   env: { SYNCHRONIZE_MCP_MODE: "codex" },
 };
 
@@ -81,6 +83,31 @@ function applyRemove(config: PiMcpConfig): { changed: boolean; reason: string } 
   const { synchronize: _drop, ...rest } = config.mcpServers;
   config.mcpServers = rest;
   return { changed: true, reason: "removed synchronize entry" };
+}
+
+function buildMcpCommand(): string {
+  const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const configuredCli = join(repoRoot, "bin", "synchronize");
+  const configuredMcp = join(repoRoot, "bin", "synchronize-mcp");
+  return [
+    `SYNCHRONIZE_CONFIGURED_CLI=${shellQuote(configuredCli)}`,
+    `SYNCHRONIZE_CONFIGURED_MCP=${shellQuote(configuredMcp)}`,
+    "for cli in \"${SYNCHRONIZE_CLI:-}\" \"${SYNCHRONIZE_CONFIGURED_CLI:-}\" \"$(command -v synchronize 2>/dev/null)\"; do",
+    "  [ -n \"$cli\" ] || continue",
+    "  [ -x \"$cli\" ] || continue",
+    "  \"$cli\" status >/dev/null 2>&1 || continue",
+    "  for mcp in \"${SYNCHRONIZE_MCP:-}\" \"${SYNCHRONIZE_CONFIGURED_MCP:-}\" \"$(command -v synchronize-mcp 2>/dev/null)\"; do",
+    "    [ -n \"$mcp\" ] || continue",
+    "    [ -x \"$mcp\" ] || continue",
+    "    exec \"$mcp\"",
+    "  done",
+    "done",
+    "exit 1",
+  ].join("\n");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function main(): void {
