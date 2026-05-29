@@ -55,6 +55,7 @@
 | `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
+| `docs/plans/aoe-agent-launch.md` | 161 | Daemon-managed AOE-backed launch of persistent Claude/Pi sessions with server-side group auto-join; REST+CLI+MCP, no UI (v0). Decisions: in-memory launch map (no table), pin peer_id at launch, swappable SessionBackend, rely on global install (epic sync-gsx; slices sync-lb1/62d/0g9/0at/32k/tm4/rh5/1c2/ewj/2xt/qkl/7u4). |
 
 ### Per-extension READMEs
 
