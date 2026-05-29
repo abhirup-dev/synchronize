@@ -2,6 +2,11 @@ DEMO_HOME := $(CURDIR)/.demo-synchronize
 DEV_SYNC_HOME := $(CURDIR)/.dev-synchronize
 SYNC_HOME ?= $(HOME)/.synchronize
 
+# Demo peers are seeded once and never heartbeat, so the demo daemon runs with a
+# far-future lease (≈10y) — otherwise the production 60s lease would flap every
+# seeded peer offline. Override path is SYNCHRONIZE_LEASE_MS (see constants.ts).
+DEMO_LEASE_MS := 315360000000
+
 MCP_BIN      := synchronize-mcp
 CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
@@ -22,17 +27,17 @@ setup:
 
 demo: demo-clean
 	@mkdir -p "$(DEMO_HOME)"
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run scripts/seed-demo.ts
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top --once
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run scripts/seed-demo.ts
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top --once
 	@echo
 	@echo "Live dashboard: SYNCHRONIZE_HOME=$(DEMO_HOME) bun run synchronize top"
 	@echo "Raw summary:    SYNCHRONIZE_HOME=$(DEMO_HOME) bun run synchronize top --json"
 
 demo-top:
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top
 
 demo-json:
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top --json
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top --json
 
 demo-clean:
 	@if [ -f "$(DEMO_HOME)/daemon.json" ]; then \

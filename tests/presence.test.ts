@@ -220,6 +220,58 @@ test("sweeper soft-deletes a peer once its lease has been expired past retention
   }
 });
 
+test("resume revives a host-session peer even after the sweeper soft-deleted it", async () => {
+  const daemon = await startDaemon({ leaseMs: 200, retentionMs: 1, sweepIntervalMs: 250 });
+  try {
+    const first = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-swept-1",
+      sessionName: "long-gone",
+      tool: "claude",
+      purpose: "claude session",
+    });
+    const peerId = first.binding.peer_id;
+
+    // Wait for the sweeper to hide the dead peer.
+    const deadline = Date.now() + 4_000;
+    while (Date.now() < deadline && (await rosterPeer(daemon.client, peerId))) await Bun.sleep(150);
+    expect(await rosterPeer(daemon.client, peerId)).toBeUndefined();
+
+    // Resume after sweep: same host session → same peer_id, back in the roster.
+    const resumed = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      hostSessionId: "claude-swept-1",
+      sessionName: "long-gone",
+      tool: "claude",
+      purpose: "claude session",
+      metadata: { source: "resume" },
+    });
+    expect(resumed.binding.peer_id).toBe(peerId);
+    expect((await rosterPeer(daemon.client, peerId))?.online).toBe(true);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("infinite-lease web peer survives the sweeper while a short-lease agent is swept", async () => {
+  const daemon = await startDaemon({ leaseMs: 200, retentionMs: 1, sweepIntervalMs: 250 });
+  try {
+    const web = await registerPeer(daemon.client, { sessionName: "web-ui", tool: "web" });
+    const agent = await registerPeer(daemon.client, { sessionName: "ephemeral", tool: "pi" });
+
+    // Give the sweeper several ticks to act on the expired agent peer.
+    const deadline = Date.now() + 4_000;
+    while (Date.now() < deadline && (await rosterPeer(daemon.client, agent.peer.peer_id))) await Bun.sleep(150);
+
+    expect(await rosterPeer(daemon.client, agent.peer.peer_id)).toBeUndefined();
+    const webRow = await rosterPeer(daemon.client, web.peer.peer_id);
+    expect(webRow?.online).toBe(true);
+    expect(webRow?.presence).toBe("online");
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("activity endpoint rejects an unknown state", async () => {
   const daemon = await startDaemon({ leaseMs: 60_000 });
   try {

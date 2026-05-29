@@ -21,7 +21,10 @@ export interface StatusResponse {
   };
 }
 
-export type Presence = "offline" | "online" | "initializing" | "working" | "idle";
+/** Stored per-peer activity (instrumented agents only). */
+export type ActivityState = "initializing" | "working" | "idle";
+/** Derived presence shown in rosters. */
+export type Presence = "offline" | "online" | ActivityState;
 
 export interface Peer {
   peer_id: string;
@@ -31,7 +34,7 @@ export interface Peer {
   lease_expires_at: string;
   online?: boolean;
   /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */
-  activity_state?: Presence | null;
+  activity_state?: ActivityState | null;
   last_activity_at?: string | null;
   /** Derived: offline if lease lapsed, else activity_state, else generic "online". */
   presence?: Presence;
@@ -148,6 +151,8 @@ export interface SummaryResponse {
     tool: string;
     purpose: string | null;
     online: boolean;
+    presence: Presence;
+    activity_state: ActivityState | null;
     pending_inbox: number;
     groups: number;
     updated_at: string;
