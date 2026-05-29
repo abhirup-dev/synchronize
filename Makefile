@@ -115,7 +115,8 @@ link: setup
 install-claude: link
 	@command -v claude >/dev/null || { echo "claude CLI not found"; exit 1; }
 	@claude mcp remove synchronize -s user 2>/dev/null || true
-	@claude mcp add synchronize $(MCP_BIN) --scope user -e SYNCHRONIZE_MCP_MODE=claude
+	@cmd="$$(bun run scripts/resilient-mcp-command.ts)"; \
+		claude mcp add synchronize --scope user -e SYNCHRONIZE_MCP_MODE=claude -- sh -c "$$cmd"
 	@bun run scripts/claude-hooks-config.ts $(CLAUDE_DIR)/settings.json
 	@mkdir -p $(CLAUDE_DIR)/skills
 	@rm -rf $(CLAUDE_DIR)/skills/synchronize
