@@ -21,7 +21,7 @@ import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
-import { LaunchService, LaunchValidationError, aoeProfileName, validateLaunchRequest } from "./launch/service.ts";
+import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -506,6 +506,26 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const result = await ctx.launchService.launch(launchRequest);
     log(`agent launch title=${result.title} launch_id=${result.launchId} peer_id=${result.peerId} group=${result.group ?? "<none>"}`);
     return jsonResponse(result, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
+    const body = await readBody(request);
+    // Prefer the explicit title (always known from the launch response, works
+    // even before the agent has registered). Otherwise derive it from the
+    // durable peer row (session_name + peer_id8) for a known peer.
+    const explicitTitle = optionalString(body, "title");
+    const peerId = optionalString(body, "peer_id");
+    let title: string;
+    if (explicitTitle) {
+      title = explicitTitle;
+    } else if (peerId) {
+      title = aoeTitle(getPeer(ctx.db, peerId).session_name, peerId);
+    } else {
+      throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
+    }
+    await ctx.launchService.stop(title);
+    log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
+    return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
   }
 
   if (request.method === "GET" && url.pathname === "/agent-sessions") {

@@ -10,18 +10,21 @@ import {
 import type { LaunchSpec, SessionBackend } from "../src/launch/backend.ts";
 import { ENV_HOME, ENV_PEER_ID, ENV_SESSION_NAME } from "../src/constants.ts";
 
-function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBackend; spawned: LaunchSpec[] } {
+function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBackend; spawned: LaunchSpec[]; stopped: string[] } {
   const spawned: LaunchSpec[] = [];
+  const stopped: string[] = [];
   const backend: SessionBackend = {
     ensureReady: async () => {},
     spawn: async (spec) => {
       if (opts.failSpawn) throw new Error("spawn boom");
       spawned.push(spec);
     },
-    stop: async () => {},
+    stop: async (title) => {
+      stopped.push(title);
+    },
     list: async () => [],
   };
-  return { backend, spawned };
+  return { backend, spawned, stopped };
 }
 
 test("validateLaunchRequest accepts a minimal valid body", () => {
@@ -105,6 +108,13 @@ test("a failed spawn does not leave a pending launch", async () => {
   const svc = new LaunchService({ backend, home: "/h" });
   await expect(svc.launch({ tool: "claude", name: "c", repo: "/r" })).rejects.toThrow(/spawn boom/);
   expect(svc.pending()).toHaveLength(0);
+});
+
+test("stop delegates to the backend with the given title", async () => {
+  const { backend, stopped } = fakeBackend();
+  const svc = new LaunchService({ backend, home: "/h" });
+  await svc.stop("alice-12345678");
+  expect(stopped).toEqual(["alice-12345678"]);
 });
 
 test("no warning when nothing is pending after consume", async () => {

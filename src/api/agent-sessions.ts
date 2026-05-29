@@ -94,3 +94,15 @@ export function launchAgent(client: ClientConfig, input: LaunchAgentInput): Prom
     }),
   });
 }
+
+export function stopAgent(
+  client: ClientConfig,
+  input: { title: string; peerId?: never } | { peerId: string; title?: never },
+): Promise<{ stopped: boolean; title: string; peer_id?: string }> {
+  return requestJson(client, "/agent-sessions/stop", {
+    method: "POST",
+    body: JSON.stringify(
+      "title" in input ? { title: input.title } : { peer_id: input.peerId },
+    ),
+  });
+}

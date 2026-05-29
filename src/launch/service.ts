@@ -196,6 +196,11 @@ export class LaunchService {
     return result;
   }
 
+  /** Tear down a backend session by its (derivable) title. */
+  async stop(title: string): Promise<void> {
+    await this.backend.stop(title);
+  }
+
   /** Look up and remove launch intent (called by reconcile at register time). */
   consume(launchId: string): PendingLaunch | undefined {
     const pending = this.pendingByLaunch.get(launchId);

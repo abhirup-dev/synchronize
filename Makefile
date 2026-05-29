@@ -58,6 +58,7 @@ daemon-kill:
 	@pkill -f "$(CURDIR)/src/daemon.ts" 2>/dev/null || true
 
 clean-slate: daemon-kill
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bun run scripts/aoe-teardown.ts || true
 	@rm -rf "$(SYNC_HOME)"
 	@echo "Removed synchronize runtime $(SYNC_HOME)"
 
@@ -76,6 +77,7 @@ dev-daemon-kill:
 	fi
 
 dev-clean-slate: dev-daemon-kill
+	@SYNCHRONIZE_HOME="$(DEV_SYNC_HOME)" bun run scripts/aoe-teardown.ts || true
 	@rm -rf "$(DEV_SYNC_HOME)"
 	@echo "Removed dev synchronize runtime $(DEV_SYNC_HOME)"
 
