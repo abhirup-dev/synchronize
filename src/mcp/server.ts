@@ -10,6 +10,7 @@ import {
 } from "./state.ts";
 import type { ToolContext } from "./tools/context.ts";
 import { registerGroupTools } from "./tools/groups.ts";
+import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
@@ -35,6 +36,7 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerPeerTools(ctx);
   registerMessagingTools(ctx);
   registerGroupTools(ctx);
+  registerLaunchTools(ctx);
   registerMediaTools(ctx);
 
   return Object.assign(mcp, { cleanup: lifecycle.cleanup });

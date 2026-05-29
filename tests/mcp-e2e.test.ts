@@ -54,6 +54,8 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_send_group",
         "bridge_group_history",
         "bridge_list_groups",
+        "bridge_launch",
+        "bridge_stop",
         "bridge_share_media",
         "bridge_list_media",
         "bridge_get_media",
