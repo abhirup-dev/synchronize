@@ -726,6 +726,23 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
+    const member = url.searchParams.get("member");
+    if (member) {
+      // Scoped listing: groups this peer is an ACTIVE member of, with the
+      // peer's own alias + join time. Powers bridge_list_groups({ mine: true }).
+      const rows = ctx.db
+        .query<GroupRow & { alias: string; joined_at: string }, [string]>(
+          `SELECT g.*, gm.alias AS alias, gm.joined_at AS joined_at
+           FROM groups g
+           JOIN group_members gm ON gm.group_id = g.group_id
+           WHERE gm.peer_id = ? AND gm.active = 1
+           ORDER BY g.name ASC`,
+        )
+        .all(member);
+      return jsonResponse({
+        groups: rows.map((row) => ({ ...formatGroup(row), alias: row.alias, joined_at: row.joined_at })),
+      });
+    }
     const rows = ctx.db.query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC").all();
     return jsonResponse({ groups: rows.map(formatGroup) });
   }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
+import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, listMyGroups, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
 import { getEvent } from "../../api/events.ts";
 import { ApiError } from "../../client.ts";
 import { getClient, requirePeer } from "../state.ts";
@@ -172,12 +172,19 @@ export function registerGroupTools(ctx: ToolContext): void {
     "bridge_list_groups",
     {
       description:
-        "List groups visible on this daemon. " +
-        "Returns: { groups: Group[] }. " +
+        "List groups. Default: every group visible on this daemon ({ groups: Group[] }). " +
+        "With mine=true: only groups THIS agent is an active member of, each with your " +
+        "alias and joined_at ({ groups: (Group & { alias, joined_at })[] }) — use this on " +
+        "startup to discover which group(s) you were launched into. " +
         "Idempotency: pure read.",
+      inputSchema: { mine: z.boolean().optional() },
     },
-    wrap(async () => {
+    wrap(async (args) => {
       const client = await getClient(state);
+      if (args.mine) {
+        const peer = requirePeer(state);
+        return text(await listMyGroups(client, peer.peer_id));
+      }
       return text(await listGroups(client));
     }),
   );
