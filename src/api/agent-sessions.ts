@@ -1,5 +1,15 @@
 import { requestJson, type ClientConfig } from "../client.ts";
 import type { AgentSessionBinding } from "./types.ts";
+import type { LaunchResult } from "../launch/service.ts";
+import type { LaunchTool } from "../launch/build.ts";
+
+export interface LaunchAgentInput {
+  tool: LaunchTool;
+  name: string;
+  repo: string;
+  group?: string;
+  args?: string[];
+}
 
 export interface RegisterAgentSessionInput {
   peerId?: string;
@@ -68,6 +78,19 @@ export function renameAgentSession(
       host_tool: "hostTool" in input ? input.hostTool : undefined,
       host_session_id: "hostSessionId" in input ? input.hostSessionId : undefined,
       session_name: input.sessionName,
+    }),
+  });
+}
+
+export function launchAgent(client: ClientConfig, input: LaunchAgentInput): Promise<LaunchResult> {
+  return requestJson<LaunchResult>(client, "/agent-sessions/launch", {
+    method: "POST",
+    body: JSON.stringify({
+      tool: input.tool,
+      name: input.name,
+      repo: input.repo,
+      ...(input.group ? { group: input.group } : {}),
+      ...(input.args ? { args: input.args } : {}),
     }),
   });
 }

@@ -20,6 +20,8 @@ import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
+import { AoeBackend } from "./launch/backend.ts";
+import { LaunchService, LaunchValidationError, aoeProfileName, validateLaunchRequest } from "./launch/service.ts";
 
 interface DaemonContext {
   paths: RuntimePaths;
@@ -31,6 +33,7 @@ interface DaemonContext {
   subscribers: Map<string, EventSubscriber>;
   webStateClients: Set<WebStateClient>;
   stateVersion: number;
+  launchService: LaunchService;
 }
 
 interface DiscoveryFile {
@@ -486,6 +489,20 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
     emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/launch") {
+    const body = await readBody(request);
+    let launchRequest;
+    try {
+      launchRequest = validateLaunchRequest(body);
+    } catch (error) {
+      if (error instanceof LaunchValidationError) throw new HttpError(400, "invalid_launch", error.message);
+      throw error;
+    }
+    const result = await ctx.launchService.launch(launchRequest);
+    log(`agent launch title=${result.title} launch_id=${result.launchId} peer_id=${result.peerId} group=${result.group ?? "<none>"}`);
+    return jsonResponse(result, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/agent-sessions") {
@@ -2142,7 +2159,11 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0 };
+  const launchService = new LaunchService({
+    backend: new AoeBackend({ profile: aoeProfileName(paths.home) }),
+    home: paths.home,
+  });
+  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,
