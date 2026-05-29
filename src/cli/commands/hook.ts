@@ -1,6 +1,6 @@
 import { registerAgentSession } from "../../api/agent-sessions.ts";
 import { ensureDaemon } from "../../client.ts";
-import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_SESSION_NAME } from "../../constants.ts";
+import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../../constants.ts";
 
 interface ClaudeHookInput {
   session_id?: string;
@@ -51,6 +51,7 @@ async function runClaudeHook(): Promise<void> {
     purpose: "claude session",
     metadata: compactMetadata(input),
     ...(process.env[ENV_LAUNCH_ID] ? { launchId: process.env[ENV_LAUNCH_ID] } : {}),
+    ...(process.env[ENV_PEER_ID] ? { peerId: process.env[ENV_PEER_ID] } : {}),
     ...(stringOrUndefined(input.transcript_path) ? { hostSessionFile: stringOrUndefined(input.transcript_path) } : {}),
     ...(stringOrUndefined(input.cwd) ? { cwd: stringOrUndefined(input.cwd) } : {}),
     ...(stringOrUndefined(input.source) ? { source: stringOrUndefined(input.source) } : {}),
@@ -73,6 +74,7 @@ async function runPiHook(): Promise<void> {
     purpose: "pi-coding-agent session",
     metadata: compactMetadata(input),
     ...(process.env[ENV_LAUNCH_ID] ? { launchId: process.env[ENV_LAUNCH_ID] } : {}),
+    ...(process.env[ENV_PEER_ID] ? { peerId: process.env[ENV_PEER_ID] } : {}),
     ...(stringOrUndefined(input.session_file) ? { hostSessionFile: stringOrUndefined(input.session_file) } : {}),
     ...(stringOrUndefined(input.cwd) ? { cwd: stringOrUndefined(input.cwd) } : {}),
     ...(stringOrUndefined(input.source) ? { source: stringOrUndefined(input.source) } : {}),
