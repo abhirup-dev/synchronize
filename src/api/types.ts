@@ -21,6 +21,8 @@ export interface StatusResponse {
   };
 }
 
+export type Presence = "offline" | "online" | "initializing" | "working" | "idle";
+
 export interface Peer {
   peer_id: string;
   tool: string;
@@ -28,6 +30,11 @@ export interface Peer {
   purpose: string | null;
   lease_expires_at: string;
   online?: boolean;
+  /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */
+  activity_state?: Presence | null;
+  last_activity_at?: string | null;
+  /** Derived: offline if lease lapsed, else activity_state, else generic "online". */
+  presence?: Presence;
 }
 
 export interface AgentSessionBinding {

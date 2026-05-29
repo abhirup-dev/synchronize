@@ -3,10 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   discoverDaemon,
-  deletePeer,
   heartbeatPeer,
   registerAgentSession,
   registerPeer,
+  setPeerActivity,
   type Event,
   type PiSyncClient,
 } from "./client.ts";
@@ -37,7 +37,12 @@ export interface PiExtensionContext {
 
 export interface PiExtensionAPI {
   on(
-    event: "session_start" | "session_shutdown" | "session_before_switch",
+    event:
+      | "session_start"
+      | "session_shutdown"
+      | "session_before_switch"
+      | "agent_start"
+      | "agent_end",
     handler: (event: unknown, ctx: PiExtensionContext) => void | Promise<void>,
   ): void;
   sendUserMessage(content: string, options?: PiSendOptions): Promise<void> | void;
@@ -73,14 +78,11 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     }
     sub?.stop();
     sub = null;
-    if (peerId && client) {
-      try {
-        await deletePeer(client, peerId);
-        log(`deleted peer ${peerId}`);
-      } catch (error) {
-        log(`failed to delete peer ${peerId}: ${formatError(error)}`);
-      }
-    }
+    // Heartbeat-only lifecycle: do NOT delete the peer on process teardown.
+    // Once heartbeats stop, the daemon drops the peer offline within the lease
+    // window on its own. Deleting here was the footgun — it killed peers during
+    // session rotation / borrowed-peer reuse / second-launch teardown. See
+    // session-tracker/plan-agent-ttl-presence-v0.md.
     if (sessionFile) {
       try {
         await unlink(sessionFile);
@@ -217,5 +219,27 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
 
   pi.on("session_shutdown", async () => {
     await teardownProcess();
+  });
+
+  // Activity presence: an agentic run brackets the "working" state. agent_start
+  // fires for ANY input source (human prompt OR a synchronize steer/followUp
+  // channel injection), so it covers channel-driven turns without special
+  // casing. agent_end returns the peer to idle. Best-effort — a failed push
+  // must never disrupt the run.
+  async function pushActivity(state: "working" | "idle"): Promise<void> {
+    if (!peerId || !client) return;
+    try {
+      await setPeerActivity(client, peerId, state);
+    } catch (error) {
+      log(`activity push (${state}) failed peer_id=${peerId}: ${formatError(error)}`);
+    }
+  }
+
+  pi.on("agent_start", async () => {
+    await pushActivity("working");
+  });
+
+  pi.on("agent_end", async () => {
+    await pushActivity("idle");
   });
 }
