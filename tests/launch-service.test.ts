@@ -91,15 +91,34 @@ test("launch records pending, spawns, and returns identity + count", async () =>
   expect(svc.pending()).toHaveLength(1);
 });
 
-test("consume returns and removes the pending launch exactly once", async () => {
+test("consume returns and removes the pending launch exactly once (matching peer)", async () => {
   const { backend } = fakeBackend();
   const svc = new LaunchService({ backend, home: "/h", mintLaunchId: () => "L", mintPeerId: () => "Pxxxxxxx" });
   await svc.launch({ tool: "claude", name: "c", repo: "/r", group: "team" });
-  const consumed = svc.consume("L");
+  const consumed = svc.consume("L", "Pxxxxxxx");
   expect(consumed?.group).toBe("team");
   expect(consumed?.alias).toBe("c");
   expect(consumed?.peerId).toBe("Pxxxxxxx");
-  expect(svc.consume("L")).toBeUndefined();
+  expect(svc.consume("L", "Pxxxxxxx")).toBeUndefined();
+  expect(svc.pending()).toHaveLength(0);
+});
+
+test("consume with a mismatched peer_id is ignored and leaves the intent intact", async () => {
+  const { backend } = fakeBackend();
+  const svc = new LaunchService({ backend, home: "/h", mintLaunchId: () => "L", mintPeerId: () => "Pxxxxxxx" });
+  await svc.launch({ tool: "claude", name: "c", repo: "/r", group: "team" });
+  expect(svc.consume("L", "imposter-peer")).toBeUndefined();
+  // intent preserved so the genuinely-launched agent can still reconcile
+  expect(svc.pending()).toHaveLength(1);
+  expect(svc.consume("L", "Pxxxxxxx")?.group).toBe("team");
+});
+
+test("forgetByTitle drops a pending launch stopped before it registered", async () => {
+  const { backend } = fakeBackend();
+  const svc = new LaunchService({ backend, home: "/h", mintLaunchId: () => "L", mintPeerId: () => "Pabcd123" });
+  const res = await svc.launch({ tool: "claude", name: "c", repo: "/r" });
+  expect(svc.pending()).toHaveLength(1);
+  svc.forgetByTitle(res.title);
   expect(svc.pending()).toHaveLength(0);
 });
 
@@ -122,6 +141,6 @@ test("no warning when nothing is pending after consume", async () => {
   const svc = new LaunchService({ backend, home: "/h", mintLaunchId: () => "L1", mintPeerId: () => "P1xxxxxx" });
   const res = await svc.launch({ tool: "pi", name: "solo", repo: "/r" });
   expect(res.group).toBeUndefined();
-  svc.consume("L1");
+  svc.consume("L1", "P1xxxxxx");
   expect(svc.pending()).toHaveLength(0);
 });

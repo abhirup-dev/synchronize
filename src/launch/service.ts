@@ -201,11 +201,24 @@ export class LaunchService {
     await this.backend.stop(title);
   }
 
-  /** Look up and remove launch intent (called by reconcile at register time). */
-  consume(launchId: string): PendingLaunch | undefined {
+  /**
+   * Look up and remove launch intent, but only if the registering peer matches
+   * the peer_id we pinned at launch. A mismatch (someone registering a foreign
+   * peer_id under this launch_id) is ignored and the intent is LEFT INTACT so
+   * the genuinely-launched agent can still reconcile when it registers.
+   */
+  consume(launchId: string, peerId: string): PendingLaunch | undefined {
     const pending = this.pendingByLaunch.get(launchId);
-    if (pending) this.pendingByLaunch.delete(launchId);
+    if (!pending || pending.peerId !== peerId) return undefined;
+    this.pendingByLaunch.delete(launchId);
     return pending;
+  }
+
+  /** Drop pending intent for a backend title (e.g. stopped before it registered). */
+  forgetByTitle(title: string): void {
+    for (const [launchId, pending] of this.pendingByLaunch) {
+      if (pending.title === title) this.pendingByLaunch.delete(launchId);
+    }
   }
 
   /** Current launches that have not yet registered. */

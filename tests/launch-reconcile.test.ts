@@ -102,6 +102,22 @@ test("reconcile is a no-op when launch_id is unknown or null", async () => {
   expect(() => reconcileLaunch(ctx, null, "peer-x0000000")).not.toThrow();
 });
 
+test("reconcile with a foreign peer_id does NOT join and preserves intent for the real agent", async () => {
+  const { ctx, db, launchService } = await harness();
+  const res = await launchService.launch({ tool: "claude", name: "alice", repo: "/r", group: "alpha" });
+  // An imposter registers a different peer_id under the same launch_id.
+  registerPeer(db, "imposter-00000000", "imposter");
+  reconcileLaunch(ctx, res.launchId, "imposter-00000000");
+  expect(memberOf(db, "alpha", "imposter-00000000")).toBeNull();
+  expect(launchService.pending()).toHaveLength(1); // intent intact
+
+  // The genuinely-launched agent (pinned peer_id) then registers and joins.
+  registerPeer(db, res.peerId, "alice");
+  reconcileLaunch(ctx, res.launchId, res.peerId);
+  expect(memberOf(db, "alpha", res.peerId)?.active).toBe(1);
+  expect(launchService.pending()).toHaveLength(0);
+});
+
 test("active alias collision => join_failed: session stays unjoined, no throw", async () => {
   const { ctx, db, launchService } = await harness();
   // First alice joins alpha.

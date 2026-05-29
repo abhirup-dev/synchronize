@@ -80,6 +80,16 @@ test("spawn throws with backend detail when add fails", async () => {
   ).rejects.toThrow(/aoe add failed.*boom/);
 });
 
+test("when session start fails, spawn rolls back the added session and throws", async () => {
+  const { calls, run } = recorder({ "session start": { exitCode: 1, stdout: "", stderr: "start boom" } });
+  const backend = new AoeBackend({ profile: "p", run });
+  await expect(
+    backend.spawn({ title: "t-deadbeef", tool: "claude", command: ["claude"], env: {}, cwd: "/r" }),
+  ).rejects.toThrow(/aoe session start failed.*start boom/);
+  // the added-but-unstarted session is removed so its title isn't orphaned
+  expect(calls.some((c) => c.join(" ") === "aoe -p p remove --force t-deadbeef")).toBe(true);
+});
+
 test("stop removes by title with --force", async () => {
   const { calls, run } = recorder();
   const backend = new AoeBackend({ profile: "p", run });

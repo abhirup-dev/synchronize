@@ -155,6 +155,9 @@ export class AoeBackend implements SessionBackend {
     // headless ("open terminal failed") even though the session launched.
     const started = await this.run(this.aoe(["session", "start", spec.title]));
     if (started.exitCode !== 0) {
+      // Roll back the added-but-unstarted session so the title isn't orphaned
+      // (which would block a future launch under the same title).
+      await this.run(this.aoe(["remove", "--force", spec.title]));
       throw new Error(failure("aoe session start", spec.title, started));
     }
   }

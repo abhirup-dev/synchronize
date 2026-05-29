@@ -512,7 +512,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const body = await readBody(request);
     // Prefer the explicit title (always known from the launch response, works
     // even before the agent has registered). Otherwise derive it from the
-    // durable peer row (session_name + peer_id8) for a known peer.
+    // durable peer row (session_name + peer_id8) for a known peer. NOTE: the
+    // peer_id path assumes session_name is unchanged since launch; if the peer
+    // was renamed, derivation is stale — stop by title for a guaranteed match.
     const explicitTitle = optionalString(body, "title");
     const peerId = optionalString(body, "peer_id");
     let title: string;
@@ -524,6 +526,8 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
     }
     await ctx.launchService.stop(title);
+    // Drop any pending launch intent for this title (stopped before it registered).
+    ctx.launchService.forgetByTitle(title);
     log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
     return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
   }
@@ -2111,7 +2115,7 @@ function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
  */
 export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, peerId: string): void {
   if (!launchId) return;
-  const pending = ctx.launchService.consume(launchId);
+  const pending = ctx.launchService.consume(launchId, peerId);
   if (!pending || !pending.group) return;
   try {
     const group = ensureLaunchGroup(ctx, pending.group);
