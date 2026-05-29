@@ -227,6 +227,10 @@ test("Claude hook is env gated and registers native session binding when enabled
     env: {
       ...process.env,
       SYNCHRONIZE_HOME: home,
+      // PORT=0 so the CLI-autostarted daemon binds a free port. Without this it
+      // binds the hardcoded DEFAULT_PORT and collides with any daemon already
+      // running on this machine, failing the health check (sync-anr).
+      SYNCHRONIZE_PORT: "0",
       SYNCHRONIZE_HOOK_ENABLE: "1",
       SYNCHRONIZE_SESSION_NAME: "hooked-claude",
     },
