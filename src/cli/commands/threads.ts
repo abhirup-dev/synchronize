@@ -49,7 +49,7 @@ export async function run(argv: string[]): Promise<void> {
     const [rootEventIdRaw, ...flagArgs] = rest;
     const rootEventId = parseRequiredPositiveInt(rootEventIdRaw, "threads summary requires ROOT_EVENT_ID");
     const args = parseFlags(flagArgs);
-    const refresh = args.flags.refresh === "true" || args.flags.refresh === "";
+    const refresh = args.boolFlags.has("refresh") || args.flags.refresh === "true" || args.flags.refresh === "";
     const format = args.flags.format ?? "text";
     if (format !== "text" && format !== "json") throw new Error("--format must be text or json");
     const response = refresh

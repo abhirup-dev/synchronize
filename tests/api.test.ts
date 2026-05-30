@@ -21,6 +21,7 @@ import { findReusablePeer } from "../src/api/status.ts";
 import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Event } from "../src/api/types.ts";
+import { aoeAttachCommand, aoeProfileName, aoeTitle } from "../src/launch/service.ts";
 
 const homes: string[] = [];
 
@@ -1458,14 +1459,22 @@ test("web state endpoint returns summaries and room-scoped event history", async
 
   try {
     const web = await registerPeer(daemon.client, { peerId: "web:test", sessionName: "web-ui", tool: "web" });
-    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const alice = await registerAgentSession(daemon.client, {
+      peerId: "peer-web-alice",
+      hostTool: "claude",
+      hostSessionId: "claude-web-alice",
+      sessionName: "alice",
+      tool: "claude",
+      launchId: "launch-web-alice",
+    });
+    const alicePeer = alice.binding.peer;
     const groupName = "web-room";
-    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
-    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alicePeer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alicePeer.peer_id, alias: "alice" });
     await joinGroup(daemon.client, { name: groupName, peerId: web.peer.peer_id, alias: "web" });
     const sent = await sendGroupMessage(daemon.client, {
       name: groupName,
-      senderPeerId: alice.peer.peer_id,
+      senderPeerId: alicePeer.peer_id,
       message: "hello web state",
     });
 
@@ -1476,11 +1485,28 @@ test("web state endpoint returns summaries and room-scoped event history", async
     const summaryEtag = summary.headers.get("etag");
     expect(summaryEtag).toMatch(new RegExp(`^W/"${sent.event.event_id}\\.[a-z0-9]+"$`));
     const summaryBody = await summary.json() as {
+      peers: Array<{ peer_id: string; aoe_session?: { profile: string; title: string; attach_command: string } }>;
       groups: Array<{ group_id: number; name: string }>;
       group_paths: Array<{ group_id: number; path: string; active: boolean }>;
       room_summaries: Array<{ group_id: number; last_event_id: number | null; last_preview: string | null }>;
       events: unknown[];
     };
+    const expectedAoeTitle = aoeTitle({
+      launchId: "launch-web-alice",
+      peerId: alicePeer.peer_id,
+      group: groupName,
+      sessionName: "alice",
+      tool: "claude",
+    });
+    const expectedAoeProfile = aoeProfileName(home);
+    expect(summaryBody.peers).toContainEqual(expect.objectContaining({
+      peer_id: alicePeer.peer_id,
+      aoe_session: {
+        profile: expectedAoeProfile,
+        title: expectedAoeTitle,
+        attach_command: aoeAttachCommand(expectedAoeProfile, expectedAoeTitle),
+      },
+    }));
     expect(summaryBody.groups).toContainEqual(expect.objectContaining({ group_id: group.group.group_id, name: groupName }));
     expect(summaryBody.group_paths).toContainEqual(expect.objectContaining({
       group_id: group.group.group_id,
@@ -1502,12 +1528,43 @@ test("web state endpoint returns summaries and room-scoped event history", async
     // Regression: a presence change must bust the ETag even though it creates no
     // new event (the cursor is unchanged). Without folding presence into the tag
     // the conditional GET would 304 and the client would render stale presence.
-    await setPeerActivity(daemon.client, { peerId: alice.peer.peer_id, state: "working" });
+    await setPeerActivity(daemon.client, { peerId: alicePeer.peer_id, state: "working" });
     const afterActivity = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
       headers: { "if-none-match": summaryEtag! },
     });
     expect(afterActivity.status).toBe(200);
     expect(afterActivity.headers.get("etag")).not.toBe(summaryEtag);
+
+    // Regression: AOE attach metadata is derived from agent_sessions, not the
+    // event stream. Adding it for an existing rendered peer must also bust the
+    // ETag, otherwise the browser can keep showing "AOE session unavailable".
+    const bob = await registerPeer(daemon.client, {
+      peerId: "peer-web-bob",
+      sessionName: "bob",
+      tool: "pi",
+    });
+    const beforeAoe = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`);
+    expect(beforeAoe.status).toBe(200);
+    const beforeAoeEtag = beforeAoe.headers.get("etag");
+    expect(beforeAoeEtag).toBeTruthy();
+    await registerAgentSession(daemon.client, {
+      peerId: bob.peer.peer_id,
+      hostTool: "pi",
+      hostSessionId: "pi-web-bob",
+      sessionName: "bob",
+      tool: "pi",
+      launchId: "launch-web-bob",
+    });
+    const afterAoe = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
+      headers: { "if-none-match": beforeAoeEtag! },
+    });
+    expect(afterAoe.status).toBe(200);
+    expect(afterAoe.headers.get("etag")).not.toBe(beforeAoeEtag);
+    const afterAoeBody = await afterAoe.json() as {
+      peers: Array<{ peer_id: string; aoe_session?: { attach_command: string } }>;
+    };
+    const bobAoe = afterAoeBody.peers.find((peer) => peer.peer_id === bob.peer.peer_id)?.aoe_session;
+    expect(bobAoe?.attach_command).toBeTruthy();
 
     const room = await fetch(
       `${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}&room=group:${group.group.group_id}`,

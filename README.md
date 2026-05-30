@@ -175,11 +175,11 @@ new replies have landed since the cache was written. With no
 `status: "disabled"`.
 
 Knobs: `SYNCHRONIZE_LLM_PROVIDER` (default `openrouter`), `SYNCHRONIZE_LLM_MODEL`
-(default `anthropic/claude-haiku-4.5`), `SYNCHRONIZE_SUMMARY_STRATEGY` /
+(default `google/gemini-2.5-flash-lite`), `SYNCHRONIZE_SUMMARY_STRATEGY` /
 `SYNCHRONIZE_SUMMARY_K` / `SYNCHRONIZE_SUMMARY_FIRST_K` /
 `SYNCHRONIZE_SUMMARY_LAST_K`, `SYNCHRONIZE_SUMMARY_POLL_INTERVAL_MS` (default
 15 min — set to `10000` during testing), `SYNCHRONIZE_SUMMARY_COLD_AFTER_MS`
-(default 30 min), `SYNCHRONIZE_SUMMARY_MIN_REPLIES` (default 3),
+(default 30 min), `SYNCHRONIZE_SUMMARY_MIN_REPLIES` (default 1),
 `SYNCHRONIZE_SUMMARY_BATCH_SIZE` (default 10).
 
 

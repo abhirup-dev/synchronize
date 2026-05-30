@@ -25,11 +25,12 @@ import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
-import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
+import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
 import { isLaunchTool } from "./launch/build.ts";
 import { runEventQuery } from "./query/events.ts";
 import { resolveProviderConfig } from "./llm/index.ts";
 import {
+  defaultStrategyFromEnv,
   isEnabled as isSummarizeEnabled,
   loadSummaryResponse,
   makeProviderCaller,
@@ -327,19 +328,24 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const state = buildWebState(ctx, url);
     // The ETag must change whenever anything the client renders changes. The
     // event cursor alone is insufficient: presence is time-derived (a lapsed
-    // lease flips a peer offline, and an activity push flips working/idle) with
-    // no new event, so the cursor stays put while the rendered roster changes.
-    // Without folding presence in, the browser revalidates, gets a 304, and
-    // serves a stale body — peers stay frozen at their page-load presence.
+    // lease flips a peer offline, and an activity push flips working/idle), and
+    // roster metadata such as AOE attach commands can be derived from non-event
+    // tables. Without folding those rendered fields in, the browser revalidates,
+    // gets a 304, and serves a stale body.
     const presenceOf = (row: { presence?: string; online: boolean }): string =>
       row.presence ?? (row.online ? "online" : "offline");
-    const presenceSig = [
-      ...state.peers.map((p) => `${p.peer_id}:${presenceOf(p)}`),
+    const renderSig = [
+      ...state.peers.map(
+        (p) =>
+          `${p.peer_id}:${presenceOf(p)}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
+            p.aoe_session?.attach_command ?? ""
+          }`,
+      ),
       ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
     ]
       .sort()
       .join("|");
-    const etag = `W/"${state.cursor}.${Bun.hash(presenceSig).toString(36)}"`;
+    const etag = `W/"${state.cursor}.${Bun.hash(renderSig).toString(36)}"`;
     if (request.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { etag } });
     }
@@ -1249,7 +1255,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   const threadSummaryGet = url.pathname.match(/^\/threads\/(\d+)\/summary$/);
   if (request.method === "GET" && threadSummaryGet) {
     const rootEventId = Number(threadSummaryGet[1]);
-    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, isSummarizeEnabled()));
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, isSummarizeEnabled(), defaultStrategyFromEnv()));
   }
 
   // POST /threads/:root/summary — force regen. Bypasses cold-gate and
@@ -1268,7 +1274,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       last_k: optionalInteger(body, "last_k"),
     });
     await summarizeThread(ctx.db, makeProviderCaller(cfg), rootEventId, { strategy });
-    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true));
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true, strategy));
   }
 
   // GET /threads/:root_event_id — single-call thread state: status + events
@@ -2270,13 +2276,19 @@ interface WebStateResponse {
     started_at: string;
     token_required: boolean;
   };
-  peers: Array<PeerRow & { online: boolean }>;
+  peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
   memberships: Array<FormattedMember & { online: boolean }>;
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
   media: MediaRow[];
+}
+
+interface WebAoeSession {
+  profile: string;
+  title: string;
+  attach_command: string;
 }
 
 interface WebRoomSummary {
@@ -2302,6 +2314,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const room = url.searchParams.get("room");
   const webPeerId = url.searchParams.get("peer_id");
   const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
+  const aoeProfile = aoeProfileName(ctx.paths.home);
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
@@ -2316,7 +2329,11 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       ...peer,
       online: Boolean(peer.online),
       presence: derivePresence(Boolean(peer.online), peer.activity_state),
-    }));
+    }))
+    .map((peer) => {
+      const aoeSession = deriveAoeSessionForPeer(ctx.db, peer.peer_id, aoeProfile);
+      return aoeSession ? { ...peer, aoe_session: aoeSession } : peer;
+    });
   const groups = ctx.db
     .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
     .all()
@@ -2725,6 +2742,19 @@ function deriveBackendTitleForPeer(db: Database, peerId: string): string {
     sessionName: peer.session_name,
     tool: peer.tool,
   });
+}
+
+function deriveAoeSessionForPeer(db: Database, peerId: string, profile: string): WebAoeSession | null {
+  try {
+    const title = deriveBackendTitleForPeer(db, peerId);
+    return {
+      profile,
+      title,
+      attach_command: aoeAttachCommand(profile, title),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {

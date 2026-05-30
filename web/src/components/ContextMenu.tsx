@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type Mouse
 
 export interface MenuItem {
   label: string;
-  onSelect(): void;
+  onSelect(): void | Promise<void>;
   danger?: boolean;
+  disabled?: boolean;
   shortcut?: string;
   divider?: false;
 }
@@ -65,9 +66,10 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
               <button
                 key={i}
                 className={`ctx-item${it.danger ? " ctx-danger" : ""}`}
+                disabled={it.disabled}
                 onClick={() => {
-                  setState(null);
-                  it.onSelect();
+                  if (it.disabled) return;
+                  void Promise.resolve(it.onSelect()).finally(() => setState(null));
                 }}
               >
                 <span>{it.label}</span>

@@ -6,6 +6,8 @@ import { useContextMenu } from "./ContextMenu.tsx";
 import { AgentColorPicker } from "./AgentColorPicker.tsx";
 import { AGENTS as SEED_AGENTS } from "../data/seed.ts";
 import { roomAgents } from "../data/roomAgents.ts";
+import { useToast } from "./Toast.tsx";
+import { copyText } from "../utils/clipboard.ts";
 
 interface AgentRosterProps {
   room: Room;
@@ -28,6 +30,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const openMenu = useContextMenu();
   const setAgentColor = useSetAgentColor();
+  const toast = useToast();
   const [picker, setPicker] = useState<{ agent: Agent; x: number; y: number } | null>(null);
   const members = useMemo(
     () => displayAgents.filter((a) => room.members.includes(a.id)),
@@ -64,13 +67,37 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                 onDoubleClick={() => onAgentDoubleClick?.(agent.id)}
                 onContextMenu={(e) => {
                   const { clientX, clientY } = e;
+                  const copyAoeCommand = agent.aoeSession
+                    ? async () => {
+                        const copied = await copyText(agent.aoeSession!.attachCommand);
+                        toast.show(copied ? "AOE command copied" : "Could not copy AOE command", {
+                          kind: copied ? "success" : "error",
+                        });
+                      }
+                    : () => {};
+                  const aoeMenuItem = {
+                    label: agent.aoeSession ? "Copy AOE attach command" : "AOE session unavailable",
+                    ...(agent.aoeSession ? { shortcut: agent.aoeSession.title } : {}),
+                    disabled: !agent.aoeSession,
+                    onSelect: copyAoeCommand,
+                  };
                   openMenu(e, [
                     { label: `Focus on @${agent.handle}`, onSelect: () => onFocus(agent.id) },
                     { label: "Open DM", onSelect: () => console.log("dm", agent.id) },
                     { label: "View profile", onSelect: () => console.log("profile", agent.id) },
                     { divider: true },
+                    aoeMenuItem,
+                    { divider: true },
                     { label: "Change color…", onSelect: () => setPicker({ agent, x: clientX, y: clientY }) },
-                    { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${agent.handle}`) },
+                    {
+                      label: "Copy @handle",
+                      onSelect: async () => {
+                        const copied = await copyText(`@${agent.handle}`);
+                        toast.show(copied ? "Handle copied" : "Could not copy handle", {
+                          kind: copied ? "success" : "error",
+                        });
+                      },
+                    },
                     { divider: true },
                     { label: "Mute mentions", onSelect: () => console.log("mute", agent.id) },
                   ]);

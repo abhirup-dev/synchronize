@@ -33,6 +33,11 @@ interface DaemonPeer {
   lease_expires_at: string;
   online?: boolean;
   presence?: DaemonPresence;
+  aoe_session?: {
+    profile: string;
+    title: string;
+    attach_command: string;
+  };
 }
 
 interface DaemonGroup {
@@ -733,6 +738,15 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
     role: peer.tool,
     status: statusForPeer(peer, isMe),
     ...(peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(peer.aoe_session
+      ? {
+          aoeSession: {
+            profile: peer.aoe_session.profile,
+            title: peer.aoe_session.title,
+            attachCommand: peer.aoe_session.attach_command,
+          },
+        }
+      : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
 }

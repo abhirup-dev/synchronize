@@ -249,6 +249,16 @@ describe("summarizeThread + loadSummaryResponse", () => {
     db.close();
   });
 
+  test("staleness: strategy changes invalidate the cache", async () => {
+    const home = await mkdtemp(join(tmpdir(), "synchronize-summarize-strategy-"));
+    homes.push(home);
+    const { db, root } = await seedMiniDb(home);
+    await summarizeThread(db, stubCaller("v1"), root);
+    expect(loadSummaryResponse(db, root, true, { strategy: "first_k", params: { k: 3 } }).stale).toBe(false);
+    expect(loadSummaryResponse(db, root, true, { strategy: "all", params: {} }).stale).toBe(true);
+    db.close();
+  });
+
   test("empty summary throws (worker treats it as a failure and backs off)", async () => {
     const home = await mkdtemp(join(tmpdir(), "synchronize-summarize-empty-"));
     homes.push(home);

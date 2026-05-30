@@ -13,7 +13,7 @@ import { generateText, type LanguageModel } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 export const DEFAULT_PROVIDER = "openrouter";
-export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+export const DEFAULT_MODEL = "google/gemini-2.5-flash-lite";
 
 // Bump whenever SYSTEM_PROMPT changes. Worker treats lower-version rows as
 // stale automatically, so existing cached summaries get rewritten on next pass.
@@ -25,7 +25,7 @@ Do not include preamble, headings, or quotes.`;
 
 export interface ProviderConfig {
   provider: string; // "openrouter" today
-  model: string;   // e.g. "anthropic/claude-haiku-4.5"
+  model: string;   // e.g. "google/gemini-2.5-flash-lite"
   apiKey: string;
 }
 

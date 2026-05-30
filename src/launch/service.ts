@@ -145,6 +145,18 @@ export function aoeTitle(input: LaunchTitleInput): string {
   return title;
 }
 
+/** Operator command for attaching to an AOE-managed session. */
+export function aoeAttachCommand(profile: string, title: string): string {
+  return `aoe -p ${shellToken(profile)} session attach ${shellToken(title)}`;
+}
+
+const SHELL_SAFE_TOKEN = /^[A-Za-z0-9_./:=-]+$/;
+
+function shellToken(token: string): string {
+  if (SHELL_SAFE_TOKEN.test(token)) return token;
+  return `'${token.replace(/'/g, "'\\''")}'`;
+}
+
 function launchHash(input: LaunchTitleInput): string {
   const canonical = JSON.stringify({
     v: 1,

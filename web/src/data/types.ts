@@ -13,6 +13,11 @@ export interface Agent {
   role: string;
   status: AgentStatus;
   statusNote?: string;
+  aoeSession?: {
+    profile: string;
+    title: string;
+    attachCommand: string;
+  };
   avatar: string; // single uppercase letter
 }
 

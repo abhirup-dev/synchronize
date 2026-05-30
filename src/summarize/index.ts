@@ -126,6 +126,7 @@ export function loadSummaryResponse(
   db: Database,
   rootEventId: number,
   enabled: boolean,
+  expectedStrategy?: ResolvedStrategy,
 ): ThreadSummaryResponse {
   if (!enabled) {
     return emptyResponse("disabled");
@@ -140,7 +141,12 @@ export function loadSummaryResponse(
     )
     .get(rootEventId);
   const headLast = head?.last_event_id ?? row.covered_last_event_id;
-  const stale = row.prompt_version < PROMPT_VERSION || row.covered_last_event_id < headLast;
+  const stale =
+    row.prompt_version < PROMPT_VERSION ||
+    row.covered_last_event_id < headLast ||
+    (expectedStrategy !== undefined &&
+      (row.strategy !== expectedStrategy.strategy ||
+        row.strategy_params_json !== JSON.stringify(expectedStrategy.params)));
   return {
     summary: row.summary,
     model: row.model,
@@ -337,7 +343,7 @@ function workerConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WorkerConfig
   return {
     pollIntervalMs: positiveInt(env.SYNCHRONIZE_SUMMARY_POLL_INTERVAL_MS, 15 * 60 * 1000),
     coldAfterMs: positiveInt(env.SYNCHRONIZE_SUMMARY_COLD_AFTER_MS, 30 * 60 * 1000),
-    minReplies: positiveInt(env.SYNCHRONIZE_SUMMARY_MIN_REPLIES, 3),
+    minReplies: positiveInt(env.SYNCHRONIZE_SUMMARY_MIN_REPLIES, 1),
     batchSize: positiveInt(env.SYNCHRONIZE_SUMMARY_BATCH_SIZE, 10),
   };
 }
@@ -356,10 +362,11 @@ function pickEligible(
   now: number,
   inFlight: Set<number>,
   errorBackoff: Map<number, number>,
+  expectedStrategy: ResolvedStrategy,
 ): DiscoverableThreadRow[] {
   const cutoffIso = new Date(now - wcfg.coldAfterMs).toISOString();
   const rows = db
-    .query<DiscoverableThreadRow, [string, number, number, number]>(
+    .query<DiscoverableThreadRow, [string, number, number, string, string, number]>(
       `SELECT dt.root_event_id, dt.group_name, dt.reply_count, dt.last_event_id, dt.last_activity_at
        FROM discoverable_threads dt
        LEFT JOIN thread_summaries ts ON ts.root_event_id = dt.root_event_id
@@ -369,11 +376,20 @@ function pickEligible(
            ts.root_event_id IS NULL
            OR ts.covered_last_event_id < dt.last_event_id
            OR ts.prompt_version < ?
+           OR ts.strategy != ?
+           OR ts.strategy_params_json != ?
          )
        ORDER BY dt.last_activity_at DESC
        LIMIT ?`,
     )
-    .all(cutoffIso, wcfg.minReplies, PROMPT_VERSION, wcfg.batchSize * 4);
+    .all(
+      cutoffIso,
+      wcfg.minReplies,
+      PROMPT_VERSION,
+      expectedStrategy.strategy,
+      JSON.stringify(expectedStrategy.params),
+      wcfg.batchSize * 4,
+    );
   // Filter in-memory state out — keeps the SQL portable across SQLite versions
   // and is cheap given the small batch fanout.
   const out: DiscoverableThreadRow[] = [];
@@ -398,8 +414,9 @@ export function startSummarizeWorker(db: Database, env: NodeJS.ProcessEnv = proc
     const cfg = resolveProviderConfig(env);
     if (!cfg) return { summarized: 0, skipped: 0, errors: 0 };
     const caller = makeProviderCaller(cfg);
+    const expectedStrategy = defaultStrategyFromEnv(env);
     const now = Date.now();
-    const eligible = pickEligible(db, wcfg, now, inFlight, errorBackoff);
+    const eligible = pickEligible(db, wcfg, now, inFlight, errorBackoff, expectedStrategy);
     let summarized = 0;
     let errors = 0;
     for (const t of eligible) {
@@ -440,6 +457,9 @@ export function startSummarizeWorker(db: Database, env: NodeJS.ProcessEnv = proc
     (timer as { unref?: () => void }).unref?.();
   }
 
+  void runTick().catch((err) => {
+    console.error(`[summarize] initial worker tick crashed: ${err instanceof Error ? err.message : String(err)}`);
+  });
   schedule();
 
   return {

@@ -225,9 +225,9 @@ export function Composer({
             className={`thread-scan-btn${threadSummaryOpen ? " active" : ""}`}
             onClick={onToggleThreadSummary}
             aria-pressed={threadSummaryOpen}
-            title={threadSummaryOpen ? "hide the thread summary panel" : "scan threads in this room"}
+            title={threadSummaryOpen ? "hide the thread summary panel" : "show thread summaries"}
           >
-            ☰ {threadSummaryOpen ? "HIDE THREADS" : "SCAN THREADS"}
+            ☰ {threadSummaryOpen ? "HIDE SUMMARY" : "THREADS"}
           </button>
         ) : null}
         <span className="composer-hint">

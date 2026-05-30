@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   LaunchService,
   LaunchValidationError,
+  aoeAttachCommand,
   aoeProfileName,
   aoeTitle,
   normalizeLaunchAlias,
@@ -75,6 +76,15 @@ test("aoeTitle is deterministic, hash-prefixed, human-readable, and <= 20 chars"
   expect(title.length).toBeLessThanOrEqual(20);
   expect(aoeTitle(input)).toBe(title);
   expect(aoeTitle({ ...input, peerId: "other-peer" })).not.toBe(title);
+});
+
+test("aoeAttachCommand returns a pasteable AOE attach command", () => {
+  expect(aoeAttachCommand("synchronize-test", "abc12345-alice")).toBe(
+    "aoe -p synchronize-test session attach abc12345-alice",
+  );
+  expect(aoeAttachCommand("sync profile", "agent's session")).toBe(
+    "aoe -p 'sync profile' session attach 'agent'\\''s session'",
+  );
 });
 
 test("resolveLaunchSpec wires title, command, env, cwd, group", () => {

@@ -13,7 +13,8 @@
 // backend is wired, that returns { status: "disabled" } and we fall back to a
 // generated headline.
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent } from "react";
 import type { Agent, Message } from "../data/types.ts";
 import { useThreadSummary } from "../data/context.tsx";
 import { Avatar, Sticker } from "./primitives.tsx";
@@ -22,7 +23,8 @@ import { Markdown } from "./Markdown.tsx";
 interface ThreadSummaryPanelProps {
   messages: Message[];
   agents: Agent[];
-  onClose(): void;
+  width: number;
+  onWidthChange(width: number): void;
   onJumpTo(messageId: string): void;
   /** The chat list's scroll element (for scroll sync). */
   chatListRef: React.RefObject<HTMLDivElement | null>;
@@ -43,7 +45,8 @@ function formatTime(iso?: string): string {
 export function ThreadSummaryPanel({
   messages,
   agents,
-  onClose,
+  width,
+  onWidthChange,
   onJumpTo,
   chatListRef,
   getAnchorTop,
@@ -57,9 +60,9 @@ export function ThreadSummaryPanel({
 
   // ── continuous measurement loop ──────────────────────────────────────────
   // Each frame we read each threaded message's live offset (from the
-  // virtualizer, via getAnchorTop) and position the corresponding row's dot at
-  // the same screen Y as its bubble. chromeOffset accounts for the panel head
-  // sitting lower than the chat list's top edge.
+  // virtualizer, via getAnchorTop) and position the corresponding row's dot near
+  // the same screen Y as its bubble. A second pass preserves row order and
+  // spacing when summaries get taller than the gaps between nearby thread roots.
   useEffect(() => {
     const list = chatListRef.current;
     const panel = panelScrollRef.current;
@@ -72,10 +75,11 @@ export function ThreadSummaryPanel({
     const tick = () => {
       const listRect = list.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
-      // The panel head sits below the chat list's top edge; shift rows up by
-      // that gap so each dot lands at its bubble's screen Y.
+      // If panel chrome ever sits below the chat list's top edge, shift rows up
+      // by that gap so each dot still tracks its bubble's screen Y.
       const chromeOffset = Math.max(0, panelRect.top - listRect.top);
       const scrollTop = list.scrollTop;
+      const placements: Array<{ rowEl: HTMLDivElement; rowHalf: number; desiredTop: number; top: number }> = [];
 
       for (const m of threadMessages) {
         const rowEl = rowRefs.current[m.id];
@@ -85,8 +89,35 @@ export function ThreadSummaryPanel({
           rowEl.style.display = "none";
           continue;
         }
+        const rowHalf = rowEl.offsetHeight / 2;
+        const desiredTop = center - chromeOffset;
         rowEl.style.display = "";
-        rowEl.style.top = `${center - chromeOffset}px`;
+        placements.push({ rowEl, rowHalf, desiredTop, top: desiredTop });
+      }
+
+      placements.sort((a, b) => a.desiredTop - b.desiredTop);
+      let previousBottom = scrollTop + 8;
+      for (const placement of placements) {
+        const viewportTop = scrollTop + placement.rowHalf + 8;
+        const viewportBottom = scrollTop + panel.clientHeight - placement.rowHalf - 8;
+        const visibleTop =
+          viewportBottom > viewportTop
+            ? Math.min(Math.max(placement.desiredTop, viewportTop), viewportBottom)
+            : placement.desiredTop;
+        placement.top = Math.max(visibleTop, previousBottom + placement.rowHalf + 8);
+        previousBottom = placement.top + placement.rowHalf;
+      }
+
+      const overflow = previousBottom - (scrollTop + panel.clientHeight - 8);
+      if (overflow > 0 && placements.length > 0) {
+        const first = placements[0]!;
+        const maxShift = Math.max(0, first.top - (scrollTop + first.rowHalf + 8));
+        const shift = Math.min(overflow, maxShift);
+        for (const placement of placements) placement.top -= shift;
+      }
+
+      for (const placement of placements) {
+        placement.rowEl.style.top = `${placement.top}px`;
       }
 
       const trackHeight = getContentHeight();
@@ -114,19 +145,11 @@ export function ThreadSummaryPanel({
   };
 
   return (
-    <aside className="thread-summary-panel">
-      <div className="thread-summary-head">
-        <div className="thread-summary-title">
-          <Sticker label="THREAD ACTIVITY" color="var(--lilac)" tilt={-2} />
-          <span className="thread-summary-count">
-            {threadMessages.length} {threadMessages.length === 1 ? "thread" : "threads"}
-          </span>
-        </div>
-        <button className="thread-summary-close" onClick={onClose} title="Hide threads" type="button">
-          ✕
-        </button>
-      </div>
-
+    <aside
+      className="thread-summary-panel"
+      aria-label="Thread activity"
+      style={{ "--thread-summary-width": `${width}px` } as CSSProperties}
+    >
       {threadMessages.length === 0 ? (
         <div className="thread-summary-empty">
           <Sticker label="QUIET" color="var(--yellow)" tilt={-2} />
@@ -144,13 +167,93 @@ export function ThreadSummaryPanel({
                 rowRef={(el) => {
                   rowRefs.current[m.id] = el;
                 }}
+                width={width}
                 onJump={() => onJumpTo(m.id)}
               />
             ))}
           </div>
         </div>
       )}
+      <ThreadSummaryResizeHandle width={width} onChange={onWidthChange} />
     </aside>
+  );
+}
+
+function clampWidth(value: number, min = 240, max = 620): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function ThreadSummaryResizeHandle({
+  width,
+  onChange,
+}: {
+  width: number;
+  onChange(width: number): void;
+}) {
+  const draggingRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const startRef = useRef({ pointerX: 0, startWidth: 0 });
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  const onPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    startRef.current = { pointerX: e.clientX, startWidth: widthRef.current };
+    draggingRef.current = true;
+    setDragging(true);
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!draggingRef.current) return;
+      const dx = e.clientX - startRef.current.pointerX;
+      onChange(clampWidth(startRef.current.startWidth + dx));
+    },
+    [onChange],
+  );
+
+  const endDrag = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore; pointer capture may already have been released
+    }
+    draggingRef.current = false;
+    setDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+    };
+  }, [dragging]);
+
+  return (
+    <div
+      className={`thread-summary-resize-handle${dragging ? " is-dragging" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="resize thread activity panel"
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={() => onChange(340)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") onChange(clampWidth(width - 16));
+        if (e.key === "ArrowRight") onChange(clampWidth(width + 16));
+      }}
+    >
+      <span className="thread-summary-resize-grip" aria-hidden />
+    </div>
   );
 }
 
@@ -158,11 +261,13 @@ function ThreadSummaryRow({
   msg,
   agents,
   rowRef,
+  width,
   onJump,
 }: {
   msg: Message;
   agents: Agent[];
   rowRef: (el: HTMLDivElement | null) => void;
+  width: number;
   onJump(): void;
 }) {
   const summary = useThreadSummary(msg.id);
@@ -182,12 +287,43 @@ function ThreadSummaryRow({
     `${replyCount} ${replyCount === 1 ? "reply" : "replies"} from ` +
     `${participantIds.length} ${participantIds.length === 1 ? "agent" : "agents"}.`;
   const summaryText = summary.status === "ok" && summary.text ? summary.text : fallback;
+  const summaryLines = summaryLineCount(msg.body, width);
+  const summaryRef = useRef<HTMLDivElement | null>(null);
+  const [summaryTruncated, setSummaryTruncated] = useState(false);
+
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      const el = summaryRef.current;
+      if (!el) return;
+      const truncated = el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+      setSummaryTruncated((current) => (current === truncated ? current : truncated));
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+
+    schedule();
+    const observer =
+      typeof ResizeObserver === "undefined" || !summaryRef.current ? null : new ResizeObserver(schedule);
+    if (summaryRef.current) observer?.observe(summaryRef.current);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [summaryText, summaryLines, width]);
 
   return (
     <div
       ref={rowRef}
       className="ts-row"
-      style={{ top: "0px" }} // overridden by the rAF loop
+      style={
+        {
+          top: "0px", // overridden by the rAF loop
+          "--ts-summary-lines": summaryLines,
+        } as CSSProperties
+      }
       onClick={onJump}
       role="button"
       tabIndex={0}
@@ -210,7 +346,11 @@ function ThreadSummaryRow({
             {replyCount} {replyCount === 1 ? "reply" : "replies"}
           </span>
         </div>
-        <div className="ts-summary">
+        <div
+          ref={summaryRef}
+          className={`ts-summary${summaryTruncated ? " is-truncated" : ""}`}
+          title={summaryTruncated ? summaryText : undefined}
+        >
           <Markdown agents={agents}>{summaryText}</Markdown>
         </div>
         <div className="ts-foot">
@@ -231,4 +371,11 @@ function ThreadSummaryRow({
       <span className="ts-dot" style={{ background: dotColor }} aria-hidden="true" />
     </div>
   );
+}
+
+function summaryLineCount(rootBody: string, width: number): number {
+  const rootLength = rootBody.trim().length;
+  const rootWeight = rootLength < 90 ? 1 : rootLength < 180 ? 2 : rootLength < 320 ? 3 : rootLength < 520 ? 4 : 5;
+  const widthBonus = width >= 560 ? 3 : width >= 460 ? 2 : width >= 340 ? 1 : 0;
+  return Math.max(1, Math.min(8, rootWeight + widthBonus));
 }

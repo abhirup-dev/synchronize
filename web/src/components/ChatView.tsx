@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Room } from "../data/types.ts";
 import { useAgents, useMe, useMessages } from "../data/context.tsx";
@@ -9,6 +9,10 @@ import { ScrollControls } from "./ScrollControls.tsx";
 import { TimelineRail } from "./TimelineRail.tsx";
 import { ThreadSummaryPanel } from "./ThreadSummaryPanel.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
+
+const THREAD_SUMMARY_DEFAULT_WIDTH = 340;
+const THREAD_SUMMARY_MIN_WIDTH = 240;
+const THREAD_SUMMARY_MAX_WIDTH = 620;
 
 export function ChatView({
   room,
@@ -29,7 +33,17 @@ export function ChatView({
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const listRef = useAutoScrollbar<HTMLDivElement>();
   const lastSeenMessageId = useRef<string | null>(null);
+  const [threadSummaryWidth, setThreadSummaryWidth] = useState(() => {
+    const stored = Number(localStorage.getItem("synchronize.threadSummaryWidth"));
+    return Number.isFinite(stored) && stored >= THREAD_SUMMARY_MIN_WIDTH && stored <= THREAD_SUMMARY_MAX_WIDTH
+      ? stored
+      : THREAD_SUMMARY_DEFAULT_WIDTH;
+  });
   const agentById = useMemo(() => new Map(displayAgents.map((agent) => [agent.id, agent] as const)), [displayAgents]);
+
+  useEffect(() => {
+    localStorage.setItem("synchronize.threadSummaryWidth", String(threadSummaryWidth));
+  }, [threadSummaryWidth]);
 
   const rows = useMemo(() => {
     let prevAuthor: string | null = null;
@@ -107,8 +121,9 @@ export function ChatView({
         <ThreadSummaryPanel
           messages={messages}
           agents={displayAgents}
-          onClose={() => onToggleThreadSummary?.()}
           onJumpTo={handleJumpTo}
+          width={threadSummaryWidth}
+          onWidthChange={setThreadSummaryWidth}
           chatListRef={listRef}
           getAnchorTop={getAnchorTop}
           getContentHeight={getContentHeight}
