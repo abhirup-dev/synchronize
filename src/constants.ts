@@ -24,6 +24,7 @@ export const ENV_HOOK_ENABLE = "SYNCHRONIZE_HOOK_ENABLE";
 export const ENV_LEASE_MS = "SYNCHRONIZE_LEASE_MS";
 export const ENV_PEER_RETENTION_MS = "SYNCHRONIZE_PEER_RETENTION_MS";
 export const ENV_SWEEP_INTERVAL_MS = "SYNCHRONIZE_SWEEP_INTERVAL_MS";
+export const ENV_MCP_HEARTBEAT_MS = "SYNCHRONIZE_MCP_HEARTBEAT_MS";
 // Temporary launch-scoped correlation key shared by `synchronize launch`,
 // Claude's SessionStart hook, and the spawned synchronize MCP process.
 // It is not a durable identity: peer_id remains synchronize's identity and
@@ -71,7 +72,11 @@ export const MAX_PAGE_LIMIT = 200;
 export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
-export const MCP_HEARTBEAT_MS = 15_000;
+// MCP stdio adapter (Claude/codex) heartbeat cadence. Env-overridable via
+// SYNCHRONIZE_MCP_HEARTBEAT_MS so integration tests can drive a short heartbeat
+// and observe lease-lapse / recovery quickly (mirrors the daemon's
+// SYNCHRONIZE_LEASE_MS and the Pi extension's SYNCHRONIZE_PI_HEARTBEAT_MS).
+export const MCP_HEARTBEAT_MS = positiveEnvMs(ENV_MCP_HEARTBEAT_MS, 15_000);
 
 // Canonical event types stored on events.type. Adding a new type here also
 // requires updating the CHECK constraint in src/db.ts so the daemon stays in
