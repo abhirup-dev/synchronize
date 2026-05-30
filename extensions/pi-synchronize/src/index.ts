@@ -3,16 +3,17 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   discoverDaemon,
-  deletePeer,
   heartbeatPeer,
   registerAgentSession,
   registerPeer,
+  setPeerActivity,
   type Event,
   type PiSyncClient,
 } from "./client.ts";
 import { formatExternalEvent, mapEventToDelivery } from "./delivery.ts";
 import { resolveSessionName } from "./identity.ts";
 import { formatError, getLogPath, log } from "./log.ts";
+import { ensureSynchronizeCliReady } from "./preflight.ts";
 import { PiEventSubscription } from "./subscription.ts";
 
 /**
@@ -36,13 +37,24 @@ export interface PiExtensionContext {
 
 export interface PiExtensionAPI {
   on(
-    event: "session_start" | "session_shutdown" | "session_before_switch",
+    event:
+      | "session_start"
+      | "session_shutdown"
+      | "session_before_switch"
+      | "agent_start"
+      | "agent_end",
     handler: (event: unknown, ctx: PiExtensionContext) => void | Promise<void>,
   ): void;
   sendUserMessage(content: string, options?: PiSendOptions): Promise<void> | void;
 }
 
-const HEARTBEAT_MS = 15_000;
+// Heartbeat cadence. Env-overridable (SYNCHRONIZE_PI_HEARTBEAT_MS) so the
+// AoE/integration harness can drive a short heartbeat and observe lease-lapse,
+// sweep, and the re-register recovery path within a test window.
+const HEARTBEAT_MS = (() => {
+  const raw = Number(process.env.SYNCHRONIZE_PI_HEARTBEAT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
+})();
 
 export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let client: PiSyncClient | null = null;
@@ -51,23 +63,36 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let ctxRef: PiExtensionContext | null = null;
   let sessionFile: string | null = null;
+  // Identity captured at registration so the heartbeat loop can re-register the
+  // same peer_id if the daemon ever 404s it (retention sweep / operator evict).
+  let peerSessionName: string | null = null;
+  const PEER_PURPOSE = "pi-coding-agent session";
 
-  async function teardown(): Promise<void> {
-    log(`teardown begin peer_id=${peerId ?? "-"}`);
+  // Process-lifetime peer. teardownSession runs on Pi's internal session
+  // boundaries (before-switch) and only releases per-session state — the peer
+  // row and heartbeat are preserved so the Pi process stays online across
+  // Pi's internal session rotations. teardownProcess runs on actual process
+  // shutdown and is the only path that deletes the peer.
+  async function teardownSession(): Promise<void> {
+    log(`session teardown peer_id=${peerId ?? "-"} (peer preserved)`);
+    sub?.stop();
+    sub = null;
+    ctxRef = null;
+  }
+
+  async function teardownProcess(): Promise<void> {
+    log(`process teardown begin peer_id=${peerId ?? "-"}`);
     if (heartbeat) {
       clearInterval(heartbeat);
       heartbeat = null;
     }
     sub?.stop();
     sub = null;
-    if (peerId && client) {
-      try {
-        await deletePeer(client, peerId);
-        log(`deleted peer ${peerId}`);
-      } catch (error) {
-        log(`failed to delete peer ${peerId}: ${formatError(error)}`);
-      }
-    }
+    // Heartbeat-only lifecycle: do NOT delete the peer on process teardown.
+    // Once heartbeats stop, the daemon drops the peer offline within the lease
+    // window on its own. Deleting here was the footgun — it killed peers during
+    // session rotation / borrowed-peer reuse / second-launch teardown. See
+    // session-tracker/plan-agent-ttl-presence-v0.md.
     if (sessionFile) {
       try {
         await unlink(sessionFile);
@@ -84,19 +109,55 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
 
   async function startup(ctx: PiExtensionContext): Promise<void> {
     ctxRef = ctx;
-    client = await discoverDaemon();
     const piSessionId = ctx.sessionManager?.getSessionId?.() ?? null;
+
+    // Idempotent path: if this process already registered a peer in a
+    // previous session_start, reuse it. Only refresh the per-session
+    // agent_session binding and event subscription. This makes the peer
+    // process-lifetime instead of Pi-session-lifetime.
+    if (client && peerId) {
+      log(`startup reusing peer_id=${peerId} pi_session_id=${piSessionId ?? "<unset>"}`);
+      if (piSessionId) {
+        const sessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? `pi-${peerId}`;
+        const launchId = process.env.SYNCHRONIZE_LAUNCH_ID;
+        try {
+          await registerAgentSession(client, {
+            peerId,
+            sessionName,
+            hostSessionId: piSessionId,
+            cwd: process.cwd(),
+            ...(launchId ? { launchId } : {}),
+          });
+          log(`refreshed agent_session host_session_id=${piSessionId} peer_id=${peerId}`);
+        } catch (error) {
+          log(`agent_session refresh failed: ${formatError(error)}`);
+        }
+      }
+      sub?.stop();
+      sub = buildSubscription(peerId, client);
+      await sub.start();
+      return;
+    }
+
+    // Fresh registration path.
+    const cliPath = await ensureSynchronizeCliReady();
+    log(`synchronize CLI preflight passed cli=${cliPath}`);
+    client = await discoverDaemon();
     const envSessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? null;
+    const envPeerId = process.env.SYNCHRONIZE_PEER_ID ?? null;
+    const launchId = process.env.SYNCHRONIZE_LAUNCH_ID;
     const sessionName = resolveSessionName({ piSessionId, envSessionName });
     log(
-      `identity resolved session_name=${sessionName} env_session_name=${envSessionName ?? "<unset>"} pi_session_id=${piSessionId ?? "<unset>"}`,
+      `identity resolved session_name=${sessionName} env_session_name=${envSessionName ?? "<unset>"} env_peer_id=${envPeerId ?? "<unset>"} launch_id=${launchId ?? "<unset>"} pi_session_id=${piSessionId ?? "<unset>"}`,
     );
     const { peer } = await registerPeer(client, {
+      ...(envPeerId ? { peerId: envPeerId } : {}),
       tool: "pi",
       sessionName,
-      purpose: "pi-coding-agent session",
+      purpose: PEER_PURPOSE,
     });
     peerId = peer.peer_id;
+    peerSessionName = sessionName;
     process.env.SYNCHRONIZE_PEER_ID = peerId;
     log(`registered peer_id=${peerId} session_name=${sessionName}`);
     if (piSessionId) {
@@ -105,6 +166,7 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
         sessionName,
         hostSessionId: piSessionId,
         cwd: process.cwd(),
+        ...(launchId ? { launchId } : {}),
       });
       log(`registered agent_session host_tool=pi host_session_id=${piSessionId} peer_id=${peerId}`);
     }
@@ -119,9 +181,50 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
       JSON.stringify({ peer_id: peerId, session_name: sessionName, pid: process.pid }, null, 2),
     );
 
-    sub = new PiEventSubscription({
-      peerId,
-      client,
+    sub = buildSubscription(peerId, client);
+    await sub.start();
+
+    heartbeat = setInterval(() => {
+      void maintainPeer();
+    }, HEARTBEAT_MS);
+
+    log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
+    ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
+  }
+
+  // Heartbeat with recovery. A successful heartbeat just refreshes the lease.
+  // A failure most importantly covers the 404 case: the daemon no longer knows
+  // this peer (retention sweep after long downtime, or an operator evict). We
+  // re-register the same peer_id — which resurrects the peer AND, daemon-side,
+  // restores its group memberships — then rebuild the event subscription (the
+  // daemon dropped our subscriber when the peer was deleted). This mirrors the
+  // MCP adapter's maintainPeer so Pi is no longer the asymmetric laggard
+  // (sync-3nu). Transport errors are already retried with daemon re-discovery
+  // inside the client; this adds session re-establishment on top.
+  async function maintainPeer(): Promise<void> {
+    if (!client || !peerId) return;
+    try {
+      await heartbeatPeer(client, peerId);
+      return;
+    } catch (error) {
+      log(`heartbeat failed, attempting recovery: ${formatError(error)}`);
+    }
+    if (!client || !peerId || !peerSessionName) return;
+    try {
+      await registerPeer(client, { peerId, sessionName: peerSessionName, tool: "pi", purpose: PEER_PURPOSE });
+      sub?.stop();
+      sub = buildSubscription(peerId, client);
+      await sub.start();
+      log(`recovered peer ${peerId} after heartbeat failure`);
+    } catch (recoverError) {
+      log(`peer recovery failed ${peerId}: ${formatError(recoverError)}`);
+    }
+  }
+
+  function buildSubscription(currentPeerId: string, currentClient: PiSyncClient): PiEventSubscription {
+    return new PiEventSubscription({
+      peerId: currentPeerId,
+      client: currentClient,
       onEvent: async (event: Event) => {
         const idle = ctxRef?.isIdle?.() ?? true;
         const delivery = mapEventToDelivery(event, ctxRef ?? {});
@@ -139,15 +242,6 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
         }
       },
     });
-    await sub.start();
-
-    heartbeat = setInterval(() => {
-      if (!client || !peerId) return;
-      heartbeatPeer(client, peerId).catch((error) => log(`heartbeat failed: ${formatError(error)}`));
-    }, HEARTBEAT_MS);
-
-    log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
-    ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -156,15 +250,41 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     } catch (error) {
       log(`session_start failed: ${formatError(error)}`);
       ctx.ui?.notify?.(`synchronize: ${formatError(error)}`, "warning");
-      await teardown();
+      // Failure here is per-session — don't delete the peer if one was already
+      // registered in a previous startup. Just release per-session state.
+      await teardownSession();
     }
   });
 
-  pi.on("session_before_switch", async () => {
-    await teardown();
-  });
+  // Intentionally not handling session_before_switch — the peer is
+  // process-lifetime, not Pi-session-lifetime. Pi rotates its internal
+  // sessions during normal operation (context window, tool flows, etc.) and
+  // reacting to that event was the root cause of peers being soft-deleted
+  // out from under live Pi processes.
 
   pi.on("session_shutdown", async () => {
-    await teardown();
+    await teardownProcess();
+  });
+
+  // Activity presence: an agentic run brackets the "working" state. agent_start
+  // fires for ANY input source (human prompt OR a synchronize steer/followUp
+  // channel injection), so it covers channel-driven turns without special
+  // casing. agent_end returns the peer to idle. Best-effort — a failed push
+  // must never disrupt the run.
+  async function pushActivity(state: "working" | "idle"): Promise<void> {
+    if (!peerId || !client) return;
+    try {
+      await setPeerActivity(client, peerId, state);
+    } catch (error) {
+      log(`activity push (${state}) failed peer_id=${peerId}: ${formatError(error)}`);
+    }
+  }
+
+  pi.on("agent_start", async () => {
+    await pushActivity("working");
+  });
+
+  pi.on("agent_end", async () => {
+    await pushActivity("idle");
   });
 }

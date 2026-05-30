@@ -5,6 +5,7 @@ import { Avatar, CountChip } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { AgentColorPicker } from "./AgentColorPicker.tsx";
 import { AGENTS as SEED_AGENTS } from "../data/seed.ts";
+import { roomAgents } from "../data/roomAgents.ts";
 
 interface AgentRosterProps {
   room: Room;
@@ -24,12 +25,13 @@ const GROUPS: Array<{ title: string; status: Agent["status"] }> = [
 
 export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }: AgentRosterProps) {
   const agents = useAgents();
+  const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const openMenu = useContextMenu();
   const setAgentColor = useSetAgentColor();
   const [picker, setPicker] = useState<{ agent: Agent; x: number; y: number } | null>(null);
   const members = useMemo(
-    () => agents.filter((a) => room.members.includes(a.id)),
-    [agents, room.members],
+    () => displayAgents.filter((a) => room.members.includes(a.id)),
+    [displayAgents, room.members],
   );
 
   return (
@@ -40,7 +42,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
       </div>
       {focusedAgent && (
         <div className="focus-banner">
-          focused on @{agents.find((a) => a.id === focusedAgent)?.handle}
+          focused on @{displayAgents.find((a) => a.id === focusedAgent)?.handle}
           <button className="focus-clear" onClick={() => onFocus(null)}>✕</button>
         </div>
       )}
@@ -77,7 +79,10 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                 <Avatar agent={agent} size={32} />
                 <div className="roster-meta">
                   <div className="roster-name">{agent.name}</div>
-                  <div className="roster-role">{agent.role}</div>
+                  <div className="roster-role">
+                    {agent.role}
+                    {agent.statusNote && agent.statusNote !== agent.name ? ` (${agent.statusNote})` : ""}
+                  </div>
                 </div>
               </button>
             ))}

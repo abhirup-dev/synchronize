@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type CSSProperties } from "react";
 import { useMe, useRooms, useAgents } from "../data/context.tsx";
-import { StatusDot } from "./primitives.tsx";
+import { StatusDot, inkFor } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
+import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
 
 interface SidebarProps {
   activeRoomId: string;
@@ -16,21 +17,25 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const me = useMe();
   const agents = useAgents();
   const [filter, setFilter] = useState("");
+  const deferredFilter = useDeferredValue(filter);
 
   const filtered = useMemo(() => {
-    const f = filter.trim().toLowerCase();
+    const f = deferredFilter.trim().toLowerCase();
     if (!f) return rooms;
     return rooms.filter((r) => r.name.toLowerCase().includes(f));
-  }, [rooms, filter]);
+  }, [rooms, deferredFilter]);
 
+  const allGroups = rooms.filter((r) => r.kind === "group");
+  const allDms = rooms.filter((r) => r.kind === "dm");
   const groups = filtered.filter((r) => r.kind === "group");
   const dms = filtered.filter((r) => r.kind === "dm");
 
-  const groupUnread = groups.reduce((acc, r) => acc + r.unread, 0);
-  const dmUnread = dms.reduce((acc, r) => acc + r.unread, 0);
+  const groupCount = allGroups.length;
+  const dmCount = allDms.length;
   const groupsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const openMenu = useContextMenu();
+  const [spawnRoom, setSpawnRoom] = useState<Room | null>(null);
 
   return (
     <aside className="sidebar" data-vim-panel="sidebar">
@@ -55,20 +60,20 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       <section className="sidebar-section">
         <div className="section-head">
           GROUPS
-          <span className="count-chip">{groupUnread}</span>
+          <span className="count-chip">{groupCount}</span>
           <button className="plus-btn" title="new group" aria-label="new group">+</button>
         </div>
         <div className="list autoscroll" ref={groupsScrollRef}>
           {groups.map((r) => (
-            <RoomItem key={r.id} room={r} active={r.id === activeRoomId} onSelect={onSelect} />
+            <RoomItem key={r.id} room={r} active={r.id === activeRoomId} onSelect={onSelect} onSpawnAgent={setSpawnRoom} />
           ))}
         </div>
       </section>
 
       <section className="sidebar-section">
         <div className="section-head">
-          DIRECT MESSAGES
-          <span className="count-chip">{dmUnread}</span>
+          DMs
+          <span className="count-chip">{dmCount}</span>
           <button className="plus-btn" title="new dm" aria-label="new dm">+</button>
         </div>
         <div className="list autoscroll" ref={dmsScrollRef}>
@@ -114,6 +119,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
           {mode === "navigate" ? "NAV" : "INS"}
         </span>
       </button>
+      {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
     </aside>
   );
 }
@@ -122,16 +128,20 @@ function RoomItem({
   room,
   active,
   onSelect,
+  onSpawnAgent,
   otherStatus,
   otherColor,
 }: {
   room: Room;
   active: boolean;
   onSelect(id: string): void;
+  onSpawnAgent?(room: Room): void;
   otherStatus?: import("../data/types.ts").AgentStatus;
   otherColor?: string;
 }) {
   const openMenu = useContextMenu();
+  const iconColor = otherColor ?? room.color;
+  const iconInk = inkFor(iconColor);
   return (
     <button
       className={`room-item${active ? " active" : ""}`}
@@ -139,6 +149,10 @@ function RoomItem({
       onClick={() => onSelect(room.id)}
       onContextMenu={(e) =>
         openMenu(e, [
+          ...(room.kind === "group" && onSpawnAgent
+            ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
+            : []),
+          ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
           { label: "Mark as read", onSelect: () => console.log("read", room.id) },
           { label: room.pinned ? "Unpin" : "Pin to top", onSelect: () => console.log("pin", room.id) },
           { label: "Mute notifications", onSelect: () => console.log("mute", room.id) },
@@ -149,7 +163,13 @@ function RoomItem({
         ])
       }
     >
-      <div className="room-icon" style={{ background: otherColor ?? room.color }}>
+      <div
+        className="room-icon identity-icon"
+        style={{
+          background: iconColor,
+          color: iconInk,
+        } as CSSProperties}
+      >
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
           <span

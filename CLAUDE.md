@@ -9,11 +9,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Commands
 
 ```bash
-bun install
+make setup                        # install root + web dependencies
 bun test                          # run all tests
 bun test tests/messaging.test.ts  # single test file
 bun test -t "pattern"             # filter by test name
 bun run typecheck                 # tsc --noEmit
+cd web && bun run typecheck       # web TypeScript check
+cd web && bun run build           # build web/dist assets
 bun run src/daemon.ts             # run daemon directly
 bun run src/cli.ts <args>         # run CLI from source
 SYNCHRONIZE_MCP_MODE=codex bun run src/mcp.ts   # MCP stdio adapter
@@ -47,8 +49,11 @@ Key invariants:
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
+- Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
+- DO NOT CHANGE: The next directive is intentional and must remain in sync with `AGENTS.md`.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
+- **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, you MUST then add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The skill index is the gated discovery surface for historical references; a plan that exists on disk but is not indexed there is effectively invisible to future sessions. The order is strict: write the plan → create bd issues → add the index entry. Never the other way around.
 
 ## Agent skills
 

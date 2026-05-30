@@ -55,7 +55,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
       {state && (
         <div
           className="ctx-menu"
-          style={{ position: "fixed", left: state.x, top: state.y, zIndex: 2000 }}
+          style={{ left: state.x, top: state.y }}
           onClick={(e) => e.stopPropagation()}
         >
           {state.items.map((it, i) =>

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { ensureDaemon } from "../../client.ts";
-import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_SESSION_NAME } from "../../constants.ts";
+import { ENV_SESSION_NAME } from "../../constants.ts";
+import { buildAgentCommand, buildLaunchEnv, isLaunchTool, type LaunchTool } from "../../launch/build.ts";
 
 export async function run(argv: string[]): Promise<void> {
   const { target, name, rest } = parseLaunchArgs(argv);
@@ -8,11 +9,9 @@ export async function run(argv: string[]): Promise<void> {
   const launchId = crypto.randomUUID();
   const env = {
     ...process.env,
-    [ENV_HOOK_ENABLE]: "1",
-    [ENV_LAUNCH_ID]: launchId,
-    ...(name ? { [ENV_SESSION_NAME]: name } : {}),
+    ...buildLaunchEnv({ launchId, ...(name ? { sessionName: name } : {}) }),
   };
-  const cmd = buildCommand(target, rest);
+  const cmd = buildAgentCommand(target, rest);
   process.stderr.write(
     `[synchronize launch] target=${target} name=${name ?? "<unset>"} launch_id=${launchId} ${ENV_SESSION_NAME}=${name ?? "<unset>"} argv=${JSON.stringify(cmd)}\n`,
   );
@@ -29,9 +28,9 @@ export async function run(argv: string[]): Promise<void> {
   process.exit(code);
 }
 
-function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest: string[] } {
+function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: string; rest: string[] } {
   const [target, ...args] = argv;
-  if (target !== "claude" && target !== "pi") {
+  if (target === undefined || !isLaunchTool(target)) {
     throw new Error("launch requires one of: claude, pi");
   }
   let name: string | undefined;
@@ -57,18 +56,4 @@ function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest:
     rest.push(arg);
   }
   return name ? { target, name, rest } : { target, rest };
-}
-
-function buildCommand(target: string, rest: string[]): string[] {
-  if (target === "claude") {
-    const args = [...rest];
-    if (!args.includes("--dangerously-skip-permissions")) {
-      args.unshift("--dangerously-skip-permissions");
-    }
-    if (!args.includes("--dangerously-load-development-channels")) {
-      args.unshift("--dangerously-load-development-channels", "server:synchronize");
-    }
-    return ["claude", ...args];
-  }
-  return ["pi", ...rest];
 }

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PiEventSubscription } from "../src/subscription.ts";
+import { registerAgentSession } from "../src/client.ts";
 import type { Event } from "../src/client.ts";
 import { formatExternalEvent, mapEventToDelivery } from "../src/delivery.ts";
 
@@ -93,6 +94,40 @@ test("PiEventSubscription receives a DM pushed by the daemon and invokes onEvent
     expect(received).toHaveLength(1);
     expect(received[0]?.body).toBe("tests failed, please look");
     expect(received[0]?.type).toBe("dm");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("registerAgentSession forwards launchId for daemon launch reconciliation", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-pi-launch-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const pi = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
+      method: "POST",
+      body: JSON.stringify({ peer_id: "pi-peer-pinned", session_name: "pi-test", tool: "pi" }),
+    });
+
+    await registerAgentSession(
+      { baseUrl: daemon.baseUrl, token: null },
+      {
+        peerId: pi.peer.peer_id,
+        sessionName: "pi-test",
+        hostSessionId: "pi-host-session",
+        cwd: "/tmp/repo",
+        launchId: "launch-pi-123",
+      },
+    );
+
+    const bindings = await json<{ bindings: Array<{ peer_id: string; launch_id: string | null }> }>(
+      daemon.baseUrl,
+      "/agent-sessions?launch_id=launch-pi-123",
+    );
+    expect(bindings.bindings).toHaveLength(1);
+    expect(bindings.bindings[0]?.peer_id).toBe("pi-peer-pinned");
+    expect(bindings.bindings[0]?.launch_id).toBe("launch-pi-123");
   } finally {
     await daemon.stop();
   }

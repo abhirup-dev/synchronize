@@ -12,7 +12,8 @@ our `bin/synchronize-mcp` stdio server. The two extensions are complementary.
 
 ## What it does
 
-1. On `session_start`: discovers the local synchronize daemon, registers a
+1. On `session_start`: validates a working `synchronize` CLI with
+   `synchronize status`, discovers the local synchronize daemon, registers a
    peer for the Pi session, and opens a localhost HTTP callback subscription
    (`POST /subscriptions`).
 2. On each pushed event: wraps it in a `<synchronize_event …>` envelope and
@@ -46,6 +47,7 @@ extensions: [
 |---|---|
 | `SYNCHRONIZE_HOME` | runtime dir (defaults to `~/.synchronize`) |
 | `SYNCHRONIZE_TOKEN` | required when the daemon binds non-localhost |
+| `SYNCHRONIZE_CLI` | optional explicit `synchronize` CLI path checked before the configured repo binary and `PATH` |
 | `SYNCHRONIZE_SESSION_NAME` | override the auto-resolved session label |
 | `SYNCHRONIZE_PEER_ID` | set by the extension on `session_start`; downstream MCP server reads it to reuse the same peer |
 | `SYNCHRONIZE_PI_DEBUG` | `1` to enable `[synchronize-pi]` stderr logging |

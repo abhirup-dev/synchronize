@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
+import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
 import { ChatView } from "./components/ChatView.tsx";
@@ -11,21 +12,60 @@ import { ThreadPane } from "./components/ThreadPane.tsx";
 import { ResizeHandle } from "./components/ResizeHandle.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
+import { roomAgent } from "./data/roomAgents.ts";
 
-// ─── DataSource selection ──────────────────────────────────────────────────
-// Default: mock. Switch to live via localStorage.SYNCHRONIZE_DATA_SOURCE='live'.
-// The live adapter is intentionally not wired in V0; see DESIGN.md and the
-// sync-jix follow-up beads.
+const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
+const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
+const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
+
+type ThemeName = (typeof ALL_THEMES)[number];
+
+function isThemeName(value: string | null): value is ThemeName {
+  return ALL_THEMES.includes(value as ThemeName);
+}
+
+function themeFamily(theme: ThemeName): "light" | "dark" {
+  return LIGHT_THEMES.includes(theme as (typeof LIGHT_THEMES)[number]) ? "light" : "dark";
+}
+
+function cycleTheme(theme: ThemeName): ThemeName {
+  const family = themeFamily(theme) === "light" ? LIGHT_THEMES : DARK_THEMES;
+  const index = (family as readonly ThemeName[]).indexOf(theme);
+  return family[(index + 1) % family.length] as ThemeName;
+}
+
+function toggleThemeFamily(theme: ThemeName): ThemeName {
+  return themeFamily(theme) === "light" ? "dark" : "light";
+}
+
 function pickDataSource(): DataSource {
+  if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "mock") {
+    return new MockDataSource();
+  }
+  const token =
+    sessionStorage.getItem("SYNCHRONIZE_TOKEN") ??
+    localStorage.getItem("SYNCHRONIZE_TOKEN") ??
+    undefined;
+  if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "live" || window.location.pathname.startsWith("/web")) {
+    return new DaemonDataSource(token ? { token } : {});
+  }
   return new MockDataSource();
 }
 
 export function App() {
   const ds = useMemo(pickDataSource, []);
+  const [connectError, setConnectError] = useState<string | null>(null);
   useEffect(() => {
-    void ds.connect();
+    let cancelled = false;
+    void ds.connect().then(
+      () => !cancelled && setConnectError(null),
+      (error) => !cancelled && setConnectError(error instanceof Error ? error.message : String(error)),
+    );
     return () => ds.disconnect();
   }, [ds]);
+  if (connectError) {
+    return <ConnectionError message={connectError} />;
+  }
   return (
     <DataSourceProvider value={ds}>
       <ContextMenuProvider>
@@ -34,6 +74,24 @@ export function App() {
         </ToastProvider>
       </ContextMenuProvider>
     </DataSourceProvider>
+  );
+}
+
+function ConnectionError({ message }: { message: string }) {
+  const authHint = message.toLowerCase().includes("unauthorized") || message.includes("401");
+  return (
+    <div className="connection-error">
+      <div className="connection-error-box">
+        <div className="brand-mark">S</div>
+        <h1>Daemon connection failed</h1>
+        <p>{message}</p>
+        {authHint && (
+          <p>
+            Protected daemon mode needs `SYNCHRONIZE_TOKEN` in sessionStorage or localStorage before loading `/web`.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -50,9 +108,17 @@ function Shell() {
   useEffect(() => {
     localStorage.setItem("synchronize.threadWidth", String(threadWidth));
   }, [threadWidth]);
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return (localStorage.getItem("synchronize.theme") as "light" | "dark" | null) ?? "light";
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const stored = localStorage.getItem("synchronize.theme");
+    return isThemeName(stored) ? stored : "light";
   });
+
+  useEffect(() => {
+    if (!activeId && rooms[0]) setActiveId(rooms[0].id);
+    if (activeId && rooms.length > 0 && !rooms.some((candidate) => candidate.id === activeId)) {
+      setActiveId(rooms[0]?.id ?? "");
+    }
+  }, [activeId, rooms]);
 
   // Reset secondary state when switching rooms.
   useEffect(() => {
@@ -76,7 +142,8 @@ function Shell() {
   // If the agent has no messages in this room, fire a toast.
   const jumpToAgentLast = (agentId: string) => {
     if (!room) return;
-    const agent = agents.find((a) => a.id === agentId);
+    const globalAgent = agents.find((a) => a.id === agentId);
+    const agent = globalAgent ? roomAgent(globalAgent, room) : undefined;
     const last = [...roomMessages].reverse().find((m) => m.authorId === agentId);
     if (!last) {
       toast.show(
@@ -124,7 +191,13 @@ function Shell() {
     const isEditable = (el: EventTarget | null) =>
       el instanceof HTMLElement && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable);
     const onFocusIn = (e: FocusEvent) => isEditable(e.target) && vim.setMode("typing");
-    const onFocusOut = (e: FocusEvent) => isEditable(e.target) && vim.setMode("navigate");
+    const onFocusOut = (e: FocusEvent) => {
+      if (!isEditable(e.target)) return;
+      window.setTimeout(() => {
+        if (!document.hasFocus()) return;
+        vim.setMode("navigate");
+      }, 0);
+    };
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     return () => {
@@ -133,51 +206,61 @@ function Shell() {
     };
   }, [vim]);
 
-  if (!room) return null;
-
   return (
     <div className={`app-shell${threadParentId ? " thread-open" : ""}`} data-vim-mode={vim.mode}>
-      <Sidebar activeRoomId={room.id} onSelect={setActiveId} mode={vim.mode} />
+      <Sidebar activeRoomId={room?.id ?? ""} onSelect={setActiveId} mode={vim.mode} />
       <main className="main">
-        <RoomHeader room={room} tab={tab} onTab={setTab} />
-        <div
-          className="main-body"
-          style={
-            threadParentId
-              ? { gridTemplateColumns: `minmax(0, 1fr) 6px ${threadWidth}px` }
-              : undefined
-          }
-        >
-          <div className="tab-content">
-            {tab === "chat" ? (
-              <ChatView room={room} onOpenThread={setThreadParentId} isThreadOpen={!!threadParentId} />
-            ) : tab === "board" ? (
-              <Placeholder label="BOARD — coming in V2" />
-            ) : (
-              <Placeholder label="ARTIFACTS — coming in V2" />
-            )}
+        {room ? (
+          <>
+            <RoomHeader room={room} tab={tab} onTab={setTab} />
+            <div
+              className="main-body"
+              style={
+                threadParentId
+                  ? { gridTemplateColumns: `minmax(0, 1fr) 6px ${threadWidth}px` }
+                  : undefined
+              }
+            >
+              <div className="tab-content">
+                {tab === "chat" ? (
+                  <ChatView room={room} onOpenThread={setThreadParentId} isThreadOpen={!!threadParentId} />
+                ) : tab === "board" ? (
+                  <Placeholder label="BOARD — coming in V2" />
+                ) : (
+                  <Placeholder label="ARTIFACTS — coming in V2" />
+                )}
+              </div>
+              {threadParentId ? (
+                <>
+                  <ResizeHandle width={threadWidth} onChange={setThreadWidth} />
+                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} />
+                </>
+              ) : (
+                <AgentRoster
+                  room={room}
+                  focusedAgent={focusedAgent}
+                  onFocus={setFocusedAgent}
+                  onAgentDoubleClick={jumpToAgentLast}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="empty-main">
+            <div className="empty-main-box">
+              <div className="brand-mark">S</div>
+              <h1>No rooms yet</h1>
+              <p>Registered sessions will appear as direct messages. Create or join a group to start a room.</p>
+            </div>
           </div>
-          {threadParentId ? (
-            <>
-              <ResizeHandle width={threadWidth} onChange={setThreadWidth} />
-              <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} />
-            </>
-          ) : (
-            <AgentRoster
-              room={room}
-              focusedAgent={focusedAgent}
-              onFocus={setFocusedAgent}
-              onAgentDoubleClick={jumpToAgentLast}
-            />
-          )}
-        </div>
+        )}
       </main>
       <button
         className="theme-toggle"
-        onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-        title="toggle theme"
+        onClick={(event) => setTheme((t) => (event.shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
+        title={`${theme} · click toggles light/dark, shift-click cycles variants`}
       >
-        {theme === "light" ? "🌙" : "☀️"}
+        {themeFamily(theme) === "light" ? "🌙" : "☀️"}
       </button>
     </div>
   );

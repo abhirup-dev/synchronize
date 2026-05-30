@@ -1,0 +1,14 @@
+graphify-out/
+node_modules/
+web/node_modules/
+web/dist/
+coverage/
+.codex/
+.synchronize-itest/
+.demo-synchronize/
+.claude/launch.json
+.beads/
+.serena/
+.pytest_cache/
+.claude/worktrees/
+work/

@@ -63,7 +63,7 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
     <div
       ref={ref}
       className="agent-color-picker"
-      style={{ position: "fixed", left: x, top: y, zIndex: 2100 }}
+      style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="acp-head">

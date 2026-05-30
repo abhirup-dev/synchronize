@@ -10,6 +10,8 @@ import type {
   Message,
   Room,
   SendMessageInput,
+  SpawnAgentInput,
+  SpawnAgentResult,
   Snapshot,
   Task,
   TimelineEvent,
@@ -144,6 +146,42 @@ export class MockDataSource implements DataSource {
       target.update((prev) => prev.map((m) => (m.id === msg.id ? ack : m)));
     }, 280);
     return msg;
+  }
+
+  async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
+    const room = this._rooms.get().find((candidate) => candidate.id === input.roomId);
+    if (!room || room.kind !== "group") throw new Error("agents can only be spawned into groups");
+    const sessionName = input.name.trim();
+    if (!sessionName) throw new Error("agent name is required");
+    const peerId = `mock:${input.tool}:${Date.now().toString(36)}`;
+    const agent: Agent = {
+      id: peerId,
+      name: sessionName,
+      handle: sessionName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || peerId.slice(-8),
+      color: "#B49BFF",
+      role: input.tool,
+      status: "idle",
+      avatar: (sessionName[0] ?? input.tool[0] ?? "?").toUpperCase(),
+    };
+    this._agents.update((agents) => [...agents, agent]);
+    this._rooms.update((rooms) =>
+      rooms.map((candidate) =>
+        candidate.id === room.id
+          ? {
+              ...candidate,
+              members: [...candidate.members, peerId],
+              memberAliases: { ...candidate.memberAliases, [peerId]: sessionName },
+              lastPreview: `${sessionName} joined`,
+            }
+          : candidate,
+      ),
+    );
+    return {
+      peerId,
+      sessionName,
+      title: `${sessionName}-${peerId.slice(-8)}`,
+      group: room.name,
+    };
   }
 
   setAgentColor(agentId: string, hex: string | null): void {

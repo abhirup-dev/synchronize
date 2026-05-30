@@ -31,7 +31,7 @@ async function build(): Promise<void> {
     outdir: DIST,
     target: "browser",
     format: "esm",
-    splitting: false,
+    splitting: true,
     minify: !WATCH,
     sourcemap: WATCH ? "external" : "linked",
     naming: {

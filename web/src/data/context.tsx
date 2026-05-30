@@ -35,6 +35,11 @@ export function useSendMessage() {
   return ds.sendMessage.bind(ds);
 }
 
+export function useSpawnAgent() {
+  const ds = useDataSource();
+  return ds.spawnAgent.bind(ds);
+}
+
 export function useSetAgentColor() {
   const ds = useDataSource();
   return ds.setAgentColor.bind(ds);

@@ -2,6 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "synchronize-real",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "src/daemon.ts"],
+      "port": 58405,
+      "env": {
+        "SYNCHRONIZE_PORT": "58405"
+      }
+    },
+    {
       "name": "synchronize-daemon",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "src/daemon.ts"],
