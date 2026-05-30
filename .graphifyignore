@@ -1,0 +1,7 @@
+graphify-out/
+node_modules/
+web/node_modules/
+web/dist/
+coverage/
+.beads/
+.serena/

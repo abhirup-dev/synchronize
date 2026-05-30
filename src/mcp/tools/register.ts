@@ -10,7 +10,7 @@ import { getClient, getMode } from "../state.ts";
 import { invalidArgument, log, text, wrap } from "../util.ts";
 import type { ToolContext } from "./context.ts";
 
-export function registerRegisterTools(ctx: ToolContext): void {
+export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer: () => Promise<void> } {
   const { mcp, state, emit, lifecycle } = ctx;
 
   mcp.registerTool(
@@ -91,6 +91,29 @@ export function registerRegisterTools(ctx: ToolContext): void {
   }),
   );
 
+  /**
+   * Proactively activate the live channel subscription on MCP startup for a
+   * launch-bound session, so a freshly-spawned *idle* agent receives pushed
+   * messages without first having to call bridge_register/bridge_whoami (an
+   * idle session never takes that turn on its own — sync-amq).
+   *
+   * Gated on the launch env (ENV_PEER_ID / ENV_LAUNCH_ID): ordinary sessions
+   * that never set these are left untouched — crucially, we do NOT call
+   * getClient() for them, so a normal `claude` start never auto-starts a
+   * synchronize daemon as a side effect.
+   */
+  async function bootstrapEnvBoundPeer(): Promise<void> {
+    if (state.peer) return; // already activated (e.g. an early tool call)
+    if (!process.env[ENV_PEER_ID] && !process.env[ENV_LAUNCH_ID]) return;
+    const client = await getClient(state).catch(() => null);
+    if (!client) return;
+    const envBoundPeer = await findEnvBoundPeer(client);
+    if (!envBoundPeer) return;
+    await activatePeer(envBoundPeer, client);
+    lifecycle.startHeartbeat();
+    log(`bootstrap activated env-bound peer on startup peer_id=${envBoundPeer.peer_id} notify_mode=${getMode()}`);
+  }
+
   async function findEnvBoundPeer(client: Awaited<ReturnType<typeof getClient>>): Promise<Peer | null> {
     // `SYNCHRONIZE_LAUNCH_ID` is a short-lived process correlation key, not an
     // identity. The launcher, Claude SessionStart hook, and MCP process inherit
@@ -170,4 +193,6 @@ export function registerRegisterTools(ctx: ToolContext): void {
       return text(response);
     }),
   );
+
+  return { bootstrapEnvBoundPeer };
 }

@@ -1,5 +1,6 @@
-import { mkdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
+import { mkdir, readFile } from "node:fs/promises";
+import { closeSync, openSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import {
   API_VERSION,
@@ -56,9 +57,9 @@ export async function ensureDaemon(): Promise<ClientConfig> {
       return;
     }
     log(`starting daemon home=${paths.home}`);
-    await startDaemon(paths);
+    const child = await startDaemon(paths);
     started = true;
-    await waitForDaemon(paths);
+    await waitForDaemon(paths, child);
   });
 
   const discovery = await readJson<Discovery>(paths.discoveryPath);
@@ -137,32 +138,74 @@ async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): P
   }
 }
 
-async function startDaemon(paths: RuntimePaths): Promise<void> {
+async function startDaemon(paths: RuntimePaths): Promise<ChildProcess> {
   await ensureDir(paths.home);
   const daemonPath = resolve(import.meta.dir, "daemon.ts");
-  const child = spawn(process.execPath, ["run", daemonPath], {
-    detached: true,
-    stdio: "ignore",
-    env: {
-      ...process.env,
-      [ENV_STARTED_BY_CLIENT]: "1",
-    },
-  });
-  child.unref();
+  // Capture the spawned daemon's stdout/stderr to a dedicated file so an early
+  // crash (e.g. EADDRINUSE on the default port) is diagnosable instead of
+  // silently swallowed by stdio:"ignore". This file is intentionally distinct
+  // from paths.logPath, whose last line is parsed as JSON by readers.
+  const errFd = openSync(paths.errLogPath, "a");
+  try {
+    const child = spawn(process.execPath, ["run", daemonPath], {
+      detached: true,
+      stdio: ["ignore", errFd, errFd],
+      env: {
+        ...process.env,
+        [ENV_STARTED_BY_CLIENT]: "1",
+      },
+    });
+    child.unref();
+    return child;
+  } finally {
+    // The child has inherited its own dup of the descriptor; the parent's copy
+    // is no longer needed and would otherwise leak for the process lifetime.
+    closeSync(errFd);
+  }
 }
 
 function log(message: string): void {
   console.error(`[synchronize-client] ${message}`);
 }
 
-async function waitForDaemon(paths: RuntimePaths): Promise<void> {
+async function waitForDaemon(paths: RuntimePaths, child: ChildProcess): Promise<void> {
+  // Held in an object so the `exit` callback's mutation survives TS control-flow
+  // narrowing (a plain `let` would be narrowed to `never` after the null init).
+  const childState: { exit: { code: number | null; signal: NodeJS.Signals | null } | null } = { exit: null };
+  child.once("exit", (code, signal) => {
+    childState.exit = { code, signal };
+  });
+
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const discovery = await readJson<Discovery>(paths.discoveryPath);
     if (discovery && (await isHealthy(discovery.baseUrl))) return;
+    // Fail fast: if the spawned daemon already exited without becoming healthy,
+    // polling the rest of the timeout is pointless — surface its output now.
+    if (childState.exit) {
+      const tail = await readErrLogTail(paths);
+      throw new Error(
+        `Daemon process exited (code=${childState.exit.code} signal=${childState.exit.signal}) before becoming healthy; see ${paths.errLogPath}${tail ? `\n${tail}` : ""}`,
+      );
+    }
     await Bun.sleep(100);
   }
-  throw new Error(`Daemon did not become healthy within ${STARTUP_TIMEOUT_MS}ms; see ${paths.logPath}`);
+  const tail = await readErrLogTail(paths);
+  throw new Error(
+    `Daemon did not become healthy within ${STARTUP_TIMEOUT_MS}ms; see ${paths.errLogPath}${tail ? `\n${tail}` : ""}`,
+  );
+}
+
+// Returns the trailing portion of the captured daemon stderr/stdout, or an
+// empty string if the file is missing/unreadable. Used to enrich startup-
+// failure errors with the daemon's own crash output.
+async function readErrLogTail(paths: RuntimePaths, maxChars = 2_000): Promise<string> {
+  try {
+    const raw = (await readFile(paths.errLogPath, "utf8")).trimEnd();
+    return raw.length > maxChars ? raw.slice(-maxChars) : raw;
+  } catch {
+    return "";
+  }
 }
 
 function isFileExists(error: unknown): boolean {

@@ -233,8 +233,13 @@ notification dialect: `codex` (standard `notifications/message`) or `claude`
 | Pi     | `bun run scripts/pi-mcp-config.ts ~/.pi/agent/mcp.json` + writes `~/.pi/agent/extensions/synchronize.ts` |
 
 For Claude channel pushes to surface in the UI, launch Claude with
-`--dangerously-load-development-channels server:synchronize`. Without it,
-durable inbox tools still work but channel events stay silent.
+`--dangerously-load-development-channels server:synchronize`. A `server:`
+channel only registers as a development channel (`--channels server:synchronize`
+is skipped — it's not on any approved allowlist; see bd sync-zst), and this
+flag triggers a one-time "local development" confirmation per launch. For
+daemon-spawned sessions, `AoeBackend` auto-dismisses that prompt via tmux
+send-keys so the session is unattended. Without the channel, durable inbox
+tools still work but live channel pushes stay silent.
 
 Pi has no `pi mcp add` CLI; `scripts/pi-mcp-config.ts` idempotently merges
 this entry into `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`)
@@ -270,7 +275,7 @@ see which external session owns a peer.
 
 ```bash
 synchronize hook claude-session
-synchronize launch claude --name backend-reviewer -- --dangerously-load-development-channels server:synchronize
+synchronize launch claude --name backend-reviewer   # auto-adds --dangerously-load-development-channels server:synchronize
 ```
 
 Install the Claude `SessionStart` hook with `scripts/claude-hooks-config.ts`.
@@ -288,6 +293,44 @@ Relevant environment variables:
 - `SYNCHRONIZE_LAUNCH_ID` groups launch/hook events from the same spawned session.
 
 See `AUTO_REGISTRATION.md` for the full flow.
+
+## Spawning persistent agent sessions (AOE backend)
+
+`synchronize launch` runs an agent in the *foreground*. To spawn a **persistent**
+agent session that outlives the daemon, synchronize drives Agent of Empires
+(`aoe`) as a tmux backend:
+
+```bash
+# REST
+curl -X POST $BASE/agent-sessions/launch \
+  -d '{"tool":"claude","name":"alice","repo":"~/proj","group":"alpha"}'
+
+# CLI
+synchronize spawn claude --name alice --repo ~/proj --group alpha -- --model opus
+
+# MCP (an in-group agent spawning a teammate)
+bridge_launch({ tool: "claude", name: "alice", repo: "~/proj", group: "alpha" })
+```
+
+What happens:
+
+1. The daemon mints a `launch_id` + `peer_id`, builds the agent command (reusing
+   the same builder as `synchronize launch`), and asks the backend to
+   `aoe add` + `aoe session start` a session titled `<name>-<peerid8>`.
+2. `aoe` hands the session to its own daemon/tmux, so it **survives a
+   synchronize daemon crash** (the tmux server reparents to PID 1).
+3. The agent boots, its SessionStart hook self-registers with the pinned
+   `peer_id` + `launch_id`, and — if a `group` was named — the daemon
+   **auto-joins** the peer to that synchronize group (alias = name, fresh
+   history). The agent discovers its group via `bridge_list_groups({ mine: true })`.
+4. Stop with `POST /agent-sessions/stop {title}` / `bridge_stop`. Wiping the
+   runtime (`make clean-slate`) deletes the AOE profile, dropping its sessions.
+
+Requirements: `aoe` and `tmux` installed, and the agent globally installed
+(`make install-claude` / `install-pi`) so its synchronize MCP/hook wiring exists.
+The launch injects `SYNCHRONIZE_HOME` so the spawned agent registers back to the
+launching daemon. The backend is swappable (vanilla tmux is a future drop-in);
+group binding is server-side, so launches add **no new environment variables**.
 
 ## Skills
 
@@ -579,6 +622,14 @@ Confirm the MCP server was added with `SYNCHRONIZE_MCP_MODE=claude`, then start 
 ```bash
 claude --dangerously-load-development-channels server:synchronize
 ```
+
+(A `server:` channel only registers as a development channel — `--channels
+server:synchronize` is skipped because custom `server:` channels can't be added
+to the `allowedChannelPlugins` managed allowlist, which only covers marketplace
+plugins (see bd sync-zst). The dev flag triggers a one-time "local development"
+confirmation; daemon-spawned sessions auto-dismiss it. Even once registered, a
+freshly-spawned *idle* session may not surface a live push until it's active —
+durable inbox remains the fallback (see bd sync-amq).)
 
 Inbox remains available through `bridge_inbox` even if channel notifications do not surface. Claude mode receives daemon events through one localhost callback subscription; it does not rely on per-group polling.
 
