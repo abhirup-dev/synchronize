@@ -2,6 +2,11 @@ DEMO_HOME := $(CURDIR)/.demo-synchronize
 DEV_SYNC_HOME := $(CURDIR)/.dev-synchronize
 SYNC_HOME ?= $(HOME)/.synchronize
 
+# Demo peers are seeded once and never heartbeat, so the demo daemon runs with a
+# far-future lease (≈10y) — otherwise the production 60s lease would flap every
+# seeded peer offline. Override path is SYNCHRONIZE_LEASE_MS (see constants.ts).
+DEMO_LEASE_MS := 315360000000
+
 MCP_BIN      := synchronize-mcp
 CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
@@ -67,8 +72,8 @@ check-deps:
 	fi
 
 demo: demo-clean demo-up
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run scripts/seed-demo.ts
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top --once
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run scripts/seed-demo.ts
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top --once
 	@echo
 	@echo "Live dashboard: SYNCHRONIZE_HOME=$(DEMO_HOME) bun run synchronize top"
 	@echo "Raw summary:    SYNCHRONIZE_HOME=$(DEMO_HOME) bun run synchronize top --json"
@@ -82,7 +87,7 @@ demo-up:
 		curl -sf "$$(jq -r '.baseUrl // empty' "$(DEMO_HOME)/daemon.json")/health" >/dev/null 2>&1; then \
 		echo "demo daemon already up ($(DEMO_HOME))"; exit 0; \
 	fi
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_PORT=0 nohup bun run src/daemon.ts >"$(DEMO_HOME)/daemon.out.log" 2>&1 & \
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_PORT=0 SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" nohup bun run src/daemon.ts >"$(DEMO_HOME)/daemon.out.log" 2>&1 & \
 		for i in $$(seq 1 100); do \
 			sleep 0.1; \
 			[ -f "$(DEMO_HOME)/daemon.json" ] || continue; \
@@ -94,10 +99,10 @@ demo-up:
 		echo "demo daemon failed to start; see $(DEMO_HOME)/daemon.out.log"; exit 1
 
 demo-top:
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top
 
 demo-json:
-	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run synchronize top --json
+	@SYNCHRONIZE_HOME="$(DEMO_HOME)" SYNCHRONIZE_LEASE_MS="$(DEMO_LEASE_MS)" bun run synchronize top --json
 
 # Print the AOE profile name backing the demo runtime (matches what the daemon
 # computes from SYNCHRONIZE_HOME), so you can `aoe -p <profile> list/attach`.

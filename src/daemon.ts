@@ -4,6 +4,8 @@ import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, extname, join } from "node:path";
 import {
+  ACTIVITY_STATES,
+  type ActivityState,
   DEFAULT_BIND_HOST,
   DEFAULT_LEASE_MS,
   DEFAULT_PAGE_LIMIT,
@@ -13,6 +15,8 @@ import {
   ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
+  PEER_RETENTION_MS,
+  SWEEP_INTERVAL_MS,
   API_VERSION,
 } from "./constants.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
@@ -55,6 +59,8 @@ interface PeerRow {
   purpose: string | null;
   machine_id: string;
   lease_expires_at: string;
+  activity_state: string | null;
+  last_activity_at: string | null;
   last_cursor: number;
   created_at: string;
   updated_at: string;
@@ -84,6 +90,7 @@ interface AgentSessionJoinedRow extends AgentSessionRow {
   peer_purpose: string | null;
   peer_lease_expires_at: string;
   peer_online: number;
+  peer_activity_state: string | null;
 }
 
 interface EventRow {
@@ -171,6 +178,7 @@ interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  activity_state: string | null;
   host_session_id: string | null;
 }
 
@@ -180,6 +188,7 @@ interface SummaryPeerRow {
   tool: string;
   purpose: string | null;
   online: number;
+  activity_state: string | null;
   pending_inbox: number;
   groups: number;
   updated_at: string;
@@ -352,6 +361,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            p.tool,
            p.purpose,
            p.lease_expires_at > ? AS online,
+           p.activity_state,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
            p.updated_at,
@@ -421,7 +431,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         },
         media: mediaTotals,
       },
-      peers: peers.map((peer) => ({ ...peer, online: Boolean(peer.online) })),
+      peers: peers.map((peer) => ({
+        ...peer,
+        online: Boolean(peer.online),
+        presence: derivePresence(Boolean(peer.online), peer.activity_state),
+      })),
       groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
       generated_at: now,
     });
@@ -437,7 +451,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const leaseExpiresAt = leaseExpiresAtForTool(tool);
     const metadata = optionalObjectJson(body, "metadata");
     const bindingId = `${hostTool}:${hostSessionId}`;
 
@@ -601,6 +615,42 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ peer: getPeer(ctx.db, peerId) });
   }
 
+  // Activity push — the in-online sub-state signal. Accepts either an explicit
+  // peer_id (Pi, in-process) or a host-session pair (stateless Claude hook) and
+  // resolves the peer server-side. Sets activity_state + last_activity_at AND
+  // refreshes the lease: activity is proof-of-life, so a busy agent never
+  // false-offlines even if a heartbeat is dropped. Idempotent; last-write-wins.
+  if (request.method === "POST" && url.pathname === "/peers/activity") {
+    const body = await readBody(request);
+    const state = requireString(body, "state");
+    if (!(ACTIVITY_STATES as readonly string[]).includes(state)) {
+      throw new HttpError(400, "invalid_activity_state", `Unknown activity state: ${state}`);
+    }
+    let peerId = optionalString(body, "peer_id");
+    if (!peerId) {
+      const hostTool = requireString(body, "host_tool");
+      const hostSessionId = requireString(body, "host_session_id");
+      peerId = findPeerByHostSession(ctx.db, hostTool, hostSessionId);
+      if (!peerId) {
+        throw new HttpError(404, "peer_not_found", `No peer for ${hostTool} session ${hostSessionId}`);
+      }
+    }
+    const peer = getPeer(ctx.db, peerId);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
+    ctx.db
+      .query(
+        `UPDATE peers
+         SET activity_state = ?, lease_expires_at = ?,
+             last_activity_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE peer_id = ?`,
+      )
+      .run(state, leaseExpiresAt, peerId);
+    log(`peer activity peer_id=${peerId} state=${state}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
+    return jsonResponse({ peer: getPeer(ctx.db, peerId) });
+  }
+
   if (request.method === "GET" && url.pathname === "/peers") {
     const now = new Date().toISOString();
     const groupName = url.searchParams.get("group");
@@ -615,7 +665,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            ORDER BY gm.alias ASC`,
         )
         .all(now, group.group_id);
-      return jsonResponse({ peers: rows.map((row) => ({ ...row, active: Boolean(row.active), online: Boolean(row.online) })) });
+      return jsonResponse({
+        peers: rows.map((row) => ({
+          ...row,
+          active: Boolean(row.active),
+          online: Boolean(row.online),
+          presence: derivePresence(Boolean(row.online), row.activity_state),
+        })),
+      });
     }
     const rows = ctx.db
       .query<PeerRow & { online: number }, [string]>(
@@ -625,7 +682,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          ORDER BY updated_at DESC, session_name ASC`,
       )
       .all(now);
-    return jsonResponse({ peers: rows.map((row) => ({ ...row, online: Boolean(row.online) })) });
+    return jsonResponse({
+      peers: rows.map((row) => ({
+        ...row,
+        online: Boolean(row.online),
+        presence: derivePresence(Boolean(row.online), row.activity_state),
+      })),
+    });
   }
 
   const peerDelete = url.pathname.match(/^\/peers\/([^/]+)$/);
@@ -1559,6 +1622,59 @@ function leaseExpiresAtForTool(tool: string): string {
   return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
 }
 
+// Presence derivation — the single rule applied wherever a peer is serialized.
+// Offline if the lease has lapsed (the only reliable crash detector); else the
+// reported activity_state for instrumented agents; else a generic "online" for
+// uninstrumented peers (web/cli/codex). See plan-agent-ttl-presence-v0.md.
+type Presence = "offline" | "online" | ActivityState;
+function derivePresence(online: boolean, activityState: string | null): Presence {
+  if (!online) return "offline";
+  if (activityState && (ACTIVITY_STATES as readonly string[]).includes(activityState)) {
+    return activityState as ActivityState;
+  }
+  return "online";
+}
+
+// Agents (pi/claude) start at "initializing" and stay there until their first
+// activity push. Uninstrumented tools (web/cli/codex) keep NULL → generic
+// online. Applied only on first INSERT; re-register/resurrect preserves any
+// existing state (see upsertPeer COALESCE).
+function initialActivityState(tool: string): ActivityState | null {
+  return tool === "pi" || tool === "claude" ? "initializing" : null;
+}
+
+// Retention sweeper — soft-deletes peers whose lease has been expired for
+// longer than PEER_RETENTION_MS. Offline (lease-lapsed) peers stay visible in
+// the roster for the retention window (useful for "who was here" + reclaim
+// audit); past it they are hidden via the same soft-delete path as the manual
+// operator evict (deleted_at + group_members deactivated), preserving the audit
+// trail. web peers (lease year-9999) never match the cutoff. Resume after a
+// sweep resurrects the same peer via findPeerByHostSession + upsertPeer's
+// `deleted_at = NULL` path.
+function sweepExpiredPeers(ctx: DaemonContext): void {
+  const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
+  const swept = ctx.db.transaction(() => {
+    const rows = ctx.db
+      .query<{ peer_id: string }, [string]>(
+        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
+      )
+      .all(cutoff);
+    const now = new Date().toISOString();
+    for (const { peer_id } of rows) {
+      ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
+      ctx.db
+        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .run(now, peer_id);
+      ctx.subscribers.delete(peer_id);
+    }
+    return rows.map((row) => row.peer_id);
+  })();
+  if (swept.length > 0) {
+    log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${PEER_RETENTION_MS}ms`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups"] });
+  }
+}
+
 export function upsertPeer(
   db: Database,
   input: {
@@ -1576,18 +1692,65 @@ export function upsertPeer(
   // peer rejoins their old groups rather than having to re-issue join calls
   // (which would fail with alias-taken if anyone reclaimed in the interim —
   // resurrection is symmetric with the deletion that preceded it).
+  // Capture any prior soft-delete timestamp BEFORE the upsert clears it, so we
+  // can tell whether this register is a resurrection (and which group_members
+  // rows that death deactivated — see reactivateMembershipsOnResurrect).
+  const priorDeletedAt =
+    db
+      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
+      .get(input.peerId)?.deleted_at ?? null;
+
+  // activity_state is set only on first INSERT (initializing for agents, NULL
+  // for uninstrumented tools). On re-register/resurrect we COALESCE so an
+  // existing working/idle state is preserved — a heartbeat-driven re-register
+  // or a resume must not reset a live agent back to initializing.
   db.query(
-    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at, activity_state)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(peer_id) DO UPDATE SET
        tool = excluded.tool,
        session_name = excluded.session_name,
        purpose = excluded.purpose,
        machine_id = excluded.machine_id,
        lease_expires_at = excluded.lease_expires_at,
+       activity_state = COALESCE(activity_state, excluded.activity_state),
        deleted_at = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-  ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
+  ).run(
+    input.peerId,
+    input.tool,
+    input.sessionName,
+    input.purpose,
+    input.machineId,
+    input.leaseExpiresAt,
+    initialActivityState(input.tool),
+  );
+
+  if (priorDeletedAt) reactivateMembershipsOnResurrect(db, input.peerId, priorDeletedAt);
+}
+
+// Restore the group memberships that a soft-delete (operator evict or retention
+// sweep) deactivated, when the peer re-registers. Both delete paths set
+// group_members.left_at to the SAME timestamp as peers.deleted_at, so rows with
+// left_at == the cleared deleted_at are exactly the ones killed by that death —
+// this distinguishes a death-deactivation from an earlier voluntary leave
+// (which carries an older left_at and must stay inactive). An alias reclaimed by
+// someone else during the gap is skipped so the unique-active-alias invariant
+// holds. Without this, a revived peer is online but silent in all its groups
+// (sync-3nu). The structural alternative (derive active from lease) is sync-<A>.
+function reactivateMembershipsOnResurrect(db: Database, peerId: string, deathTimestamp: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 1, left_at = NULL
+     WHERE peer_id = ? AND active = 0 AND left_at = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members other
+         WHERE other.group_id = group_members.group_id
+           AND other.alias = group_members.alias
+           AND other.active = 1
+           AND other.peer_id != group_members.peer_id
+       )`,
+  ).run(peerId, deathTimestamp);
 }
 
 function findPeerByHostSession(db: Database, hostTool: string, hostSessionId: string): string | undefined {
@@ -1678,12 +1841,15 @@ function agentSessionSelectSql(): string {
       p.session_name AS peer_session_name,
       p.purpose AS peer_purpose,
       p.lease_expires_at AS peer_lease_expires_at,
+      p.activity_state AS peer_activity_state,
       p.lease_expires_at > ? AS peer_online
     FROM agent_sessions s
     JOIN peers p ON p.peer_id = s.peer_id`;
 }
 
-function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { peer: PeerRow & { online: boolean } } {
+function formatAgentSession(
+  row: AgentSessionJoinedRow,
+): AgentSessionRow & { peer: PeerRow & { online: boolean; presence: Presence } } {
   return {
     binding_id: row.binding_id,
     peer_id: row.peer_id,
@@ -1707,10 +1873,13 @@ function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { pee
       purpose: row.peer_purpose,
       machine_id: "",
       lease_expires_at: row.peer_lease_expires_at,
+      activity_state: row.peer_activity_state,
+      last_activity_at: null,
       last_cursor: 0,
       created_at: "",
       updated_at: "",
       online: Boolean(row.peer_online),
+      presence: derivePresence(Boolean(row.peer_online), row.peer_activity_state),
     },
   };
 }
@@ -1836,13 +2005,18 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+              activity_state, last_activity_at,
               last_cursor, created_at, updated_at, lease_expires_at > ? AS online
        FROM peers
        WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, session_name ASC`,
     )
     .all(now)
-    .map((peer) => ({ ...peer, online: Boolean(peer.online) }));
+    .map((peer) => ({
+      ...peer,
+      online: Boolean(peer.online),
+      presence: derivePresence(Boolean(peer.online), peer.activity_state),
+    }));
   const groups = ctx.db
     .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
     .all()
@@ -1855,7 +2029,12 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        ORDER BY gm.group_id ASC, gm.alias ASC`,
     )
     .all(now)
-    .map((member) => ({ ...member, active: Boolean(member.active), online: Boolean(member.online) }));
+    .map((member) => ({
+      ...member,
+      active: Boolean(member.active),
+      online: Boolean(member.online),
+      presence: derivePresence(Boolean(member.online), member.activity_state),
+    }));
   const roomSummaries = ctx.db
     .query<WebRoomSummary, []>(
       `SELECT
@@ -2145,7 +2324,7 @@ function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
 }
 
-const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool,
+const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.activity_state,
   (SELECT s.host_session_id FROM agent_sessions s
    WHERE s.peer_id = gm.peer_id
    ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
@@ -2272,6 +2451,12 @@ async function main(): Promise<void> {
     home: paths.home,
   });
   ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
+
+  // Retention sweeper: run once at startup (cleans up peers that died while the
+  // daemon was down) then on an interval. unref so it never blocks shutdown.
+  sweepExpiredPeers(ctx);
+  const sweepTimer = setInterval(() => sweepExpiredPeers(ctx), SWEEP_INTERVAL_MS);
+  sweepTimer.unref?.();
 
   const discovery: DiscoveryFile = {
     pid: process.pid,

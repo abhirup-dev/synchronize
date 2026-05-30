@@ -173,6 +173,28 @@ function migrate(db: Database): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_deleted_at ON peers (deleted_at)`);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)`);
   }
+
+  // Migration v3 — peers.activity_state + last_activity_at for 3-state
+  // presence. activity_state ∈ {initializing,working,idle} for instrumented
+  // agents (pi/claude); NULL for uninstrumented peers (web/cli/codex), which
+  // render as generic online. Fed by POST /peers/activity. See
+  // session-tracker/plan-agent-ttl-presence-v0.md.
+  const hasV3 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 3")
+    .get();
+  if (!hasV3) {
+    const cols = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('peers')")
+      .all()
+      .map((row) => row.name);
+    if (!cols.includes("activity_state")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN activity_state TEXT`);
+    }
+    if (!cols.includes("last_activity_at")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN last_activity_at TEXT`);
+    }
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)`);
+  }
 }
 
 /**

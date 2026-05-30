@@ -28,6 +28,11 @@ export function createMcpServer(): SynchronizeMcpServer {
   const lifecycle = createLifecycleHooks(state);
 
   async function emit(mode: NotifyMode, event: Event): Promise<void> {
+    // Delivering an inbound channel event means this agent is now acting on it
+    // → working. For Claude this is the only "working" signal for channel-driven
+    // turns (UserPromptSubmit fires only for human prompts). Fire-and-forget so
+    // it never delays delivery; markWorking swallows its own errors.
+    if (mode === "claude") void lifecycle.markWorking();
     await emitMcpNotification(mcp.server as unknown as NotificationSink, mode, event);
   }
 

@@ -136,6 +136,12 @@ class PiEnvironment:
             "SYNCHRONIZE_SESSION_NAME": name,
             "SYNCHRONIZE_PI_DEBUG": "1",
         }
+        # Let a scenario shorten the Pi heartbeat (e.g. the peer-revival smoke)
+        # so lease-lapse / sweep / re-register recovery happens within the test
+        # window. Honored by extensions/pi-synchronize HEARTBEAT_MS.
+        heartbeat_ms = os.environ.get("SYNCHRONIZE_PI_HEARTBEAT_MS")
+        if heartbeat_ms:
+            env_parts["SYNCHRONIZE_PI_HEARTBEAT_MS"] = heartbeat_ms
         command = ["env"]
         for key, value in env_parts.items():
             command.append(f"{key}={value}")

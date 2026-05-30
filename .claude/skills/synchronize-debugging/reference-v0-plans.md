@@ -46,6 +46,7 @@
 |---|---|---|---|
 | `session-tracker/plan-advanced-synchronize-registering-hooks.md` | 482 | Detailed design for Claude Code session hook registration, host_session_id binding, launch-id correlation. | `agent_sessions` table, `bridge_register` semantics, SessionStart hook flow |
 | `session-tracker/plan-group-policy-v0.md` | 385 | Group policy v0: durable vs ephemeral, member alias semantics, soft-delete (sync-dmc), MCP adapter pass, dx2 TUI. | Group lifecycle, alias-vs-session_name split, soft-delete migration v2 |
+| `session-tracker/plan-agent-ttl-presence-v0.md` | 116 | Agent TTL + 3-state presence. Two-knob model: short liveness lease (60s, `SYNCHRONIZE_LEASE_MS`) as the only offline detector + 24h retention sweeper; `activity_state` (initializing/working/idle) fed by Pi `agent_start`/`agent_end` and Claude hooks + MCP-adapter channel-delivery push. Footgun removal (no client `deletePeer`). | `sync-6mz` (Unit 1) + `sync-ztr` epic (Unit 2), lease/offline semantics, `peers.activity_state` grain, resume identity via `findPeerByHostSession` |
 
 ### Design docs
 

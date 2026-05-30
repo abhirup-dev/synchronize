@@ -65,6 +65,10 @@ export function StatusDot({
       offline: "var(--muted)",
     } as const
   )[status];
+  // Only active presence throbs: online (ready, green) and busy (working, pink).
+  // Idle (amber) and offline (grey) are steady — a pulsing dot reads as "live
+  // and engaged", which idle/offline explicitly are not.
+  const animated = pulse && (status === "online" || status === "busy");
   return (
     <span
       className={`status-dot status-${status}${className ? ` ${className}` : ""}`}
@@ -75,7 +79,7 @@ export function StatusDot({
         borderRadius: "var(--radius-pill)",
         background: fill,
         border: "2px solid var(--status-dot-border, var(--rule))",
-        animation: pulse && status !== "offline" ? "status-badge-pulse 1.8s infinite ease-in-out" : undefined,
+        animation: animated ? "status-badge-pulse 1.8s infinite ease-in-out" : undefined,
       }}
     />
   );

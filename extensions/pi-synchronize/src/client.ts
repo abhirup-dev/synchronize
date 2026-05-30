@@ -151,6 +151,19 @@ export function deletePeer(client: PiSyncClient, peerId: string): Promise<unknow
   return requestJson(client, `/peers/${encodeURIComponent(peerId)}`, { method: "DELETE" });
 }
 
+// Push a 3-state activity transition for this peer. Pi has the peer_id
+// in-process, so it sends the peer_id form. Best-effort at the call site.
+export function setPeerActivity(
+  client: PiSyncClient,
+  peerId: string,
+  state: "initializing" | "working" | "idle",
+): Promise<unknown> {
+  return requestJson(client, "/peers/activity", {
+    method: "POST",
+    body: JSON.stringify({ peer_id: peerId, state }),
+  });
+}
+
 export function subscribeToEvents(
   client: PiSyncClient,
   input: { peerId: string; callbackUrl: string; token: string },

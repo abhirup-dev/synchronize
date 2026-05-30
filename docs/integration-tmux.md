@@ -170,6 +170,50 @@ AoE, tmux, REST, and Pi environment helpers. This keeps future group, media,
 inbound notification, and blocked-agent workflows from duplicating harness
 lifecycle code.
 
+## Reproducing peer-revival (sweep → recover) with a real Pi
+
+To exercise the lease-lapse → retention-sweep → re-register recovery path
+(`sync-3nu`) end-to-end against a real Pi, force the daemon to sweep a live
+peer between heartbeats, then confirm the Pi recovers.
+
+Make the lease shorter than the Pi heartbeat so the peer is always dead between
+beats, set retention to zero so the sweeper deletes immediately, and shorten the
+Pi heartbeat so recovery happens within a watch window:
+
+```bash
+# Daemon: lease < heartbeat, immediate retention, fast sweep
+export SYNCHRONIZE_LEASE_MS=4000
+export SYNCHRONIZE_PEER_RETENTION_MS=0
+export SYNCHRONIZE_SWEEP_INTERVAL_MS=2000
+# Pi extension: short heartbeat so the 404 + recovery is observable quickly
+export SYNCHRONIZE_PI_HEARTBEAT_MS=6000
+
+uv run scripts/integration_pi.py --keep
+```
+
+This is automated as `scripts/integration_pi_revival.py` (real Pi via AoE): it
+launches one Pi, soft-deletes its peer over REST (the deterministic equivalent
+of a sweep), then asserts the extension recovers — peer reappears online, the
+extension log shows `recovered peer`, and a DM sent AFTER recovery is pushed to
+the rebuilt subscription and injected (proving re-subscribe, not just
+re-register). The Pi heartbeat is shortened via `--pi-heartbeat-ms` (passed to
+the extension as `SYNCHRONIZE_PI_HEARTBEAT_MS`) so recovery lands within the
+test window:
+
+```bash
+uv run scripts/integration_pi_revival.py --pi-heartbeat-ms 3000
+```
+
+To explore the same path by hand instead: with `--keep`, attach to the Pi pane and watch the synchronize log
+(`~/.synchronize/pi-extension.log` under the run's temp home): you should see
+`heartbeat failed, attempting recovery` followed by `recovered peer …`. Confirm
+via REST that the peer reappears (`/peers`) and — if it was in a group — that
+its membership is restored (`/peers?group=…`), and that a DM sent to it after
+recovery is delivered (proving the subscription was re-established).
+
+Before the fix, the peer would 404 on heartbeat, never re-register, and stay
+absent until the Pi process restarted.
+
 ## Real Pi Agent Smoke
 
 `scripts/integration_pi.py` is the manual production-like smoke. It launches

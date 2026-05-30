@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentStatus,
   Artifact,
   DataSource,
   Message,
@@ -19,6 +20,8 @@ export interface DaemonDataSourceOptions {
   stateLimit?: number;
 }
 
+type DaemonPresence = "offline" | "online" | "initializing" | "working" | "idle";
+
 interface DaemonPeer {
   peer_id: string;
   tool: string;
@@ -26,6 +29,7 @@ interface DaemonPeer {
   purpose: string | null;
   lease_expires_at: string;
   online?: boolean;
+  presence?: DaemonPresence;
 }
 
 interface DaemonGroup {
@@ -45,6 +49,7 @@ interface DaemonMember {
   session_name: string;
   tool: string;
   online?: boolean;
+  presence?: DaemonPresence;
 }
 
 interface DaemonEvent {
@@ -569,9 +574,31 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
       purpose: member.purpose,
       lease_expires_at: "",
       online: Boolean(member.online),
+      ...(member.presence ? { presence: member.presence } : {}),
     });
   }
   return [...peers.values()].map((peer) => mapAgent(peer, mePeerId));
+}
+
+// Map the daemon's derived presence onto the roster's status palette. working
+// and the transient initializing read as "busy" (active, pulsing); idle is its
+// own amber; generic "online" (uninstrumented peers) and the local human stay
+// green. Falls back to the legacy online boolean when presence is absent.
+function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
+  if (isMe) return "online";
+  switch (peer.presence) {
+    case "working":
+    case "initializing":
+      return "busy";
+    case "idle":
+      return "idle";
+    case "offline":
+      return "offline";
+    case "online":
+      return "online";
+    default:
+      return peer.online ? "online" : "offline";
+  }
 }
 
 function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
@@ -583,7 +610,7 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
     handle: isMe ? "you" : handleFor(peer),
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
-    status: isMe || peer.online ? "online" : "offline",
+    status: statusForPeer(peer, isMe),
     ...(peer.purpose ? { statusNote: peer.purpose } : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
