@@ -146,6 +146,38 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
   }
 });
 
+test("MCP startup does NOT auto-start a daemon for a non-launch session (bootstrap gate)", async () => {
+  // The proactive startup activation (sync-amq) must be gated on the launch env
+  // (SYNCHRONIZE_PEER_ID / SYNCHRONIZE_LAUNCH_ID). An ordinary session that sets
+  // neither must never call getClient() on connect — otherwise every `claude`
+  // start would auto-start a synchronize daemon as a side effect.
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-nogate-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-nolaunch-client", version: "0.1.0" });
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    SYNCHRONIZE_HOME: home,
+    SYNCHRONIZE_PORT: "0",
+    SYNCHRONIZE_MCP_MODE: "claude",
+  };
+  delete env.SYNCHRONIZE_PEER_ID;
+  delete env.SYNCHRONIZE_LAUNCH_ID;
+  const transport = new StdioClientTransport({
+    command: join(process.cwd(), "bin/synchronize-mcp"),
+    args: [],
+    cwd: process.cwd(),
+    env: env as Record<string, string>,
+    stderr: "pipe",
+  });
+  try {
+    await client.connect(transport);
+    await Bun.sleep(1000); // let oninitialized -> bootstrap run (and no-op via the gate)
+    expect(await Bun.file(join(home, "daemon.json")).exists()).toBe(false);
+  } finally {
+    await client.close();
+  }
+});
+
 test("MCP errors surface as structured {error:{code,message,status?}} JSON with isError; events expose parsed mentions; bridge_group_history accepts event_ids", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-structured-"));
   homes.push(home);

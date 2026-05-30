@@ -119,11 +119,22 @@ export function parseAoeList(raw: string): BackendSession[] {
 export class AoeBackend implements SessionBackend {
   private readonly profile: string;
   private readonly run: CommandRunner;
+  private readonly confirmDevChannel: boolean;
+  private readonly sleep: (ms: number) => Promise<void>;
   private ready = false;
 
-  constructor(opts: { profile: string; run?: CommandRunner }) {
+  constructor(opts: {
+    profile: string;
+    run?: CommandRunner;
+    /** Auto-dismiss claude's dev-channel confirmation prompt in the pane (default true). */
+    confirmDevChannel?: boolean;
+    /** Injectable sleep for tests. */
+    sleep?: (ms: number) => Promise<void>;
+  }) {
     this.profile = opts.profile;
     this.run = opts.run ?? defaultRunner;
+    this.confirmDevChannel = opts.confirmDevChannel ?? true;
+    this.sleep = opts.sleep ?? ((ms) => Bun.sleep(ms));
   }
 
   private aoe(args: string[]): string[] {
@@ -160,6 +171,41 @@ export class AoeBackend implements SessionBackend {
       await this.run(this.aoe(["remove", "--force", spec.title]));
       throw new Error(failure("aoe session start", spec.title, started));
     }
+    // claude's --dangerously-load-development-channels shows a one-time
+    // "I am using this for local development" confirmation in the pane on every
+    // launch. Auto-dismiss it so the spawned session is unattended. Best-effort
+    // and non-blocking: never delays or fails the launch.
+    if (this.confirmDevChannel && spec.tool === "claude") {
+      void this.autoConfirmDevChannelPrompt(spec.title).catch(() => {});
+    }
+  }
+
+  /**
+   * Poll the session's tmux pane for claude's dev-channel confirmation prompt
+   * and send a named Enter to accept it. Bounded and best-effort.
+   */
+  async autoConfirmDevChannelPrompt(title: string): Promise<void> {
+    const PROMPT = /I am using this for local development|Enter to confirm/i;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      await this.sleep(1500);
+      const session = await this.tmuxSessionFor(title);
+      if (!session) continue;
+      const pane = await this.run(["tmux", "capture-pane", "-p", "-t", session]);
+      if (pane.exitCode !== 0) continue;
+      if (PROMPT.test(pane.stdout)) {
+        await this.run(["tmux", "send-keys", "-t", session, "Enter"]);
+        return;
+      }
+    }
+  }
+
+  /** Resolve the tmux session name AOE created for a title (aoe_<title>_<id>). */
+  async tmuxSessionFor(title: string): Promise<string | null> {
+    const res = await this.run(["tmux", "list-sessions", "-F", "#{session_name}"]);
+    if (res.exitCode !== 0) return null;
+    const prefix = `aoe_${title}_`;
+    const match = res.stdout.split("\n").map((s) => s.trim()).find((s) => s.startsWith(prefix));
+    return match ?? null;
   }
 
   async stop(title: string): Promise<void> {

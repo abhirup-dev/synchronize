@@ -20,14 +20,17 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
     if (!args.includes("--dangerously-skip-permissions")) {
       args.unshift("--dangerously-skip-permissions");
     }
-    // Opt the synchronize MCP server in as a live channel. `--channels
-    // server:<name>` is the supported path for a manually-configured MCP
-    // server and runs non-interactively. (NOT
-    // `--dangerously-load-development-channels`, which is for channels you are
-    // *building* and triggers an interactive "local development" confirmation
-    // on every launch — fatal for an unattended spawned session.)
-    if (!args.includes("--channels")) {
-      args.unshift("--channels", "server:synchronize");
+    // Register the synchronize MCP server as a live push channel. A `server:`
+    // channel only registers when loaded as a development channel (decompiled
+    // claude: a server channel registers only when O.dev===true; the
+    // `allowedChannelPlugins` allowlist gates marketplace plugins only, never
+    // `server:` channels — see bd sync-zst). This flag triggers an interactive
+    // "local development" confirmation on every launch; the AOE backend
+    // auto-dismisses it via tmux send-keys after spawn so the session is
+    // unattended. (`--channels server:synchronize` would skip the prompt but
+    // also skips channel registration → no live push.)
+    if (!args.includes("--dangerously-load-development-channels")) {
+      args.unshift("--dangerously-load-development-channels", "server:synchronize");
     }
     return ["claude", ...args];
   }

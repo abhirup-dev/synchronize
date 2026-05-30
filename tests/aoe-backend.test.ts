@@ -25,7 +25,7 @@ test("buildCmdOverride wraps env + command and quotes spaced values", () => {
 
 test("spawn issues profile create, group create, add, and session start in order", async () => {
   const { calls, run } = recorder();
-  const backend = new AoeBackend({ profile: "synchronize-test", run });
+  const backend = new AoeBackend({ profile: "synchronize-test", run, confirmDevChannel: false });
   await backend.spawn({
     title: "alice-12345678",
     tool: "claude",
@@ -54,7 +54,7 @@ test("spawn issues profile create, group create, add, and session start in order
 
 test("spawn never uses --launch (would fail headless)", async () => {
   const { calls, run } = recorder();
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await backend.spawn({ title: "t", tool: "pi", command: ["pi"], env: {}, cwd: "/r" });
   for (const call of calls) {
     expect(call).not.toContain("--launch");
@@ -64,7 +64,7 @@ test("spawn never uses --launch (would fail headless)", async () => {
 
 test("standalone spawn (no group) skips group create and -g", async () => {
   const { calls, run } = recorder();
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await backend.spawn({ title: "solo-abcd1234", tool: "pi", command: ["pi"], env: {}, cwd: "/r" });
   const joined = calls.map((c) => c.join(" "));
   expect(joined.some((c) => c.includes("group create"))).toBe(false);
@@ -74,7 +74,7 @@ test("standalone spawn (no group) skips group create and -g", async () => {
 
 test("spawn throws with backend detail when add fails", async () => {
   const { run } = recorder({ " add ": { exitCode: 1, stdout: "", stderr: "boom" } });
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await expect(
     backend.spawn({ title: "t", tool: "claude", command: ["claude"], env: {}, cwd: "/r" }),
   ).rejects.toThrow(/aoe add failed.*boom/);
@@ -82,7 +82,7 @@ test("spawn throws with backend detail when add fails", async () => {
 
 test("when session start fails, spawn rolls back the added session and throws", async () => {
   const { calls, run } = recorder({ "session start": { exitCode: 1, stdout: "", stderr: "start boom" } });
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await expect(
     backend.spawn({ title: "t-deadbeef", tool: "claude", command: ["claude"], env: {}, cwd: "/r" }),
   ).rejects.toThrow(/aoe session start failed.*start boom/);
@@ -90,9 +90,30 @@ test("when session start fails, spawn rolls back the added session and throws", 
   expect(calls.some((c) => c.join(" ") === "aoe -p p remove --force t-deadbeef")).toBe(true);
 });
 
+test("autoConfirmDevChannelPrompt sends Enter to the pane when the dev-channel prompt appears", async () => {
+  const { calls, run } = recorder({
+    "list-sessions": { exitCode: 0, stdout: "other\naoe_worker-12345678_abcd1234\n", stderr: "" },
+    "capture-pane": { exitCode: 0, stdout: "...\n  1. I am using this for local development\n  Enter to confirm\n", stderr: "" },
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_worker-12345678_abcd1234", "Enter"]);
+});
+
+test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears", async () => {
+  const { calls, run } = recorder({
+    "list-sessions": { exitCode: 0, stdout: "aoe_worker-12345678_abcd1234\n", stderr: "" },
+    "capture-pane": { exitCode: 0, stdout: "just a normal claude UI, no prompt", stderr: "" },
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  expect(calls.some((c) => c.includes("send-keys"))).toBe(false);
+});
+
 test("stop removes by title with --force", async () => {
   const { calls, run } = recorder();
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await backend.stop("alice-12345678");
   expect(calls.at(-1)).toEqual(["aoe", "-p", "p", "remove", "--force", "alice-12345678"]);
 });
@@ -102,7 +123,7 @@ test("list parses the aoe --json array shape", async () => {
     { id: "8690621c44d7439b", title: "shapeprobe", path: "/private/tmp", group: "demo", tool: "claude", command: "x" },
   ]);
   const { run } = recorder({ "list --json": { exitCode: 0, stdout: json, stderr: "" } });
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   const sessions = await backend.list();
   expect(sessions).toHaveLength(1);
   expect(sessions[0]).toMatchObject({ title: "shapeprobe", id: "8690621c44d7439b", group: "demo", tool: "claude" });
@@ -116,7 +137,7 @@ test("parseAoeList tolerates empty/garbage and {sessions:[]} wrapper", () => {
 
 test("ensureReady runs profile create once across calls", async () => {
   const { calls, run } = recorder();
-  const backend = new AoeBackend({ profile: "p", run });
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
   await backend.ensureReady();
   await backend.ensureReady();
   const creates = calls.filter((c) => c.join(" ") === "aoe profile create p");
