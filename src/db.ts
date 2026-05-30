@@ -18,6 +18,10 @@ export async function openDatabase(path: string): Promise<DatabaseHandle> {
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA synchronous = NORMAL");
+  db.exec("PRAGMA temp_store = MEMORY");
+  db.exec("PRAGMA cache_size = -64000");
+  db.exec("PRAGMA mmap_size = 268435456");
   migrate(db);
   return { db, path };
 }
@@ -78,6 +82,19 @@ function migrate(db: Database): void {
       description TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
+
+    CREATE TABLE IF NOT EXISTS group_paths (
+      path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      label TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(group_id, path)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_paths_group
+      ON group_paths (group_id, active, path);
 
     CREATE TABLE IF NOT EXISTS group_members (
       group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
@@ -229,6 +246,52 @@ function migrate(db: Database): void {
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_deleted_at ON peers (deleted_at)`);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)`);
+  }
+
+  // Migration v3 — peers.activity_state + last_activity_at for 3-state
+  // presence. activity_state ∈ {initializing,working,idle} for instrumented
+  // agents (pi/claude); NULL for uninstrumented peers (web/cli/codex), which
+  // render as generic online. Fed by POST /peers/activity. See
+  // session-tracker/plan-agent-ttl-presence-v0.md.
+  const hasV3 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 3")
+    .get();
+  if (!hasV3) {
+    const cols = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('peers')")
+      .all()
+      .map((row) => row.name);
+    if (!cols.includes("activity_state")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN activity_state TEXT`);
+    }
+    if (!cols.includes("last_activity_at")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN last_activity_at TEXT`);
+    }
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)`);
+  }
+
+  // Migration v4 — group_paths: each group owns the set of workspace paths
+  // agents may be launched against from the web/AOE flow. Existing groups are
+  // populated by the daemon at startup because the correct default path depends
+  // on the running source root, not only the schema.
+  const hasV4 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 4")
+    .get();
+  if (!hasV4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_paths (
+        path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        label TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(group_id, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_paths_group
+        ON group_paths (group_id, active, path);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)`);
   }
 }
 

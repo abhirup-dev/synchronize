@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import type { Agent, Message } from "../data/types.ts";
 import { Avatar, MentionChip, inkFor } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -16,7 +17,7 @@ interface MessageRowProps {
   hideAvatar?: boolean;
 }
 
-export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, hideAvatar }: MessageRowProps) {
+export const MessageRow = memo(function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, hideAvatar }: MessageRowProps) {
   const isYou = author.id === "you";
   const openMenu = useContextMenu();
   const me = useMe();
@@ -40,7 +41,7 @@ export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThr
     >
       {!hideAvatar && (
         <div className="message-gutter">
-          {!groupedWithPrev && <Avatar agent={author} size={34} />}
+          {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
       <div className="message-body">
@@ -51,13 +52,13 @@ export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThr
               style={{
                 background: author.color,
                 color: inkFor(author.color),
-                fontFamily: "Archivo Black, sans-serif",
-                fontSize: 12,
-                letterSpacing: "0.02em",
-                padding: "3px 9px",
-                border: "2px solid var(--rule)",
-                borderRadius: 5,
-                boxShadow: "2px 2px 0 var(--rule)",
+                fontFamily: "var(--font-display)",
+                fontSize: "var(--text-12)",
+                letterSpacing: "var(--tracking-xs)",
+                padding: "var(--space-author-chip-pad)",
+                border: "var(--line-sm)",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "var(--shadow-sm)",
                 display: "inline-flex",
                 alignItems: "center",
                 lineHeight: 1.2,
@@ -70,7 +71,7 @@ export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThr
         <div className="bubble">
           <BodyWithMentions body={message.body} agents={agents} />
           {message.poll && (
-            <PollWidget poll={message.poll} me={me.id} onVote={(opt) => console.log("vote", message.id, opt)} />
+            <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
           )}
         </div>
         {message.threadReplyCount !== undefined && message.threadReplyCount > 0 && onOpenThread && (
@@ -105,17 +106,23 @@ export function MessageRow({ message, author, agents, groupedWithPrev, onOpenThr
       </div>
     </div>
   );
-}
+});
 
 function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
   // Substitute `@handle` with backticked tokens so they appear as inline-code in
   // the markdown AST. The Markdown component overrides the inline-code renderer
   // to detect mention tokens and render a colored MentionChip instead.
-  const handles = agents.map((a) => a.handle);
-  if (handles.length === 0) return <Markdown agents={agents}>{body}</Markdown>;
-  const re = new RegExp(`@(${handles.join("|")})\\b`, "g");
-  const rewritten = body.replace(re, (_, h) => `\`@@${h}\``);
+  const rewritten = useMemo(() => {
+    const handles = agents.map((a) => a.handle).filter(Boolean).sort((a, b) => b.length - a.length);
+    if (handles.length === 0) return body;
+    const re = new RegExp(`@(${handles.map(escapeRegExp).join("|")})(?=$|\\s|[!?;:,)\\]}]|\\.(?=$|\\s))`, "g");
+    return body.replace(re, (_, h) => `\`@@${h}\``);
+  }, [body, agents]);
   return <Markdown agents={agents}>{rewritten}</Markdown>;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function MessageStatus({ status }: { status: NonNullable<Message["status"]> }) {

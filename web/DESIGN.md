@@ -179,6 +179,72 @@ See YAML front-matter `colors`. Notes:
 - Per-agent identity colors are owned by the daemon (`peer.color`) and rendered by the client; defaults match the prototype palette (`Cortex = yellow`, `Atlas = pink`, `Vega = blue`, `Nova = lime`, `Echo = tangerine`, `Pulse = lilac`, `Mira = red`, `Jay = teal`, `You = ink`).
 - The `code-bg` / `code-fg` tokens stay dark in both themes — code blocks never strobe when toggling theme.
 
+## Token Contract
+
+All static aesthetic decisions in the web UI must go through CSS custom properties. Component code and ordinary selectors should describe structure and state; tokens own the visual values that a future theme may override.
+
+Rules:
+
+- Static visual values belong in CSS tokens: radii, border widths, shadows, typography, repeated spacing rhythm, surface colors, and accent-aware effects.
+- Inline `style={...}` is only for dynamic data: agent colors, computed virtualizer height/position, size-derived values, percent widths, mention colors, status-driven animation selection, and intentional rotation/position math.
+- Structural layout math may stay literal when it encodes geometry instead of theme: grid columns, sidebar/timeline/roster widths, thread clamps, scrollbar widths, tooltip-arrow placement, avatar stack offsets, grouped-message negative margins, and timeline alignment offsets.
+- Code blocks intentionally keep `--code-bg` and `--code-fg` dark in every theme.
+
+Token catalog:
+
+| Family | Tokens |
+| --- | --- |
+| Color | `--paper`, `--paper-2`, `--paper-3`, `--ink`, `--ink-soft`, `--ink-faint`, `--rule`, `--yellow`, `--pink`, `--blue`, `--lime`, `--tangerine`, `--lilac`, `--teal`, `--red`, `--muted`, `--on-ink`, `--on-accent`, `--you-bg`, `--you-fg`, `--bubble`, `--code-bg`, `--code-fg` |
+| Font family | `--font-display`, `--font-ui`, `--font-mono` |
+| Font size | `--text-8`, `--text-8-5`, `--text-9`, `--text-9-5`, `--text-10`, `--text-10-5`, `--text-11`, `--text-11-5`, `--text-12`, `--text-12-5`, `--text-13`, `--text-13-5`, `--text-14`, `--text-15`, `--text-16`, `--text-17`, `--text-18`, `--text-20`, `--text-22`, `--text-24`, `--text-26`, `--text-28`, `--text-scale-kbd`, `--text-scale-code-inline`, `--text-scale-mention-inline` |
+| Tracking | `--tracking-pixel-tight`, `--tracking-pixel`, `--tracking-tight`, `--tracking-none`, `--tracking-xs`, `--tracking-sm`, `--tracking-md`, `--tracking-lg` |
+| Radius | `--radius-none`, `--radius-hair`, `--radius-xs`, `--radius-sm`, `--radius-md`, `--radius-lg`, `--radius-xl`, `--radius-2xl`, `--radius-pill`, `--radius-panel-top`, `--radius-panel-bottom` |
+| Border | `--line`, `--line-2`, `--line-bold`, `--line-md`, `--line-sm`, `--line-xs`, `--line-xxs`, `--line-hair`, `--line-xs-ink`, `--line-xs-faint`, `--line-hair-faint`, `--line-none`, `--line-transparent`, `--line-md-transparent`, `--line-dashed-md`, `--line-dashed-sm`, `--line-dashed-xs`, `--line-dashed-faint`, `--line-rule-dashed-sm`, `--line-rule-dashed-xs` |
+| Shadow | `--shadow`, `--shadow-sm`, `--shadow-lg`, `--shadow-hover`, `--shadow-none`, `--shadow-xxs`, `--shadow-xs`, `--shadow-chip`, `--shadow-md`, `--shadow-hover-sm`, `--shadow-accent-pink`, `--shadow-accent-pink-strong`, `--shadow-accent-inset`, `--shadow-tab-active`, `--shadow-focus-pink`, `--shadow-presence-in`, `--shadow-presence-out`, `--shadow-presence-peak`, `--shadow-busy-pulse-start`, `--shadow-busy-pulse-peak` |
+| Spacing | `--space-0`, `--space-1`, `--space-2`, `--space-3`, `--space-4`, `--space-5`, `--space-6`, `--space-7`, `--space-8`, `--space-9`, `--space-10`, `--space-11`, `--space-12`, `--space-14`, `--space-16`, `--space-18`, `--space-20`, `--space-22`, `--space-24`, `--space-30`, `--space-38`, `--space-40`, `--space-50`, `--space-56` |
+| Composite spacing | `--space-row-gap`, `--space-row-gap-compact`, `--space-bubble-pad`, `--space-thread-bubble-pad`, `--space-chip-pad-xs`, `--space-chip-pad-sm`, `--space-chip-pad-md`, `--space-author-chip-pad`, `--space-thread-author-chip-pad`, `--space-sticker-pad`, `--space-button-pad-sm`, `--space-button-pad-md`, `--density-cozy-pad`, `--density-compact-pad` |
+| Layering | `--z-local-floor`, `--z-local-base`, `--z-local-content`, `--z-local-hover`, `--z-local-control`, `--z-scroll-controls`, `--z-mention-pop`, `--z-floating-control`, `--z-mention-overlay`, `--z-toast`, `--z-context-menu`, `--z-agent-color-picker` |
+
+Examples:
+
+```css
+.bubble {
+  padding: var(--space-bubble-pad);
+  border: var(--line-sm);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-ui);
+}
+```
+
+```tsx
+<div style={{ background: agent.color }} />
+```
+
+Adding a new theme is a single sibling override block:
+
+```css
+:root[data-theme="soft"] {
+  --paper: #fff;
+  --rule: rgba(17, 17, 17, 0.25);
+  --radius-xl: 16px;
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+```
+
+Theme switching uses the existing root attribute mechanism: `document.documentElement.dataset.theme = "<theme-name>"`.
+
+Included theme templates:
+
+| Family | Theme IDs |
+| --- | --- |
+| Light | `light`, `rose-pine-dawn` |
+| Dark | `dark`, `kanagawa-wave`, `catppuccin-mocha` |
+
+The bottom-right theme button keeps quick toggling simple: click switches between the default light/dark themes, and Shift-click cycles through variants inside the current light or dark family.
+
+Validation themes should stay throwaway. If a future pass needs one, create a temporary `[data-theme=...]` block locally, capture validation screenshots, then remove it before the branch is handed back so the product keeps the default colors and layout.
+
 ## Typography
 
 - **Archivo Black** — display: brand mark, section heads (`GROUPS`, `DIRECT MESSAGES`, `AGENTS`), room titles, unread count chips. Tracking tightened to `-0.01em`.
@@ -331,17 +397,18 @@ From the daemon's perspective (`src/daemon.ts` + `.serena/memories/architecture.
   - **Push** — `POST /subscriptions { peer_id, callback_url, token }`. Daemon stores the subscriber; after each insert, `notifySubscribers(ctx, recipientPeerIds, event)` POSTs the event JSON to the registered local callback. Used by the Claude MCP `EventSubscription` and the Pi extension.
 - The inbox is the authoritative fallback. Push delivery is best-effort; whatever the daemon couldn't deliver stays in the inbox until the next poll or `ack`.
 
-Browsers can't accept inbound POSTs, so we cannot use the `/subscriptions` push transport directly. Two viable paths for the web UI:
+Browsers can't accept inbound POSTs, so we cannot use the `/subscriptions` push transport directly. The web UI uses the daemon as the local session store and then consumes daemon state:
 
-1. **Polling (initial cut)** — `DaemonDataSource` registers a stable web peer (id `web:<uuid>` persisted in `localStorage`), then runs a `GET /peers/:peer_id/inbox` (or `/events/:peer_id`) loop every 1–2 s. Zero daemon changes. Sufficient for a single human operator's UI; the inbox + cursor mechanics give us "exactly-once" semantics for free.
-2. **SSE (follow-up)** — add a new daemon route `GET /events/stream?peer_id=...&token=...` that holds the connection open and writes `text/event-stream` frames whenever `notifySubscribers` fires for that peer. The route reuses the existing `subscribers` map (the SSE controller becomes another sink alongside the HTTP-POST callback). The polling code path stays as fallback for reconnect/gap-fill.
+1. **Local web session** — `DaemonDataSource` calls `POST /web/session` and receives the daemon-owned local web peer. Browser tabs and browser profiles share that peer and therefore share the visible `you` group membership.
+2. **Web state + SSE** — `DaemonDataSource` reads snapshots from `GET /web/state` and listens for invalidation frames from `GET /web/events`. Polling remains the reconnect/gap-fill fallback.
 
 The `DataSource` interface hides which transport is in use. Components only ever observe `messages(roomId).get()` and a `subscribe(fn)` callback.
 
 ## REST surface (consumed by `DaemonDataSource`)
 
-Verbatim from `src/api/`:
+Primary daemon routes:
 - `GET /status`, `GET /summary`
+- `POST /web/session`, `GET /web/state`, `GET /web/events`
 - `GET /peers`, `POST /peers/register`, `PATCH /peers/:id/heartbeat`
 - `GET /groups`, `POST /groups`, `GET /groups/:id`, `GET /groups/:id/history`, `POST /groups/:id/messages`
 - `POST /groups/:id/join`, `POST /groups/:id/leave`
@@ -352,7 +419,8 @@ Verbatim from `src/api/`:
 
 New surfaces added by this PR (daemon changes):
 - `GET /web` and `GET /web/*` — static asset serving (the built React bundle from `web/dist/`).
-- `GET /events/stream` (follow-up bead) — SSE long-poll endpoint; see above.
+- `POST /web/session` — resolves the daemon-owned local human web peer.
+- `GET /web/state` and `GET /web/events` — web snapshot and invalidation streams.
 
 Translation from daemon `Event` rows → client model is owned by `DaemonDataSource`:
 
@@ -364,7 +432,7 @@ Translation from daemon `Event` rows → client model is owned by `DaemonDataSou
 | `group.created`     | upsert into rooms list                                                         |
 | `peer.registered` / `peer.heartbeat` | update agent presence (busy / idle / off)                      |
 
-The web client identifies itself with a sticky peer id stored in `localStorage` (`synchronize.peer_id`, prefix `web:`). On first load it `POST /peers/register`s itself with `tool = "web"`, then joins (or peeks at) the rooms it cares about.
+The web client identifies itself by asking the daemon for the local web session. `localStorage` may cache UI preferences, but it is not the source of group participation identity.
 
 ## Seeing the UI in action: `make demo-web`
 
@@ -388,7 +456,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 **In V0:**
 
 - Web bundle + Bun.build pipeline; daemon serves `/web` and `/web/*`.
-- `DataSource` interface with `MockDataSource` (always available) and `DaemonDataSource` (polling-based event sync, sticky web peer id).
+- `DataSource` interface with `MockDataSource` (always available) and `DaemonDataSource` (daemon-owned local web session via `POST /web/session`, plus polling/SSE state sync).
 - Sidebar (brand, search, GROUPS, DMS, user footer).
 - RoomHeader with the CHAT / BOARD / ARTIFACTS tab strip (only CHAT renders; the other two are placeholder panels).
 - ChatView: grouped bubbles, author chip, identity colors, status row, markdown body (GFM + code highlight + sanitized).
@@ -416,7 +484,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - **Image uploads** from the web composer. The artifacts view will render media that other peers shared, but the web UI is not a media-producing surface in this iteration. Paperclip stays as a disabled glyph.
 - Message editing / deletion (the durable event log is append-only — edits would need a new event type and is a separate design).
 - Read receipts originating from the web peer (the web peer auto-ack's whatever it reads; agents see "delivered" but never "read by you").
-- Multi-window / multi-tab presence reconciliation (one tab = one web peer; opening two tabs registers two peers).
+- Remote multi-device principal identity. Local multi-tab and multi-browser use shares the daemon-owned local web session.
 - Mobile / responsive layout below 1024 px wide.
 
 **Complexity flags (where we expect to slow down):**

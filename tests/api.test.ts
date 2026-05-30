@@ -15,7 +15,7 @@ import {
 } from "../src/api/groups.ts";
 import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
-import { deletePeer, listPeers, registerPeer } from "../src/api/peers.ts";
+import { deletePeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import { queryEvents } from "../src/api/query.ts";
 import { findReusablePeer } from "../src/api/status.ts";
 import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
@@ -458,13 +458,15 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
     const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
     const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "cli" });
+    const dave = await registerPeer(daemon.client, { sessionName: "dave", tool: "cli" });
     const groupName = "mentions-room";
     await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
     await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
     await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
     await joinGroup(daemon.client, { name: groupName, peerId: carol.peer.peer_id, alias: "carol" });
+    await joinGroup(daemon.client, { name: groupName, peerId: dave.peer.peer_id, alias: "ui-claude2" });
 
-    for (const peer of [alice, bob, carol]) {
+    for (const peer of [alice, bob, carol, dave]) {
       await subscribeToEvents(daemon.client, {
         peerId: peer.peer.peer_id,
         callbackUrl: sink.url(peer.peer.peer_id),
@@ -491,6 +493,17 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     // Push: mentioned only.
     expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+
+    const punctuated = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "ping @ui-claude2.",
+    });
+    await flushPushQueue();
+
+    expect(punctuated.event.mentions_json).toBe(JSON.stringify([dave.peer.peer_id]));
+    expect(punctuated.warnings).toEqual([]);
+    expect(sink.hits.get(dave.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(alice.peer.peer_id) ?? 0).toBe(0);
   } finally {
     await sink.stop();
@@ -1433,6 +1446,211 @@ test("re-registering with a soft-deleted peer_id resurrects the peer and clears 
       .get(peerId);
     expect(peerRow?.deleted_at).toBeNull();
     db.close();
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("web state endpoint returns summaries and room-scoped event history", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-state-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const web = await registerPeer(daemon.client, { peerId: "web:test", sessionName: "web-ui", tool: "web" });
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-room";
+    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: web.peer.peer_id, alias: "web" });
+    const sent = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "hello web state",
+    });
+
+    const summary = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`);
+    expect(summary.status).toBe(200);
+    // ETag = event cursor + a digest of time-derived presence, so lease-lapse /
+    // activity transitions (which create no event) still bust the 304.
+    const summaryEtag = summary.headers.get("etag");
+    expect(summaryEtag).toMatch(new RegExp(`^W/"${sent.event.event_id}\\.[a-z0-9]+"$`));
+    const summaryBody = await summary.json() as {
+      groups: Array<{ group_id: number; name: string }>;
+      group_paths: Array<{ group_id: number; path: string; active: boolean }>;
+      room_summaries: Array<{ group_id: number; last_event_id: number | null; last_preview: string | null }>;
+      events: unknown[];
+    };
+    expect(summaryBody.groups).toContainEqual(expect.objectContaining({ group_id: group.group.group_id, name: groupName }));
+    expect(summaryBody.group_paths).toContainEqual(expect.objectContaining({
+      group_id: group.group.group_id,
+      path: process.cwd(),
+      active: true,
+    }));
+    expect(summaryBody.room_summaries).toContainEqual(expect.objectContaining({
+      group_id: group.group.group_id,
+      last_event_id: sent.event.event_id,
+      last_preview: "hello web state",
+    }));
+    expect(summaryBody.events).toHaveLength(0);
+
+    const notModified = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
+      headers: { "if-none-match": summaryEtag! },
+    });
+    expect(notModified.status).toBe(304);
+
+    // Regression: a presence change must bust the ETag even though it creates no
+    // new event (the cursor is unchanged). Without folding presence into the tag
+    // the conditional GET would 304 and the client would render stale presence.
+    await setPeerActivity(daemon.client, { peerId: alice.peer.peer_id, state: "working" });
+    const afterActivity = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
+      headers: { "if-none-match": summaryEtag! },
+    });
+    expect(afterActivity.status).toBe(200);
+    expect(afterActivity.headers.get("etag")).not.toBe(summaryEtag);
+
+    const room = await fetch(
+      `${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}&room=group:${group.group.group_id}`,
+    );
+    const roomBody = await room.json() as { events: Array<{ event_id: number; body: string | null }> };
+    expect(roomBody.events).toContainEqual(expect.objectContaining({
+      event_id: sent.event.event_id,
+      body: "hello web state",
+    }));
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("web session endpoint returns a stable daemon-owned local web peer", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-session-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const first = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    expect(first.status).toBe(200);
+    const firstBody = await first.json() as {
+      peer: { peer_id: string; tool: string; session_name: string; purpose: string | null; lease_expires_at: string };
+    };
+
+    const second = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    expect(second.status).toBe(200);
+    const secondBody = await second.json() as {
+      peer: { peer_id: string; tool: string; session_name: string; purpose: string | null; lease_expires_at: string };
+    };
+
+    expect(firstBody.peer.peer_id).toBe("web:local-human");
+    expect(secondBody.peer.peer_id).toBe(firstBody.peer.peer_id);
+    expect(secondBody.peer.tool).toBe("web");
+    expect(secondBody.peer.session_name).toBe("web-ui");
+    expect(secondBody.peer.purpose).toBe("local human web participant");
+    expect(secondBody.peer.lease_expires_at).toBe("9999-12-31T23:59:59.999Z");
+
+    const state = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(secondBody.peer.peer_id)}`);
+    const stateBody = await state.json() as { peers: Array<{ peer_id: string }> };
+    expect(stateBody.peers).toContainEqual(expect.objectContaining({ peer_id: "web:local-human" }));
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("local web session can reclaim stale web-held you alias", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-reclaim-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const oldWeb = await registerPeer(daemon.client, { peerId: "web:old", sessionName: "web-ui", tool: "web" });
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-reclaim-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: oldWeb.peer.peer_id, alias: "you" });
+
+    const session = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    const sessionBody = await session.json() as { peer: { peer_id: string } };
+    const joined = await joinGroup(daemon.client, { name: groupName, peerId: sessionBody.peer.peer_id, alias: "you" });
+
+    expect(joined.member.peer_id).toBe("web:local-human");
+    expect(joined.member.alias).toBe("you");
+    expect(joined.reclaimed_from?.previous_peer_id).toBe("web:old");
+
+    const roster = await listPeers(daemon.client, { group: groupName }) as {
+      peers: Array<{ peer_id: string; alias: string; active: boolean }>;
+    };
+    const activeYou = roster.peers.filter((member) => member.alias === "you" && member.active);
+    expect(activeYou).toHaveLength(1);
+    expect(activeYou[0]?.peer_id).toBe("web:local-human");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("local web session does not reclaim non-web-held you alias", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-reclaim-non-web-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const groupName = "web-reclaim-non-web-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "you" });
+    const session = await fetch(`${daemon.client.baseUrl}/web/session`, { method: "POST" });
+    const sessionBody = await session.json() as { peer: { peer_id: string } };
+
+    const response = await fetch(`${daemon.client.baseUrl}/groups/${encodeURIComponent(groupName)}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ peer_id: sessionBody.peer.peer_id, alias: "you" }),
+    });
+    const body = await response.json() as { error?: { code: string } };
+
+    expect(response.status).toBe(409);
+    expect(body.error?.code).toBe("alias_collision");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("web events stream emits state_changed after a room message", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-events-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "codex" });
+    const groupName = "web-events-room";
+    const group = await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+
+    const controller = new AbortController();
+    const stream = await fetch(`${daemon.client.baseUrl}/web/events`, { signal: controller.signal });
+    expect(stream.status).toBe(200);
+    const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+    await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "stream me",
+    });
+
+    const deadline = Date.now() + 2_000;
+    let seen = false;
+    let buffer = "";
+    while (Date.now() < deadline && !seen) {
+      const result = await Promise.race([
+        reader.read(),
+        Bun.sleep(100).then(() => null),
+      ]);
+      if (!result) continue;
+      const { value } = result;
+      buffer += value ?? "";
+      seen = buffer.includes("event: state_changed") && buffer.includes(`\"group_id\":${group.group.group_id}`);
+    }
+    controller.abort();
+    expect(seen).toBe(true);
   } finally {
     await daemon.stop();
   }

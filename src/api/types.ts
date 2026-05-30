@@ -7,12 +7,24 @@ export interface StatusResponse {
   home: string;
   db_path: string;
   media_path: string;
+  provenance: {
+    api_version: number;
+    entrypoint_path: string;
+    source_root: string;
+    git_sha: string | null;
+    git_dirty: boolean | null;
+  };
   counts: {
     peers: number;
     groups: number;
     events: number;
   };
 }
+
+/** Stored per-peer activity (instrumented agents only). */
+export type ActivityState = "initializing" | "working" | "idle";
+/** Derived presence shown in rosters. */
+export type Presence = "offline" | "online" | ActivityState;
 
 export interface Peer {
   peer_id: string;
@@ -21,6 +33,11 @@ export interface Peer {
   purpose: string | null;
   lease_expires_at: string;
   online?: boolean;
+  /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */
+  activity_state?: ActivityState | null;
+  last_activity_at?: string | null;
+  /** Derived: offline if lease lapsed, else activity_state, else generic "online". */
+  presence?: Presence;
 }
 
 export interface AgentSessionBinding {
@@ -169,6 +186,13 @@ export interface SummaryResponse {
     home: string;
     db_path: string;
     media_path: string;
+    provenance?: {
+      api_version: number;
+      entrypoint_path: string;
+      source_root: string;
+      git_sha: string | null;
+      git_dirty: boolean | null;
+    };
   };
   totals: {
     peers: { total: number; online: number; stale: number };
@@ -183,6 +207,8 @@ export interface SummaryResponse {
     tool: string;
     purpose: string | null;
     online: boolean;
+    presence: Presence;
+    activity_state: ActivityState | null;
     pending_inbox: number;
     groups: number;
     updated_at: string;

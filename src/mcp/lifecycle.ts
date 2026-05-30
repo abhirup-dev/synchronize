@@ -1,4 +1,4 @@
-import { deletePeer, heartbeatPeer, registerPeer } from "../api/peers.ts";
+import { heartbeatPeer, registerPeer, setPeerActivity } from "../api/peers.ts";
 import { findReusablePeer } from "../api/status.ts";
 import { ensureDaemon, type ClientConfig } from "../client.ts";
 import { ENV_PEER_ID, MCP_HEARTBEAT_MS } from "../constants.ts";
@@ -38,6 +38,7 @@ export interface LifecycleHooks {
   maintainPeer: () => Promise<void>;
   startHeartbeat: () => void;
   cleanup: () => Promise<void>;
+  markWorking: () => Promise<void>;
 }
 
 export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
@@ -83,6 +84,13 @@ export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
   }
 
   async function cleanup(): Promise<void> {
+    // Heartbeat-only lifecycle: on shutdown we stop heartbeating and tear down
+    // transports, but we do NOT delete the peer. Death is detected by lease
+    // lapse — within SYNCHRONIZE_LEASE_MS the daemon drops the peer offline on
+    // its own. Tying deletion to stdin-close/process-exit was the footgun (it
+    // deleted peers out from under live processes during session rotation,
+    // borrowed-peer reuse, resume/compact). DELETE /peers/:id is now an
+    // operator-only tool. See plan-agent-ttl-presence-v0.md.
     if (state.heartbeat) {
       clearInterval(state.heartbeat);
       state.heartbeat = null;
@@ -91,15 +99,22 @@ export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
     state.notifier = null;
     state.subscription?.stop();
     state.subscription = null;
-    if (state.peer && state.client) {
-      try {
-        await deletePeer(state.client, state.peer.peer_id);
-        log(`unregistered peer ${state.peer.peer_id}`);
-      } catch (error) {
-        log(`failed to unregister peer ${state.peer.peer_id}: ${formatError(error)}`);
-      }
+  }
+
+  // Push "working" when an inbound channel event is delivered to this peer.
+  // The MCP adapter is the only in-process component that sees channel delivery
+  // for Claude — UserPromptSubmit fires only for human prompts, so without this
+  // a synchronize-driven turn would never show as working. Best-effort: a
+  // failed push must never disrupt delivery.
+  async function markWorking(): Promise<void> {
+    if (!state.peer) return;
+    try {
+      const client = await getClient(state);
+      await setPeerActivity(client, { peerId: state.peer.peer_id, state: "working" });
+    } catch (error) {
+      log(`activity push (working) failed for peer ${state.peer.peer_id}: ${formatError(error)}`);
     }
   }
 
-  return { registerCurrentPeer, maintainPeer, startHeartbeat, cleanup };
+  return { registerCurrentPeer, maintainPeer, startHeartbeat, cleanup, markWorking };
 }

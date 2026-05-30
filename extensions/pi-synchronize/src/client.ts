@@ -125,7 +125,7 @@ export function registerPeer(
 
 export function registerAgentSession(
   client: PiSyncClient,
-  input: { peerId: string; sessionName: string; hostSessionId: string; cwd?: string },
+  input: { peerId: string; sessionName: string; hostSessionId: string; cwd?: string; launchId?: string },
 ): Promise<{ binding: AgentSessionBinding }> {
   return requestJson<{ binding: AgentSessionBinding }>(client, "/agent-sessions/register", {
     method: "POST",
@@ -139,6 +139,7 @@ export function registerAgentSession(
       cwd: input.cwd,
       pid: process.pid,
       source: "session_start",
+      launch_id: input.launchId,
     }),
   });
 }
@@ -149,6 +150,19 @@ export function heartbeatPeer(client: PiSyncClient, peerId: string): Promise<unk
 
 export function deletePeer(client: PiSyncClient, peerId: string): Promise<unknown> {
   return requestJson(client, `/peers/${encodeURIComponent(peerId)}`, { method: "DELETE" });
+}
+
+// Push a 3-state activity transition for this peer. Pi has the peer_id
+// in-process, so it sends the peer_id form. Best-effort at the call site.
+export function setPeerActivity(
+  client: PiSyncClient,
+  peerId: string,
+  state: "initializing" | "working" | "idle",
+): Promise<unknown> {
+  return requestJson(client, "/peers/activity", {
+    method: "POST",
+    body: JSON.stringify({ peer_id: peerId, state }),
+  });
 }
 
 export function subscribeToEvents(

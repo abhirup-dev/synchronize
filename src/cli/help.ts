@@ -25,6 +25,7 @@ Usage:
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
   synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]
+  synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [-- TOOL_ARGS...]
   synchronize --help
 
 Commands:
@@ -40,7 +41,8 @@ Commands:
   threads   Discover, summarize, and render deeper group conversations
   query     Run guarded read-only SQL against daemon event state
   hook      Internal host-agent hook ingestion commands
-  launch    Start an agent with synchronize daemon/env setup
+  launch    Start an agent in the foreground with synchronize daemon/env setup
+  spawn     Launch a persistent agent session via the backend (AOE), optionally into a group
 
 Environment:
   SYNCHRONIZE_HOME    Runtime directory (default: ~/.synchronize)

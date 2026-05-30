@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lightpanda Synchronize UI"
+  short_description: "Run lightweight Lightpanda checks for synchronize web UI flows."
+  default_prompt: "Use Lightpanda to validate the synchronize web UI multi-tab and navigation behavior."

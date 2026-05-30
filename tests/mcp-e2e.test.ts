@@ -54,6 +54,8 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_send_group",
         "bridge_group_history",
         "bridge_list_groups",
+        "bridge_launch",
+        "bridge_stop",
         "bridge_share_media",
         "bridge_list_media",
         "bridge_get_media",
@@ -172,6 +174,137 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     ]);
     expect(notifications[0]?.params.meta).not.toHaveProperty("source");
     expect(Object.values(notifications[0]?.params.meta ?? {}).every((value) => typeof value === "string")).toBe(true);
+  } finally {
+    await client.close();
+  }
+});
+
+test("Claude MCP adapter recovers from a soft-delete: next heartbeat re-registers AND re-subscribes (DM still pushed)", async () => {
+  // The untested twin of the Pi peer-revival fix (sync-3nu). The Pi runtime is
+  // proven by the AoE smoke + peer-revival.test.ts; this proves the MCP/Claude
+  // adapter does the same recovery (maintainPeer 404 → re-register + re-subscribe)
+  // deterministically, in-process, via a short heartbeat. A DM that lands AFTER
+  // recovery and arrives on the Claude channel is the re-subscribe proof — the
+  // subscription was rebuilt, not just the peer row resurrected.
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-revival-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-revival-test", version: "0.1.0" });
+  const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+  const ClaudeChannelNotificationSchema = z.object({
+    method: z.literal("notifications/claude/channel"),
+    params: z.object({ content: z.string(), meta: z.record(z.string(), z.string()) }),
+  });
+  client.setNotificationHandler(ClaudeChannelNotificationSchema, (notification) => {
+    notifications.push(notification);
+  });
+  const transport = new StdioClientTransport({
+    command: join(process.cwd(), "bin/synchronize-mcp"),
+    args: [],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      SYNCHRONIZE_HOME: home,
+      SYNCHRONIZE_PORT: "0",
+      SYNCHRONIZE_MCP_MODE: "claude",
+      SYNCHRONIZE_MCP_HEARTBEAT_MS: "250", // recover fast instead of the 15s default
+    },
+    stderr: "pipe",
+  });
+
+  try {
+    await client.connect(transport);
+    const registered = parseToolText(
+      await client.callTool({ name: "bridge_register", arguments: { session_name: "claude-revival" } }),
+    ) as { peer: { peer_id: string } };
+    const peerId = registered.peer.peer_id;
+
+    // The adapter autostarts a daemon in SYNCHRONIZE_HOME; discover its REST URL
+    // so the test can drive the daemon directly (evict + send the recovery DM).
+    const { baseUrl } = (await Bun.file(join(home, "daemon.json")).json()) as { baseUrl: string };
+    const peerOnline = async (): Promise<boolean> => {
+      const body = (await (await fetch(`${baseUrl}/peers`)).json()) as { peers: Array<{ peer_id: string; online?: boolean }> };
+      return body.peers.some((p) => p.peer_id === peerId && p.online);
+    };
+
+    // Soft-delete (operator evict == retention-sweep DB effect): peer hidden,
+    // its event subscriber dropped on the daemon side.
+    const del = await fetch(`${baseUrl}/peers/${peerId}`, { method: "DELETE" });
+    expect(del.ok).toBe(true);
+
+    // Recovery: within a couple of heartbeats maintainPeer 404s and re-registers
+    // the same peer_id, bringing it back online.
+    const recoveryDeadline = Date.now() + 10_000;
+    let recovered = false;
+    while (Date.now() < recoveryDeadline) {
+      if (await peerOnline()) {
+        recovered = true;
+        break;
+      }
+      await Bun.sleep(100);
+    }
+    expect(recovered).toBe(true);
+
+    // Re-subscribe proof: a DM sent AFTER recovery must push to the rebuilt
+    // Claude-channel subscription. Send from a separate REST-registered peer.
+    const sender = (
+      (await (
+        await fetch(`${baseUrl}/peers/register`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session_name: "revival-sender", tool: "cli" }),
+        })
+      ).json()) as { peer: { peer_id: string } }
+    ).peer.peer_id;
+    const marker = "MCP_REVIVAL_DM";
+    await fetch(`${baseUrl}/dm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sender_peer_id: sender, recipient_peer_id: peerId, message: marker }),
+    });
+
+    const pushDeadline = Date.now() + 10_000;
+    while (!notifications.some((n) => n.params.content === marker) && Date.now() < pushDeadline) {
+      await Bun.sleep(50);
+    }
+    expect(notifications.some((n) => n.method === "notifications/claude/channel" && n.params.content === marker)).toBe(true);
+
+    // markWorking: channel delivery in claude mode pushes the peer to "working".
+    const finalPeers = (await (await fetch(`${baseUrl}/peers`)).json()) as {
+      peers: Array<{ peer_id: string; activity_state?: string | null }>;
+    };
+    expect(finalPeers.peers.find((p) => p.peer_id === peerId)?.activity_state).toBe("working");
+  } finally {
+    await client.close();
+  }
+});
+
+test("MCP startup does NOT auto-start a daemon for a non-launch session (bootstrap gate)", async () => {
+  // The proactive startup activation (sync-amq) must be gated on the launch env
+  // (SYNCHRONIZE_PEER_ID / SYNCHRONIZE_LAUNCH_ID). An ordinary session that sets
+  // neither must never call getClient() on connect — otherwise every `claude`
+  // start would auto-start a synchronize daemon as a side effect.
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-nogate-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-nolaunch-client", version: "0.1.0" });
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    SYNCHRONIZE_HOME: home,
+    SYNCHRONIZE_PORT: "0",
+    SYNCHRONIZE_MCP_MODE: "claude",
+  };
+  delete env.SYNCHRONIZE_PEER_ID;
+  delete env.SYNCHRONIZE_LAUNCH_ID;
+  const transport = new StdioClientTransport({
+    command: join(process.cwd(), "bin/synchronize-mcp"),
+    args: [],
+    cwd: process.cwd(),
+    env: env as Record<string, string>,
+    stderr: "pipe",
+  });
+  try {
+    await client.connect(transport);
+    await Bun.sleep(1000); // let oninitialized -> bootstrap run (and no-op via the gate)
+    expect(await Bun.file(join(home, "daemon.json")).exists()).toBe(false);
   } finally {
     await client.close();
   }

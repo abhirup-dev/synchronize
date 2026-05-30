@@ -1,5 +1,6 @@
 // Small, reusable UI primitives shared across the app.
 
+import type { CSSProperties } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
 
 // WCAG-style relative luminance; used to pick black-or-white text on a tinted
@@ -16,33 +17,46 @@ export function inkFor(bgHex: string): string {
   return relLum(bgHex) > 0.55 ? "#111111" : "#FFFFFF";
 }
 
-export function Avatar({ agent, size = 32, ring = false }: { agent: Agent; size?: number; ring?: boolean }) {
+export function Avatar({
+  agent,
+  size = 32,
+  ring = false,
+  showStatus = false,
+}: {
+  agent: Agent;
+  size?: number;
+  ring?: boolean;
+  showStatus?: boolean;
+}) {
   const isYou = agent.id === "you";
   return (
     <div
-      className={`avatar${ring ? " avatar-ring" : ""}`}
+      className={`avatar identity-icon${ring ? " avatar-ring" : ""}`}
       style={{
-        width: size,
-        height: size,
+        "--identity-size": `${size}px`,
+        "--identity-font-size": `${Math.round(size * 0.45)}px`,
         background: isYou ? "var(--paper-3)" : agent.color,
         color: isYou ? "var(--ink)" : inkFor(agent.color),
-        borderRadius: 5,
-        border: "2.5px solid var(--rule)",
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "Archivo Black, sans-serif",
-        fontSize: Math.round(size * 0.45),
-        boxShadow: "1.5px 1.5px 0 var(--rule)",
-        flexShrink: 0,
-      }}
+      } as CSSProperties}
       title={`${agent.name} · ${agent.handle}`}
     >
       {agent.avatar}
+      {showStatus && <StatusDot status={agent.status} className="identity-status-dot" pulse />}
     </div>
   );
 }
 
-export function StatusDot({ status, size = 12 }: { status: AgentStatus; size?: number }) {
+export function StatusDot({
+  status,
+  size = 12,
+  className = "",
+  pulse = false,
+}: {
+  status: AgentStatus;
+  size?: number;
+  className?: string;
+  pulse?: boolean;
+}) {
   const fill = (
     {
       online: "var(--lime)",
@@ -51,38 +65,44 @@ export function StatusDot({ status, size = 12 }: { status: AgentStatus; size?: n
       offline: "var(--muted)",
     } as const
   )[status];
+  // Only active presence throbs: online (ready, green) and busy (working, pink).
+  // Idle (amber) and offline (grey) are steady — a pulsing dot reads as "live
+  // and engaged", which idle/offline explicitly are not.
+  const animated = pulse && (status === "online" || status === "busy");
   return (
     <span
-      className={`status-dot status-${status}`}
+      className={`status-dot status-${status}${className ? ` ${className}` : ""}`}
       style={{
         display: "inline-block",
         width: size,
         height: size,
-        borderRadius: "999px",
+        borderRadius: "var(--radius-pill)",
         background: fill,
-        border: "2px solid var(--rule)",
-        animation: status === "busy" ? "pulse-busy 1.6s infinite ease-in-out" : undefined,
+        border: "2px solid var(--status-dot-border, var(--rule))",
+        animation: animated ? "status-badge-pulse 1.8s infinite ease-in-out" : undefined,
       }}
     />
   );
 }
 
-export function Sticker({ label, color }: { label: string; color?: string; tilt?: number }) {
+export function Sticker({ label, color, tilt = -2 }: { label: string; color?: string; tilt?: number }) {
   return (
     <span
       className="sticker"
       style={{
         display: "inline-flex",
         alignItems: "center",
-        padding: "2px 7px",
+        padding: "var(--space-sticker-pad)",
         background: color ?? "var(--paper-3)",
-        border: "2px solid var(--rule)",
-        borderRadius: 3,
-        boxShadow: "1.5px 1.5px 0 var(--rule)",
-        fontFamily: "Archivo Black, sans-serif",
-        fontSize: 10,
-        letterSpacing: "0.05em",
-        color: "var(--on-accent)",
+        border: "var(--line-sm)",
+        borderRadius: "var(--radius-none)",
+        boxShadow: "var(--shadow-hover)",
+        fontFamily: "var(--font-display)",
+        fontSize: "var(--text-11)",
+        letterSpacing: "var(--tracking-lg)",
+        color: "var(--ink)",
+        textTransform: "uppercase",
+        transform: `rotate(${tilt}deg)`,
       }}
     >
       {label}
@@ -93,20 +113,8 @@ export function Sticker({ label, color }: { label: string; color?: string; tilt?
 export function MentionChip({ agent }: { agent: Agent }) {
   return (
     <span
-      className="mention-chip"
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        padding: "1px 6px",
-        background: agent.color,
-        color: inkFor(agent.color),
-        border: "1.5px solid var(--rule)",
-        borderRadius: 3,
-        fontFamily: "JetBrains Mono, monospace",
-        fontSize: 12,
-        fontWeight: 600,
-        boxShadow: "1px 1px 0 var(--rule)",
-      }}
+      className={`mention-chip${agent.handle === "you" ? " mention-chip-self" : ""}`}
+      style={{ "--mention-color": agent.color, "--mention-ink": inkFor(agent.color) } as CSSProperties}
     >
       @{agent.handle}
     </span>

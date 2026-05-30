@@ -21,3 +21,10 @@ docs/ui-reference/claude-design-screenshots/
 
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
+
+# Local scratch / vendored exploration trees
+work/
+
+# Python bytecode from the integration-aoe harness
+__pycache__/
+*.pyc

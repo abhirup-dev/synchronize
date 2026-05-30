@@ -4,6 +4,8 @@ import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, extname, join } from "node:path";
 import {
+  ACTIVITY_STATES,
+  type ActivityState,
   DEFAULT_BIND_HOST,
   DEFAULT_LEASE_MS,
   DEFAULT_PAGE_LIMIT,
@@ -13,21 +15,31 @@ import {
   ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
+  PEER_RETENTION_MS,
+  SWEEP_INTERVAL_MS,
   API_VERSION,
 } from "./constants.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
+import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
+import { AoeBackend } from "./launch/backend.ts";
+import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
+import { isLaunchTool } from "./launch/build.ts";
 import { runEventQuery } from "./query/events.ts";
 
-interface DaemonContext {
+export interface DaemonContext {
   paths: RuntimePaths;
   db: Database;
   startedAt: string;
   token: string | null;
+  provenance: DaemonProvenance;
   server: Bun.Server<unknown>;
   subscribers: Map<string, EventSubscriber>;
+  webStateClients: Set<WebStateClient>;
+  stateVersion: number;
+  launchService: LaunchService;
 }
 
 interface DiscoveryFile {
@@ -39,6 +51,7 @@ interface DiscoveryFile {
   dbPath: string;
   mediaPath: string;
   startedAt: string;
+  provenance: DaemonProvenance;
 }
 
 interface PeerRow {
@@ -48,6 +61,8 @@ interface PeerRow {
   purpose: string | null;
   machine_id: string;
   lease_expires_at: string;
+  activity_state: string | null;
+  last_activity_at: string | null;
   last_cursor: number;
   created_at: string;
   updated_at: string;
@@ -77,6 +92,7 @@ interface AgentSessionJoinedRow extends AgentSessionRow {
   peer_purpose: string | null;
   peer_lease_expires_at: string;
   peer_online: number;
+  peer_activity_state: string | null;
 }
 
 interface EventRow {
@@ -104,6 +120,25 @@ interface EventSubscriber {
   created_at: string;
 }
 
+interface WebStateClient {
+  id: string;
+  send(change: WebStateChange): void;
+}
+
+interface WebStateChange {
+  cursor: number;
+  type: "connected" | "state_changed";
+  domains: string[];
+  event_id?: number;
+  group_id?: number | null;
+  peer_id?: string | null;
+}
+
+const WEB_PEER_LEASE_EXPIRES_AT = "9999-12-31T23:59:59.999Z";
+const LOCAL_WEB_PEER_ID = "web:local-human";
+const LOCAL_WEB_SESSION_NAME = "web-ui";
+const LOCAL_WEB_PURPOSE = "local human web participant";
+
 interface InboxRow extends EventRow {
   delivered_at: string | null;
   read_at: string | null;
@@ -117,6 +152,15 @@ interface GroupRow {
   media_dir: string;
   creator_peer_id: string | null;
   description: string | null;
+  created_at: string;
+}
+
+interface GroupPathRow {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: number;
   created_at: string;
 }
 
@@ -145,6 +189,7 @@ interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  activity_state: string | null;
   host_session_id: string | null;
 }
 
@@ -154,6 +199,7 @@ interface SummaryPeerRow {
   tool: string;
   purpose: string | null;
   online: number;
+  activity_state: string | null;
   pending_inbox: number;
   groups: number;
   updated_at: string;
@@ -261,7 +307,45 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ],
       pid: process.pid,
       started_at: ctx.startedAt,
+      provenance: ctx.provenance,
     });
+  }
+
+  if (request.method === "GET" && url.pathname === "/web/state") {
+    requireAuth(request, ctx);
+    const state = buildWebState(ctx, url);
+    // The ETag must change whenever anything the client renders changes. The
+    // event cursor alone is insufficient: presence is time-derived (a lapsed
+    // lease flips a peer offline, and an activity push flips working/idle) with
+    // no new event, so the cursor stays put while the rendered roster changes.
+    // Without folding presence in, the browser revalidates, gets a 304, and
+    // serves a stale body — peers stay frozen at their page-load presence.
+    const presenceOf = (row: { presence?: string; online: boolean }): string =>
+      row.presence ?? (row.online ? "online" : "offline");
+    const presenceSig = [
+      ...state.peers.map((p) => `${p.peer_id}:${presenceOf(p)}`),
+      ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
+    ]
+      .sort()
+      .join("|");
+    const etag = `W/"${state.cursor}.${Bun.hash(presenceSig).toString(36)}"`;
+    if (request.headers.get("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { etag } });
+    }
+    return jsonResponse(state, { headers: { etag, "cache-control": "no-cache" } });
+  }
+
+  if (request.method === "POST" && url.pathname === "/web/session") {
+    requireAuth(request, ctx);
+    const peer = ensureLocalWebPeer(ctx);
+    log(`local web session resolved peer_id=${peer.peer_id}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId: peer.peer_id });
+    return jsonResponse({ peer });
+  }
+
+  if (request.method === "GET" && url.pathname === "/web/events") {
+    requireAuth(request, ctx);
+    return openWebEvents(ctx);
   }
 
   if (request.method === "GET" && (url.pathname === "/web" || url.pathname === "/web/" || url.pathname.startsWith("/web/"))) {
@@ -288,6 +372,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       home: ctx.paths.home,
       db_path: ctx.paths.dbPath,
       media_path: ctx.paths.mediaPath,
+      provenance: ctx.provenance,
       counts: {
         peers: peerCount,
         groups: groupCount,
@@ -340,6 +425,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            p.tool,
            p.purpose,
            p.lease_expires_at > ? AS online,
+           p.activity_state,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
            p.updated_at,
@@ -386,6 +472,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         home: ctx.paths.home,
         db_path: ctx.paths.dbPath,
         media_path: ctx.paths.mediaPath,
+        provenance: ctx.provenance,
       },
       totals: {
         peers: {
@@ -408,7 +495,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         },
         media: mediaTotals,
       },
-      peers: peers.map((peer) => ({ ...peer, online: Boolean(peer.online) })),
+      peers: peers.map((peer) => ({
+        ...peer,
+        online: Boolean(peer.online),
+        presence: derivePresence(Boolean(peer.online), peer.activity_state),
+      })),
       groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
       generated_at: now,
     });
@@ -424,7 +515,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const leaseExpiresAt = leaseExpiresAtForTool(tool);
     const metadata = optionalObjectJson(body, "metadata");
     const bindingId = `${hostTool}:${hostSessionId}`;
 
@@ -474,7 +565,47 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
 
     log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
+    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
+    // Server-side launch reconcile: if this register carries a launch_id with a
+    // pending group, auto-join the peer to that group (best-effort).
+    reconcileLaunch(ctx, optionalString(body, "launch_id") ?? null, peerId);
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/launch") {
+    const body = await readBody(request);
+    let launchRequest;
+    try {
+      launchRequest = validateLaunchRequest(body);
+    } catch (error) {
+      if (error instanceof LaunchValidationError) throw new HttpError(400, "invalid_launch", error.message);
+      throw error;
+    }
+    const result = await ctx.launchService.launch(launchRequest);
+    log(`agent launch title=${result.title} launch_id=${result.launchId} peer_id=${result.peerId} group=${result.group ?? "<none>"}`);
+    return jsonResponse(result, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
+    const body = await readBody(request);
+    // Prefer the explicit title (always known from the launch response, works
+    // even before the agent has registered). Otherwise derive the deterministic
+    // backend title from the launch binding and current peer/group metadata.
+    const explicitTitle = optionalString(body, "title");
+    const peerId = optionalString(body, "peer_id");
+    let title: string;
+    if (explicitTitle) {
+      title = explicitTitle;
+    } else if (peerId) {
+      title = deriveBackendTitleForPeer(ctx.db, peerId);
+    } else {
+      throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
+    }
+    await ctx.launchService.stop(title);
+    // Drop any pending launch intent for this title (stopped before it registered).
+    ctx.launchService.forgetByTitle(title);
+    log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
+    return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
   }
 
   if (request.method === "GET" && url.pathname === "/agent-sessions") {
@@ -502,6 +633,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       .query("UPDATE peers SET session_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE peer_id = ?")
       .run(sessionName, peerId);
     log(`agent session renamed peer_id=${peerId} session_name=${sessionName}`);
+    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
   }
 
@@ -512,7 +644,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = optionalString(body, "peer_id") ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const leaseExpiresAt = leaseExpiresAtForTool(tool);
 
     upsertPeer(ctx.db, {
       peerId,
@@ -524,14 +656,15 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     });
 
     log(`peer registered peer_id=${peerId} session_name=${sessionName} tool=${tool} lease_expires_at=${leaseExpiresAt}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
     return jsonResponse({ peer: getPeer(ctx.db, peerId) }, { status: 201 });
   }
 
   const peerHeartbeat = url.pathname.match(/^\/peers\/([^/]+)\/heartbeat$/);
   if (request.method === "PATCH" && peerHeartbeat) {
     const peerId = decodeURIComponent(peerHeartbeat[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const peer = getPeer(ctx.db, peerId);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
     ctx.db
       .query(
         `UPDATE peers
@@ -540,6 +673,43 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       )
       .run(leaseExpiresAt, peerId);
     log(`peer heartbeat peer_id=${peerId} lease_expires_at=${leaseExpiresAt}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
+    return jsonResponse({ peer: getPeer(ctx.db, peerId) });
+  }
+
+  // Activity push — the in-online sub-state signal. Accepts either an explicit
+  // peer_id (Pi, in-process) or a host-session pair (stateless Claude hook) and
+  // resolves the peer server-side. Sets activity_state + last_activity_at AND
+  // refreshes the lease: activity is proof-of-life, so a busy agent never
+  // false-offlines even if a heartbeat is dropped. Idempotent; last-write-wins.
+  if (request.method === "POST" && url.pathname === "/peers/activity") {
+    const body = await readBody(request);
+    const state = requireString(body, "state");
+    if (!(ACTIVITY_STATES as readonly string[]).includes(state)) {
+      throw new HttpError(400, "invalid_activity_state", `Unknown activity state: ${state}`);
+    }
+    let peerId = optionalString(body, "peer_id");
+    if (!peerId) {
+      const hostTool = requireString(body, "host_tool");
+      const hostSessionId = requireString(body, "host_session_id");
+      peerId = findPeerByHostSession(ctx.db, hostTool, hostSessionId);
+      if (!peerId) {
+        throw new HttpError(404, "peer_not_found", `No peer for ${hostTool} session ${hostSessionId}`);
+      }
+    }
+    const peer = getPeer(ctx.db, peerId);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
+    ctx.db
+      .query(
+        `UPDATE peers
+         SET activity_state = ?, lease_expires_at = ?,
+             last_activity_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE peer_id = ?`,
+      )
+      .run(state, leaseExpiresAt, peerId);
+    log(`peer activity peer_id=${peerId} state=${state}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
     return jsonResponse({ peer: getPeer(ctx.db, peerId) });
   }
 
@@ -557,7 +727,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            ORDER BY gm.alias ASC`,
         )
         .all(now, group.group_id);
-      return jsonResponse({ peers: rows.map((row) => ({ ...row, active: Boolean(row.active), online: Boolean(row.online) })) });
+      return jsonResponse({
+        peers: rows.map((row) => ({
+          ...row,
+          active: Boolean(row.active),
+          online: Boolean(row.online),
+          presence: derivePresence(Boolean(row.online), row.activity_state),
+        })),
+      });
     }
     const rows = ctx.db
       .query<PeerRow & { online: number }, [string]>(
@@ -567,7 +744,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          ORDER BY updated_at DESC, session_name ASC`,
       )
       .all(now);
-    return jsonResponse({ peers: rows.map((row) => ({ ...row, online: Boolean(row.online) })) });
+    return jsonResponse({
+      peers: rows.map((row) => ({
+        ...row,
+        online: Boolean(row.online),
+        presence: derivePresence(Boolean(row.online), row.activity_state),
+      })),
+    });
   }
 
   const peerDelete = url.pathname.match(/^\/peers\/([^/]+)$/);
@@ -592,6 +775,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
     ctx.subscribers.delete(peerId);
     log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups"], peerId });
     return jsonResponse({ ok: true, peer_id: peerId });
   }
 
@@ -646,6 +830,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     })();
     const event = getEvent(ctx.db, eventId);
     log(`dm stored event_id=${eventId} sender=${senderPeerId} recipient=${recipientPeerId} body_chars=${message.length}`);
+    emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, peerId: recipientPeerId });
     void notifySubscribers(ctx, [recipientPeerId], event);
 
     return jsonResponse({ event }, { status: 201 });
@@ -687,16 +872,51 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', ?, ?, ?)")
         .run(creatorPeerId ?? null, id, JSON.stringify({ name, durable: Boolean(durable) }));
       return id;
     })();
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
     return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
   }
 
+  const groupPaths = url.pathname.match(/^\/groups\/([^/]+)\/paths$/);
+  if (groupPaths && request.method === "GET") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) });
+  }
+
+  if (groupPaths && request.method === "POST") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    const body = await readBody(request);
+    const path = requireLaunchPath(requireString(body, "path"));
+    const label = optionalString(body, "label") ?? null;
+    insertGroupPath(ctx.db, group.group_id, path, label);
+    emitWebStateChanged(ctx, { domains: ["groups"], groupId: group.group_id });
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) }, { status: 201 });
+  }
+
   if (request.method === "GET" && url.pathname === "/groups") {
+    const member = url.searchParams.get("member");
+    if (member) {
+      // Scoped listing: groups this peer is an ACTIVE member of, with the
+      // peer's own alias + join time. Powers bridge_list_groups({ mine: true }).
+      const rows = ctx.db
+        .query<GroupRow & { alias: string; joined_at: string }, [string]>(
+          `SELECT g.*, gm.alias AS alias, gm.joined_at AS joined_at
+           FROM groups g
+           JOIN group_members gm ON gm.group_id = g.group_id
+           WHERE gm.peer_id = ? AND gm.active = 1
+           ORDER BY g.name ASC`,
+        )
+        .all(member);
+      return jsonResponse({
+        groups: rows.map((row) => ({ ...formatGroup(row), alias: row.alias, joined_at: row.joined_at })),
+      });
+    }
     const rows = ctx.db.query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC").all();
     return jsonResponse({ groups: rows.map(formatGroup) });
   }
@@ -704,7 +924,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   const groupMatch = url.pathname.match(/^\/groups\/([^/]+)$/);
   if (request.method === "GET" && groupMatch) {
     const group = getGroup(ctx.db, decodeURIComponent(groupMatch[1] ?? ""));
-    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id) });
+    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id), paths: getGroupPaths(ctx.db, group.group_id) });
   }
 
   const groupJoin = url.pathname.match(/^\/groups\/([^/]+)\/join$/);
@@ -734,72 +954,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       });
     }
 
-    let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
-    const joinEventId = ctx.db.transaction(() => {
-      // Detect alias reclaim: the most-recently-departed prior holder of this
-      // alias belongs to a different peer_id. Respawn (same peer_id) is not a
-      // reclaim. v0 storage policy frees the alias on leave; the event leaves
-      // an audit trail so observers can distinguish respawn from a new peer.
-      const previousHolder = ctx.db
-        .query<{ peer_id: string }, [number, string]>(
-          `SELECT peer_id FROM group_members
-           WHERE group_id = ? AND alias = ? AND active = 0
-           ORDER BY COALESCE(left_at, joined_at) DESC
-           LIMIT 1`,
-        )
-        .get(group.group_id, alias);
-      if (previousHolder && previousHolder.peer_id !== peerId) {
-        ctx.db
-          .query(
-            `INSERT INTO events (type, sender_peer_id, group_id, body)
-             VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
-          )
-          .run(
-            peerId,
-            group.group_id,
-            JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }),
-          );
-        const reclaimEventId = Number(
-          ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id,
-        );
-        fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peerId);
-        reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
-      }
-      ctx.db
-        .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
-        .run(peerId, group.group_id, JSON.stringify({ alias, fresh }));
-      const eventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      fanoutRosterEventToInbox(ctx.db, group.group_id, eventId, peerId);
-      const firstEventId =
-        ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
-          ?.event_id ?? eventId;
-      const historyFrom = fresh ? eventId : firstEventId;
-      try {
-        ctx.db
-          .query(
-            `INSERT INTO group_members
-               (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
-             VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
-             ON CONFLICT(group_id, peer_id) DO UPDATE SET
-               alias = excluded.alias,
-               join_event_id = excluded.join_event_id,
-               history_from_event_id = excluded.history_from_event_id,
-               active = 1,
-               purpose = excluded.purpose,
-               joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-               left_at = NULL`,
-          )
-          .run(group.group_id, peerId, alias, eventId, historyFrom, peer.purpose);
-      } catch (error) {
-        throw mapSqliteConstraint(
-          error,
-          "alias_collision",
-          `Alias '${alias}' is already active in group '${group.name}'. Provide a unique alias to join this group.`,
-        );
-      }
-      return eventId;
-    })();
+    const { eventId: joinEventId, reclaimed } = joinGroupCore(ctx, group, peer, alias, fresh);
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId: joinEventId, groupId: group.group_id, peerId });
     return jsonResponse({
       member: getGroupMember(ctx.db, group.group_id, peerId),
       event: getEvent(ctx.db, joinEventId),
@@ -847,6 +1004,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
 
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId: renameEventId, groupId: group.group_id, peerId });
     return jsonResponse({
       member: getGroupMember(ctx.db, group.group_id, peerId),
       event: getEvent(ctx.db, renameEventId),
@@ -873,6 +1031,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ctx.db
       .query("UPDATE groups SET description = ? WHERE group_id = ?")
       .run(description, group.group_id);
+    emitWebStateChanged(ctx, { domains: ["groups"], groupId: group.group_id });
     return jsonResponse({ group: formatGroup(getGroup(ctx.db, group.name)) });
   }
 
@@ -905,6 +1064,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       fanoutRosterEventToInbox(ctx.db, group.group_id, id, peerId);
       return id;
     })();
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId, groupId: group.group_id, peerId });
     return jsonResponse({ ok: true, event: getEvent(ctx.db, eventId) });
   }
 
@@ -968,6 +1128,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     log(
       `group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} thread=${parentEventId ?? "main"} unresolved=${warnings.length}`,
     );
+    emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, groupId: group.group_id, peerId: senderPeerId });
     void notifySubscribers(ctx, pushTargets, event);
 
     // Always return `warnings` (and `delivery`) so consumers can destructure
@@ -1186,6 +1347,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     await writeMediaReadme(group, ctx.db);
     const event = getEvent(ctx.db, eventId);
     log(`media shared event_id=${eventId} group=${group.name} media_id=${mediaId} sender=${sharedByPeerId} recipients=${recipients.length}`);
+    emitWebStateChanged(ctx, { domains: ["events", "media", "inbox"], eventId, groupId: group.group_id, peerId: sharedByPeerId });
     void notifySubscribers(ctx, recipients, event);
     return jsonResponse({ media, event }, { status: 201 });
   }
@@ -1246,6 +1408,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            WHERE recipient_peer_id = ? AND event_id IN (${rows.map(() => "?").join(",")})`,
         )
         .run(now, peerId, ...rows.map((row) => row.event_id));
+      emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? after });
   }
@@ -1275,6 +1438,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(now, peerId).changes;
     }
+    if (changed > 0) emitWebStateChanged(ctx, { domains: ["inbox"], peerId });
     return jsonResponse({ ok: true, acked: changed });
   }
 
@@ -1304,6 +1468,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .run(now, peerId, ...rows.map((row) => row.event_id));
       ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
+      emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
     return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
   }
@@ -1403,6 +1568,14 @@ function requireGroupName(name: string): string {
   return name;
 }
 
+function requireLaunchPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/")) {
+    throw new HttpError(400, "invalid_group_path", "Group path must be an absolute path");
+  }
+  return trimmed.replace(/\/+$/, "") || "/";
+}
+
 function parseLimit(raw: string | null): number {
   if (!raw) return DEFAULT_PAGE_LIMIT;
   const value = Number.parseInt(raw, 10);
@@ -1460,6 +1633,11 @@ function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): 
 }
 
 const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
+
+function normalizeMentionToken(token: string): string {
+  return token.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
+}
 
 // Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
 // Alice flagged this during the sustained-thread test: discussing proposed
@@ -1486,7 +1664,10 @@ function resolveMentions(
   const tokens = new Set<string>();
   const scannable = stripBacktickedRegions(message);
   for (const match of scannable.matchAll(MENTION_TOKEN_RE)) {
-    if (match[1]) tokens.add(match[1]);
+    if (match[1]) {
+      const token = normalizeMentionToken(match[1]);
+      if (token) tokens.add(token);
+    }
   }
   if (tokens.size === 0) return { peerIds: [], warnings: [] };
   const lookup = db.query<{ peer_id: string }, [number, string]>(
@@ -1541,7 +1722,89 @@ function ensurePeer(db: Database, peerId: string): void {
   getPeer(db, peerId);
 }
 
-function upsertPeer(
+function ensureLocalWebPeer(ctx: DaemonContext): PeerRow {
+  upsertPeer(ctx.db, {
+    peerId: LOCAL_WEB_PEER_ID,
+    tool: "web",
+    sessionName: LOCAL_WEB_SESSION_NAME,
+    purpose: LOCAL_WEB_PURPOSE,
+    machineId: hostname(),
+    leaseExpiresAt: WEB_PEER_LEASE_EXPIRES_AT,
+  });
+  return getPeer(ctx.db, LOCAL_WEB_PEER_ID);
+}
+
+function deactivateWebAliasHolders(db: Database, groupId: number, alias: string, peerId: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 0,
+         left_at = COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     WHERE group_id = ?
+       AND alias = ?
+       AND active = 1
+       AND peer_id != ?
+       AND peer_id IN (SELECT peer_id FROM peers WHERE tool = 'web')`,
+  ).run(groupId, alias, peerId);
+}
+
+function leaseExpiresAtForTool(tool: string): string {
+  return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+}
+
+// Presence derivation — the single rule applied wherever a peer is serialized.
+// Offline if the lease has lapsed (the only reliable crash detector); else the
+// reported activity_state for instrumented agents; else a generic "online" for
+// uninstrumented peers (web/cli/codex). See plan-agent-ttl-presence-v0.md.
+type Presence = "offline" | "online" | ActivityState;
+function derivePresence(online: boolean, activityState: string | null): Presence {
+  if (!online) return "offline";
+  if (activityState && (ACTIVITY_STATES as readonly string[]).includes(activityState)) {
+    return activityState as ActivityState;
+  }
+  return "online";
+}
+
+// Agents (pi/claude) start at "initializing" and stay there until their first
+// activity push. Uninstrumented tools (web/cli/codex) keep NULL → generic
+// online. Applied only on first INSERT; re-register/resurrect preserves any
+// existing state (see upsertPeer COALESCE).
+function initialActivityState(tool: string): ActivityState | null {
+  return tool === "pi" || tool === "claude" ? "initializing" : null;
+}
+
+// Retention sweeper — soft-deletes peers whose lease has been expired for
+// longer than PEER_RETENTION_MS. Offline (lease-lapsed) peers stay visible in
+// the roster for the retention window (useful for "who was here" + reclaim
+// audit); past it they are hidden via the same soft-delete path as the manual
+// operator evict (deleted_at + group_members deactivated), preserving the audit
+// trail. web peers (lease year-9999) never match the cutoff. Resume after a
+// sweep resurrects the same peer via findPeerByHostSession + upsertPeer's
+// `deleted_at = NULL` path.
+function sweepExpiredPeers(ctx: DaemonContext): void {
+  const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
+  const swept = ctx.db.transaction(() => {
+    const rows = ctx.db
+      .query<{ peer_id: string }, [string]>(
+        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
+      )
+      .all(cutoff);
+    const now = new Date().toISOString();
+    for (const { peer_id } of rows) {
+      ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
+      ctx.db
+        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .run(now, peer_id);
+      ctx.subscribers.delete(peer_id);
+    }
+    return rows.map((row) => row.peer_id);
+  })();
+  if (swept.length > 0) {
+    log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${PEER_RETENTION_MS}ms`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups"] });
+  }
+}
+
+export function upsertPeer(
   db: Database,
   input: {
     peerId: string;
@@ -1558,18 +1821,65 @@ function upsertPeer(
   // peer rejoins their old groups rather than having to re-issue join calls
   // (which would fail with alias-taken if anyone reclaimed in the interim —
   // resurrection is symmetric with the deletion that preceded it).
+  // Capture any prior soft-delete timestamp BEFORE the upsert clears it, so we
+  // can tell whether this register is a resurrection (and which group_members
+  // rows that death deactivated — see reactivateMembershipsOnResurrect).
+  const priorDeletedAt =
+    db
+      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
+      .get(input.peerId)?.deleted_at ?? null;
+
+  // activity_state is set only on first INSERT (initializing for agents, NULL
+  // for uninstrumented tools). On re-register/resurrect we COALESCE so an
+  // existing working/idle state is preserved — a heartbeat-driven re-register
+  // or a resume must not reset a live agent back to initializing.
   db.query(
-    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at, activity_state)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(peer_id) DO UPDATE SET
        tool = excluded.tool,
        session_name = excluded.session_name,
        purpose = excluded.purpose,
        machine_id = excluded.machine_id,
        lease_expires_at = excluded.lease_expires_at,
+       activity_state = COALESCE(activity_state, excluded.activity_state),
        deleted_at = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-  ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
+  ).run(
+    input.peerId,
+    input.tool,
+    input.sessionName,
+    input.purpose,
+    input.machineId,
+    input.leaseExpiresAt,
+    initialActivityState(input.tool),
+  );
+
+  if (priorDeletedAt) reactivateMembershipsOnResurrect(db, input.peerId, priorDeletedAt);
+}
+
+// Restore the group memberships that a soft-delete (operator evict or retention
+// sweep) deactivated, when the peer re-registers. Both delete paths set
+// group_members.left_at to the SAME timestamp as peers.deleted_at, so rows with
+// left_at == the cleared deleted_at are exactly the ones killed by that death —
+// this distinguishes a death-deactivation from an earlier voluntary leave
+// (which carries an older left_at and must stay inactive). An alias reclaimed by
+// someone else during the gap is skipped so the unique-active-alias invariant
+// holds. Without this, a revived peer is online but silent in all its groups
+// (sync-3nu). The structural alternative (derive active from lease) is sync-<A>.
+function reactivateMembershipsOnResurrect(db: Database, peerId: string, deathTimestamp: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 1, left_at = NULL
+     WHERE peer_id = ? AND active = 0 AND left_at = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members other
+         WHERE other.group_id = group_members.group_id
+           AND other.alias = group_members.alias
+           AND other.active = 1
+           AND other.peer_id != group_members.peer_id
+       )`,
+  ).run(peerId, deathTimestamp);
 }
 
 function findPeerByHostSession(db: Database, hostTool: string, hostSessionId: string): string | undefined {
@@ -1660,12 +1970,15 @@ function agentSessionSelectSql(): string {
       p.session_name AS peer_session_name,
       p.purpose AS peer_purpose,
       p.lease_expires_at AS peer_lease_expires_at,
+      p.activity_state AS peer_activity_state,
       p.lease_expires_at > ? AS peer_online
     FROM agent_sessions s
     JOIN peers p ON p.peer_id = s.peer_id`;
 }
 
-function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { peer: PeerRow & { online: boolean } } {
+function formatAgentSession(
+  row: AgentSessionJoinedRow,
+): AgentSessionRow & { peer: PeerRow & { online: boolean; presence: Presence } } {
   return {
     binding_id: row.binding_id,
     peer_id: row.peer_id,
@@ -1689,10 +2002,13 @@ function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { pee
       purpose: row.peer_purpose,
       machine_id: "",
       lease_expires_at: row.peer_lease_expires_at,
+      activity_state: row.peer_activity_state,
+      last_activity_at: null,
       last_cursor: 0,
       created_at: "",
       updated_at: "",
       online: Boolean(row.peer_online),
+      presence: derivePresence(Boolean(row.peer_online), row.peer_activity_state),
     },
   };
 }
@@ -1833,6 +2149,255 @@ function renderThreadTranscript(db: Database, events: EventRow[]): string {
     .join("\n");
 }
 
+function emitWebStateChanged(
+  ctx: DaemonContext,
+  input: { domains: string[]; eventId?: number; groupId?: number | null; peerId?: string | null },
+): void {
+  ctx.stateVersion += 1;
+  const change: WebStateChange = {
+    cursor: input.eventId ?? ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? ctx.stateVersion,
+    type: "state_changed",
+    domains: input.domains,
+    ...(input.eventId !== undefined ? { event_id: input.eventId } : {}),
+    ...(input.groupId !== undefined ? { group_id: input.groupId } : {}),
+    ...(input.peerId !== undefined ? { peer_id: input.peerId } : {}),
+  };
+  for (const client of [...ctx.webStateClients]) client.send(change);
+}
+
+function openWebEvents(ctx: DaemonContext): Response {
+  const encoder = new TextEncoder();
+  const id = crypto.randomUUID();
+  let cleanup: (() => void) | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      const client: WebStateClient = {
+        id,
+        send(change) {
+          try {
+            write(formatSse(change));
+          } catch {
+            ctx.webStateClients.delete(client);
+          }
+        },
+      };
+      const heartbeat = setInterval(() => {
+        try {
+          write(`: heartbeat ${new Date().toISOString()}\n\n`);
+        } catch {
+          ctx.webStateClients.delete(client);
+          clearInterval(heartbeat);
+        }
+      }, 15_000);
+      cleanup = () => {
+        clearInterval(heartbeat);
+        ctx.webStateClients.delete(client);
+      };
+      ctx.webStateClients.add(client);
+      client.send({ cursor: ctx.stateVersion, type: "connected", domains: [] });
+    },
+    cancel() {
+      cleanup?.();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  });
+}
+
+function formatSse(change: WebStateChange): string {
+  return [
+    `id: ${change.cursor}`,
+    `event: ${change.type}`,
+    `data: ${JSON.stringify(change)}`,
+    "",
+    "",
+  ].join("\n");
+}
+
+interface WebStateResponse {
+  ok: true;
+  generated_at: string;
+  cursor: number;
+  daemon: {
+    pid: number;
+    base_url: string;
+    started_at: string;
+    token_required: boolean;
+  };
+  peers: Array<PeerRow & { online: boolean }>;
+  groups: FormattedGroup[];
+  group_paths: FormattedGroupPath[];
+  memberships: Array<FormattedMember & { online: boolean }>;
+  room_summaries: WebRoomSummary[];
+  events: WebEventRow[];
+  media: MediaRow[];
+}
+
+interface WebRoomSummary {
+  group_id: number;
+  last_event_id: number | null;
+  last_event_at: string | null;
+  last_preview: string | null;
+  message_count: number;
+}
+
+type WebEventRow = EventRow & {
+  reply_count: number;
+  last_reply_event_id: number | null;
+  delivered_count: number;
+  read_count: number;
+  acked_count: number;
+};
+
+function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
+  const now = new Date().toISOString();
+  const limit = parseLimit(url.searchParams.get("limit"));
+  const since = parseCursor(url.searchParams.get("since"));
+  const room = url.searchParams.get("room");
+  const webPeerId = url.searchParams.get("peer_id");
+  const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
+  const peers = ctx.db
+    .query<PeerRow & { online: number }, [string]>(
+      `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+              activity_state, last_activity_at,
+              last_cursor, created_at, updated_at, lease_expires_at > ? AS online
+       FROM peers
+       WHERE deleted_at IS NULL
+       ORDER BY updated_at DESC, session_name ASC`,
+    )
+    .all(now)
+    .map((peer) => ({
+      ...peer,
+      online: Boolean(peer.online),
+      presence: derivePresence(Boolean(peer.online), peer.activity_state),
+    }));
+  const groups = ctx.db
+    .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
+    .all()
+    .map(formatGroup);
+  const groupPaths = ctx.db
+    .query<GroupPathRow, []>("SELECT * FROM group_paths WHERE active = 1 ORDER BY group_id ASC, path ASC")
+    .all()
+    .map(formatGroupPath);
+  const memberships = ctx.db
+    .query<MemberRow & { online: number }, [string]>(
+      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
+       FROM group_members gm
+       JOIN peers p ON p.peer_id = gm.peer_id
+       ORDER BY gm.group_id ASC, gm.alias ASC`,
+    )
+    .all(now)
+    .map((member) => ({
+      ...member,
+      active: Boolean(member.active),
+      online: Boolean(member.online),
+      presence: derivePresence(Boolean(member.online), member.activity_state),
+    }));
+  const roomSummaries = ctx.db
+    .query<WebRoomSummary, []>(
+      `SELECT
+         g.group_id,
+         MAX(e.event_id) AS last_event_id,
+         MAX(e.created_at) AS last_event_at,
+         (SELECT body FROM events latest
+          WHERE latest.group_id = g.group_id AND latest.parent_event_id IS NULL
+          ORDER BY latest.event_id DESC LIMIT 1) AS last_preview,
+         COUNT(CASE WHEN e.type = 'group_message' AND e.parent_event_id IS NULL THEN 1 END) AS message_count
+       FROM groups g
+       LEFT JOIN events e ON e.group_id = g.group_id
+       GROUP BY g.group_id
+       ORDER BY last_event_id DESC, g.name ASC`,
+    )
+    .all();
+  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId });
+  const media = readWebRoomMedia(ctx, { room, limit });
+  return {
+    ok: true,
+    generated_at: now,
+    cursor,
+    daemon: {
+      pid: process.pid,
+      base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
+      started_at: ctx.startedAt,
+      token_required: Boolean(ctx.token),
+    },
+    peers,
+    groups,
+    group_paths: groupPaths,
+    memberships,
+    room_summaries: roomSummaries,
+    events,
+    media,
+  };
+}
+
+function webEventSelectSql(where: string): string {
+  return `SELECT e.*,
+                 (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
+                 (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.delivered_at IS NOT NULL) AS delivered_count,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.read_at IS NOT NULL) AS read_count,
+                 (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.acked_at IS NOT NULL) AS acked_count
+          FROM events e
+          ${where}
+          ORDER BY e.event_id DESC
+          LIMIT ?`;
+}
+
+function readWebRoomEvents(
+  ctx: DaemonContext,
+  input: { room: string | null; since: number; limit: number; webPeerId: string | null },
+): WebEventRow[] {
+  if (!input.room) return [];
+  if (input.room.startsWith("group:")) {
+    const groupId = Number.parseInt(input.room.slice("group:".length), 10);
+    if (!Number.isInteger(groupId) || groupId < 1) {
+      throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+    }
+    return ctx.db
+      .query<WebEventRow, [number, number, number]>(
+        webEventSelectSql("WHERE e.group_id = ? AND e.event_id > ?"),
+      )
+      .all(groupId, input.since, input.limit)
+      .reverse();
+  }
+  if (input.room.startsWith("dm:")) {
+    if (!input.webPeerId) throw new HttpError(400, "invalid_request", "peer_id is required for dm room state");
+    const otherPeerId = input.room.slice("dm:".length);
+    ensurePeer(ctx.db, input.webPeerId);
+    ensurePeer(ctx.db, otherPeerId);
+    return ctx.db
+      .query<WebEventRow, [string, string, string, string, number, number]>(
+        webEventSelectSql(
+          `WHERE e.type = 'dm'
+             AND ((e.sender_peer_id = ? AND e.recipient_peer_id = ?)
+               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))
+             AND e.event_id > ?`,
+        ),
+      )
+      .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, input.since, input.limit)
+      .reverse();
+  }
+  throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+}
+
+function readWebRoomMedia(ctx: DaemonContext, input: { room: string | null; limit: number }): MediaRow[] {
+  if (!input.room?.startsWith("group:")) return [];
+  const groupId = Number.parseInt(input.room.slice("group:".length), 10);
+  if (!Number.isInteger(groupId) || groupId < 1) return [];
+  return ctx.db
+    .query<MediaRow, [number, number]>(
+      "SELECT * FROM media_items WHERE group_id = ? ORDER BY created_at DESC LIMIT ?",
+    )
+    .all(groupId, input.limit);
+}
+
 async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: EventRow): Promise<void> {
   await Promise.all(
     peerIds.map(async (peerId) => {
@@ -1886,14 +2451,189 @@ function getGroupById(db: Database, groupId: number): GroupRow {
   return group;
 }
 
+/**
+ * Core group-join transaction shared by the `/groups/:name/join` route and the
+ * server-side launch reconcile. Emits the join (and any alias-reclaim) events,
+ * fans them out to inboxes, and upserts the active membership. Throws
+ * `alias_collision` when the alias is already held by another active member.
+ * Callers own the idempotent short-circuit, web-state emit, and HTTP shaping.
+ */
+function joinGroupCore(
+  ctx: DaemonContext,
+  group: GroupRow,
+  peer: PeerRow,
+  alias: string,
+  fresh: boolean,
+): { eventId: number; reclaimed: { previous_peer_id: string; event_id: number } | null } {
+  let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
+  const eventId = ctx.db.transaction(() => {
+    if (peer.peer_id === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
+      deactivateWebAliasHolders(ctx.db, group.group_id, alias, peer.peer_id);
+    }
+    // Detect alias reclaim: the most-recently-departed prior holder of this
+    // alias belongs to a different peer_id. Respawn (same peer_id) is not a
+    // reclaim. v0 storage policy frees the alias on leave; the event leaves
+    // an audit trail so observers can distinguish respawn from a new peer.
+    const previousHolder = ctx.db
+      .query<{ peer_id: string }, [number, string]>(
+        `SELECT peer_id FROM group_members
+         WHERE group_id = ? AND alias = ? AND active = 0
+         ORDER BY COALESCE(left_at, joined_at) DESC
+         LIMIT 1`,
+      )
+      .get(group.group_id, alias);
+    if (previousHolder && previousHolder.peer_id !== peer.peer_id) {
+      ctx.db
+        .query(
+          `INSERT INTO events (type, sender_peer_id, group_id, body)
+           VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
+        )
+        .run(peer.peer_id, group.group_id, JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }));
+      const reclaimEventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peer.peer_id);
+      reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
+    }
+    ctx.db
+      .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
+      .run(peer.peer_id, group.group_id, JSON.stringify({ alias, fresh }));
+    const newEventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    fanoutRosterEventToInbox(ctx.db, group.group_id, newEventId, peer.peer_id);
+    const firstEventId =
+      ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
+        ?.event_id ?? newEventId;
+    const historyFrom = fresh ? newEventId : firstEventId;
+    try {
+      ctx.db
+        .query(
+          `INSERT INTO group_members
+             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
+           ON CONFLICT(group_id, peer_id) DO UPDATE SET
+             alias = excluded.alias,
+             join_event_id = excluded.join_event_id,
+             history_from_event_id = excluded.history_from_event_id,
+             active = 1,
+             purpose = excluded.purpose,
+             joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             left_at = NULL`,
+        )
+        .run(group.group_id, peer.peer_id, alias, newEventId, historyFrom, peer.purpose);
+    } catch (error) {
+      throw mapSqliteConstraint(
+        error,
+        "alias_collision",
+        `Alias '${alias}' is already active in group '${group.name}'. Provide a unique alias to join this group.`,
+      );
+    }
+    return newEventId;
+  })();
+  return { eventId, reclaimed };
+}
+
+/** Resolve a launch's target synchronize group, creating it durably if absent. */
+function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
+  const groupName = requireGroupName(name);
+  const existing = ctx.db.query<GroupRow, [string]>("SELECT * FROM groups WHERE LOWER(name) = LOWER(?)").get(groupName);
+  if (existing) return existing;
+  const mediaDir = `${ctx.paths.mediaPath}/${groupName.toLowerCase()}`;
+  const groupId = ctx.db.transaction(() => {
+    ctx.db
+      .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, 1, ?, NULL, NULL)")
+      .run(groupName, mediaDir);
+    const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
+    ctx.db
+      .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', NULL, ?, ?)")
+      .run(id, JSON.stringify({ name: groupName, durable: true }));
+    return id;
+  })();
+  emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
+  return getGroupById(ctx.db, groupId);
+}
+
+/**
+ * Server-side launch reconcile: when a launched agent self-registers carrying
+ * its launch_id, consume the in-memory launch intent and, if it named a group,
+ * auto-join the peer (alias = launch name, fresh history). Best-effort: an
+ * alias collision or any join failure is logged as join_failed and never blocks
+ * registration — the session is alive, just unjoined (operator-recoverable).
+ */
+export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, peerId: string): void {
+  if (!launchId) return;
+  const pending = ctx.launchService.consume(launchId, peerId);
+  if (!pending || !pending.group) return;
+  try {
+    const group = ensureLaunchGroup(ctx, pending.group);
+    insertGroupPath(ctx.db, group.group_id, pending.cwd);
+    const peer = getPeer(ctx.db, peerId);
+    const existing = ctx.db
+      .query<{ alias: string; active: number }, [number, string]>(
+        "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (existing && existing.active === 1 && existing.alias === pending.alias) {
+      return; // already an active member under this alias — nothing to do
+    }
+    const { eventId } = joinGroupCore(ctx, group, peer, pending.alias, true);
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId, groupId: group.group_id, peerId });
+    log(`launch auto-join peer_id=${peerId} group=${group.name} alias=${pending.alias} launch_id=${launchId}`);
+  } catch (error) {
+    log(
+      `launch auto-join join_failed peer_id=${peerId} group=${pending.group} alias=${pending.alias} launch_id=${launchId}: ${formatError(error)}`,
+    );
+  }
+}
+
 type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
+type FormattedGroupPath = Omit<GroupPathRow, "active"> & { active: boolean };
 type FormattedMember = Omit<MemberRow, "active"> & { active: boolean };
 
 function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
 }
 
-const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool,
+function formatGroupPath(path: GroupPathRow): FormattedGroupPath {
+  return { ...path, active: Boolean(path.active) };
+}
+
+function insertGroupPath(db: Database, groupId: number, path: string, label: string | null = null): void {
+  const launchPath = requireLaunchPath(path);
+  db
+    .query(
+      `INSERT INTO group_paths (group_id, path, label)
+       VALUES (?, ?, ?)
+       ON CONFLICT(group_id, path) DO UPDATE SET
+         active = 1,
+         label = COALESCE(excluded.label, label)`,
+    )
+    .run(groupId, launchPath, label);
+}
+
+function getGroupPaths(db: Database, groupId: number): FormattedGroupPath[] {
+  return db
+    .query<GroupPathRow, [number]>(
+      "SELECT * FROM group_paths WHERE group_id = ? AND active = 1 ORDER BY path ASC",
+    )
+    .all(groupId)
+    .map(formatGroupPath);
+}
+
+function ensureDefaultGroupPaths(ctx: DaemonContext): void {
+  const defaultPath = defaultGroupPath(ctx);
+  const groups = ctx.db.query<GroupRow, []>("SELECT * FROM groups").all();
+  for (const group of groups) {
+    const existing = ctx.db
+      .query<{ count: number }, [number]>("SELECT COUNT(*) AS count FROM group_paths WHERE group_id = ? AND active = 1")
+      .get(group.group_id)?.count ?? 0;
+    if (existing === 0) insertGroupPath(ctx.db, group.group_id, defaultPath);
+  }
+}
+
+function defaultGroupPath(ctx: DaemonContext): string {
+  return requireLaunchPath(ctx.provenance?.source_root ?? process.cwd());
+}
+
+const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.activity_state,
   (SELECT s.host_session_id FROM agent_sessions s
    WHERE s.peer_id = gm.peer_id
    ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
@@ -1909,6 +2649,42 @@ function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
     )
     .all(groupId)
     .map((member) => ({ ...member, active: Boolean(member.active) }));
+}
+
+function deriveBackendTitleForPeer(db: Database, peerId: string): string {
+  const peer = getPeer(db, peerId);
+  if (!isLaunchTool(peer.tool)) {
+    throw new HttpError(400, "invalid_stop", `Cannot derive backend title for non-launch tool: ${peer.tool}`);
+  }
+  const launch = db
+    .query<{ launch_id: string | null }, [string]>(
+      `SELECT launch_id
+       FROM agent_sessions
+       WHERE peer_id = ? AND launch_id IS NOT NULL
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId);
+  if (!launch?.launch_id) {
+    throw new HttpError(400, "invalid_stop", "peer_id stop requires an agent session with launch_id; pass title instead");
+  }
+  const group = db
+    .query<{ name: string | null }, [string]>(
+      `SELECT g.name
+       FROM group_members gm
+       JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.active = 1
+       ORDER BY gm.joined_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId)?.name ?? undefined;
+  return aoeTitle({
+    launchId: launch.launch_id,
+    peerId,
+    ...(group ? { group } : {}),
+    sessionName: peer.session_name,
+    tool: peer.tool,
+  });
 }
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
@@ -2001,6 +2777,7 @@ async function main(): Promise<void> {
     }
   });
   const startedAt = new Date().toISOString();
+  const provenance = collectDaemonProvenance();
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);
   assertLanModeIsProtected(host, token);
@@ -2014,7 +2791,18 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, server, subscribers: new Map() };
+  const launchService = new LaunchService({
+    backend: new AoeBackend({ profile: aoeProfileName(paths.home) }),
+    home: paths.home,
+  });
+  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
+  ensureDefaultGroupPaths(ctx);
+
+  // Retention sweeper: run once at startup (cleans up peers that died while the
+  // daemon was down) then on an interval. unref so it never blocks shutdown.
+  sweepExpiredPeers(ctx);
+  const sweepTimer = setInterval(() => sweepExpiredPeers(ctx), SWEEP_INTERVAL_MS);
+  sweepTimer.unref?.();
 
   const discovery: DiscoveryFile = {
     pid: process.pid,
@@ -2025,10 +2813,22 @@ async function main(): Promise<void> {
     dbPath: paths.dbPath,
     mediaPath: paths.mediaPath,
     startedAt,
+    provenance,
   };
   await writeJson(paths.discoveryPath, discovery);
+  await appendDaemonStartupLog(paths, discovery);
 
   console.error(`synchronize daemon listening on ${discovery.baseUrl}`);
+}
+
+async function appendDaemonStartupLog(paths: RuntimePaths, discovery: DiscoveryFile): Promise<void> {
+  const record = {
+    event: "daemon_start",
+    written_at: new Date().toISOString(),
+    ...discovery,
+    home: paths.home,
+  };
+  await appendFile(paths.logPath, `${JSON.stringify(record)}\n`, "utf8");
 }
 
 // ─── Web UI static serving ────────────────────────────────────────────────
@@ -2072,10 +2872,18 @@ async function serveWebAsset(pathname: string): Promise<Response> {
   }
   const ext = extname(rel).toLowerCase();
   const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream";
-  return new Response(file, { headers: { "content-type": contentType, "cache-control": "no-cache" } });
+  const immutable = /\.[A-Za-z0-9_-]{8,}\.(js|css|map|png|svg|woff2?)$/.test(rel);
+  return new Response(file, {
+    headers: {
+      "content-type": contentType,
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    },
+  });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exit(1);
+  });
+}

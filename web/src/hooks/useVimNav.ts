@@ -107,6 +107,7 @@ export function useVimNav({ onActivate, onPanelChange, onClosePanel, threadOpen,
       return;
     }
     if (mode !== "navigate") return;
+    if (focusedItem(activePanel)) return;
     ensureFocus(activePanel);
   }, [activePanel, threadOpen, rosterVisible, mode, ensureFocus, order]);
 

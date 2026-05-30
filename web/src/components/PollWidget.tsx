@@ -1,10 +1,11 @@
 import type { Poll } from "../data/types.ts";
-import { useAgents } from "../data/context.tsx";
+import type { Agent } from "../data/types.ts";
 import { inkFor } from "./primitives.tsx";
 
 interface PollWidgetProps {
   poll: Poll;
   me: string;
+  agents: Agent[];
   onVote?(optionId: string): void;
 }
 
@@ -17,8 +18,7 @@ function closesLabel(closesAt: string | undefined): string {
   return `closes in ${min}m ${sec.toString().padStart(2, "0")}s`;
 }
 
-export function PollWidget({ poll, me, onVote }: PollWidgetProps) {
-  const agents = useAgents();
+export function PollWidget({ poll, me, agents, onVote }: PollWidgetProps) {
   const totalEligible = poll.eligible.length;
   const totalVotes = poll.options.reduce((acc, o) => acc + o.voters.length, 0);
   const myVote = poll.options.find((o) => o.voters.includes(me))?.id;
