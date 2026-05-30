@@ -68,6 +68,9 @@ test("POST /agent-sessions/launch rejects invalid bodies with 400 invalid_launch
 
     const badArgs = await postLaunch(daemon.baseUrl, { tool: "pi", name: "a", repo: "/r", args: [1, 2] });
     expect(badArgs.status).toBe(400);
+
+    const badModel = await postLaunch(daemon.baseUrl, { tool: "pi", name: "a", repo: "/r", model: "gpt-4o" });
+    expect(badModel.status).toBe(400);
   } finally {
     await daemon.stop();
   }

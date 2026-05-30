@@ -100,6 +100,7 @@ interface DaemonMedia {
 interface WebStateResponse {
   ok: true;
   cursor: number;
+  launch_tools?: Partial<Record<"claude" | "pi", { tool: "claude" | "pi"; available: boolean; path?: string }>>;
   peers: DaemonPeer[];
   groups: DaemonGroup[];
   group_paths: DaemonGroupPath[];
@@ -376,6 +377,8 @@ export class DaemonDataSource implements DataSource {
         name,
         repo: input.path,
         group,
+        model: input.model,
+        ...(input.thinking ? { thinking: input.thinking } : {}),
       }),
     });
     await this.refresh();
@@ -507,6 +510,7 @@ export class DaemonDataSource implements DataSource {
           path: path.path,
           ...(path.label ? { label: path.label } : {}),
         })),
+        ...(state.launch_tools ? { launchTools: state.launch_tools } : {}),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,

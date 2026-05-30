@@ -21,7 +21,11 @@ export interface LaunchRequest {
   repo: string;
   /** Optional synchronize group to auto-join on register; also the AOE group. */
   group?: string;
-  /** Tool-specific passthrough args (--provider / --thinking …). Model args are pinned for v0 test launches. */
+  /** Full model identifier for the selected launch tool. */
+  model?: string;
+  /** Reasoning effort: Claude receives `--effort`, Pi receives `--thinking`. */
+  thinking?: string;
+  /** Tool-specific passthrough args. Provider/model/thinking args are owned by the launch request. */
   args?: string[];
 }
 
@@ -88,11 +92,16 @@ export function validateLaunchRequest(input: unknown): LaunchRequest {
     }
     args = body.args as string[];
   }
+  const model = optionalLaunchString(body.model);
+  const thinking = optionalLaunchString(body.thinking);
+  validateLaunchModel(tool, model, thinking);
   return {
     tool,
     name: normalizedName,
     repo: repo.trim(),
     ...(group ? { group } : {}),
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
     ...(args ? { args } : {}),
   };
 }
@@ -186,16 +195,73 @@ function base32(bytes: Buffer): string {
   return output;
 }
 
-/** Temporary v0 simulation policy for daemon/AOE-launched model sessions.
- * `haiku` resolves to the latest Haiku (claude --model accepts the alias), and
- * Pi uses OpenAI Codex auth with GPT 5.4 mini. Caller-provided provider/model
- * args are ignored here to keep live simulations inexpensive until the launch
- * surface is ready for adaptive model selection.
+/** Hard-coded launch models for the first web spawn-form model picker.
+ * These names come from the installed CLIs: Claude Code 2.1.158 accepts full
+ * Claude model names, and Pi 0.75.3 lists OpenAI Codex models via
+ * `pi --provider openai-codex --list-models`.
+ *
+ * Foreground `synchronize launch` remains a direct passthrough.
+ */
+export const CLAUDE_LAUNCH_MODELS = {
+  sonnet: "claude-sonnet-4-6-20251114",
+  haiku: "claude-haiku-4-5-20251001",
+  opus: "claude-opus-4-8",
+} as const;
+
+export const PI_LAUNCH_MODELS = {
+  gpt55: "gpt-5.5",
+  gpt54Mini: "gpt-5.4-mini",
+} as const;
+
+export const PI_LAUNCH_THINKING_LEVELS = ["low", "medium", "high"] as const;
+export const CLAUDE_LAUNCH_THINKING_LEVELS = ["medium", "high"] as const;
+export const CLAUDE_LAUNCH_THINKING_BY_MODEL: Record<string, (typeof CLAUDE_LAUNCH_THINKING_LEVELS)[number]> = {
+  [CLAUDE_LAUNCH_MODELS.sonnet]: "medium",
+  [CLAUDE_LAUNCH_MODELS.haiku]: "high",
+  [CLAUDE_LAUNCH_MODELS.opus]: "medium",
+};
+
+/**
+ * Daemon/AOE launches own provider/model/thinking flags so the UI and MCP
+ * paths cannot accidentally pass conflicting model args.
  * Foreground `synchronize launch` remains a direct passthrough. */
-const DEFAULT_CLAUDE_LAUNCH_MODEL = "haiku";
+const DEFAULT_CLAUDE_LAUNCH_MODEL = CLAUDE_LAUNCH_MODELS.haiku;
+const DEFAULT_CLAUDE_LAUNCH_THINKING = "high";
 const DEFAULT_PI_LAUNCH_PROVIDER = "openai-codex";
-const DEFAULT_PI_LAUNCH_MODEL = "gpt-5.4-mini";
+const DEFAULT_PI_LAUNCH_MODEL = PI_LAUNCH_MODELS.gpt54Mini;
+const DEFAULT_PI_LAUNCH_THINKING = "high";
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
+const CLAUDE_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(CLAUDE_LAUNCH_MODELS));
+const PI_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(PI_LAUNCH_MODELS));
+const CLAUDE_LAUNCH_THINKING_VALUES = new Set<string>(CLAUDE_LAUNCH_THINKING_LEVELS);
+const PI_LAUNCH_THINKING_VALUES = new Set<string>(PI_LAUNCH_THINKING_LEVELS);
+
+function optionalLaunchString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new LaunchValidationError("launch model and thinking must be non-empty strings when provided");
+  }
+  return value.trim();
+}
+
+function validateLaunchModel(tool: LaunchTool, model: string | undefined, thinking: string | undefined): void {
+  if (tool === "claude") {
+    if (model && !CLAUDE_LAUNCH_MODEL_VALUES.has(model)) {
+      throw new LaunchValidationError(`unsupported claude model: ${model}`);
+    }
+    if (thinking && !CLAUDE_LAUNCH_THINKING_VALUES.has(thinking)) {
+      throw new LaunchValidationError(`unsupported claude thinking level: ${thinking}`);
+    }
+    return;
+  }
+  if (model && !PI_LAUNCH_MODEL_VALUES.has(model)) {
+    throw new LaunchValidationError(`unsupported pi model: ${model}`);
+  }
+  if (thinking && !PI_LAUNCH_THINKING_VALUES.has(thinking)) {
+    throw new LaunchValidationError(`unsupported pi thinking level: ${thinking}`);
+  }
+}
 
 function stripOption(args: string[], option: string): string[] {
   const filtered: string[] = [];
@@ -213,20 +279,28 @@ function stripOption(args: string[], option: string): string[] {
   return filtered;
 }
 
-function forceLaunchModel(args: string[], model: string): string[] {
-  const filtered = stripOption(args, "--model");
-  return ["--model", model, ...filtered];
+function forceClaudeLaunchDefaults(args: string[], model: string, thinking: string): string[] {
+  const filtered = stripOption(stripOption(args, "--model"), "--effort");
+  return ["--model", model, "--effort", thinking, ...filtered];
 }
 
-function forcePiLaunchDefaults(args: string[]): string[] {
-  const filtered = stripOption(stripOption(args, "--model"), "--provider");
-  return ["--provider", DEFAULT_PI_LAUNCH_PROVIDER, "--model", DEFAULT_PI_LAUNCH_MODEL, ...filtered];
+function forcePiLaunchDefaults(args: string[], model: string, thinking: string): string[] {
+  const filtered = stripOption(stripOption(stripOption(args, "--model"), "--provider"), "--thinking");
+  return ["--provider", DEFAULT_PI_LAUNCH_PROVIDER, "--model", model, "--thinking", thinking, ...filtered];
 }
 
 function withLaunchDefaults(req: LaunchRequest): string[] {
   const args = req.args ?? [];
-  if (req.tool === "claude") return forceLaunchModel(args, DEFAULT_CLAUDE_LAUNCH_MODEL);
-  if (req.tool === "pi") return forcePiLaunchDefaults(args);
+  if (req.tool === "claude") {
+    const model = req.model ?? DEFAULT_CLAUDE_LAUNCH_MODEL;
+    const thinking = req.thinking ?? CLAUDE_LAUNCH_THINKING_BY_MODEL[model] ?? DEFAULT_CLAUDE_LAUNCH_THINKING;
+    return forceClaudeLaunchDefaults(args, model, thinking);
+  }
+  if (req.tool === "pi") return forcePiLaunchDefaults(
+    args,
+    req.model ?? DEFAULT_PI_LAUNCH_MODEL,
+    req.thinking ?? DEFAULT_PI_LAUNCH_THINKING,
+  );
   return args;
 }
 
@@ -385,7 +459,7 @@ export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: 
     `${JSON.stringify({
       defaultProvider: DEFAULT_PI_LAUNCH_PROVIDER,
       defaultModel: DEFAULT_PI_LAUNCH_MODEL,
-      defaultThinkingLevel: "low",
+      defaultThinkingLevel: DEFAULT_PI_LAUNCH_THINKING,
       packages: ["npm:pi-mcp-adapter"],
     }, null, 2)}\n`,
   );

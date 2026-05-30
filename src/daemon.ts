@@ -335,6 +335,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const presenceOf = (row: { presence?: string; online: boolean }): string =>
       row.presence ?? (row.online ? "online" : "offline");
     const renderSig = [
+      ...Object.values(state.launch_tools).map((tool) => `${tool.tool}:${tool.available}:${tool.path ?? ""}`),
       ...state.peers.map(
         (p) =>
           `${p.peer_id}:${presenceOf(p)}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
@@ -2276,6 +2277,7 @@ interface WebStateResponse {
     started_at: string;
     token_required: boolean;
   };
+  launch_tools: Record<"claude" | "pi", WebLaunchToolStatus>;
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
@@ -2289,6 +2291,12 @@ interface WebAoeSession {
   profile: string;
   title: string;
   attach_command: string;
+}
+
+interface WebLaunchToolStatus {
+  tool: "claude" | "pi";
+  available: boolean;
+  path?: string;
 }
 
 interface WebRoomSummary {
@@ -2384,6 +2392,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       started_at: ctx.startedAt,
       token_required: Boolean(ctx.token),
     },
+    launch_tools: launchToolStatus(),
     peers,
     groups,
     group_paths: groupPaths,
@@ -2391,6 +2400,22 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     room_summaries: roomSummaries,
     events,
     media,
+  };
+}
+
+function launchToolStatus(): Record<"claude" | "pi", WebLaunchToolStatus> {
+  return {
+    claude: launchToolStatusFor("claude"),
+    pi: launchToolStatusFor("pi"),
+  };
+}
+
+function launchToolStatusFor(tool: "claude" | "pi"): WebLaunchToolStatus {
+  const path = Bun.which(tool) ?? undefined;
+  return {
+    tool,
+    available: Boolean(path),
+    ...(path ? { path } : {}),
   };
 }
 

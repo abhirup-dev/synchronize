@@ -1,14 +1,17 @@
 import { expect, test } from "bun:test";
 import { AoeBackend, buildCmdOverride, parseAoeList, type CommandResult } from "../src/launch/backend.ts";
 
-function recorder(results: Record<string, CommandResult> = {}) {
+function recorder(results: Record<string, CommandResult | CommandResult[]> = {}) {
   const calls: string[][] = [];
   const ok: CommandResult = { exitCode: 0, stdout: "", stderr: "" };
   const run = async (cmd: string[]): Promise<CommandResult> => {
     calls.push(cmd);
     const key = cmd.join(" ");
     for (const [match, res] of Object.entries(results)) {
-      if (key.includes(match)) return res;
+      if (key.includes(match)) {
+        if (Array.isArray(res)) return res.shift() ?? ok;
+        return res;
+      }
     }
     return ok;
   };
@@ -93,12 +96,36 @@ test("when session start fails, spawn rolls back the added session and throws", 
 test("autoConfirmDevChannelPrompt sends Enter to the pane when the dev-channel prompt appears", async () => {
   const { calls, run } = recorder({
     "list-sessions": { exitCode: 0, stdout: "other\naoe_worker-12345678_abcd1234\n", stderr: "" },
-    "capture-pane": { exitCode: 0, stdout: "...\n  1. I am using this for local development\n  Enter to confirm\n", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%42\n", stderr: "" },
+    "capture-pane": [
+      { exitCode: 0, stdout: "...\n  1. I am using this for local development\n  Enter to confirm\n", stderr: "" },
+      { exitCode: 0, stdout: "Claude is ready", stderr: "" },
+    ],
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
   await backend.autoConfirmDevChannelPrompt("worker-12345678");
-  const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
-  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_worker-12345678_abcd1234", "Enter"]);
+  const capture = calls.find((c) => c.includes("capture-pane"));
+  expect(capture).toEqual(["tmux", "capture-pane", "-p", "-J", "-S", "-200", "-t", "%42"]);
+  const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toEqual([["tmux", "send-keys", "-t", "%42", "Enter"]]);
+  const sentCarriageReturn = calls.filter((c) => c.includes("send-keys") && c.includes("C-m"));
+  expect(sentCarriageReturn).toHaveLength(0);
+});
+
+test("autoConfirmDevChannelPrompt falls back to C-m and retries when the prompt remains visible", async () => {
+  const { calls, run } = recorder({
+    "list-sessions": { exitCode: 0, stdout: "aoe_worker-12345678_abcd1234\n", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%42\n", stderr: "" },
+    "capture-pane": { exitCode: 0, stdout: "I am using this for local development\nEnter to confirm", stderr: "" },
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toHaveLength(3);
+  expect(sentEnter.every((c) => c.join(" ") === "tmux send-keys -t %42 Enter")).toBe(true);
+  const sentCarriageReturn = calls.filter((c) => c.includes("send-keys") && c.includes("C-m"));
+  expect(sentCarriageReturn).toHaveLength(3);
+  expect(sentCarriageReturn.every((c) => c.join(" ") === "tmux send-keys -t %42 C-m")).toBe(true);
 });
 
 test("autoConfirmDevChannelPrompt resolves AOE-truncated tmux names through session id", async () => {
@@ -109,12 +136,16 @@ test("autoConfirmDevChannelPrompt resolves AOE-truncated tmux names through sess
       stderr: "",
     },
     "list-sessions": { exitCode: 0, stdout: "aoe_abcd1234-verylong_zzz\naoe_abcd1234-verylong_60cd23d0\n", stderr: "" },
-    "capture-pane": { exitCode: 0, stdout: "Enter to confirm", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%43\n", stderr: "" },
+    "capture-pane": [
+      { exitCode: 0, stdout: "Enter to confirm", stderr: "" },
+      { exitCode: 0, stdout: "ready", stderr: "" },
+    ],
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
   await backend.autoConfirmDevChannelPrompt("abcd1234-verylong");
   const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
-  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_abcd1234-verylong_60cd23d0", "Enter"]);
+  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "%43", "Enter"]);
 });
 
 test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears", async () => {

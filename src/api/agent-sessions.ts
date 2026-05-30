@@ -8,6 +8,8 @@ export interface LaunchAgentInput {
   name: string;
   repo: string;
   group?: string;
+  model?: string;
+  thinking?: string;
   args?: string[];
 }
 
@@ -90,6 +92,8 @@ export function launchAgent(client: ClientConfig, input: LaunchAgentInput): Prom
       name: input.name,
       repo: input.repo,
       ...(input.group ? { group: input.group } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.thinking ? { thinking: input.thinking } : {}),
       ...(input.args ? { args: input.args } : {}),
     }),
   });

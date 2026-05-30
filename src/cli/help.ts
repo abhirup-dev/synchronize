@@ -26,7 +26,7 @@ Usage:
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
   synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]
-  synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [-- TOOL_ARGS...]
+  synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize --help
 
 Commands:

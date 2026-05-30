@@ -40,8 +40,24 @@ test("validateLaunchRequest accepts a minimal valid body", () => {
 });
 
 test("validateLaunchRequest keeps group + args and trims", () => {
-  const req = validateLaunchRequest({ tool: "pi", name: " Bob ", repo: " /x ", group: " alpha ", args: ["--model", "m"] });
-  expect(req).toEqual({ tool: "pi", name: "bob", repo: "/x", group: "alpha", args: ["--model", "m"] });
+  const req = validateLaunchRequest({
+    tool: "pi",
+    name: " Bob ",
+    repo: " /x ",
+    group: " alpha ",
+    model: "gpt-5.5",
+    thinking: "medium",
+    args: ["--foo"],
+  });
+  expect(req).toEqual({
+    tool: "pi",
+    name: "bob",
+    repo: "/x",
+    group: "alpha",
+    model: "gpt-5.5",
+    thinking: "medium",
+    args: ["--foo"],
+  });
 });
 
 test("validateLaunchRequest rejects bad tool/name/repo/args", () => {
@@ -50,6 +66,9 @@ test("validateLaunchRequest rejects bad tool/name/repo/args", () => {
   expect(() => validateLaunchRequest({ tool: "claude", name: "this-name-is-too-long", repo: "/r" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "a" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", args: [1] })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", model: "haiku" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", model: "gpt-4o" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", thinking: "xhigh" })).toThrow(LaunchValidationError);
 });
 
 test("aoeProfileName is deterministic per home and varies across homes", () => {
@@ -89,15 +108,16 @@ test("aoeAttachCommand returns a pasteable AOE attach command", () => {
 
 test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
   const spec = resolveLaunchSpec(
-    { tool: "claude", name: "alice", repo: "/repo", group: "alpha", args: ["--model", "opus"] },
+    { tool: "claude", name: "alice", repo: "/repo", group: "alpha", model: "claude-opus-4-8", thinking: "medium", args: ["--model", "claude-haiku-4-5-20251001"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.title).toMatch(/^[a-z2-7]{8}-alice$/);
   expect(spec.title.length).toBeLessThanOrEqual(20);
   expect(spec.tool).toBe("claude");
   expect(spec.command[0]).toBe("claude");
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
-  expect(spec.command).not.toContain("opus");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-opus-4-8");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("medium");
+  expect(spec.command).not.toContain("claude-haiku-4-5-20251001");
   expect(spec.cwd).toBe("/repo");
   expect(spec.group).toBe("alpha");
   expect(spec.env[ENV_PEER_ID]).toBe("peer-abcdef12");
@@ -105,37 +125,41 @@ test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
   expect(spec.env[ENV_HOME]).toBe("/home");
 });
 
-test("resolveLaunchSpec defaults claude to --model haiku when no model given", async () => {
+test("resolveLaunchSpec defaults claude to Haiku high when no model given", async () => {
   const spec = resolveLaunchSpec(
     { tool: "claude", name: "alice", repo: "/r" },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   const i = spec.command.indexOf("--model");
   expect(i).toBeGreaterThan(-1);
-  expect(spec.command[i + 1]).toBe("haiku");
+  expect(spec.command[i + 1]).toBe("claude-haiku-4-5-20251001");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("high");
 });
 
-test("resolveLaunchSpec forces caller-provided claude --model to Haiku in daemon launches", async () => {
+test("resolveLaunchSpec strips caller-provided claude --model before applying selected model", async () => {
   const spec = resolveLaunchSpec(
-    { tool: "claude", name: "alice", repo: "/r", args: ["--model", "opus"] },
+    { tool: "claude", name: "alice", repo: "/r", model: "claude-sonnet-4-6-20251114", args: ["--model", "claude-opus-4-8"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
-  expect(spec.command).not.toContain("opus");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-sonnet-4-6-20251114");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("medium");
+  expect(spec.command).not.toContain("claude-opus-4-8");
 });
 
-test("resolveLaunchSpec strips caller-provided claude --model=value before forcing Haiku", async () => {
+test("resolveLaunchSpec strips caller-provided claude --model=value and --effort before applying selected defaults", async () => {
   const spec = resolveLaunchSpec(
-    { tool: "claude", name: "alice", repo: "/r", args: ["--model=opus"] },
+    { tool: "claude", name: "alice", repo: "/r", args: ["--model=claude-opus-4-8", "--effort=medium"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
-  expect(spec.command).not.toContain("--model=opus");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-haiku-4-5-20251001");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("high");
+  expect(spec.command).not.toContain("--model=claude-opus-4-8");
+  expect(spec.command).not.toContain("--effort=medium");
 });
 
-test("resolveLaunchSpec defaults pi to OpenAI Codex GPT 5.4 mini in daemon launches", async () => {
+test("resolveLaunchSpec defaults pi to OpenAI Codex GPT 5.4 mini high in daemon launches", async () => {
   const spec = resolveLaunchSpec(
     { tool: "pi", name: "bob", repo: "/r" },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
@@ -144,31 +168,35 @@ test("resolveLaunchSpec defaults pi to OpenAI Codex GPT 5.4 mini in daemon launc
   expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+  expect(spec.command[spec.command.indexOf("--thinking") + 1]).toBe("high");
 });
 
-test("resolveLaunchSpec strips caller-provided pi --model before forcing OpenAI Codex GPT 5.4 mini", async () => {
+test("resolveLaunchSpec applies selected pi model and thinking", async () => {
   const spec = resolveLaunchSpec(
-    { tool: "pi", name: "bob", repo: "/r", args: ["--model", "expensive-model"] },
+    { tool: "pi", name: "bob", repo: "/r", model: "gpt-5.5", thinking: "medium", args: ["--model", "expensive-model"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--provider")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.5");
+  expect(spec.command[spec.command.indexOf("--thinking") + 1]).toBe("medium");
   expect(spec.command).not.toContain("expensive-model");
 });
 
-test("resolveLaunchSpec strips caller-provided pi --provider before forcing OpenAI Codex", async () => {
+test("resolveLaunchSpec strips caller-provided pi --provider and --thinking before applying launch defaults", async () => {
   const spec = resolveLaunchSpec(
-    { tool: "pi", name: "bob", repo: "/r", args: ["--provider=azure-openai-responses", "--model=gpt-5.4"] },
+    { tool: "pi", name: "bob", repo: "/r", args: ["--provider=azure-openai-responses", "--model=gpt-5.4", "--thinking=low"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--provider")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+  expect(spec.command[spec.command.indexOf("--thinking") + 1]).toBe("high");
   expect(spec.command).not.toContain("--provider=azure-openai-responses");
   expect(spec.command).not.toContain("--model=gpt-5.4");
+  expect(spec.command).not.toContain("--thinking=low");
 });
 
 test("launch records pending, spawns, and returns identity + count", async () => {

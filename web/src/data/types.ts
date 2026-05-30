@@ -44,6 +44,7 @@ export interface Room {
   pinned?: boolean;
   // For DMs only
   peerId?: string;
+  launchTools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>;
 }
 
 export type MessageStatus = "queued" | "delivered" | "read";
@@ -162,11 +163,19 @@ export interface SendMessageInput {
 
 export type AgentLaunchTool = "claude" | "pi";
 
+export interface LaunchToolAvailability {
+  tool: AgentLaunchTool;
+  available: boolean;
+  path?: string;
+}
+
 export interface SpawnAgentInput {
   roomId: string;
   tool: AgentLaunchTool;
   name: string;
   path: string;
+  model: string;
+  thinking?: string;
 }
 
 export interface SpawnAgentResult {

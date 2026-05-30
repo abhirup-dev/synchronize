@@ -182,21 +182,49 @@ export class AoeBackend implements SessionBackend {
 
   /**
    * Poll the session's tmux pane for claude's dev-channel confirmation prompt
-   * and send a named Enter to accept it. Bounded and best-effort.
+   * and accept it. Bounded and best-effort.
    */
   async autoConfirmDevChannelPrompt(title: string): Promise<void> {
     const PROMPT = /I am using this for local development|Enter to confirm/i;
+    let confirmationsSent = 0;
     for (let attempt = 0; attempt < 24; attempt += 1) {
       await this.sleep(1500);
       const session = await this.tmuxSessionFor(title);
       if (!session) continue;
-      const pane = await this.run(["tmux", "capture-pane", "-p", "-t", session]);
-      if (pane.exitCode !== 0) continue;
-      if (PROMPT.test(pane.stdout)) {
-        await this.run(["tmux", "send-keys", "-t", session, "Enter"]);
-        return;
+      const paneTarget = await this.activePaneFor(session);
+      const target = paneTarget ?? session;
+      const promptVisible = await this.isPromptVisible(target, PROMPT);
+      if (!promptVisible) {
+        if (confirmationsSent > 0) return;
+        continue;
       }
+
+      await this.sendEnter(target);
+      await this.sleep(250);
+      if (!(await this.isPromptVisible(target, PROMPT))) return;
+      await this.sendCarriageReturn(target);
+      confirmationsSent += 1;
+      if (confirmationsSent >= 3) return;
     }
+  }
+
+  private async isPromptVisible(target: string, prompt: RegExp): Promise<boolean> {
+    const pane = await this.run(["tmux", "capture-pane", "-p", "-J", "-S", "-200", "-t", target]);
+    return pane.exitCode === 0 && prompt.test(pane.stdout);
+  }
+
+  private async activePaneFor(session: string): Promise<string | null> {
+    const res = await this.run(["tmux", "display-message", "-p", "-t", session, "#{pane_id}"]);
+    if (res.exitCode !== 0) return null;
+    return res.stdout.trim() || null;
+  }
+
+  private async sendEnter(target: string): Promise<void> {
+    await this.run(["tmux", "send-keys", "-t", target, "Enter"]);
+  }
+
+  private async sendCarriageReturn(target: string): Promise<void> {
+    await this.run(["tmux", "send-keys", "-t", target, "C-m"]);
   }
 
   /** Resolve the tmux session name AOE created for a title. */
