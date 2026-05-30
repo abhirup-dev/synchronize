@@ -148,7 +148,9 @@ test("concurrent CLI startup for one runtime home is serialized by the lock", as
   } finally {
     if (daemonPid) await killPid(daemonPid);
   }
-});
+  // Per-test deadline must exceed STARTUP_TIMEOUT_MS (5s) so a slow-but-healthy
+  // CLI auto-start is observed, not clipped by the test's own clock.
+}, 15_000);
 
 test("protected REST routes require bearer token when LAN bind is enabled", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-token-"));
@@ -202,7 +204,7 @@ test("CLI-launched daemon stays alive across separate CLI processes", async () =
   try {
     const first = Bun.spawnSync({
       cmd: [process.execPath, "run", "src/cli.ts", "status"],
-      env: { ...process.env, SYNCHRONIZE_HOME: home },
+      env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
     });
     expect(first.exitCode).toBe(0);
     const firstStatus = JSON.parse(first.stdout.toString()) as { pid: number; daemon_started_by_cli: boolean };
@@ -213,7 +215,7 @@ test("CLI-launched daemon stays alive across separate CLI processes", async () =
 
     const second = Bun.spawnSync({
       cmd: [process.execPath, "run", "src/cli.ts", "status"],
-      env: { ...process.env, SYNCHRONIZE_HOME: home },
+      env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
     });
     expect(second.exitCode).toBe(0);
     const secondStatus = JSON.parse(second.stdout.toString()) as { pid: number; daemon_started_by_cli: boolean };
@@ -222,7 +224,9 @@ test("CLI-launched daemon stays alive across separate CLI processes", async () =
   } finally {
     if (daemonPid) await killPid(daemonPid);
   }
-});
+  // Per-test deadline must exceed STARTUP_TIMEOUT_MS (5s) so a slow-but-healthy
+  // CLI auto-start is observed, not clipped by the test's own clock.
+}, 15_000);
 
 async function killPid(pid: number): Promise<void> {
   try {
