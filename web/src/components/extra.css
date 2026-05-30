@@ -1409,3 +1409,480 @@
   font-family: var(--font-ui);
   line-height: 1.45;
 }
+
+
+/* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
+/* Ported from the Claude Design prototype (board.jsx); colors/fonts/borders
+   mapped onto the app's existing design tokens. */
+
+.board-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+}
+.board-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: var(--line-2);
+  flex-wrap: wrap;
+}
+.board-title { display: flex; align-items: center; gap: 12px; }
+.board-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.board-filters {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--line-md);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  letter-spacing: var(--tracking-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.filter-chip.active { background: var(--ink); color: var(--paper); }
+.filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
+
+.board-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 18px 22px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+.board-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.board-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: var(--line);
+  border-radius: var(--radius-panel-top);
+  border-bottom-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-md);
+  color: var(--ink);
+}
+.col-count {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+}
+.board-col-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px;
+  background: var(--paper-2);
+  border: var(--line);
+  border-radius: var(--radius-panel-bottom);
+  overflow-y: auto;
+  min-height: 0;
+}
+.task-card {
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-lg);
+  padding: 10px 11px 9px;
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+.task-card:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+.task-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.task-tag {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  padding: 1px 6px;
+  border: var(--line-xs-ink);
+  border-radius: var(--radius-xs);
+  color: var(--ink);
+}
+.task-tag-out {
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+.task-title {
+  font-weight: 600;
+  font-size: var(--text-13);
+  line-height: 1.35;
+  margin-bottom: 9px;
+  text-wrap: pretty;
+}
+.task-progress {
+  position: relative;
+  height: 14px;
+  border: var(--line-sm);
+  border-radius: var(--radius-xs);
+  background: var(--paper-3);
+  margin-bottom: 9px;
+  overflow: hidden;
+}
+.task-progress-fill {
+  height: 100%;
+  background: var(--yellow);
+  border-right: var(--line-sm);
+}
+.task-progress-label {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 700;
+  text-shadow: 0 0 2px var(--paper);
+}
+.task-reviewers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 5px 8px;
+  background: var(--paper-2);
+  border: var(--line-dashed-xs);
+  border-radius: var(--radius-sm);
+}
+.reviewer-label {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  letter-spacing: var(--tracking-md);
+}
+.reviewer-stack { display: flex; }
+.reviewer-stack > * { margin-left: -6px; }
+.reviewer-stack > *:first-child { margin-left: 0; }
+/* Stacked participant pills use the same box corner + offset shadow as the
+   message-row thread badge (.thread-badge-av) — not the default rounder avatar
+   chip — so the small avatars stay consistent with the rest of the UI. */
+.reviewer-stack .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+.task-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 7px;
+  border-top: var(--line-dashed-xs);
+}
+.task-assignee {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.task-assignee-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 600;
+}
+.task-live-pill {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  color: var(--ink);
+  background: var(--pink);
+  border: var(--line-xs-ink);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  animation: ticker 1.4s ease-in-out infinite;
+}
+.task-check {
+  font-family: var(--font-display);
+  font-size: var(--text-16);
+  color: var(--lime);
+  -webkit-text-stroke: 1.5px var(--ink);
+}
+.add-card {
+  background: transparent;
+  color: var(--ink-soft);
+  border: var(--line-dashed-sm);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  margin-top: 4px;
+  cursor: pointer;
+}
+.add-card:hover { background: var(--paper); color: var(--ink); }
+
+
+/* ═══════════════════ Thread Summary panel (CHAT tab) ═══════════════════ */
+/* Slides in from the left of the chat column; dots are aligned to each thread's
+   parent message and scroll-synced with the (virtualized) chat list by
+   ThreadSummaryPanel.tsx. Ported from thread-summary.jsx. */
+
+/* Layout glue: the chat column (messages + composer) and the optional summary
+   panel sit side by side inside .chat-view. */
+.chat-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-view.has-thread-summary { flex-direction: row; }
+
+.thread-summary-panel {
+  width: 38%;
+  min-width: 300px;
+  max-width: 460px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--paper);
+  position: relative;
+  border-right: var(--line);
+  animation: thread-summary-slide-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes thread-summary-slide-in {
+  from { transform: translateX(-14px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.thread-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px 16px;
+  flex-shrink: 0;
+  background: var(--paper);
+}
+.thread-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.thread-summary-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+  border: var(--line-xs-ink);
+  padding: 2px 6px;
+  background: var(--paper);
+  letter-spacing: var(--tracking-sm);
+  text-transform: uppercase;
+}
+.thread-summary-close {
+  width: 26px;
+  height: 26px;
+  border: var(--line-2);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--text-14);
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 100ms, transform 100ms;
+}
+.thread-summary-close:hover {
+  background: var(--paper-2);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-sm);
+}
+.thread-summary-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.thread-summary-empty p {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-13);
+  max-width: 28ch;
+}
+.thread-summary-scroll {
+  /* Native scroll is intentionally OFF — the track mirrors the chat list's
+     scroll via a transform (ThreadSummaryPanel.tsx), because the panel's
+     viewport is taller than the chat list and can't stay in 1:1 scrollTop
+     sync. Wheel events here are forwarded to the chat list. */
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.thread-summary-track {
+  position: relative;
+  width: 100%;
+  will-change: transform;
+}
+/* dotted vertical axis on the right edge of the panel */
+.thread-summary-axis {
+  position: absolute;
+  right: 18px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--ink) 0 6px,
+    transparent 6px 12px
+  );
+  opacity: 0.55;
+}
+.ts-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* `top` set inline by the rAF loop = the Y center of the linked bubble */
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  outline: none;
+}
+.ts-row:focus-visible .ts-body {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+}
+.ts-body {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 14px 6px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  text-align: right;
+}
+.ts-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-10-5);
+  color: var(--ink-faint);
+  letter-spacing: var(--tracking-xs);
+}
+.ts-author {
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+  text-transform: uppercase;
+}
+.ts-meta-sep { color: var(--ink-faint); }
+.ts-time { color: var(--ink-soft); }
+.ts-replies { color: var(--ink-soft); }
+.ts-summary {
+  font-family: var(--font-ui);
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  text-wrap: pretty;
+  max-width: 32ch;
+}
+.ts-summary p { margin: 0; }
+.ts-summary p + p { margin-top: 6px; }
+.ts-summary strong { font-weight: 700; color: var(--ink); }
+.ts-summary code {
+  font-family: var(--font-mono);
+  font-size: var(--text-12-5);
+  background: var(--paper-2);
+  padding: 0 4px;
+  border: var(--line-hair-faint);
+}
+.ts-foot {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-10-5);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.ts-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+.ts-avatars > * { margin-left: -5px; }
+.ts-avatars > *:first-child { margin-left: 0; }
+/* Match the message-row thread badge: box corner + offset shadow, not the
+   default rounder avatar chip. */
+.ts-avatars .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+.ts-avatars-more {
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  margin-left: 4px;
+}
+.ts-last { color: var(--ink-faint); }
+.ts-connector {
+  flex-shrink: 0;
+  width: 12px;
+  height: 2px;
+  background: var(--ink);
+  align-self: center;
+  opacity: 0.65;
+}
+.ts-dot {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: var(--line-md);
+  margin-right: 11px; /* 18 (axis offset) - 7 (half dot) */
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 1;
+}
+
+/* Composer footer toggle that opens/closes the panel */
+.thread-scan-btn {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-2);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-10-5);
+  letter-spacing: var(--tracking-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.thread-scan-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+.thread-scan-btn.active { background: var(--lilac); }

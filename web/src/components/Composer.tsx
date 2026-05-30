@@ -10,9 +10,18 @@ interface ComposerProps {
   /** When true, the composer mounts in collapsed state. Used by ChatView to
    *  reclaim vertical real estate when a thread pane is open. */
   collapsedDefault?: boolean;
+  /** When provided, render the Thread Summary toggle in the footer. */
+  threadSummaryOpen?: boolean;
+  onToggleThreadSummary?(): void;
 }
 
-export function Composer({ roomId, parentMessageId, collapsedDefault = false }: ComposerProps) {
+export function Composer({
+  roomId,
+  parentMessageId,
+  collapsedDefault = false,
+  threadSummaryOpen = false,
+  onToggleThreadSummary,
+}: ComposerProps) {
   const agents = useAgents();
   const me = useMe();
   const rooms = useRooms();
@@ -203,6 +212,17 @@ export function Composer({ roomId, parentMessageId, collapsedDefault = false }: 
         </div>
       )}
       <div className="composer-foot">
+        {onToggleThreadSummary ? (
+          <button
+            type="button"
+            className={`thread-scan-btn${threadSummaryOpen ? " active" : ""}`}
+            onClick={onToggleThreadSummary}
+            aria-pressed={threadSummaryOpen}
+            title={threadSummaryOpen ? "hide the thread summary panel" : "scan threads in this room"}
+          >
+            ☰ {threadSummaryOpen ? "HIDE THREADS" : "SCAN THREADS"}
+          </button>
+        ) : null}
         <span className="composer-hint">
           <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>@</kbd> tag
         </span>

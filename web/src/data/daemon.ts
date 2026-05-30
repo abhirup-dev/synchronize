@@ -7,6 +7,7 @@ import type {
   SendMessageInput,
   Snapshot,
   Task,
+  ThreadSummary,
   TimelineEvent,
   TimelineEventType,
 } from "./types.ts";
@@ -128,6 +129,7 @@ export class DaemonDataSource implements DataSource {
   private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
+  private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
   private groupNameByRoomId = new Map<string, string>();
@@ -197,6 +199,21 @@ export class DaemonDataSource implements DataSource {
     if (!snap) {
       snap = createSnapshot<Artifact[]>([]);
       this._artifacts.set(roomId, snap);
+    }
+    return snap;
+  }
+
+  threadSummary(parentMessageId: string): Snapshot<ThreadSummary> {
+    let snap = this._threadSummaries.get(parentMessageId);
+    if (!snap) {
+      // Integration seam for bd sync-b8q. The backend exposes summaries at
+      // `GET /threads/:root_event_id/summary` -> { summary, status }. To wire
+      // this up: map this web message id to the daemon's `root_event_id` (the
+      // message's originating event id), fetch the endpoint, and `snap.set(...)`
+      // with { text: summary, status }. The disabled stub below keeps the panel
+      // working (it falls back to a generated headline) until then.
+      snap = createSnapshot<ThreadSummary>({ text: null, status: "disabled" });
+      this._threadSummaries.set(parentMessageId, snap);
     }
     return snap;
   }

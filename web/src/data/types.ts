@@ -91,6 +91,7 @@ export interface TimelineEvent {
 }
 
 export type TaskStatus = "backlog" | "doing" | "review" | "shipped";
+export type TaskPriority = "high" | "med" | "low";
 
 export interface Task {
   id: string;
@@ -100,6 +101,8 @@ export interface Task {
   assigneeId?: string;
   reviewerIds: string[];
   progress?: number; // 0-100
+  priority?: TaskPriority; // drives the card's priority chip color
+  tag?: string; // free-form category label, e.g. "BACKEND" / "FRONTEND"
 }
 
 export type ArtifactKind = "img" | "code" | "doc" | "diff" | "tf" | "log" | "chart";
@@ -111,6 +114,21 @@ export interface Artifact {
   title: string;
   byAgentId: string;
   createdAt: string;
+}
+
+// LLM-generated thread summary. The daemon side (bd sync-b8q) computes this
+// once per cold thread and exposes it via `GET /threads/:root_event_id/summary`,
+// which returns `{ summary, status }`. Wiring the web UI to that endpoint is a
+// deliberate follow-up — for now the seam exists so a single adapter method is
+// all the integration needs. `status: "disabled"` is the graceful state when
+// the backend feature is off (no API key) or not yet wired; the UI then falls
+// back to a generated headline ("N replies from M agents").
+export type ThreadSummaryStatus = "ok" | "disabled";
+
+export interface ThreadSummary {
+  /** The summary prose, or null when unavailable. */
+  text: string | null;
+  status: ThreadSummaryStatus;
 }
 
 // ─── Snapshot contract ─────────────────────────────────────────────────────
@@ -138,6 +156,9 @@ export interface DataSource {
   timeline(roomId: string): Snapshot<TimelineEvent[]>;
   tasks(roomId: string): Snapshot<Task[]>;
   artifacts(roomId: string): Snapshot<Artifact[]>;
+  /** Summary for a thread, keyed by its parent (root) message id. Integration
+   *  seam for bd sync-b8q — see {@link ThreadSummary}. */
+  threadSummary(parentMessageId: string): Snapshot<ThreadSummary>;
   me(): Snapshot<Agent>;
 
   // commands

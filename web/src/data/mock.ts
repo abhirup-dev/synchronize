@@ -12,6 +12,7 @@ import type {
   SendMessageInput,
   Snapshot,
   Task,
+  ThreadSummary,
   TimelineEvent,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
@@ -23,6 +24,7 @@ import {
   MESSAGES,
   TASKS,
   THREAD_REPLIES,
+  THREAD_SUMMARIES,
   TIMELINE,
 } from "./seed.ts";
 
@@ -64,6 +66,7 @@ export class MockDataSource implements DataSource {
   private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
+  private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
 
   agents(): Snapshot<Agent[]> { return this._agents; }
@@ -111,6 +114,18 @@ export class MockDataSource implements DataSource {
     if (!snap) {
       snap = createSnapshot<Artifact[]>(ARTIFACTS[roomId] ?? []);
       this._artifacts.set(roomId, snap);
+    }
+    return snap;
+  }
+
+  threadSummary(parentMessageId: string): Snapshot<ThreadSummary> {
+    let snap = this._threadSummaries.get(parentMessageId);
+    if (!snap) {
+      const text = THREAD_SUMMARIES[parentMessageId];
+      snap = createSnapshot<ThreadSummary>(
+        text ? { text, status: "ok" } : { text: null, status: "disabled" },
+      );
+      this._threadSummaries.set(parentMessageId, snap);
     }
     return snap;
   }

@@ -6,6 +6,7 @@ import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
 import { ChatView } from "./components/ChatView.tsx";
+import { BoardView } from "./components/BoardView.tsx";
 import { AgentRoster } from "./components/AgentRoster.tsx";
 import { ContextMenuProvider } from "./components/ContextMenu.tsx";
 import { ThreadPane } from "./components/ThreadPane.tsx";
@@ -101,6 +102,7 @@ function Shell() {
   const [tab, setTab] = useState<RoomTab>("chat");
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
+  const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const [threadWidth, setThreadWidth] = useState<number>(() => {
     const stored = Number(localStorage.getItem("synchronize.threadWidth"));
     return Number.isFinite(stored) && stored >= 320 && stored <= 820 ? stored : 420;
@@ -125,6 +127,7 @@ function Shell() {
     setTab("chat");
     setFocusedAgent(null);
     setThreadParentId(null);
+    setThreadSummaryOpen(false);
   }, [activeId]);
 
   useEffect(() => {
@@ -223,9 +226,15 @@ function Shell() {
             >
               <div className="tab-content">
                 {tab === "chat" ? (
-                  <ChatView room={room} onOpenThread={setThreadParentId} isThreadOpen={!!threadParentId} />
+                  <ChatView
+                    room={room}
+                    onOpenThread={setThreadParentId}
+                    isThreadOpen={!!threadParentId}
+                    threadSummaryOpen={threadSummaryOpen}
+                    onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
+                  />
                 ) : tab === "board" ? (
-                  <Placeholder label="BOARD — coming in V2" />
+                  <BoardView roomId={room.id} />
                 ) : (
                   <Placeholder label="ARTIFACTS — coming in V2" />
                 )}
