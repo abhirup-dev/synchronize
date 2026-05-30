@@ -70,6 +70,33 @@ test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
   expect(spec.env[ENV_HOME]).toBe("/home");
 });
 
+test("resolveLaunchSpec defaults claude to --model haiku when no model given", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "claude", name: "alice", repo: "/r" },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  const i = spec.command.indexOf("--model");
+  expect(i).toBeGreaterThan(-1);
+  expect(spec.command[i + 1]).toBe("haiku");
+});
+
+test("resolveLaunchSpec keeps a caller-provided claude --model (override wins)", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "claude", name: "alice", repo: "/r", args: ["--model", "opus"] },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("opus");
+});
+
+test("resolveLaunchSpec does not inject a model for pi", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "pi", name: "bob", repo: "/r" },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  expect(spec.command).not.toContain("--model");
+});
+
 test("launch records pending, spawns, and returns identity + count", async () => {
   const { backend, spawned } = fakeBackend();
   let n = 0;

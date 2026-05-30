@@ -103,6 +103,21 @@ export function aoeTitle(sessionName: string, peerId: string): string {
   return `${sessionName}-${peerId.slice(0, 8)}`;
 }
 
+/** Default model for daemon-launched claude sessions. `haiku` resolves to the
+ * latest Haiku (claude --model accepts the alias). This is the launch-path
+ * default only (foreground `synchronize launch` is unaffected) and is overridden
+ * whenever the caller passes its own --model in args. Model selection will
+ * become a first-class launch field later (sync-gsx follow-up). */
+const DEFAULT_CLAUDE_LAUNCH_MODEL = "haiku";
+
+function withLaunchDefaults(req: LaunchRequest): string[] {
+  const args = req.args ?? [];
+  if (req.tool === "claude" && !args.includes("--model")) {
+    return ["--model", DEFAULT_CLAUDE_LAUNCH_MODEL, ...args];
+  }
+  return args;
+}
+
 /**
  * Resolve a launch request into a backend-ready spec. Pure: no spawning, no
  * id minting — ids are passed in so the caller controls identity.
@@ -115,7 +130,7 @@ export function resolveLaunchSpec(
   return {
     title,
     tool: req.tool,
-    command: buildAgentCommand(req.tool, req.args ?? []),
+    command: buildAgentCommand(req.tool, withLaunchDefaults(req)),
     env: buildLaunchEnv({
       launchId: ids.launchId,
       sessionName: req.name,
