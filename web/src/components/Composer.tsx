@@ -12,6 +12,12 @@ interface ComposerProps {
   collapsedDefault?: boolean;
 }
 
+const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
+
+function normalizeMentionHandle(handle: string): string {
+  return handle.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
+}
+
 export function Composer({ roomId, parentMessageId, collapsedDefault = false }: ComposerProps) {
   const agents = useAgents();
   const me = useMe();
@@ -110,6 +116,7 @@ export function Composer({ roomId, parentMessageId, collapsedDefault = false }: 
     const mentions = Array.from(body.matchAll(/@([a-zA-Z0-9._-]+)/g))
       .map((m) => m[1])
       .filter((h): h is string => Boolean(h))
+      .map(normalizeMentionHandle)
       .map((h) => mentionAgents.find((a) => a.handle === h)?.id)
       .filter((id): id is string => Boolean(id));
     setValue("");

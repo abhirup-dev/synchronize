@@ -227,7 +227,9 @@ uv run scripts/integration_pi.py
 ```
 
 The Pi harness is intentionally not part of `bun test` or CI. It uses the real
-local `pi` binary and the copied OAuth credentials from `~/.pi/agent/auth.json`.
+local `pi` binary and copied OAuth credentials. By default it converts
+`~/.codex/auth.json` into Pi's `openai-codex` auth shape, falling back to
+`~/.pi/agent/auth.json` when Codex auth is unavailable.
 
 By default it writes worktree-local state under `.synchronize-itest/runs/<id>`:
 
@@ -251,6 +253,7 @@ uv run scripts/integration_pi.py --keep
 uv run scripts/integration_pi.py --profile sync-pi-debug
 uv run scripts/integration_pi.py --model gpt-5.4-mini
 uv run scripts/integration_pi.py --thinking low
+uv run scripts/integration_pi.py --auth-source ~/.codex/auth.json
 uv run scripts/integration_pi.py --auth-source ~/.pi/agent/auth.json
 ```
 

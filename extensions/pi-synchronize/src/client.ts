@@ -125,7 +125,7 @@ export function registerPeer(
 
 export function registerAgentSession(
   client: PiSyncClient,
-  input: { peerId: string; sessionName: string; hostSessionId: string; cwd?: string },
+  input: { peerId: string; sessionName: string; hostSessionId: string; cwd?: string; launchId?: string },
 ): Promise<{ binding: AgentSessionBinding }> {
   return requestJson<{ binding: AgentSessionBinding }>(client, "/agent-sessions/register", {
     method: "POST",
@@ -139,6 +139,7 @@ export function registerAgentSession(
       cwd: input.cwd,
       pid: process.pid,
       source: "session_start",
+      launch_id: input.launchId,
     }),
   });
 }

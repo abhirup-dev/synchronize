@@ -4,6 +4,7 @@ import {
   LaunchValidationError,
   aoeProfileName,
   aoeTitle,
+  normalizeLaunchAlias,
   resolveLaunchSpec,
   validateLaunchRequest,
 } from "../src/launch/service.ts";
@@ -27,19 +28,25 @@ function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBack
   return { backend, spawned, stopped };
 }
 
+const fakePiRuntime = async () => ({
+  PI_CODING_AGENT_DIR: "/tmp/pi-agent",
+  PI_CODING_AGENT_SESSION_DIR: "/tmp/pi-sessions",
+});
+
 test("validateLaunchRequest accepts a minimal valid body", () => {
-  const req = validateLaunchRequest({ tool: "claude", name: "alice", repo: "/r" });
+  const req = validateLaunchRequest({ tool: "claude", name: "Alice", repo: "/r" });
   expect(req).toEqual({ tool: "claude", name: "alice", repo: "/r" });
 });
 
 test("validateLaunchRequest keeps group + args and trims", () => {
-  const req = validateLaunchRequest({ tool: "pi", name: " bob ", repo: " /x ", group: " alpha ", args: ["--model", "m"] });
+  const req = validateLaunchRequest({ tool: "pi", name: " Bob ", repo: " /x ", group: " alpha ", args: ["--model", "m"] });
   expect(req).toEqual({ tool: "pi", name: "bob", repo: "/x", group: "alpha", args: ["--model", "m"] });
 });
 
 test("validateLaunchRequest rejects bad tool/name/repo/args", () => {
   expect(() => validateLaunchRequest({ tool: "codex", name: "a", repo: "/r" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "", repo: "/r" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "claude", name: "this-name-is-too-long", repo: "/r" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "a" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", args: [1] })).toThrow(LaunchValidationError);
 });
@@ -50,8 +57,24 @@ test("aoeProfileName is deterministic per home and varies across homes", () => {
   expect(aoeProfileName("/a").startsWith("synchronize-")).toBe(true);
 });
 
-test("aoeTitle = name-peerid8", () => {
-  expect(aoeTitle("alice", "35742454d0934b6a")).toBe("alice-35742454");
+test("normalizeLaunchAlias lowercases, slugifies, and enforces the 11-char budget", () => {
+  expect(normalizeLaunchAlias(" Alice Bob ")).toBe("alice-bob");
+  expect(() => normalizeLaunchAlias("this-name-is-too-long")).toThrow(LaunchValidationError);
+});
+
+test("aoeTitle is deterministic, hash-prefixed, human-readable, and <= 20 chars", () => {
+  const input = {
+    launchId: "launch-123",
+    peerId: "35742454d0934b6a",
+    group: "alpha",
+    sessionName: "alice",
+    tool: "claude" as const,
+  };
+  const title = aoeTitle(input);
+  expect(title).toMatch(/^[a-z2-7]{8}-alice$/);
+  expect(title.length).toBeLessThanOrEqual(20);
+  expect(aoeTitle(input)).toBe(title);
+  expect(aoeTitle({ ...input, peerId: "other-peer" })).not.toBe(title);
 });
 
 test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
@@ -59,10 +82,12 @@ test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
     { tool: "claude", name: "alice", repo: "/repo", group: "alpha", args: ["--model", "opus"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
-  expect(spec.title).toBe("alice-peer-abc");
+  expect(spec.title).toMatch(/^[a-z2-7]{8}-alice$/);
+  expect(spec.title.length).toBeLessThanOrEqual(20);
   expect(spec.tool).toBe("claude");
   expect(spec.command[0]).toBe("claude");
-  expect(spec.command).toContain("opus");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
+  expect(spec.command).not.toContain("opus");
   expect(spec.cwd).toBe("/repo");
   expect(spec.group).toBe("alpha");
   expect(spec.env[ENV_PEER_ID]).toBe("peer-abcdef12");
@@ -80,21 +105,60 @@ test("resolveLaunchSpec defaults claude to --model haiku when no model given", a
   expect(spec.command[i + 1]).toBe("haiku");
 });
 
-test("resolveLaunchSpec keeps a caller-provided claude --model (override wins)", async () => {
+test("resolveLaunchSpec forces caller-provided claude --model to Haiku in daemon launches", async () => {
   const spec = resolveLaunchSpec(
     { tool: "claude", name: "alice", repo: "/r", args: ["--model", "opus"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("opus");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
+  expect(spec.command).not.toContain("opus");
 });
 
-test("resolveLaunchSpec does not inject a model for pi", async () => {
+test("resolveLaunchSpec strips caller-provided claude --model=value before forcing Haiku", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "claude", name: "alice", repo: "/r", args: ["--model=opus"] },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("haiku");
+  expect(spec.command).not.toContain("--model=opus");
+});
+
+test("resolveLaunchSpec defaults pi to OpenAI Codex GPT 5.4 mini in daemon launches", async () => {
   const spec = resolveLaunchSpec(
     { tool: "pi", name: "bob", repo: "/r" },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
-  expect(spec.command).not.toContain("--model");
+  expect(spec.command.filter((a) => a === "--provider")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+});
+
+test("resolveLaunchSpec strips caller-provided pi --model before forcing OpenAI Codex GPT 5.4 mini", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "pi", name: "bob", repo: "/r", args: ["--model", "expensive-model"] },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  expect(spec.command.filter((a) => a === "--provider")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+  expect(spec.command).not.toContain("expensive-model");
+});
+
+test("resolveLaunchSpec strips caller-provided pi --provider before forcing OpenAI Codex", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "pi", name: "bob", repo: "/r", args: ["--provider=azure-openai-responses", "--model=gpt-5.4"] },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+  );
+  expect(spec.command.filter((a) => a === "--provider")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--provider") + 1]).toBe("openai-codex");
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("gpt-5.4-mini");
+  expect(spec.command).not.toContain("--provider=azure-openai-responses");
+  expect(spec.command).not.toContain("--model=gpt-5.4");
 });
 
 test("launch records pending, spawns, and returns identity + count", async () => {
@@ -103,6 +167,7 @@ test("launch records pending, spawns, and returns identity + count", async () =>
   const svc = new LaunchService({
     backend,
     home: "/home",
+    provisionPiRuntime: fakePiRuntime,
     mintLaunchId: () => `lid-${++n}`,
     mintPeerId: () => `peer-${n}aaaaaaa`,
   });
@@ -110,11 +175,14 @@ test("launch records pending, spawns, and returns identity + count", async () =>
   expect(res.launchId).toBe("lid-1");
   expect(res.peerId).toBe("peer-1aaaaaaa");
   expect(res.sessionName).toBe("bob");
-  expect(res.title).toBe("bob-peer-1aa");
+  expect(res.title).toMatch(/^[a-z2-7]{8}-bob$/);
+  expect(res.title.length).toBeLessThanOrEqual(20);
   expect(res.group).toBe("g");
   expect(res.pendingCount).toBe(1);
   expect(res.warning).toContain("not yet registered");
   expect(spawned).toHaveLength(1);
+  expect(spawned[0]?.env.PI_CODING_AGENT_DIR).toBe("/tmp/pi-agent");
+  expect(spawned[0]?.env.PI_CODING_AGENT_SESSION_DIR).toBe("/tmp/pi-sessions");
   expect(svc.pending()).toHaveLength(1);
 });
 
@@ -165,7 +233,13 @@ test("stop delegates to the backend with the given title", async () => {
 
 test("no warning when nothing is pending after consume", async () => {
   const { backend } = fakeBackend();
-  const svc = new LaunchService({ backend, home: "/h", mintLaunchId: () => "L1", mintPeerId: () => "P1xxxxxx" });
+  const svc = new LaunchService({
+    backend,
+    home: "/h",
+    provisionPiRuntime: fakePiRuntime,
+    mintLaunchId: () => "L1",
+    mintPeerId: () => "P1xxxxxx",
+  });
   const res = await svc.launch({ tool: "pi", name: "solo", repo: "/r" });
   expect(res.group).toBeUndefined();
   svc.consume("L1", "P1xxxxxx");

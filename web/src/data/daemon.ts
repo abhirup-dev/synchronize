@@ -6,6 +6,8 @@ import type {
   Message,
   Room,
   SendMessageInput,
+  SpawnAgentInput,
+  SpawnAgentResult,
   Snapshot,
   Task,
   TimelineEvent,
@@ -37,6 +39,15 @@ interface DaemonGroup {
   name: string;
   durable: boolean;
   description: string | null;
+  created_at: string;
+}
+
+interface DaemonGroupPath {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: boolean;
   created_at: string;
 }
 
@@ -85,6 +96,7 @@ interface WebStateResponse {
   cursor: number;
   peers: DaemonPeer[];
   groups: DaemonGroup[];
+  group_paths: DaemonGroupPath[];
   memberships: DaemonMember[];
   room_summaries: Array<{
     group_id: number;
@@ -104,6 +116,14 @@ interface WebStateChange {
   event_id?: number;
   group_id?: number | null;
   peer_id?: string | null;
+}
+
+interface DaemonLaunchResponse {
+  launchId: string;
+  peerId: string;
+  sessionName: string;
+  title: string;
+  group?: string;
 }
 
 const PEER_KEY = "synchronize.web.peerId";
@@ -278,6 +298,30 @@ export class DaemonDataSource implements DataSource {
     }
   }
 
+  async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
+    const group = this.groupNameByRoomId.get(input.roomId);
+    if (!group) throw new Error(`Unknown group room: ${input.roomId}`);
+    const name = input.name.trim();
+    if (!name) throw new Error("agent name is required");
+    const response = await this.request<DaemonLaunchResponse>("/agent-sessions/launch", {
+      method: "POST",
+      body: JSON.stringify({
+        tool: input.tool,
+        name,
+        repo: input.path,
+        group,
+      }),
+    });
+    await this.refresh();
+    await this.refreshRoom(input.roomId, { reset: true });
+    return {
+      peerId: response.peerId,
+      sessionName: response.sessionName,
+      title: response.title,
+      group: response.group ?? group,
+    };
+  }
+
   setAgentColor(agentId: string, hex: string | null): void {
     const key = `synchronize.agentColor.${agentId}`;
     if (hex) localStorage.setItem(key, hex);
@@ -321,15 +365,25 @@ export class DaemonDataSource implements DataSource {
   private async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
-      let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
-      if (await this.ensureWebPeerMemberships(state)) {
-        state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+      try {
+        let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        if (await this.ensureWebPeerMemberships(state)) {
+          state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        }
+        this.applySummaryState(state);
+      } catch {
+        this.markRemoteAgentsOffline();
       }
-      this.applySummaryState(state);
     })().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
+  }
+
+  private markRemoteAgentsOffline(): void {
+    this._agents.update((agents) =>
+      agents.map((agent) => agent.id === this.peerId ? agent : { ...agent, status: "offline" }),
+    );
   }
 
   private async ensureWebPeerMemberships(state: WebStateResponse): Promise<boolean> {
@@ -357,6 +411,7 @@ export class DaemonDataSource implements DataSource {
   private applySummaryState(state: WebStateResponse): void {
     const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
     const memberByGroup = groupMembersByGroup(state.memberships);
+    const pathsByGroup = groupPathsByGroup(state.group_paths ?? []);
     const summaryByGroup = new Map(state.room_summaries.map((summary) => [summary.group_id, summary] as const));
     const agents = agentsFromState(state, this.peerId);
     const me = agents.find((agent) => agent.id === this.peerId) ?? mapAgent(peerById.get(this.peerId) ?? {
@@ -381,6 +436,11 @@ export class DaemonDataSource implements DataSource {
         color: colorForGroup(group.group_id),
         members: members.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
+        paths: (pathsByGroup.get(group.group_id) ?? []).map((path) => ({
+          id: String(path.path_id),
+          path: path.path,
+          ...(path.label ? { label: path.label } : {}),
+        })),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,
@@ -687,6 +747,12 @@ function parseMentions(raw: string | null): string[] {
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
   for (const member of memberships) pushMap(grouped, member.group_id, member);
+  return grouped;
+}
+
+function groupPathsByGroup(paths: DaemonGroupPath[]): Map<number, DaemonGroupPath[]> {
+  const grouped = new Map<number, DaemonGroupPath[]>();
+  for (const path of paths) pushMap(grouped, path.group_id, path);
   return grouped;
 }
 

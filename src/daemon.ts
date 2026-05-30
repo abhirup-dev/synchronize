@@ -26,6 +26,7 @@ import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
 import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
+import { isLaunchTool } from "./launch/build.ts";
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -150,6 +151,15 @@ interface GroupRow {
   media_dir: string;
   creator_peer_id: string | null;
   description: string | null;
+  created_at: string;
+}
+
+interface GroupPathRow {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: number;
   created_at: string;
 }
 
@@ -539,17 +549,15 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
     const body = await readBody(request);
     // Prefer the explicit title (always known from the launch response, works
-    // even before the agent has registered). Otherwise derive it from the
-    // durable peer row (session_name + peer_id8) for a known peer. NOTE: the
-    // peer_id path assumes session_name is unchanged since launch; if the peer
-    // was renamed, derivation is stale — stop by title for a guaranteed match.
+    // even before the agent has registered). Otherwise derive the deterministic
+    // backend title from the launch binding and current peer/group metadata.
     const explicitTitle = optionalString(body, "title");
     const peerId = optionalString(body, "peer_id");
     let title: string;
     if (explicitTitle) {
       title = explicitTitle;
     } else if (peerId) {
-      title = aoeTitle(getPeer(ctx.db, peerId).session_name, peerId);
+      title = deriveBackendTitleForPeer(ctx.db, peerId);
     } else {
       throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
     }
@@ -816,6 +824,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', ?, ?, ?)")
         .run(creatorPeerId ?? null, id, JSON.stringify({ name, durable: Boolean(durable) }));
@@ -824,6 +833,22 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
 
     emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
     return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
+  }
+
+  const groupPaths = url.pathname.match(/^\/groups\/([^/]+)\/paths$/);
+  if (groupPaths && request.method === "GET") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) });
+  }
+
+  if (groupPaths && request.method === "POST") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    const body = await readBody(request);
+    const path = requireLaunchPath(requireString(body, "path"));
+    const label = optionalString(body, "label") ?? null;
+    insertGroupPath(ctx.db, group.group_id, path, label);
+    emitWebStateChanged(ctx, { domains: ["groups"], groupId: group.group_id });
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) }, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
@@ -851,7 +876,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   const groupMatch = url.pathname.match(/^\/groups\/([^/]+)$/);
   if (request.method === "GET" && groupMatch) {
     const group = getGroup(ctx.db, decodeURIComponent(groupMatch[1] ?? ""));
-    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id) });
+    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id), paths: getGroupPaths(ctx.db, group.group_id) });
   }
 
   const groupJoin = url.pathname.match(/^\/groups\/([^/]+)\/join$/);
@@ -1469,6 +1494,14 @@ function requireGroupName(name: string): string {
   return name;
 }
 
+function requireLaunchPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/")) {
+    throw new HttpError(400, "invalid_group_path", "Group path must be an absolute path");
+  }
+  return trimmed.replace(/\/+$/, "") || "/";
+}
+
 function parseLimit(raw: string | null): number {
   if (!raw) return DEFAULT_PAGE_LIMIT;
   const value = Number.parseInt(raw, 10);
@@ -1526,6 +1559,11 @@ function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): 
 }
 
 const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
+
+function normalizeMentionToken(token: string): string {
+  return token.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
+}
 
 // Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
 // Alice flagged this during the sustained-thread test: discussing proposed
@@ -1552,7 +1590,10 @@ function resolveMentions(
   const tokens = new Set<string>();
   const scannable = stripBacktickedRegions(message);
   for (const match of scannable.matchAll(MENTION_TOKEN_RE)) {
-    if (match[1]) tokens.add(match[1]);
+    if (match[1]) {
+      const token = normalizeMentionToken(match[1]);
+      if (token) tokens.add(token);
+    }
   }
   if (tokens.size === 0) return { peerIds: [], warnings: [] };
   const lookup = db.query<{ peer_id: string }, [number, string]>(
@@ -1987,6 +2028,7 @@ interface WebStateResponse {
   };
   peers: Array<PeerRow & { online: boolean }>;
   groups: FormattedGroup[];
+  group_paths: FormattedGroupPath[];
   memberships: Array<FormattedMember & { online: boolean }>;
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
@@ -2035,6 +2077,10 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
     .all()
     .map(formatGroup);
+  const groupPaths = ctx.db
+    .query<GroupPathRow, []>("SELECT * FROM group_paths WHERE active = 1 ORDER BY group_id ASC, path ASC")
+    .all()
+    .map(formatGroupPath);
   const memberships = ctx.db
     .query<MemberRow & { online: number }, [string]>(
       `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
@@ -2079,6 +2125,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     },
     peers,
     groups,
+    group_paths: groupPaths,
     memberships,
     room_summaries: roomSummaries,
     events,
@@ -2290,6 +2337,7 @@ function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
       .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, 1, ?, NULL, NULL)")
       .run(groupName, mediaDir);
     const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
     ctx.db
       .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', NULL, ?, ?)")
       .run(id, JSON.stringify({ name: groupName, durable: true }));
@@ -2312,6 +2360,7 @@ export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, pee
   if (!pending || !pending.group) return;
   try {
     const group = ensureLaunchGroup(ctx, pending.group);
+    insertGroupPath(ctx.db, group.group_id, pending.cwd);
     const peer = getPeer(ctx.db, peerId);
     const existing = ctx.db
       .query<{ alias: string; active: number }, [number, string]>(
@@ -2332,10 +2381,52 @@ export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, pee
 }
 
 type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
+type FormattedGroupPath = Omit<GroupPathRow, "active"> & { active: boolean };
 type FormattedMember = Omit<MemberRow, "active"> & { active: boolean };
 
 function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
+}
+
+function formatGroupPath(path: GroupPathRow): FormattedGroupPath {
+  return { ...path, active: Boolean(path.active) };
+}
+
+function insertGroupPath(db: Database, groupId: number, path: string, label: string | null = null): void {
+  const launchPath = requireLaunchPath(path);
+  db
+    .query(
+      `INSERT INTO group_paths (group_id, path, label)
+       VALUES (?, ?, ?)
+       ON CONFLICT(group_id, path) DO UPDATE SET
+         active = 1,
+         label = COALESCE(excluded.label, label)`,
+    )
+    .run(groupId, launchPath, label);
+}
+
+function getGroupPaths(db: Database, groupId: number): FormattedGroupPath[] {
+  return db
+    .query<GroupPathRow, [number]>(
+      "SELECT * FROM group_paths WHERE group_id = ? AND active = 1 ORDER BY path ASC",
+    )
+    .all(groupId)
+    .map(formatGroupPath);
+}
+
+function ensureDefaultGroupPaths(ctx: DaemonContext): void {
+  const defaultPath = defaultGroupPath(ctx);
+  const groups = ctx.db.query<GroupRow, []>("SELECT * FROM groups").all();
+  for (const group of groups) {
+    const existing = ctx.db
+      .query<{ count: number }, [number]>("SELECT COUNT(*) AS count FROM group_paths WHERE group_id = ? AND active = 1")
+      .get(group.group_id)?.count ?? 0;
+    if (existing === 0) insertGroupPath(ctx.db, group.group_id, defaultPath);
+  }
+}
+
+function defaultGroupPath(ctx: DaemonContext): string {
+  return requireLaunchPath(ctx.provenance?.source_root ?? process.cwd());
 }
 
 const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.activity_state,
@@ -2354,6 +2445,42 @@ function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
     )
     .all(groupId)
     .map((member) => ({ ...member, active: Boolean(member.active) }));
+}
+
+function deriveBackendTitleForPeer(db: Database, peerId: string): string {
+  const peer = getPeer(db, peerId);
+  if (!isLaunchTool(peer.tool)) {
+    throw new HttpError(400, "invalid_stop", `Cannot derive backend title for non-launch tool: ${peer.tool}`);
+  }
+  const launch = db
+    .query<{ launch_id: string | null }, [string]>(
+      `SELECT launch_id
+       FROM agent_sessions
+       WHERE peer_id = ? AND launch_id IS NOT NULL
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId);
+  if (!launch?.launch_id) {
+    throw new HttpError(400, "invalid_stop", "peer_id stop requires an agent session with launch_id; pass title instead");
+  }
+  const group = db
+    .query<{ name: string | null }, [string]>(
+      `SELECT g.name
+       FROM group_members gm
+       JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.active = 1
+       ORDER BY gm.joined_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId)?.name ?? undefined;
+  return aoeTitle({
+    launchId: launch.launch_id,
+    peerId,
+    ...(group ? { group } : {}),
+    sessionName: peer.session_name,
+    tool: peer.tool,
+  });
 }
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
@@ -2465,6 +2592,7 @@ async function main(): Promise<void> {
     home: paths.home,
   });
   ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
+  ensureDefaultGroupPaths(ctx);
 
   // Retention sweeper: run once at startup (cleans up peers that died while the
   // daemon was down) then on an interval. unref so it never blocks shutdown.

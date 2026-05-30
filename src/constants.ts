@@ -44,17 +44,15 @@ export const STALE_LOCK_MS = 30_000;
 
 // Liveness lease window. A peer is "online" iff lease_expires_at > now; the
 // lease is refreshed by heartbeats (every MCP_HEARTBEAT_MS=15s) and by any
-// activity push. Kept short (a few missed heartbeats) so a crashed/abandoned
-// agent drops offline within ~a minute rather than lingering for days — the
-// lease is the ONLY reliable offline detector (no runtime fires a hook on
-// crash/SIGKILL). Override via SYNCHRONIZE_LEASE_MS (e.g. demo daemons set a
-// long lease so non-heartbeating seeded peers stay online; tests pin it for
-// determinism). See session-tracker/plan-agent-ttl-presence-v0.md.
+// activity push. The production default is intentionally generous so suspended
+// local agents do not disappear during multi-day work. Tests and failure-mode
+// demos should override SYNCHRONIZE_LEASE_MS to a smaller value when they need
+// to observe lease-lapse quickly. See session-tracker/plan-agent-ttl-presence-v0.md.
 function positiveEnvMs(name: string, fallback: number): number {
   const raw = Number(process.env[name]);
   return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
-export const DEFAULT_LEASE_MS = positiveEnvMs(ENV_LEASE_MS, 60_000);
+export const DEFAULT_LEASE_MS = positiveEnvMs(ENV_LEASE_MS, 3 * 24 * 60 * 60_000);
 
 // How long a peer's lease must have been expired before the background sweeper
 // soft-deletes it (retention window — keeps offline peers visible in the

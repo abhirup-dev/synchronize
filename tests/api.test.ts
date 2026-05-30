@@ -456,13 +456,15 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
     const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
     const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "cli" });
+    const dave = await registerPeer(daemon.client, { sessionName: "dave", tool: "cli" });
     const groupName = "mentions-room";
     await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
     await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
     await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
     await joinGroup(daemon.client, { name: groupName, peerId: carol.peer.peer_id, alias: "carol" });
+    await joinGroup(daemon.client, { name: groupName, peerId: dave.peer.peer_id, alias: "ui-claude2" });
 
-    for (const peer of [alice, bob, carol]) {
+    for (const peer of [alice, bob, carol, dave]) {
       await subscribeToEvents(daemon.client, {
         peerId: peer.peer.peer_id,
         callbackUrl: sink.url(peer.peer.peer_id),
@@ -489,6 +491,17 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     // Push: mentioned only.
     expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+
+    const punctuated = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "ping @ui-claude2.",
+    });
+    await flushPushQueue();
+
+    expect(punctuated.event.mentions_json).toBe(JSON.stringify([dave.peer.peer_id]));
+    expect(punctuated.warnings).toEqual([]);
+    expect(sink.hits.get(dave.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(alice.peer.peer_id) ?? 0).toBe(0);
   } finally {
     await sink.stop();
@@ -1330,10 +1343,16 @@ test("web state endpoint returns summaries and room-scoped event history", async
     expect(summaryEtag).toMatch(new RegExp(`^W/"${sent.event.event_id}\\.[a-z0-9]+"$`));
     const summaryBody = await summary.json() as {
       groups: Array<{ group_id: number; name: string }>;
+      group_paths: Array<{ group_id: number; path: string; active: boolean }>;
       room_summaries: Array<{ group_id: number; last_event_id: number | null; last_preview: string | null }>;
       events: unknown[];
     };
     expect(summaryBody.groups).toContainEqual(expect.objectContaining({ group_id: group.group.group_id, name: groupName }));
+    expect(summaryBody.group_paths).toContainEqual(expect.objectContaining({
+      group_id: group.group.group_id,
+      path: process.cwd(),
+      active: true,
+    }));
     expect(summaryBody.room_summaries).toContainEqual(expect.objectContaining({
       group_id: group.group.group_id,
       last_event_id: sent.event.event_id,

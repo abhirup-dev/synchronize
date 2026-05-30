@@ -83,6 +83,19 @@ function migrate(db: Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
+    CREATE TABLE IF NOT EXISTS group_paths (
+      path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      label TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(group_id, path)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_paths_group
+      ON group_paths (group_id, active, path);
+
     CREATE TABLE IF NOT EXISTS group_members (
       group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
       peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
@@ -194,6 +207,30 @@ function migrate(db: Database): void {
       db.exec(`ALTER TABLE peers ADD COLUMN last_activity_at TEXT`);
     }
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)`);
+  }
+
+  // Migration v4 — group_paths: each group owns the set of workspace paths
+  // agents may be launched against from the web/AOE flow. Existing groups are
+  // populated by the daemon at startup because the correct default path depends
+  // on the running source root, not only the schema.
+  const hasV4 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 4")
+    .get();
+  if (!hasV4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_paths (
+        path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        label TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(group_id, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_paths_group
+        ON group_paths (group_id, active, path);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)`);
   }
 }
 

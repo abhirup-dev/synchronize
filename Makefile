@@ -1,6 +1,6 @@
 DEMO_HOME := $(CURDIR)/.demo-synchronize
 DEV_SYNC_HOME := $(CURDIR)/.dev-synchronize
-SYNC_HOME ?= $(HOME)/.synchronize
+SYNC_HOME ?= $(if $(SYNCHRONIZE_HOME),$(SYNCHRONIZE_HOME),$(HOME)/.synchronize)
 
 # Demo peers are seeded once and never heartbeat, so the demo daemon runs with a
 # far-future lease (≈10y) — otherwise the production 60s lease would flap every

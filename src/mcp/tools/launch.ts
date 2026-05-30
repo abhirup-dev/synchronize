@@ -14,7 +14,8 @@ export function registerLaunchTools(ctx: ToolContext): void {
         "Spawn a new persistent agent session (claude or pi) via the local backend (AOE). " +
         "Pass `group` to drop the teammate straight into a synchronize group — it auto-joins on " +
         "boot under alias = name (the group is created if absent); omit `group` for a standalone agent. " +
-        "`repo` is the working directory the agent runs in. Put tool-specific flags (e.g. --model) in `args`. " +
+        "`repo` is the working directory the agent runs in. Put non-provider/non-model tool-specific flags in `args`; " +
+        "during v0 simulation testing daemon/AOE launches pin Claude to Haiku and Pi to OpenAI Codex GPT 5.4 mini. " +
         "Returns: { launchId, peerId, sessionName, title, group?, pendingCount, warning? }. The session " +
         "registers itself a few seconds later; poll bridge_list_peers(group) to see it come online. " +
         "Idempotency: each call spawns a new session — names must be unique within a group.",
