@@ -75,6 +75,62 @@ export interface Event {
   acked_at?: string | null;
 }
 
+export type SqlParam = string | number | boolean | null;
+
+export interface EventQueryResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  truncated: boolean;
+  elapsed_ms: number;
+}
+
+export interface ThreadDiscoveryRow {
+  root_event_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_activity_at: string;
+  reply_count: number;
+  participant_count: number;
+  preview: string | null;
+}
+
+export interface ThreadParticipantStatus {
+  peer_id: string;
+  session_name: string | null;
+  alias: string | null;
+  active: boolean;
+  event_count: number;
+  first_event_id: number;
+  last_event_id: number;
+  last_activity_at: string;
+}
+
+export interface ThreadStatus {
+  root_event_id: number;
+  group_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_event_id: number;
+  last_activity_at: string;
+  reply_count: number;
+  event_count: number;
+  participant_count: number;
+  participants: ThreadParticipantStatus[];
+}
+
+export interface ThreadResponse {
+  status: ThreadStatus;
+  events: Event[];
+  transcript?: string;
+}
+
 export interface Group {
   group_id: number;
   name: string;

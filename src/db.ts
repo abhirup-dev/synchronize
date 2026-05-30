@@ -135,6 +135,18 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_group_parent_event
       ON events (group_id, parent_event_id, event_id);
 
+    CREATE INDEX IF NOT EXISTS idx_events_type_event
+      ON events (type, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_sender_event
+      ON events (sender_peer_id, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_created_at
+      ON events (created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_events_parent_event
+      ON events (parent_event_id, event_id);
+
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
       event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -147,6 +159,55 @@ function migrate(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_inbox_recipient_acked_event
       ON inbox (recipient_peer_id, acked_at, event_id);
+
+    CREATE VIEW IF NOT EXISTS event_log AS
+      SELECT
+        e.*,
+        g.name AS group_name,
+        sp.session_name AS sender_session_name,
+        sp.tool AS sender_tool,
+        rp.session_name AS recipient_session_name,
+        rp.tool AS recipient_tool
+      FROM events e
+      LEFT JOIN groups g ON g.group_id = e.group_id
+      LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      LEFT JOIN peers rp ON rp.peer_id = e.recipient_peer_id;
+
+    CREATE VIEW IF NOT EXISTS thread_events AS
+      SELECT
+        e.*,
+        CASE WHEN e.parent_event_id IS NULL THEN e.event_id ELSE e.parent_event_id END AS thread_root_event_id,
+        CASE WHEN e.parent_event_id IS NULL THEN 0 ELSE 1 END AS thread_position,
+        g.name AS group_name,
+        sp.session_name AS sender_session_name,
+        sp.tool AS sender_tool
+      FROM events e
+      LEFT JOIN groups g ON g.group_id = e.group_id
+      LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      WHERE e.type = 'group_message';
+
+    CREATE VIEW IF NOT EXISTS discoverable_threads AS
+      SELECT
+        root.event_id AS root_event_id,
+        root.group_id,
+        g.name AS group_name,
+        root.sender_peer_id AS root_sender_peer_id,
+        sp.session_name AS root_sender_session_name,
+        gm.alias AS root_sender_alias,
+        root.created_at,
+        COALESCE(MAX(reply.created_at), root.created_at) AS last_activity_at,
+        COUNT(DISTINCT reply.event_id) AS reply_count,
+        COUNT(DISTINCT participant.sender_peer_id) AS participant_count,
+        root.body AS preview
+      FROM events root
+      JOIN groups g ON g.group_id = root.group_id
+      LEFT JOIN peers sp ON sp.peer_id = root.sender_peer_id
+      LEFT JOIN group_members gm ON gm.group_id = root.group_id AND gm.peer_id = root.sender_peer_id
+      JOIN events reply ON reply.parent_event_id = root.event_id
+      LEFT JOIN events participant
+        ON participant.event_id = root.event_id OR participant.parent_event_id = root.event_id
+      WHERE root.type = 'group_message' AND root.parent_event_id IS NULL
+      GROUP BY root.event_id;
 
     CREATE TABLE IF NOT EXISTS media_items (
       media_id TEXT PRIMARY KEY,

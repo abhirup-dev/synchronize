@@ -19,6 +19,10 @@ Usage:
   synchronize media share GROUP FILE --description TEXT
   synchronize media list GROUP [--query TEXT]
   synchronize media get MEDIA_ID
+  synchronize threads list [--group NAME] [--limit N]
+  synchronize threads status ROOT_EVENT_ID
+  synchronize threads show ROOT_EVENT_ID [--format json|transcript]
+  synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
   synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [-- TOOL_ARGS...]
@@ -34,6 +38,8 @@ Commands:
   inbox     Read the registered CLI peer inbox; --ack acknowledges returned rows
   group     Create, join, leave, send to, and read group history
   media     Share, list, and inspect group media
+  threads   Discover, summarize, and render deeper group conversations
+  query     Run guarded read-only SQL against daemon event state
   hook      Internal host-agent hook ingestion commands
   launch    Start an agent in the foreground with synchronize daemon/env setup
   spawn     Launch a persistent agent session via the backend (AOE), optionally into a group

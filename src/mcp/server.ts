@@ -14,7 +14,9 @@ import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
+import { registerQueryTools } from "./tools/query.ts";
 import { registerRegisterTools } from "./tools/register.ts";
+import { registerThreadTools } from "./tools/threads.ts";
 
 export function createMcpServer(): SynchronizeMcpServer {
   const mcp = new McpServer(
@@ -43,6 +45,8 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerGroupTools(ctx);
   registerLaunchTools(ctx);
   registerMediaTools(ctx);
+  registerQueryTools(ctx);
+  registerThreadTools(ctx);
 
   // Once the client finishes initializing, proactively activate the live
   // channel subscription for launch-bound sessions (gated on launch env), so a

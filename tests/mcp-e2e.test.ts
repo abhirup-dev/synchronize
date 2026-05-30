@@ -59,6 +59,10 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_share_media",
         "bridge_list_media",
         "bridge_get_media",
+        "bridge_query_events",
+        "bridge_list_threads",
+        "bridge_get_thread_status",
+        "bridge_get_thread",
       ]),
     );
 
@@ -82,11 +86,40 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
 
     await client.callTool({ name: "bridge_create_group", arguments: { name: "mcp-room" } });
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
-    await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } });
+    const root = parseToolText(
+      await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
+    ) as { event: { event_id: number } };
+    await client.callTool({
+      name: "bridge_send_group",
+      arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
+    });
     const history = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+    const threads = parseToolText(
+      await client.callTool({ name: "bridge_list_threads", arguments: { group: "mcp-room" } }),
+    ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
+    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 1 })]);
+    const status = parseToolText(
+      await client.callTool({ name: "bridge_get_thread_status", arguments: { root_event_id: root.event.event_id } }),
+    ) as { status: { root_event_id: number; event_count: number } };
+    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 2 });
+    const transcript = parseToolText(
+      await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "transcript" } }),
+    ) as { transcript: string };
+    expect(transcript.transcript).toContain("hello room");
+    expect(transcript.transcript).toContain("thread reply");
+    const queried = parseToolText(
+      await client.callTool({
+        name: "bridge_query_events",
+        arguments: {
+          sql: "select body from thread_events where thread_root_event_id = ? order by event_id",
+          params: [root.event.event_id],
+        },
+      }),
+    ) as { rows: Array<{ body: string }> };
+    expect(queried.rows.map((row) => row.body)).toEqual(["hello room", "thread reply"]);
   } finally {
     await client.close();
   }
