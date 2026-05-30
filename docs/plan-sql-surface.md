@@ -313,3 +313,4 @@ Cover:
 - Thread transcript is deterministic.
 - MCP tools return agent-friendly payloads.
 - CLI commands support JSON/table/transcript formats.
+

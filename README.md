@@ -159,6 +159,30 @@ synchronize threads show 123 --format transcript
 synchronize query --format table 'select event_id, body from thread_events where thread_root_event_id = 123'
 ```
 
+Read an LLM-generated summary of a thread (opt-in: set `OPENROUTER_API_KEY`):
+
+```bash
+synchronize threads summary 123                                     # cached read
+synchronize threads summary 123 --refresh                           # force regen
+synchronize threads summary 123 --refresh --strategy first_last --first-k 3 --last-k 5
+synchronize threads summary 123 --format json                       # full envelope incl. stale flag
+```
+
+Summaries are computed once per thread (last-write-wins cache) and recomputed
+by a background worker when a thread goes cold (no activity for ~30 min) and
+new replies have landed since the cache was written. With no
+`OPENROUTER_API_KEY` set the worker is idle and the read endpoints report
+`status: "disabled"`.
+
+Knobs: `SYNCHRONIZE_LLM_PROVIDER` (default `openrouter`), `SYNCHRONIZE_LLM_MODEL`
+(default `anthropic/claude-haiku-4.5`), `SYNCHRONIZE_SUMMARY_STRATEGY` /
+`SYNCHRONIZE_SUMMARY_K` / `SYNCHRONIZE_SUMMARY_FIRST_K` /
+`SYNCHRONIZE_SUMMARY_LAST_K`, `SYNCHRONIZE_SUMMARY_POLL_INTERVAL_MS` (default
+15 min — set to `10000` during testing), `SYNCHRONIZE_SUMMARY_COLD_AFTER_MS`
+(default 30 min), `SYNCHRONIZE_SUMMARY_MIN_REPLIES` (default 3),
+`SYNCHRONIZE_SUMMARY_BATCH_SIZE` (default 10).
+
+
 ## Group Join Semantics
 
 Normal join gets history:
@@ -430,6 +454,8 @@ GET    /threads
 GET    /threads/{root_event_id}
 GET    /threads/{root_event_id}/status
 GET    /threads/{root_event_id}?peer_id={peer_id}
+GET    /threads/{root_event_id}/summary
+POST   /threads/{root_event_id}/summary
 
 POST   /groups/{name}/media
 GET    /groups/{name}/media

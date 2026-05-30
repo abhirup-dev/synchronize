@@ -293,6 +293,59 @@ function migrate(db: Database): void {
     `);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)`);
   }
+
+  // Migration v5 — thread summaries (sync-b8q).
+  //   * Adds the thread_summaries table (one row per root_event_id, LWW cache).
+  //   * Recreates discoverable_threads to expose last_event_id so the worker
+  //     can detect staleness by event id, not just last_activity_at timestamp.
+  const hasV5 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 5")
+    .get();
+  if (!hasV5) {
+    db.exec(`
+      DROP VIEW IF EXISTS discoverable_threads;
+      CREATE VIEW discoverable_threads AS
+        SELECT
+          root.event_id AS root_event_id,
+          root.group_id,
+          g.name AS group_name,
+          root.sender_peer_id AS root_sender_peer_id,
+          sp.session_name AS root_sender_session_name,
+          gm.alias AS root_sender_alias,
+          root.created_at,
+          COALESCE(MAX(reply.created_at), root.created_at) AS last_activity_at,
+          COALESCE(MAX(reply.event_id), root.event_id) AS last_event_id,
+          COUNT(DISTINCT reply.event_id) AS reply_count,
+          COUNT(DISTINCT participant.sender_peer_id) AS participant_count,
+          root.body AS preview
+        FROM events root
+        JOIN groups g ON g.group_id = root.group_id
+        LEFT JOIN peers sp ON sp.peer_id = root.sender_peer_id
+        LEFT JOIN group_members gm ON gm.group_id = root.group_id AND gm.peer_id = root.sender_peer_id
+        JOIN events reply ON reply.parent_event_id = root.event_id
+        LEFT JOIN events participant
+          ON participant.event_id = root.event_id OR participant.parent_event_id = root.event_id
+        WHERE root.type = 'group_message' AND root.parent_event_id IS NULL
+        GROUP BY root.event_id;
+
+      CREATE TABLE IF NOT EXISTS thread_summaries (
+        root_event_id         INTEGER PRIMARY KEY REFERENCES events(event_id) ON DELETE CASCADE,
+        summary               TEXT    NOT NULL,
+        model                 TEXT    NOT NULL,
+        strategy              TEXT    NOT NULL,
+        strategy_params_json  TEXT    NOT NULL,
+        prompt_version        INTEGER NOT NULL,
+        covered_last_event_id INTEGER NOT NULL,
+        covered_event_count   INTEGER NOT NULL,
+        created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_thread_summaries_updated_at
+        ON thread_summaries (updated_at);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)`);
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { requestJson, type ClientConfig } from "../client.ts";
-import type { ThreadDiscoveryRow, ThreadResponse, ThreadStatus } from "./types.ts";
+import type { ThreadDiscoveryRow, ThreadResponse, ThreadStatus, ThreadSummaryResponse } from "./types.ts";
 
 export interface ListThreadsInput {
   group?: string;
@@ -39,4 +39,31 @@ export function getThread(
   if (input.format) params.set("format", input.format);
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return requestJson<ThreadResponse>(client, `/threads/${input.rootEventId}${query}`);
+}
+
+export function getThreadSummary(
+  client: ClientConfig,
+  rootEventId: number,
+): Promise<ThreadSummaryResponse> {
+  return requestJson<ThreadSummaryResponse>(client, `/threads/${rootEventId}/summary`);
+}
+
+export interface PostThreadSummaryInput {
+  rootEventId: number;
+  strategy?: string;
+  k?: number;
+  first_k?: number;
+  last_k?: number;
+}
+
+export function postThreadSummary(
+  client: ClientConfig,
+  input: PostThreadSummaryInput,
+): Promise<ThreadSummaryResponse> {
+  const { rootEventId, ...body } = input;
+  return requestJson<ThreadSummaryResponse>(client, `/threads/${rootEventId}/summary`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+  });
 }
