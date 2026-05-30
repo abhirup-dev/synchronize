@@ -9,17 +9,20 @@ test("isLaunchTool accepts only claude and pi", () => {
   expect(isLaunchTool("")).toBe(false);
 });
 
-test("buildAgentCommand for claude injects dev-channel + skip-permission flags", () => {
+test("buildAgentCommand for claude injects --channels server:synchronize + skip-permissions (no dev-channel prompt)", () => {
   const cmd = buildAgentCommand("claude", []);
   expect(cmd[0]).toBe("claude");
   expect(cmd).toContain("--dangerously-skip-permissions");
-  expect(cmd).toContain("--dangerously-load-development-channels");
+  expect(cmd).toContain("--channels");
   expect(cmd).toContain("server:synchronize");
+  // must NOT use the build-a-channel dev flag (it prompts on every launch)
+  expect(cmd).not.toContain("--dangerously-load-development-channels");
 });
 
 test("buildAgentCommand for claude does not duplicate flags already present", () => {
-  const cmd = buildAgentCommand("claude", ["--dangerously-skip-permissions", "--model", "opus"]);
+  const cmd = buildAgentCommand("claude", ["--dangerously-skip-permissions", "--channels", "server:other", "--model", "opus"]);
   expect(cmd.filter((a) => a === "--dangerously-skip-permissions")).toHaveLength(1);
+  expect(cmd.filter((a) => a === "--channels")).toHaveLength(1);
   expect(cmd).toContain("--model");
   expect(cmd).toContain("opus");
 });

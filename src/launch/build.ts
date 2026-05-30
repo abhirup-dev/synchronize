@@ -20,8 +20,14 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
     if (!args.includes("--dangerously-skip-permissions")) {
       args.unshift("--dangerously-skip-permissions");
     }
-    if (!args.includes("--dangerously-load-development-channels")) {
-      args.unshift("--dangerously-load-development-channels", "server:synchronize");
+    // Opt the synchronize MCP server in as a live channel. `--channels
+    // server:<name>` is the supported path for a manually-configured MCP
+    // server and runs non-interactively. (NOT
+    // `--dangerously-load-development-channels`, which is for channels you are
+    // *building* and triggers an interactive "local development" confirmation
+    // on every launch — fatal for an unattended spawned session.)
+    if (!args.includes("--channels")) {
+      args.unshift("--channels", "server:synchronize");
     }
     return ["claude", ...args];
   }
