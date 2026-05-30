@@ -115,7 +115,7 @@ function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
   const rewritten = useMemo(() => {
     const handles = agents.map((a) => a.handle).filter(Boolean).sort((a, b) => b.length - a.length);
     if (handles.length === 0) return body;
-    const re = new RegExp(`@(${handles.map(escapeRegExp).join("|")})(?![a-zA-Z0-9._-])`, "g");
+    const re = new RegExp(`@(${handles.map(escapeRegExp).join("|")})(?=$|\\s|[!?;:,)\\]}]|\\.(?=$|\\s))`, "g");
     return body.replace(re, (_, h) => `\`@@${h}\``);
   }, [body, agents]);
   return <Markdown agents={agents}>{rewritten}</Markdown>;

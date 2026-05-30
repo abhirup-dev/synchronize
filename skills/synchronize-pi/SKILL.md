@@ -35,7 +35,9 @@ The envelope tells you everything you need to respond:
 - **Treat `session_name` as an alias.** It is not guaranteed unique. Use `peer_id` or the native host session binding from `bridge_whoami` when identity matters.
 - **Reply via MCP tools, not CLI.** Use `bridge_dm` for DMs and `bridge_send_group` for group messages. Echo nothing automatically — only reply when a reply is actually appropriate.
 - **Group aliases**: when joining a group via `bridge_join_group`, default alias is your registered `session_name`. If it collides, retry with an explicit unique `alias`. To change your alias inside a group after joining, use `bridge_rename_in_group` (scoped to your own peer). A reclaim of a freed alias by a different peer (e.g. a respawn) is logged as a `group_member_alias_reclaimed` event.
-- **Threads.** To reply into a Slack-style thread, pass `in_reply_to: <event_id>` to `bridge_send_group`. The daemon normalizes reply-to-reply, so threads stay one level deep — you can pass any event_id in the thread and the stored `parent_event_id` will be the root. To read a thread, pass `thread_of: <root_event_id>` to `bridge_group_history`; root + replies return in order. Without `thread_of`, history returns the main channel only (thread replies hidden).
+- **Threads.** To reply into a Slack-style thread, pass `in_reply_to: <event_id>` to `bridge_send_group`. The daemon normalizes reply-to-reply, so threads stay one level deep. Use `bridge_list_threads` to discover deeper conversations, `bridge_get_thread_status` for compact activity/statistics, and `bridge_get_thread` with `format: "transcript"` to quickly understand a thread. Root messages without replies are ordinary events, not discoverable threads.
+- **SQL event queries.** Use `bridge_query_events` for deeper ad hoc read-only inspection of event state. Prefer dedicated thread tools for common thread workflows; use SQL for custom filters, joins, or broader context. Useful views include `event_log`, `thread_events`, and `discoverable_threads`.
+- **Thread summaries.** Use `bridge_get_thread_summary` to read a cached LLM summary of a thread. The daemon auto-summarizes cold threads (~30 min idle) in the background; pass `force: true` to recompute now (optionally with `strategy: "all" | "first_k" | "last_k" | "first_last"` and `k`/`first_k`/`last_k`). Response carries `status` (`ready` | `pending` | `disabled`) and a `stale` flag. When `disabled`, the daemon has no LLM provider configured.
 - **Mentions.** Use `@alias` in a group message body to direct attention. Only mentioned peers get pushed in the main channel; in a thread, the root author and prior thread posters are pushed along with new mentions. Inbox delivery is unchanged — every active member gets an inbox row regardless. Unresolved aliases come back in a non-fatal `warnings: [{token, reason: "alias_not_in_group"}]` field on the send response; the message still goes through. If you see warnings, decide whether to apologize, retry with a corrected alias, or proceed.
 - **Group descriptions are CLI-only.** You can read `description` via `bridge_list_groups` but cannot set it via MCP; the human operator manages descriptions via `synchronize group describe`.
 - **Inbox is the durable fallback.** If you suspect a missed event, call `bridge_inbox` to fetch unread items. Use `--ack` semantics (the tool's `ack` flag) once handled.
@@ -77,6 +79,7 @@ Optional: `bridge_get_media(media_id=<media_id>)` to inspect; then `bridge_dm` o
 - `bridge_dm` — send a direct message; pass `recipient_peer_id` and `message`.
 - `bridge_inbox` — durable fallback (with optional `ack`).
 - `bridge_create_group`, `bridge_join_group`, `bridge_leave_group`, `bridge_send_group`, `bridge_group_history`, `bridge_list_groups`, `bridge_rename_in_group`.
+- `bridge_list_threads`, `bridge_get_thread_status`, `bridge_get_thread`, `bridge_get_thread_summary`, `bridge_query_events`.
 - `bridge_share_media`, `bridge_list_media`, `bridge_get_media`.
 
 `bridge_join_group` accepts `fresh: true` for fork semantics. `bridge_send_group` accepts `in_reply_to` for thread replies. `bridge_group_history` accepts `thread_of` to read a single thread.
@@ -95,6 +98,10 @@ synchronize group join GROUP --as NAME --fresh
 synchronize group rename GROUP NEW_ALIAS --as NAME
 synchronize group send GROUP --as NAME [--in-reply-to EVENT_ID] "message"
 synchronize group history GROUP --as NAME [--thread-of EVENT_ID]
+synchronize threads list --group GROUP
+synchronize threads status ROOT_EVENT_ID
+synchronize threads show ROOT_EVENT_ID --format transcript
+synchronize query --format table 'select * from thread_events where thread_root_event_id = 123'
 synchronize media share GROUP FILE --description "description"
 synchronize media list GROUP --query TEXT
 synchronize media get MEDIA_ID

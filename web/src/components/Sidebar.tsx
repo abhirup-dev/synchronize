@@ -4,6 +4,7 @@ import { StatusDot, inkFor } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
+import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
 
 interface SidebarProps {
   activeRoomId: string;
@@ -34,6 +35,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const groupsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const openMenu = useContextMenu();
+  const [spawnRoom, setSpawnRoom] = useState<Room | null>(null);
 
   return (
     <aside className="sidebar" data-vim-panel="sidebar">
@@ -63,7 +65,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         </div>
         <div className="list autoscroll" ref={groupsScrollRef}>
           {groups.map((r) => (
-            <RoomItem key={r.id} room={r} active={r.id === activeRoomId} onSelect={onSelect} />
+            <RoomItem key={r.id} room={r} active={r.id === activeRoomId} onSelect={onSelect} onSpawnAgent={setSpawnRoom} />
           ))}
         </div>
       </section>
@@ -117,6 +119,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
           {mode === "navigate" ? "NAV" : "INS"}
         </span>
       </button>
+      {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
     </aside>
   );
 }
@@ -125,12 +128,14 @@ function RoomItem({
   room,
   active,
   onSelect,
+  onSpawnAgent,
   otherStatus,
   otherColor,
 }: {
   room: Room;
   active: boolean;
   onSelect(id: string): void;
+  onSpawnAgent?(room: Room): void;
   otherStatus?: import("../data/types.ts").AgentStatus;
   otherColor?: string;
 }) {
@@ -144,6 +149,10 @@ function RoomItem({
       onClick={() => onSelect(room.id)}
       onContextMenu={(e) =>
         openMenu(e, [
+          ...(room.kind === "group" && onSpawnAgent
+            ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
+            : []),
+          ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
           { label: "Mark as read", onSelect: () => console.log("read", room.id) },
           { label: room.pinned ? "Unpin" : "Pin to top", onSelect: () => console.log("pin", room.id) },
           { label: "Mute notifications", onSelect: () => console.log("mute", room.id) },

@@ -14,7 +14,10 @@ import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
+import { registerQueryTools } from "./tools/query.ts";
 import { registerRegisterTools } from "./tools/register.ts";
+import { registerSummaryTools } from "./tools/summary.ts";
+import { registerThreadTools } from "./tools/threads.ts";
 
 export function createMcpServer(): SynchronizeMcpServer {
   const mcp = new McpServer(
@@ -28,6 +31,11 @@ export function createMcpServer(): SynchronizeMcpServer {
   const lifecycle = createLifecycleHooks(state);
 
   async function emit(mode: NotifyMode, event: Event): Promise<void> {
+    // Delivering an inbound channel event means this agent is now acting on it
+    // → working. For Claude this is the only "working" signal for channel-driven
+    // turns (UserPromptSubmit fires only for human prompts). Fire-and-forget so
+    // it never delays delivery; markWorking swallows its own errors.
+    if (mode === "claude") void lifecycle.markWorking();
     await emitMcpNotification(mcp.server as unknown as NotificationSink, mode, event);
   }
 
@@ -38,6 +46,9 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerGroupTools(ctx);
   registerLaunchTools(ctx);
   registerMediaTools(ctx);
+  registerQueryTools(ctx);
+  registerThreadTools(ctx);
+  registerSummaryTools(ctx);
 
   // Once the client finishes initializing, proactively activate the live
   // channel subscription for launch-bound sessions (gated on launch env), so a

@@ -50,8 +50,10 @@ The harness creates a worktree-local test world:
 - an isolated AoE profile
 - AoE/tmux pane captures and Pi JSONL transcripts
 
-The temporary Pi config copies only `auth.json` from the user's real Pi setup.
-All MCP, skill, and extension paths come from the current worktree:
+The temporary Pi config copies only auth credentials: by default it converts
+`~/.codex/auth.json` into Pi's `openai-codex` auth shape, falling back to a
+direct copy of `~/.pi/agent/auth.json` when Codex auth is unavailable. All MCP,
+skill, and extension paths come from the current worktree:
 
 - `bin/synchronize-mcp`
 - `extensions/pi-synchronize/src/index.ts`

@@ -1,10 +1,13 @@
 import type {
   Agent,
+  AgentStatus,
   Artifact,
   DataSource,
   Message,
   Room,
   SendMessageInput,
+  SpawnAgentInput,
+  SpawnAgentResult,
   Snapshot,
   Task,
   ThreadSummary,
@@ -20,6 +23,8 @@ export interface DaemonDataSourceOptions {
   stateLimit?: number;
 }
 
+type DaemonPresence = "offline" | "online" | "initializing" | "working" | "idle";
+
 interface DaemonPeer {
   peer_id: string;
   tool: string;
@@ -27,6 +32,7 @@ interface DaemonPeer {
   purpose: string | null;
   lease_expires_at: string;
   online?: boolean;
+  presence?: DaemonPresence;
 }
 
 interface DaemonGroup {
@@ -34,6 +40,15 @@ interface DaemonGroup {
   name: string;
   durable: boolean;
   description: string | null;
+  created_at: string;
+}
+
+interface DaemonGroupPath {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: boolean;
   created_at: string;
 }
 
@@ -46,6 +61,7 @@ interface DaemonMember {
   session_name: string;
   tool: string;
   online?: boolean;
+  presence?: DaemonPresence;
 }
 
 interface DaemonEvent {
@@ -81,6 +97,7 @@ interface WebStateResponse {
   cursor: number;
   peers: DaemonPeer[];
   groups: DaemonGroup[];
+  group_paths: DaemonGroupPath[];
   memberships: DaemonMember[];
   room_summaries: Array<{
     group_id: number;
@@ -100,6 +117,14 @@ interface WebStateChange {
   event_id?: number;
   group_id?: number | null;
   peer_id?: string | null;
+}
+
+interface DaemonLaunchResponse {
+  launchId: string;
+  peerId: string;
+  sessionName: string;
+  title: string;
+  group?: string;
 }
 
 const PEER_KEY = "synchronize.web.peerId";
@@ -290,6 +315,30 @@ export class DaemonDataSource implements DataSource {
     }
   }
 
+  async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
+    const group = this.groupNameByRoomId.get(input.roomId);
+    if (!group) throw new Error(`Unknown group room: ${input.roomId}`);
+    const name = input.name.trim();
+    if (!name) throw new Error("agent name is required");
+    const response = await this.request<DaemonLaunchResponse>("/agent-sessions/launch", {
+      method: "POST",
+      body: JSON.stringify({
+        tool: input.tool,
+        name,
+        repo: input.path,
+        group,
+      }),
+    });
+    await this.refresh();
+    await this.refreshRoom(input.roomId, { reset: true });
+    return {
+      peerId: response.peerId,
+      sessionName: response.sessionName,
+      title: response.title,
+      group: response.group ?? group,
+    };
+  }
+
   setAgentColor(agentId: string, hex: string | null): void {
     const key = `synchronize.agentColor.${agentId}`;
     if (hex) localStorage.setItem(key, hex);
@@ -333,15 +382,25 @@ export class DaemonDataSource implements DataSource {
   private async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
-      let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
-      if (await this.ensureWebPeerMemberships(state)) {
-        state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+      try {
+        let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        if (await this.ensureWebPeerMemberships(state)) {
+          state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        }
+        this.applySummaryState(state);
+      } catch {
+        this.markRemoteAgentsOffline();
       }
-      this.applySummaryState(state);
     })().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
+  }
+
+  private markRemoteAgentsOffline(): void {
+    this._agents.update((agents) =>
+      agents.map((agent) => agent.id === this.peerId ? agent : { ...agent, status: "offline" }),
+    );
   }
 
   private async ensureWebPeerMemberships(state: WebStateResponse): Promise<boolean> {
@@ -369,6 +428,7 @@ export class DaemonDataSource implements DataSource {
   private applySummaryState(state: WebStateResponse): void {
     const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
     const memberByGroup = groupMembersByGroup(state.memberships);
+    const pathsByGroup = groupPathsByGroup(state.group_paths ?? []);
     const summaryByGroup = new Map(state.room_summaries.map((summary) => [summary.group_id, summary] as const));
     const agents = agentsFromState(state, this.peerId);
     const me = agents.find((agent) => agent.id === this.peerId) ?? mapAgent(peerById.get(this.peerId) ?? {
@@ -393,6 +453,11 @@ export class DaemonDataSource implements DataSource {
         color: colorForGroup(group.group_id),
         members: members.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
+        paths: (pathsByGroup.get(group.group_id) ?? []).map((path) => ({
+          id: String(path.path_id),
+          path: path.path,
+          ...(path.label ? { label: path.label } : {}),
+        })),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,
@@ -586,9 +651,31 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
       purpose: member.purpose,
       lease_expires_at: "",
       online: Boolean(member.online),
+      ...(member.presence ? { presence: member.presence } : {}),
     });
   }
   return [...peers.values()].map((peer) => mapAgent(peer, mePeerId));
+}
+
+// Map the daemon's derived presence onto the roster's status palette. working
+// and the transient initializing read as "busy" (active, pulsing); idle is its
+// own amber; generic "online" (uninstrumented peers) and the local human stay
+// green. Falls back to the legacy online boolean when presence is absent.
+function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
+  if (isMe) return "online";
+  switch (peer.presence) {
+    case "working":
+    case "initializing":
+      return "busy";
+    case "idle":
+      return "idle";
+    case "offline":
+      return "offline";
+    case "online":
+      return "online";
+    default:
+      return peer.online ? "online" : "offline";
+  }
 }
 
 function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
@@ -600,7 +687,7 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
     handle: isMe ? "you" : handleFor(peer),
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
-    status: isMe || peer.online ? "online" : "offline",
+    status: statusForPeer(peer, isMe),
     ...(peer.purpose ? { statusNote: peer.purpose } : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
@@ -677,6 +764,12 @@ function parseMentions(raw: string | null): string[] {
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
   for (const member of memberships) pushMap(grouped, member.group_id, member);
+  return grouped;
+}
+
+function groupPathsByGroup(paths: DaemonGroupPath[]): Map<number, DaemonGroupPath[]> {
+  const grouped = new Map<number, DaemonGroupPath[]>();
+  for (const path of paths) pushMap(grouped, path.group_id, path);
   return grouped;
 }
 

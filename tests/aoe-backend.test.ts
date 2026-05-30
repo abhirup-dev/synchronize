@@ -101,6 +101,22 @@ test("autoConfirmDevChannelPrompt sends Enter to the pane when the dev-channel p
   expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_worker-12345678_abcd1234", "Enter"]);
 });
 
+test("autoConfirmDevChannelPrompt resolves AOE-truncated tmux names through session id", async () => {
+  const { calls, run } = recorder({
+    "list --json": {
+      exitCode: 0,
+      stdout: JSON.stringify([{ id: "60cd23d0d6644540", title: "abcd1234-verylong" }]),
+      stderr: "",
+    },
+    "list-sessions": { exitCode: 0, stdout: "aoe_abcd1234-verylong_zzz\naoe_abcd1234-verylong_60cd23d0\n", stderr: "" },
+    "capture-pane": { exitCode: 0, stdout: "Enter to confirm", stderr: "" },
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await backend.autoConfirmDevChannelPrompt("abcd1234-verylong");
+  const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_abcd1234-verylong_60cd23d0", "Enter"]);
+});
+
 test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears", async () => {
   const { calls, run } = recorder({
     "list-sessions": { exitCode: 0, stdout: "aoe_worker-12345678_abcd1234\n", stderr: "" },

@@ -19,7 +19,7 @@ export interface SessionBackend {
 }
 
 export interface LaunchSpec {
-  /** Backend session title (durable, derivable: `${session_name}-${peerid8}`). */
+  /** Backend session title (durable, derivable, <= AOE's 20-char tmux prefix). */
   title: string;
   /** Agent type for the backend's own rendering (AOE: `--cmd`). */
   tool: LaunchTool;
@@ -199,12 +199,20 @@ export class AoeBackend implements SessionBackend {
     }
   }
 
-  /** Resolve the tmux session name AOE created for a title (aoe_<title>_<id>). */
+  /** Resolve the tmux session name AOE created for a title. */
   async tmuxSessionFor(title: string): Promise<string | null> {
+    const aoeList = await this.run(this.aoe(["list", "--json"]));
+    const aoeSession = aoeList.exitCode === 0 ? parseAoeList(aoeList.stdout).find((session) => session.title === title) : undefined;
+    const idSuffix = aoeSession?.id?.slice(0, 8);
     const res = await this.run(["tmux", "list-sessions", "-F", "#{session_name}"]);
     if (res.exitCode !== 0) return null;
+    const sessions = res.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (idSuffix) {
+      const byId = sessions.find((session) => session.startsWith("aoe_") && session.endsWith(`_${idSuffix}`));
+      if (byId) return byId;
+    }
     const prefix = `aoe_${title}_`;
-    const match = res.stdout.split("\n").map((s) => s.trim()).find((s) => s.startsWith(prefix));
+    const match = sessions.find((s) => s.startsWith(prefix));
     return match ?? null;
   }
 

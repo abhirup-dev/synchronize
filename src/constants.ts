@@ -26,6 +26,10 @@ export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
 export const ENV_PEER_ID = "SYNCHRONIZE_PEER_ID";
 export const ENV_SESSION_NAME = "SYNCHRONIZE_SESSION_NAME";
 export const ENV_HOOK_ENABLE = "SYNCHRONIZE_HOOK_ENABLE";
+export const ENV_LEASE_MS = "SYNCHRONIZE_LEASE_MS";
+export const ENV_PEER_RETENTION_MS = "SYNCHRONIZE_PEER_RETENTION_MS";
+export const ENV_SWEEP_INTERVAL_MS = "SYNCHRONIZE_SWEEP_INTERVAL_MS";
+export const ENV_MCP_HEARTBEAT_MS = "SYNCHRONIZE_MCP_HEARTBEAT_MS";
 // Temporary launch-scoped correlation key shared by `synchronize launch`,
 // Claude's SessionStart hook, and the spawned synchronize MCP process.
 // It is not a durable identity: peer_id remains synchronize's identity and
@@ -37,14 +41,45 @@ export const ENV_LAUNCH_ID = "SYNCHRONIZE_LAUNCH_ID";
 export const STARTUP_TIMEOUT_MS = 5_000;
 export const HEALTH_TIMEOUT_MS = 500;
 export const STALE_LOCK_MS = 30_000;
-export const DEFAULT_LEASE_MS = 7 * 24 * 60 * 60_000;
+
+// Liveness lease window. A peer is "online" iff lease_expires_at > now; the
+// lease is refreshed by heartbeats (every MCP_HEARTBEAT_MS=15s) and by any
+// activity push. The production default is intentionally generous so suspended
+// local agents do not disappear during multi-day work. Tests and failure-mode
+// demos should override SYNCHRONIZE_LEASE_MS to a smaller value when they need
+// to observe lease-lapse quickly. See session-tracker/plan-agent-ttl-presence-v0.md.
+function positiveEnvMs(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+export const DEFAULT_LEASE_MS = positiveEnvMs(ENV_LEASE_MS, 3 * 24 * 60 * 60_000);
+
+// How long a peer's lease must have been expired before the background sweeper
+// soft-deletes it (retention window — keeps offline peers visible in the
+// roster + preserves reclaim audit before they are hidden). Override for tests.
+export const PEER_RETENTION_MS = positiveEnvMs(ENV_PEER_RETENTION_MS, 24 * 60 * 60_000);
+
+// How often the daemon's internal sweeper runs. Default hourly; tests shorten
+// it to observe a sweep within the test window.
+export const SWEEP_INTERVAL_MS = positiveEnvMs(ENV_SWEEP_INTERVAL_MS, 60 * 60_000);
+
+// Canonical agent activity states stored on peers.activity_state. NULL means
+// "uninstrumented" — the peer (web/cli/codex) reports no activity and renders
+// as a generic online/offline. Presence = offline if lease expired, else the
+// activity_state if set, else generic "online".
+export const ACTIVITY_STATES = ["initializing", "working", "idle"] as const;
+export type ActivityState = (typeof ACTIVITY_STATES)[number];
 export const MAX_MESSAGE_CHARS = 16_000;
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 200;
 export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
-export const MCP_HEARTBEAT_MS = 15_000;
+// MCP stdio adapter (Claude/codex) heartbeat cadence. Env-overridable via
+// SYNCHRONIZE_MCP_HEARTBEAT_MS so integration tests can drive a short heartbeat
+// and observe lease-lapse / recovery quickly (mirrors the daemon's
+// SYNCHRONIZE_LEASE_MS and the Pi extension's SYNCHRONIZE_PI_HEARTBEAT_MS).
+export const MCP_HEARTBEAT_MS = positiveEnvMs(ENV_MCP_HEARTBEAT_MS, 15_000);
 
 // Canonical event types stored on events.type. Adding a new type here also
 // requires updating the CHECK constraint in src/db.ts so the daemon stays in

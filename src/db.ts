@@ -83,6 +83,19 @@ function migrate(db: Database): void {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
+    CREATE TABLE IF NOT EXISTS group_paths (
+      path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      label TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(group_id, path)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_paths_group
+      ON group_paths (group_id, active, path);
+
     CREATE TABLE IF NOT EXISTS group_members (
       group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
       peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
@@ -122,6 +135,18 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_group_parent_event
       ON events (group_id, parent_event_id, event_id);
 
+    CREATE INDEX IF NOT EXISTS idx_events_type_event
+      ON events (type, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_sender_event
+      ON events (sender_peer_id, event_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_created_at
+      ON events (created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_events_parent_event
+      ON events (parent_event_id, event_id);
+
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
       event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -134,6 +159,55 @@ function migrate(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_inbox_recipient_acked_event
       ON inbox (recipient_peer_id, acked_at, event_id);
+
+    CREATE VIEW IF NOT EXISTS event_log AS
+      SELECT
+        e.*,
+        g.name AS group_name,
+        sp.session_name AS sender_session_name,
+        sp.tool AS sender_tool,
+        rp.session_name AS recipient_session_name,
+        rp.tool AS recipient_tool
+      FROM events e
+      LEFT JOIN groups g ON g.group_id = e.group_id
+      LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      LEFT JOIN peers rp ON rp.peer_id = e.recipient_peer_id;
+
+    CREATE VIEW IF NOT EXISTS thread_events AS
+      SELECT
+        e.*,
+        CASE WHEN e.parent_event_id IS NULL THEN e.event_id ELSE e.parent_event_id END AS thread_root_event_id,
+        CASE WHEN e.parent_event_id IS NULL THEN 0 ELSE 1 END AS thread_position,
+        g.name AS group_name,
+        sp.session_name AS sender_session_name,
+        sp.tool AS sender_tool
+      FROM events e
+      LEFT JOIN groups g ON g.group_id = e.group_id
+      LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      WHERE e.type = 'group_message';
+
+    CREATE VIEW IF NOT EXISTS discoverable_threads AS
+      SELECT
+        root.event_id AS root_event_id,
+        root.group_id,
+        g.name AS group_name,
+        root.sender_peer_id AS root_sender_peer_id,
+        sp.session_name AS root_sender_session_name,
+        gm.alias AS root_sender_alias,
+        root.created_at,
+        COALESCE(MAX(reply.created_at), root.created_at) AS last_activity_at,
+        COUNT(DISTINCT reply.event_id) AS reply_count,
+        COUNT(DISTINCT participant.sender_peer_id) AS participant_count,
+        root.body AS preview
+      FROM events root
+      JOIN groups g ON g.group_id = root.group_id
+      LEFT JOIN peers sp ON sp.peer_id = root.sender_peer_id
+      LEFT JOIN group_members gm ON gm.group_id = root.group_id AND gm.peer_id = root.sender_peer_id
+      JOIN events reply ON reply.parent_event_id = root.event_id
+      LEFT JOIN events participant
+        ON participant.event_id = root.event_id OR participant.parent_event_id = root.event_id
+      WHERE root.type = 'group_message' AND root.parent_event_id IS NULL
+      GROUP BY root.event_id;
 
     CREATE TABLE IF NOT EXISTS media_items (
       media_id TEXT PRIMARY KEY,
@@ -172,6 +246,105 @@ function migrate(db: Database): void {
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_deleted_at ON peers (deleted_at)`);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)`);
+  }
+
+  // Migration v3 — peers.activity_state + last_activity_at for 3-state
+  // presence. activity_state ∈ {initializing,working,idle} for instrumented
+  // agents (pi/claude); NULL for uninstrumented peers (web/cli/codex), which
+  // render as generic online. Fed by POST /peers/activity. See
+  // session-tracker/plan-agent-ttl-presence-v0.md.
+  const hasV3 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 3")
+    .get();
+  if (!hasV3) {
+    const cols = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('peers')")
+      .all()
+      .map((row) => row.name);
+    if (!cols.includes("activity_state")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN activity_state TEXT`);
+    }
+    if (!cols.includes("last_activity_at")) {
+      db.exec(`ALTER TABLE peers ADD COLUMN last_activity_at TEXT`);
+    }
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)`);
+  }
+
+  // Migration v4 — group_paths: each group owns the set of workspace paths
+  // agents may be launched against from the web/AOE flow. Existing groups are
+  // populated by the daemon at startup because the correct default path depends
+  // on the running source root, not only the schema.
+  const hasV4 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 4")
+    .get();
+  if (!hasV4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS group_paths (
+        path_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        label TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        UNIQUE(group_id, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_paths_group
+        ON group_paths (group_id, active, path);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)`);
+  }
+
+  // Migration v5 — thread summaries (sync-b8q).
+  //   * Adds the thread_summaries table (one row per root_event_id, LWW cache).
+  //   * Recreates discoverable_threads to expose last_event_id so the worker
+  //     can detect staleness by event id, not just last_activity_at timestamp.
+  const hasV5 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 5")
+    .get();
+  if (!hasV5) {
+    db.exec(`
+      DROP VIEW IF EXISTS discoverable_threads;
+      CREATE VIEW discoverable_threads AS
+        SELECT
+          root.event_id AS root_event_id,
+          root.group_id,
+          g.name AS group_name,
+          root.sender_peer_id AS root_sender_peer_id,
+          sp.session_name AS root_sender_session_name,
+          gm.alias AS root_sender_alias,
+          root.created_at,
+          COALESCE(MAX(reply.created_at), root.created_at) AS last_activity_at,
+          COALESCE(MAX(reply.event_id), root.event_id) AS last_event_id,
+          COUNT(DISTINCT reply.event_id) AS reply_count,
+          COUNT(DISTINCT participant.sender_peer_id) AS participant_count,
+          root.body AS preview
+        FROM events root
+        JOIN groups g ON g.group_id = root.group_id
+        LEFT JOIN peers sp ON sp.peer_id = root.sender_peer_id
+        LEFT JOIN group_members gm ON gm.group_id = root.group_id AND gm.peer_id = root.sender_peer_id
+        JOIN events reply ON reply.parent_event_id = root.event_id
+        LEFT JOIN events participant
+          ON participant.event_id = root.event_id OR participant.parent_event_id = root.event_id
+        WHERE root.type = 'group_message' AND root.parent_event_id IS NULL
+        GROUP BY root.event_id;
+
+      CREATE TABLE IF NOT EXISTS thread_summaries (
+        root_event_id         INTEGER PRIMARY KEY REFERENCES events(event_id) ON DELETE CASCADE,
+        summary               TEXT    NOT NULL,
+        model                 TEXT    NOT NULL,
+        strategy              TEXT    NOT NULL,
+        strategy_params_json  TEXT    NOT NULL,
+        prompt_version        INTEGER NOT NULL,
+        covered_last_event_id INTEGER NOT NULL,
+        covered_event_count   INTEGER NOT NULL,
+        created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_thread_summaries_updated_at
+        ON thread_summaries (updated_at);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)`);
   }
 }
 

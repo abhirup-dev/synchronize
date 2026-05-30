@@ -1,55 +1,44 @@
-# Tests And Quality Gates Series
+# Tests And Quality Gates
 
-Covers current test coverage and where new behavior is locked in. Search terms: tests, quality gates, api.test, mcp-e2e, messaging, integration harness.
+## Standard gates
 
-## Standard quality gates
+- `bun run typecheck` for TypeScript.
+- `bun test` for the full Bun suite.
+- Use targeted Bun tests while iterating, then broaden based on blast radius.
+- Web changes should also run `cd web && bun run typecheck` and `cd web && bun run build`.
+- Real-agent behavior may require the Python/AOE harness under `scripts/integration-aoe/`.
 
-The older task completion checklist still applies: run typecheck/tests when code changes. The project uses Bun/TypeScript tests plus optional integration harnesses.
+## High-value targeted tests
 
-Common commands are still:
+- Backend/API contract: `bun test tests/api.test.ts`.
+- Messaging/CLI e2e: `bun test tests/messaging.test.ts`.
+- MCP stdio behavior: `bun test tests/mcp.test.ts tests/mcp-e2e.test.ts`.
+- Presence/lease behavior: `bun test tests/presence.test.ts tests/peer-revival.test.ts`.
+- Agent session hooks/config: `bun test tests/claude-hooks-config.test.ts tests/pi-mcp-config.test.ts`.
+- AOE launch behavior: `bun test tests/launch-build.test.ts tests/launch-service.test.ts tests/launch-reconcile.test.ts tests/launch-route.test.ts tests/aoe-backend.test.ts`.
 
-- `bun run typecheck`.
-- `bun test`.
-- targeted `bun test tests/api.test.ts` for daemon/API behavior.
-- targeted `bun test tests/mcp-e2e.test.ts` for MCP stdio behavior.
+## Launch-specific coverage
 
-## Current high-value test files
-
-`tests/api.test.ts` is now the most important executable spec for backend behavior. It covers:
-
-- agent session bindings upsert/rename.
-- group member `host_session_id` surfacing.
-- alias rename audit event.
-- group description create/list/patch/clear.
-- mention resolution, unresolved warnings, self-mention filtering.
-- thread reply collapse and history filtering.
-- `/threads/:root` endpoint behavior.
-- backtick carve-out for mention parsing.
-- peer soft-delete resurrection.
-
-`tests/mcp-e2e.test.ts` covers:
-
-- full stdio MCP behavior.
-- structured `{ error: { code, message, status? } }` error envelopes.
-- parsed `mentions` output and no raw `mentions_json` in MCP responses.
-- `bridge_group_history` modes and invalid `event_ids` + `thread_of` combination.
-
-`tests/messaging.test.ts` covers CLI spawn/end-to-end behavior, including session-name/hook-adjacent flows.
-
-`tests/peer-id-env.test.ts` covers `SYNCHRONIZE_PEER_ID` sticky peer id behavior.
-
-`extensions/pi-synchronize/tests/subscription.test.ts` covers Pi subscription callback behavior.
+- `tests/launch-build.test.ts`: agent command/env construction, Claude dev-channel flags, and launch env variables.
+- `tests/launch-service.test.ts`: launch validation, `--model haiku` default for daemon-launched Claude sessions, caller `--model` override, pending intent lifecycle, stop delegation.
+- `tests/launch-reconcile.test.ts`: group auto-join, fresh history, standalone no-op, unknown/null launch id no-op, foreign peer id preserving intent, alias-collision join_failed, idempotence.
+- `tests/launch-route.test.ts`: daemon route validation for `/agent-sessions/launch`.
+- `tests/aoe-backend.test.ts`: AOE command construction, profile/group/add/start order, rollback on start failure, no headless `--launch`, prompt auto-confirm, stop/list parsing.
 
 ## Integration harnesses
 
-The Python harness under `scripts/integration-aoe/` is the higher-fidelity validation layer for real CLI/tmux/AoE/Pi workflows. It complements the Bun suite and should be used for changes that affect live multi-agent behavior.
+- `scripts/integration-aoe/sync_itest_aoe/` is the real-agent harness package.
+- Use `group_policy_cli.py` for CLI group policy behavior.
+- Use `pi_mcp_group_policy.py`, `pi_mcp_dm.py`, `pi_mcp_thread_baton.py`, and `pi_peer_revival.py` for Pi/AOE/MCP multi-agent behavior.
+- Harness artifacts are useful postmortem evidence; do not remove artifact writes casually.
 
-Important scenarios:
+## Graphify readiness checks
 
-- `group_policy_cli.py` for CLI group policy.
-- `pi_mcp_group_policy.py` for Pi group policy.
-- `pi_mcp_thread_baton.py` for real multi-agent thread/mention baton.
+For unified-memory readiness, also verify:
 
-## When to broaden tests
+```bash
+graphify benchmark graphify-out/graph.json
+graphify query "LaunchService reconcileLaunch bridge_launch agent-sessions launch" --graph graphify-out/graph.json --budget 2400
+```
 
-Use `tests/api.test.ts` for daemon contract changes. Add MCP e2e coverage when changing tool response shape or descriptions that agents depend on. Run/extend AoE harnesses when the change affects real host integration, tmux submission, Pi delivery, or multi-agent coordination.
+A clean Graphify graph should not route through `.codex`, `.synchronize-itest`, `.serena`, `.beads`, `.demo-synchronize`, `.pytest_cache`, `.claude/worktrees`, or `work/`.

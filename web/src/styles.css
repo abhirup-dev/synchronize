@@ -150,6 +150,7 @@
   --z-floating-control: 1000;
   --z-mention-overlay: 1500;
   --z-toast: 1800;
+  --z-modal: 2200;
   --yellow: #FFD23F;
   --pink: #FF5DA2;
   --blue: #4D7CFE;
@@ -2598,6 +2599,193 @@ button { font-family: inherit; cursor: pointer; }
   font-size: var(--text-11);
   color: var(--ink-faint);
   margin-left: 14px;
+}
+
+/* ───────────────────────── spawn agent dialog ───────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink) 26%, transparent);
+}
+
+.spawn-agent-dialog {
+  width: min(460px, 100%);
+  max-height: min(680px, calc(100vh - 40px));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--line-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 16px;
+}
+
+.spawn-agent-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.spawn-agent-kicker,
+.spawn-agent-field label,
+.spawn-tool-field legend {
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  letter-spacing: var(--tracking-lg);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.spawn-agent-head h2 {
+  margin: 3px 0 0;
+  font-family: var(--font-display);
+  font-size: var(--text-22);
+  line-height: 1.05;
+}
+
+.spawn-agent-close {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: var(--line-xs);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-mono);
+  font-weight: 900;
+}
+
+.spawn-agent-field {
+  display: grid;
+  gap: 6px;
+}
+
+.spawn-agent-field input {
+  width: 100%;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: var(--line-xs);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-14);
+}
+
+.spawn-tool-field {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.spawn-tool-options,
+.spawn-path-options {
+  display: grid;
+  gap: 8px;
+}
+
+.spawn-tool-option,
+.spawn-path-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 9px 10px;
+  background: var(--paper-2);
+  border: var(--line-xs-faint);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.spawn-tool-option.selected,
+.spawn-path-option.selected {
+  background: var(--paper);
+  border-color: var(--blue);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--blue) 35%, transparent);
+}
+
+.spawn-tool-option input,
+.spawn-path-option input {
+  accent-color: var(--blue);
+}
+
+.spawn-tool-copy,
+.spawn-path-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.spawn-tool-label,
+.spawn-path-label {
+  font-family: var(--font-display);
+  font-size: var(--text-14);
+}
+
+.spawn-tool-meta,
+.spawn-path-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.spawn-agent-error {
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--red) 18%, var(--paper));
+  border: var(--line-xs);
+  border-color: var(--red);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+}
+
+.spawn-agent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.spawn-secondary,
+.spawn-primary {
+  min-width: 86px;
+  min-height: 34px;
+  border: var(--line-xs);
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+}
+
+.spawn-secondary {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.spawn-primary {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+
+.spawn-secondary:disabled,
+.spawn-primary:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 /* ───────────────────────── threads (slack-style) ───────────────────────── */

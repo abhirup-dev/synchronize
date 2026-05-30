@@ -18,6 +18,12 @@ export interface Agent {
 
 export type RoomKind = "group" | "dm";
 
+export interface GroupPath {
+  id: string;
+  path: string;
+  label?: string;
+}
+
 export interface Room {
   id: string;
   kind: RoomKind;
@@ -26,6 +32,7 @@ export interface Room {
   color: string;
   members: string[]; // agent ids; for DMs always [you, other]
   memberAliases?: Record<string, string>; // group-scoped peer_id -> alias
+  paths?: GroupPath[]; // group-scoped launch paths
   description?: string;
   lastPreview?: string;
   unread: number;
@@ -147,6 +154,22 @@ export interface SendMessageInput {
   parentMessageId?: string;
 }
 
+export type AgentLaunchTool = "claude" | "pi";
+
+export interface SpawnAgentInput {
+  roomId: string;
+  tool: AgentLaunchTool;
+  name: string;
+  path: string;
+}
+
+export interface SpawnAgentResult {
+  peerId: string;
+  sessionName: string;
+  title: string;
+  group: string;
+}
+
 export interface DataSource {
   // queries
   rooms(): Snapshot<Room[]>;
@@ -163,6 +186,7 @@ export interface DataSource {
 
   // commands
   sendMessage(input: SendMessageInput): Promise<Message>;
+  spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult>;
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */
   setAgentColor(agentId: string, hex: string | null): void;

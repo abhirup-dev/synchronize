@@ -59,6 +59,10 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_share_media",
         "bridge_list_media",
         "bridge_get_media",
+        "bridge_query_events",
+        "bridge_list_threads",
+        "bridge_get_thread_status",
+        "bridge_get_thread",
       ]),
     );
 
@@ -82,11 +86,40 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
 
     await client.callTool({ name: "bridge_create_group", arguments: { name: "mcp-room" } });
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
-    await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } });
+    const root = parseToolText(
+      await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
+    ) as { event: { event_id: number } };
+    await client.callTool({
+      name: "bridge_send_group",
+      arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
+    });
     const history = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+    const threads = parseToolText(
+      await client.callTool({ name: "bridge_list_threads", arguments: { group: "mcp-room" } }),
+    ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
+    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 1 })]);
+    const status = parseToolText(
+      await client.callTool({ name: "bridge_get_thread_status", arguments: { root_event_id: root.event.event_id } }),
+    ) as { status: { root_event_id: number; event_count: number } };
+    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 2 });
+    const transcript = parseToolText(
+      await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "transcript" } }),
+    ) as { transcript: string };
+    expect(transcript.transcript).toContain("hello room");
+    expect(transcript.transcript).toContain("thread reply");
+    const queried = parseToolText(
+      await client.callTool({
+        name: "bridge_query_events",
+        arguments: {
+          sql: "select body from thread_events where thread_root_event_id = ? order by event_id",
+          params: [root.event.event_id],
+        },
+      }),
+    ) as { rows: Array<{ body: string }> };
+    expect(queried.rows.map((row) => row.body)).toEqual(["hello room", "thread reply"]);
   } finally {
     await client.close();
   }
@@ -141,6 +174,105 @@ test("MCP stdio adapter emits Claude channel notifications", async () => {
     ]);
     expect(notifications[0]?.params.meta).not.toHaveProperty("source");
     expect(Object.values(notifications[0]?.params.meta ?? {}).every((value) => typeof value === "string")).toBe(true);
+  } finally {
+    await client.close();
+  }
+});
+
+test("Claude MCP adapter recovers from a soft-delete: next heartbeat re-registers AND re-subscribes (DM still pushed)", async () => {
+  // The untested twin of the Pi peer-revival fix (sync-3nu). The Pi runtime is
+  // proven by the AoE smoke + peer-revival.test.ts; this proves the MCP/Claude
+  // adapter does the same recovery (maintainPeer 404 → re-register + re-subscribe)
+  // deterministically, in-process, via a short heartbeat. A DM that lands AFTER
+  // recovery and arrives on the Claude channel is the re-subscribe proof — the
+  // subscription was rebuilt, not just the peer row resurrected.
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-revival-"));
+  homes.push(home);
+  const client = new Client({ name: "synchronize-revival-test", version: "0.1.0" });
+  const notifications: Array<{ method: string; params: { content: string; meta: Record<string, string> } }> = [];
+  const ClaudeChannelNotificationSchema = z.object({
+    method: z.literal("notifications/claude/channel"),
+    params: z.object({ content: z.string(), meta: z.record(z.string(), z.string()) }),
+  });
+  client.setNotificationHandler(ClaudeChannelNotificationSchema, (notification) => {
+    notifications.push(notification);
+  });
+  const transport = new StdioClientTransport({
+    command: join(process.cwd(), "bin/synchronize-mcp"),
+    args: [],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      SYNCHRONIZE_HOME: home,
+      SYNCHRONIZE_PORT: "0",
+      SYNCHRONIZE_MCP_MODE: "claude",
+      SYNCHRONIZE_MCP_HEARTBEAT_MS: "250", // recover fast instead of the 15s default
+    },
+    stderr: "pipe",
+  });
+
+  try {
+    await client.connect(transport);
+    const registered = parseToolText(
+      await client.callTool({ name: "bridge_register", arguments: { session_name: "claude-revival" } }),
+    ) as { peer: { peer_id: string } };
+    const peerId = registered.peer.peer_id;
+
+    // The adapter autostarts a daemon in SYNCHRONIZE_HOME; discover its REST URL
+    // so the test can drive the daemon directly (evict + send the recovery DM).
+    const { baseUrl } = (await Bun.file(join(home, "daemon.json")).json()) as { baseUrl: string };
+    const peerOnline = async (): Promise<boolean> => {
+      const body = (await (await fetch(`${baseUrl}/peers`)).json()) as { peers: Array<{ peer_id: string; online?: boolean }> };
+      return body.peers.some((p) => p.peer_id === peerId && p.online);
+    };
+
+    // Soft-delete (operator evict == retention-sweep DB effect): peer hidden,
+    // its event subscriber dropped on the daemon side.
+    const del = await fetch(`${baseUrl}/peers/${peerId}`, { method: "DELETE" });
+    expect(del.ok).toBe(true);
+
+    // Recovery: within a couple of heartbeats maintainPeer 404s and re-registers
+    // the same peer_id, bringing it back online.
+    const recoveryDeadline = Date.now() + 10_000;
+    let recovered = false;
+    while (Date.now() < recoveryDeadline) {
+      if (await peerOnline()) {
+        recovered = true;
+        break;
+      }
+      await Bun.sleep(100);
+    }
+    expect(recovered).toBe(true);
+
+    // Re-subscribe proof: a DM sent AFTER recovery must push to the rebuilt
+    // Claude-channel subscription. Send from a separate REST-registered peer.
+    const sender = (
+      (await (
+        await fetch(`${baseUrl}/peers/register`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session_name: "revival-sender", tool: "cli" }),
+        })
+      ).json()) as { peer: { peer_id: string } }
+    ).peer.peer_id;
+    const marker = "MCP_REVIVAL_DM";
+    await fetch(`${baseUrl}/dm`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sender_peer_id: sender, recipient_peer_id: peerId, message: marker }),
+    });
+
+    const pushDeadline = Date.now() + 10_000;
+    while (!notifications.some((n) => n.params.content === marker) && Date.now() < pushDeadline) {
+      await Bun.sleep(50);
+    }
+    expect(notifications.some((n) => n.method === "notifications/claude/channel" && n.params.content === marker)).toBe(true);
+
+    // markWorking: channel delivery in claude mode pushes the peer to "working".
+    const finalPeers = (await (await fetch(`${baseUrl}/peers`)).json()) as {
+      peers: Array<{ peer_id: string; activity_state?: string | null }>;
+    };
+    expect(finalPeers.peers.find((p) => p.peer_id === peerId)?.activity_state).toBe("working");
   } finally {
     await client.close();
   }

@@ -4,6 +4,8 @@ import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, extname, join } from "node:path";
 import {
+  ACTIVITY_STATES,
+  type ActivityState,
   DEFAULT_BIND_HOST,
   DEFAULT_LEASE_MS,
   DEFAULT_PAGE_LIMIT,
@@ -13,6 +15,8 @@ import {
   ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
+  PEER_RETENTION_MS,
+  SWEEP_INTERVAL_MS,
   API_VERSION,
 } from "./constants.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
@@ -22,6 +26,18 @@ import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
 import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
+import { isLaunchTool } from "./launch/build.ts";
+import { runEventQuery } from "./query/events.ts";
+import { resolveProviderConfig } from "./llm/index.ts";
+import {
+  isEnabled as isSummarizeEnabled,
+  loadSummaryResponse,
+  makeProviderCaller,
+  startSummarizeWorker,
+  strategyFromInput,
+  summarizeThread,
+  type WorkerHandle,
+} from "./summarize/index.ts";
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -34,6 +50,7 @@ export interface DaemonContext {
   webStateClients: Set<WebStateClient>;
   stateVersion: number;
   launchService: LaunchService;
+  summarizeWorker: WorkerHandle | null;
 }
 
 interface DiscoveryFile {
@@ -55,6 +72,8 @@ interface PeerRow {
   purpose: string | null;
   machine_id: string;
   lease_expires_at: string;
+  activity_state: string | null;
+  last_activity_at: string | null;
   last_cursor: number;
   created_at: string;
   updated_at: string;
@@ -84,6 +103,7 @@ interface AgentSessionJoinedRow extends AgentSessionRow {
   peer_purpose: string | null;
   peer_lease_expires_at: string;
   peer_online: number;
+  peer_activity_state: string | null;
 }
 
 interface EventRow {
@@ -146,6 +166,15 @@ interface GroupRow {
   created_at: string;
 }
 
+interface GroupPathRow {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: number;
+  created_at: string;
+}
+
 interface MediaRow {
   media_id: string;
   group_id: number;
@@ -171,6 +200,7 @@ interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  activity_state: string | null;
   host_session_id: string | null;
 }
 
@@ -180,6 +210,7 @@ interface SummaryPeerRow {
   tool: string;
   purpose: string | null;
   online: number;
+  activity_state: string | null;
   pending_inbox: number;
   groups: number;
   updated_at: string;
@@ -194,6 +225,45 @@ interface SummaryGroupRow {
   messages: number;
   media: number;
   last_activity_at: string | null;
+}
+
+interface ThreadDiscoveryRow {
+  root_event_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_activity_at: string;
+  reply_count: number;
+  participant_count: number;
+  preview: string | null;
+}
+
+interface ThreadParticipantRow {
+  peer_id: string;
+  session_name: string | null;
+  alias: string | null;
+  active: number | null;
+  event_count: number;
+  first_event_id: number;
+  last_event_id: number;
+  last_activity_at: string;
+}
+
+interface ThreadStatusRow {
+  root_event_id: number;
+  group_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_event_id: number;
+  last_activity_at: string;
+  reply_count: number;
+  event_count: number;
+  participant_count: number;
 }
 
 function log(message: string): void {
@@ -255,7 +325,21 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/web/state") {
     requireAuth(request, ctx);
     const state = buildWebState(ctx, url);
-    const etag = `W/"${state.cursor}"`;
+    // The ETag must change whenever anything the client renders changes. The
+    // event cursor alone is insufficient: presence is time-derived (a lapsed
+    // lease flips a peer offline, and an activity push flips working/idle) with
+    // no new event, so the cursor stays put while the rendered roster changes.
+    // Without folding presence in, the browser revalidates, gets a 304, and
+    // serves a stale body — peers stay frozen at their page-load presence.
+    const presenceOf = (row: { presence?: string; online: boolean }): string =>
+      row.presence ?? (row.online ? "online" : "offline");
+    const presenceSig = [
+      ...state.peers.map((p) => `${p.peer_id}:${presenceOf(p)}`),
+      ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
+    ]
+      .sort()
+      .join("|");
+    const etag = `W/"${state.cursor}.${Bun.hash(presenceSig).toString(36)}"`;
     if (request.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { etag } });
     }
@@ -352,6 +436,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            p.tool,
            p.purpose,
            p.lease_expires_at > ? AS online,
+           p.activity_state,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
            p.updated_at,
@@ -421,7 +506,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         },
         media: mediaTotals,
       },
-      peers: peers.map((peer) => ({ ...peer, online: Boolean(peer.online) })),
+      peers: peers.map((peer) => ({
+        ...peer,
+        online: Boolean(peer.online),
+        presence: derivePresence(Boolean(peer.online), peer.activity_state),
+      })),
       groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
       generated_at: now,
     });
@@ -437,7 +526,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+    const leaseExpiresAt = leaseExpiresAtForTool(tool);
     const metadata = optionalObjectJson(body, "metadata");
     const bindingId = `${hostTool}:${hostSessionId}`;
 
@@ -511,17 +600,15 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
     const body = await readBody(request);
     // Prefer the explicit title (always known from the launch response, works
-    // even before the agent has registered). Otherwise derive it from the
-    // durable peer row (session_name + peer_id8) for a known peer. NOTE: the
-    // peer_id path assumes session_name is unchanged since launch; if the peer
-    // was renamed, derivation is stale — stop by title for a guaranteed match.
+    // even before the agent has registered). Otherwise derive the deterministic
+    // backend title from the launch binding and current peer/group metadata.
     const explicitTitle = optionalString(body, "title");
     const peerId = optionalString(body, "peer_id");
     let title: string;
     if (explicitTitle) {
       title = explicitTitle;
     } else if (peerId) {
-      title = aoeTitle(getPeer(ctx.db, peerId).session_name, peerId);
+      title = deriveBackendTitleForPeer(ctx.db, peerId);
     } else {
       throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
     }
@@ -601,6 +688,42 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ peer: getPeer(ctx.db, peerId) });
   }
 
+  // Activity push — the in-online sub-state signal. Accepts either an explicit
+  // peer_id (Pi, in-process) or a host-session pair (stateless Claude hook) and
+  // resolves the peer server-side. Sets activity_state + last_activity_at AND
+  // refreshes the lease: activity is proof-of-life, so a busy agent never
+  // false-offlines even if a heartbeat is dropped. Idempotent; last-write-wins.
+  if (request.method === "POST" && url.pathname === "/peers/activity") {
+    const body = await readBody(request);
+    const state = requireString(body, "state");
+    if (!(ACTIVITY_STATES as readonly string[]).includes(state)) {
+      throw new HttpError(400, "invalid_activity_state", `Unknown activity state: ${state}`);
+    }
+    let peerId = optionalString(body, "peer_id");
+    if (!peerId) {
+      const hostTool = requireString(body, "host_tool");
+      const hostSessionId = requireString(body, "host_session_id");
+      peerId = findPeerByHostSession(ctx.db, hostTool, hostSessionId);
+      if (!peerId) {
+        throw new HttpError(404, "peer_not_found", `No peer for ${hostTool} session ${hostSessionId}`);
+      }
+    }
+    const peer = getPeer(ctx.db, peerId);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
+    ctx.db
+      .query(
+        `UPDATE peers
+         SET activity_state = ?, lease_expires_at = ?,
+             last_activity_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE peer_id = ?`,
+      )
+      .run(state, leaseExpiresAt, peerId);
+    log(`peer activity peer_id=${peerId} state=${state}`);
+    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
+    return jsonResponse({ peer: getPeer(ctx.db, peerId) });
+  }
+
   if (request.method === "GET" && url.pathname === "/peers") {
     const now = new Date().toISOString();
     const groupName = url.searchParams.get("group");
@@ -615,7 +738,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            ORDER BY gm.alias ASC`,
         )
         .all(now, group.group_id);
-      return jsonResponse({ peers: rows.map((row) => ({ ...row, active: Boolean(row.active), online: Boolean(row.online) })) });
+      return jsonResponse({
+        peers: rows.map((row) => ({
+          ...row,
+          active: Boolean(row.active),
+          online: Boolean(row.online),
+          presence: derivePresence(Boolean(row.online), row.activity_state),
+        })),
+      });
     }
     const rows = ctx.db
       .query<PeerRow & { online: number }, [string]>(
@@ -625,7 +755,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          ORDER BY updated_at DESC, session_name ASC`,
       )
       .all(now);
-    return jsonResponse({ peers: rows.map((row) => ({ ...row, online: Boolean(row.online) })) });
+    return jsonResponse({
+      peers: rows.map((row) => ({
+        ...row,
+        online: Boolean(row.online),
+        presence: derivePresence(Boolean(row.online), row.activity_state),
+      })),
+    });
   }
 
   const peerDelete = url.pathname.match(/^\/peers\/([^/]+)$/);
@@ -669,6 +805,14 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ctx.subscribers.set(peerId, subscriber);
     log(`subscription registered peer_id=${peerId} callback_url=${callbackUrl}`);
     return jsonResponse({ subscription: subscriber }, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/query/events") {
+    const body = await readBody(request);
+    const sql = requireString(body, "sql");
+    const params = optionalSqlParams(body, "params");
+    const limit = optionalInteger(body, "limit");
+    return jsonResponse(runEventQuery(ctx.db, { sql, ...(params ? { params } : {}), ...(limit !== undefined ? { limit } : {}) }));
   }
 
   if (request.method === "POST" && url.pathname === "/dm") {
@@ -739,6 +883,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
       ctx.db
         .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', ?, ?, ?)")
         .run(creatorPeerId ?? null, id, JSON.stringify({ name, durable: Boolean(durable) }));
@@ -747,6 +892,22 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
 
     emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
     return jsonResponse({ group: formatGroup(getGroupById(ctx.db, groupId)) }, { status: 201 });
+  }
+
+  const groupPaths = url.pathname.match(/^\/groups\/([^/]+)\/paths$/);
+  if (groupPaths && request.method === "GET") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) });
+  }
+
+  if (groupPaths && request.method === "POST") {
+    const group = getGroup(ctx.db, decodeURIComponent(groupPaths[1] ?? ""));
+    const body = await readBody(request);
+    const path = requireLaunchPath(requireString(body, "path"));
+    const label = optionalString(body, "label") ?? null;
+    insertGroupPath(ctx.db, group.group_id, path, label);
+    emitWebStateChanged(ctx, { domains: ["groups"], groupId: group.group_id });
+    return jsonResponse({ paths: getGroupPaths(ctx.db, group.group_id) }, { status: 201 });
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
@@ -774,7 +935,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   const groupMatch = url.pathname.match(/^\/groups\/([^/]+)$/);
   if (request.method === "GET" && groupMatch) {
     const group = getGroup(ctx.db, decodeURIComponent(groupMatch[1] ?? ""));
-    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id) });
+    return jsonResponse({ group: formatGroup(group), members: getGroupMembers(ctx.db, group.group_id), paths: getGroupPaths(ctx.db, group.group_id) });
   }
 
   const groupJoin = url.pathname.match(/^\/groups\/([^/]+)\/join$/);
@@ -1072,17 +1233,54 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ event });
   }
 
-  // GET /threads/:root_event_id — single-call thread state: root + replies +
-  // participant alias list + last_event_id. Closes the gap alice flagged in
-  // the sustained-thread test ("I'd have to call group_history twice to pick
-  // up a stale thread"). Combines what bridge_group_history(thread_of=)
-  // returns with a derived participants list so callers can render a thread
-  // header without an extra roster call.
+  if (request.method === "GET" && url.pathname === "/threads") {
+    return jsonResponse({ threads: listThreadDiscoveries(ctx.db, url) });
+  }
+
+  const threadStatusGet = url.pathname.match(/^\/threads\/(\d+)\/status$/);
+  if (request.method === "GET" && threadStatusGet) {
+    return jsonResponse({ status: getThreadStatus(ctx.db, Number(threadStatusGet[1])) });
+  }
+
+  // GET /threads/:root/summary — cached read. Returns status="disabled" when
+  // no LLM provider is configured (no OPENROUTER_API_KEY), "pending" when
+  // enabled but no row yet, "ready" otherwise. `stale` flag tells the caller
+  // whether new events have landed since the cached summary was written.
+  const threadSummaryGet = url.pathname.match(/^\/threads\/(\d+)\/summary$/);
+  if (request.method === "GET" && threadSummaryGet) {
+    const rootEventId = Number(threadSummaryGet[1]);
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, isSummarizeEnabled()));
+  }
+
+  // POST /threads/:root/summary — force regen. Bypasses cold-gate and
+  // min-replies (worker-side guards only). 503 if disabled.
+  if (request.method === "POST" && threadSummaryGet) {
+    const rootEventId = Number(threadSummaryGet[1]);
+    const cfg = resolveProviderConfig();
+    if (!cfg) {
+      throw new HttpError(503, "summarize_disabled", "thread summaries are not configured (set OPENROUTER_API_KEY)");
+    }
+    const body = await readBody(request).catch(() => ({}));
+    const strategy = strategyFromInput({
+      strategy: optionalString(body, "strategy"),
+      k: optionalInteger(body, "k"),
+      first_k: optionalInteger(body, "first_k"),
+      last_k: optionalInteger(body, "last_k"),
+    });
+    await summarizeThread(ctx.db, makeProviderCaller(cfg), rootEventId, { strategy });
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true));
+  }
+
+  // GET /threads/:root_event_id — single-call thread state: status + events
+  // and optional transcript. Kept global for v0; callers that need strict
+  // per-peer visibility should continue using group history with peer_id.
   const threadGet = url.pathname.match(/^\/threads\/(\d+)$/);
   if (request.method === "GET" && threadGet) {
     const rootEventId = Number(threadGet[1]);
-    const peerId = url.searchParams.get("peer_id");
-    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    const format = url.searchParams.get("format") ?? "json";
+    if (format !== "json" && format !== "transcript") {
+      throw new HttpError(400, "invalid_request", "format must be json or transcript");
+    }
     const root = getEvent(ctx.db, rootEventId);
     if (root.group_id === null) {
       throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is a DM, not a group thread root`);
@@ -1090,14 +1288,17 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     if (root.parent_event_id !== null) {
       throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is itself a reply; pass the root event_id`);
     }
-    const member = ctx.db
-      .query<{ history_from_event_id: number | null }, [number, string]>(
-        "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
-      )
-      .get(root.group_id, peerId);
-    if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
-    if (rootEventId < (member.history_from_event_id ?? 0)) {
-      throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+    const peerId = url.searchParams.get("peer_id");
+    if (peerId) {
+      const member = ctx.db
+        .query<{ history_from_event_id: number | null }, [number, string]>(
+          "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+        )
+        .get(root.group_id, peerId);
+      if (!member) throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is not visible to peer ${peerId}`);
+      if (rootEventId < (member.history_from_event_id ?? 0)) {
+        throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
+      }
     }
     const replies = ctx.db
       .query<EventRow, [number, number]>(
@@ -1129,6 +1330,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       participants,
       reply_count: replies.length,
       last_event_id: lastEventId,
+      status: getThreadStatus(ctx.db, rootEventId),
+      events: [root, ...replies],
+      ...(format === "transcript" ? { transcript: renderThreadTranscript(ctx.db, [root, ...replies]) } : {}),
     });
   }
 
@@ -1254,7 +1458,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerId = decodeURIComponent(inboxAck[1] ?? "");
     ensurePeer(ctx.db, peerId);
     const body = await readBody(request);
-    const ids = optionalNumberArray(body, "event_ids");
+    const ids = optionalIntegerArray(body, "event_ids");
     const now = new Date().toISOString();
     let changed = 0;
     if (ids && ids.length > 0) {
@@ -1349,6 +1553,18 @@ function optionalInteger(body: Record<string, unknown>, key: string): number | u
   return value as number;
 }
 
+function optionalSqlParams(body: Record<string, unknown>, key: string): Array<string | number | boolean | null> | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => item !== null && typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean")
+  ) {
+    throw new HttpError(400, "invalid_request", `${key} must be an array of strings, numbers, booleans, or nulls`);
+  }
+  return value as Array<string | number | boolean | null>;
+}
+
 function optionalObjectJson(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
   if (value === undefined || value === null) return null;
@@ -1358,7 +1574,7 @@ function optionalObjectJson(body: Record<string, unknown>, key: string): string 
   return JSON.stringify(value);
 }
 
-function optionalNumberArray(body: Record<string, unknown>, key: string): number[] | undefined {
+function optionalIntegerArray(body: Record<string, unknown>, key: string): number[] | undefined {
   const value = body[key];
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.some((item) => !Number.isInteger(item) || item < 1)) {
@@ -1390,6 +1606,14 @@ function requireGroupName(name: string): string {
     );
   }
   return name;
+}
+
+function requireLaunchPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/")) {
+    throw new HttpError(400, "invalid_group_path", "Group path must be an absolute path");
+  }
+  return trimmed.replace(/\/+$/, "") || "/";
 }
 
 function parseLimit(raw: string | null): number {
@@ -1449,6 +1673,11 @@ function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): 
 }
 
 const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
+
+function normalizeMentionToken(token: string): string {
+  return token.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
+}
 
 // Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
 // Alice flagged this during the sustained-thread test: discussing proposed
@@ -1475,7 +1704,10 @@ function resolveMentions(
   const tokens = new Set<string>();
   const scannable = stripBacktickedRegions(message);
   for (const match of scannable.matchAll(MENTION_TOKEN_RE)) {
-    if (match[1]) tokens.add(match[1]);
+    if (match[1]) {
+      const token = normalizeMentionToken(match[1]);
+      if (token) tokens.add(token);
+    }
   }
   if (tokens.size === 0) return { peerIds: [], warnings: [] };
   const lookup = db.query<{ peer_id: string }, [number, string]>(
@@ -1559,6 +1791,59 @@ function leaseExpiresAtForTool(tool: string): string {
   return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
 }
 
+// Presence derivation — the single rule applied wherever a peer is serialized.
+// Offline if the lease has lapsed (the only reliable crash detector); else the
+// reported activity_state for instrumented agents; else a generic "online" for
+// uninstrumented peers (web/cli/codex). See plan-agent-ttl-presence-v0.md.
+type Presence = "offline" | "online" | ActivityState;
+function derivePresence(online: boolean, activityState: string | null): Presence {
+  if (!online) return "offline";
+  if (activityState && (ACTIVITY_STATES as readonly string[]).includes(activityState)) {
+    return activityState as ActivityState;
+  }
+  return "online";
+}
+
+// Agents (pi/claude) start at "initializing" and stay there until their first
+// activity push. Uninstrumented tools (web/cli/codex) keep NULL → generic
+// online. Applied only on first INSERT; re-register/resurrect preserves any
+// existing state (see upsertPeer COALESCE).
+function initialActivityState(tool: string): ActivityState | null {
+  return tool === "pi" || tool === "claude" ? "initializing" : null;
+}
+
+// Retention sweeper — soft-deletes peers whose lease has been expired for
+// longer than PEER_RETENTION_MS. Offline (lease-lapsed) peers stay visible in
+// the roster for the retention window (useful for "who was here" + reclaim
+// audit); past it they are hidden via the same soft-delete path as the manual
+// operator evict (deleted_at + group_members deactivated), preserving the audit
+// trail. web peers (lease year-9999) never match the cutoff. Resume after a
+// sweep resurrects the same peer via findPeerByHostSession + upsertPeer's
+// `deleted_at = NULL` path.
+function sweepExpiredPeers(ctx: DaemonContext): void {
+  const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
+  const swept = ctx.db.transaction(() => {
+    const rows = ctx.db
+      .query<{ peer_id: string }, [string]>(
+        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
+      )
+      .all(cutoff);
+    const now = new Date().toISOString();
+    for (const { peer_id } of rows) {
+      ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
+      ctx.db
+        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .run(now, peer_id);
+      ctx.subscribers.delete(peer_id);
+    }
+    return rows.map((row) => row.peer_id);
+  })();
+  if (swept.length > 0) {
+    log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${PEER_RETENTION_MS}ms`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups"] });
+  }
+}
+
 export function upsertPeer(
   db: Database,
   input: {
@@ -1576,18 +1861,65 @@ export function upsertPeer(
   // peer rejoins their old groups rather than having to re-issue join calls
   // (which would fail with alias-taken if anyone reclaimed in the interim —
   // resurrection is symmetric with the deletion that preceded it).
+  // Capture any prior soft-delete timestamp BEFORE the upsert clears it, so we
+  // can tell whether this register is a resurrection (and which group_members
+  // rows that death deactivated — see reactivateMembershipsOnResurrect).
+  const priorDeletedAt =
+    db
+      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
+      .get(input.peerId)?.deleted_at ?? null;
+
+  // activity_state is set only on first INSERT (initializing for agents, NULL
+  // for uninstrumented tools). On re-register/resurrect we COALESCE so an
+  // existing working/idle state is preserved — a heartbeat-driven re-register
+  // or a resume must not reset a live agent back to initializing.
   db.query(
-    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO peers (peer_id, tool, session_name, purpose, machine_id, lease_expires_at, activity_state)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(peer_id) DO UPDATE SET
        tool = excluded.tool,
        session_name = excluded.session_name,
        purpose = excluded.purpose,
        machine_id = excluded.machine_id,
        lease_expires_at = excluded.lease_expires_at,
+       activity_state = COALESCE(activity_state, excluded.activity_state),
        deleted_at = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-  ).run(input.peerId, input.tool, input.sessionName, input.purpose, input.machineId, input.leaseExpiresAt);
+  ).run(
+    input.peerId,
+    input.tool,
+    input.sessionName,
+    input.purpose,
+    input.machineId,
+    input.leaseExpiresAt,
+    initialActivityState(input.tool),
+  );
+
+  if (priorDeletedAt) reactivateMembershipsOnResurrect(db, input.peerId, priorDeletedAt);
+}
+
+// Restore the group memberships that a soft-delete (operator evict or retention
+// sweep) deactivated, when the peer re-registers. Both delete paths set
+// group_members.left_at to the SAME timestamp as peers.deleted_at, so rows with
+// left_at == the cleared deleted_at are exactly the ones killed by that death —
+// this distinguishes a death-deactivation from an earlier voluntary leave
+// (which carries an older left_at and must stay inactive). An alias reclaimed by
+// someone else during the gap is skipped so the unique-active-alias invariant
+// holds. Without this, a revived peer is online but silent in all its groups
+// (sync-3nu). The structural alternative (derive active from lease) is sync-<A>.
+function reactivateMembershipsOnResurrect(db: Database, peerId: string, deathTimestamp: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 1, left_at = NULL
+     WHERE peer_id = ? AND active = 0 AND left_at = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members other
+         WHERE other.group_id = group_members.group_id
+           AND other.alias = group_members.alias
+           AND other.active = 1
+           AND other.peer_id != group_members.peer_id
+       )`,
+  ).run(peerId, deathTimestamp);
 }
 
 function findPeerByHostSession(db: Database, hostTool: string, hostSessionId: string): string | undefined {
@@ -1678,12 +2010,15 @@ function agentSessionSelectSql(): string {
       p.session_name AS peer_session_name,
       p.purpose AS peer_purpose,
       p.lease_expires_at AS peer_lease_expires_at,
+      p.activity_state AS peer_activity_state,
       p.lease_expires_at > ? AS peer_online
     FROM agent_sessions s
     JOIN peers p ON p.peer_id = s.peer_id`;
 }
 
-function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { peer: PeerRow & { online: boolean } } {
+function formatAgentSession(
+  row: AgentSessionJoinedRow,
+): AgentSessionRow & { peer: PeerRow & { online: boolean; presence: Presence } } {
   return {
     binding_id: row.binding_id,
     peer_id: row.peer_id,
@@ -1707,10 +2042,13 @@ function formatAgentSession(row: AgentSessionJoinedRow): AgentSessionRow & { pee
       purpose: row.peer_purpose,
       machine_id: "",
       lease_expires_at: row.peer_lease_expires_at,
+      activity_state: row.peer_activity_state,
+      last_activity_at: null,
       last_cursor: 0,
       created_at: "",
       updated_at: "",
       online: Boolean(row.peer_online),
+      presence: derivePresence(Boolean(row.peer_online), row.peer_activity_state),
     },
   };
 }
@@ -1719,6 +2057,136 @@ function getEvent(db: Database, eventId: number): EventRow {
   const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
   return event;
+}
+
+function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
+  const limit = parseLimit(url.searchParams.get("limit"));
+  const clauses: string[] = [];
+  const params: Array<string | number> = [];
+  const group = url.searchParams.get("group")?.trim();
+  const startedByPeerId = url.searchParams.get("started_by_peer_id")?.trim();
+  const startedBySessionName = url.searchParams.get("started_by_session_name")?.trim();
+  const participatedByPeerId = url.searchParams.get("participated_by_peer_id")?.trim();
+  const participatedBySessionName = url.searchParams.get("participated_by_session_name")?.trim();
+  const activeSince = url.searchParams.get("active_since")?.trim();
+
+  if (group) {
+    clauses.push("dt.group_name = ?");
+    params.push(group);
+  }
+  if (startedByPeerId) {
+    clauses.push("dt.root_sender_peer_id = ?");
+    params.push(startedByPeerId);
+  }
+  if (startedBySessionName) {
+    clauses.push("dt.root_sender_session_name = ?");
+    params.push(startedBySessionName);
+  }
+  if (participatedByPeerId) {
+    clauses.push(
+      `EXISTS (
+        SELECT 1 FROM thread_events te
+        WHERE te.thread_root_event_id = dt.root_event_id AND te.sender_peer_id = ?
+      )`,
+    );
+    params.push(participatedByPeerId);
+  }
+  if (participatedBySessionName) {
+    clauses.push(
+      `EXISTS (
+        SELECT 1 FROM thread_events te
+        WHERE te.thread_root_event_id = dt.root_event_id AND te.sender_session_name = ?
+      )`,
+    );
+    params.push(participatedBySessionName);
+  }
+  if (activeSince) {
+    clauses.push("dt.last_activity_at >= ?");
+    params.push(activeSince);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  return db
+    .query<ThreadDiscoveryRow, Array<string | number>>(
+      `SELECT
+         dt.root_event_id,
+         dt.group_name,
+         dt.root_sender_peer_id,
+         dt.root_sender_session_name,
+         dt.root_sender_alias,
+         dt.created_at,
+         dt.last_activity_at,
+         dt.reply_count,
+         dt.participant_count,
+         dt.preview
+       FROM discoverable_threads dt
+       ${where}
+       ORDER BY dt.last_activity_at DESC, dt.root_event_id DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit);
+}
+
+function getThreadStatus(db: Database, rootEventId: number): ThreadStatusRow & { participants: Array<Omit<ThreadParticipantRow, "active"> & { active: boolean }> } {
+  const root = getEvent(db, rootEventId);
+  if (root.group_id === null || root.parent_event_id !== null || root.type !== "group_message") {
+    throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is not a thread root`);
+  }
+  const status = db
+    .query<ThreadStatusRow, [number]>(
+      `SELECT
+         dt.root_event_id,
+         dt.group_id,
+         dt.group_name,
+         dt.root_sender_peer_id,
+         dt.root_sender_session_name,
+         dt.root_sender_alias,
+         dt.created_at,
+         COALESCE(MAX(te.event_id), dt.root_event_id) AS last_event_id,
+         dt.last_activity_at,
+         dt.reply_count,
+         COUNT(te.event_id) AS event_count,
+         dt.participant_count
+       FROM discoverable_threads dt
+       JOIN thread_events te ON te.thread_root_event_id = dt.root_event_id
+       WHERE dt.root_event_id = ?
+       GROUP BY dt.root_event_id`,
+    )
+    .get(rootEventId);
+  if (!status) throw new HttpError(404, "thread_not_found", `Thread not found: ${rootEventId}`);
+  const participants = db
+    .query<ThreadParticipantRow, [number]>(
+      `SELECT
+         te.sender_peer_id AS peer_id,
+         p.session_name,
+         gm.alias,
+         gm.active,
+         COUNT(*) AS event_count,
+         MIN(te.event_id) AS first_event_id,
+         MAX(te.event_id) AS last_event_id,
+         MAX(te.created_at) AS last_activity_at
+       FROM thread_events te
+       LEFT JOIN peers p ON p.peer_id = te.sender_peer_id
+       LEFT JOIN group_members gm ON gm.group_id = te.group_id AND gm.peer_id = te.sender_peer_id
+       WHERE te.thread_root_event_id = ? AND te.sender_peer_id IS NOT NULL
+       GROUP BY te.sender_peer_id
+       ORDER BY last_activity_at ASC, first_event_id ASC`,
+    )
+    .all(rootEventId)
+    .map(({ active, ...row }) => ({ ...row, active: Boolean(active) }));
+  return { ...status, participants };
+}
+
+function renderThreadTranscript(db: Database, events: EventRow[]): string {
+  return events
+    .map((event) => {
+      const sender = event.sender_peer_id
+        ? db.query<{ session_name: string }, [string]>("SELECT session_name FROM peers WHERE peer_id = ?").get(event.sender_peer_id)
+            ?.session_name ?? event.sender_peer_id
+        : "system";
+      return `[${event.created_at}] ${sender}: ${event.body ?? ""}`;
+    })
+    .join("\n");
 }
 
 function emitWebStateChanged(
@@ -1804,6 +2272,7 @@ interface WebStateResponse {
   };
   peers: Array<PeerRow & { online: boolean }>;
   groups: FormattedGroup[];
+  group_paths: FormattedGroupPath[];
   memberships: Array<FormattedMember & { online: boolean }>;
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
@@ -1836,17 +2305,26 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+              activity_state, last_activity_at,
               last_cursor, created_at, updated_at, lease_expires_at > ? AS online
        FROM peers
        WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, session_name ASC`,
     )
     .all(now)
-    .map((peer) => ({ ...peer, online: Boolean(peer.online) }));
+    .map((peer) => ({
+      ...peer,
+      online: Boolean(peer.online),
+      presence: derivePresence(Boolean(peer.online), peer.activity_state),
+    }));
   const groups = ctx.db
     .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
     .all()
     .map(formatGroup);
+  const groupPaths = ctx.db
+    .query<GroupPathRow, []>("SELECT * FROM group_paths WHERE active = 1 ORDER BY group_id ASC, path ASC")
+    .all()
+    .map(formatGroupPath);
   const memberships = ctx.db
     .query<MemberRow & { online: number }, [string]>(
       `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
@@ -1855,7 +2333,12 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        ORDER BY gm.group_id ASC, gm.alias ASC`,
     )
     .all(now)
-    .map((member) => ({ ...member, active: Boolean(member.active), online: Boolean(member.online) }));
+    .map((member) => ({
+      ...member,
+      active: Boolean(member.active),
+      online: Boolean(member.online),
+      presence: derivePresence(Boolean(member.online), member.activity_state),
+    }));
   const roomSummaries = ctx.db
     .query<WebRoomSummary, []>(
       `SELECT
@@ -1886,6 +2369,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     },
     peers,
     groups,
+    group_paths: groupPaths,
     memberships,
     room_summaries: roomSummaries,
     events,
@@ -2097,6 +2581,7 @@ function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
       .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, 1, ?, NULL, NULL)")
       .run(groupName, mediaDir);
     const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
     ctx.db
       .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', NULL, ?, ?)")
       .run(id, JSON.stringify({ name: groupName, durable: true }));
@@ -2119,6 +2604,7 @@ export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, pee
   if (!pending || !pending.group) return;
   try {
     const group = ensureLaunchGroup(ctx, pending.group);
+    insertGroupPath(ctx.db, group.group_id, pending.cwd);
     const peer = getPeer(ctx.db, peerId);
     const existing = ctx.db
       .query<{ alias: string; active: number }, [number, string]>(
@@ -2139,13 +2625,55 @@ export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, pee
 }
 
 type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
+type FormattedGroupPath = Omit<GroupPathRow, "active"> & { active: boolean };
 type FormattedMember = Omit<MemberRow, "active"> & { active: boolean };
 
 function formatGroup(group: GroupRow): FormattedGroup {
   return { ...group, durable: Boolean(group.durable) };
 }
 
-const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool,
+function formatGroupPath(path: GroupPathRow): FormattedGroupPath {
+  return { ...path, active: Boolean(path.active) };
+}
+
+function insertGroupPath(db: Database, groupId: number, path: string, label: string | null = null): void {
+  const launchPath = requireLaunchPath(path);
+  db
+    .query(
+      `INSERT INTO group_paths (group_id, path, label)
+       VALUES (?, ?, ?)
+       ON CONFLICT(group_id, path) DO UPDATE SET
+         active = 1,
+         label = COALESCE(excluded.label, label)`,
+    )
+    .run(groupId, launchPath, label);
+}
+
+function getGroupPaths(db: Database, groupId: number): FormattedGroupPath[] {
+  return db
+    .query<GroupPathRow, [number]>(
+      "SELECT * FROM group_paths WHERE group_id = ? AND active = 1 ORDER BY path ASC",
+    )
+    .all(groupId)
+    .map(formatGroupPath);
+}
+
+function ensureDefaultGroupPaths(ctx: DaemonContext): void {
+  const defaultPath = defaultGroupPath(ctx);
+  const groups = ctx.db.query<GroupRow, []>("SELECT * FROM groups").all();
+  for (const group of groups) {
+    const existing = ctx.db
+      .query<{ count: number }, [number]>("SELECT COUNT(*) AS count FROM group_paths WHERE group_id = ? AND active = 1")
+      .get(group.group_id)?.count ?? 0;
+    if (existing === 0) insertGroupPath(ctx.db, group.group_id, defaultPath);
+  }
+}
+
+function defaultGroupPath(ctx: DaemonContext): string {
+  return requireLaunchPath(ctx.provenance?.source_root ?? process.cwd());
+}
+
+const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.activity_state,
   (SELECT s.host_session_id FROM agent_sessions s
    WHERE s.peer_id = gm.peer_id
    ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
@@ -2161,6 +2689,42 @@ function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
     )
     .all(groupId)
     .map((member) => ({ ...member, active: Boolean(member.active) }));
+}
+
+function deriveBackendTitleForPeer(db: Database, peerId: string): string {
+  const peer = getPeer(db, peerId);
+  if (!isLaunchTool(peer.tool)) {
+    throw new HttpError(400, "invalid_stop", `Cannot derive backend title for non-launch tool: ${peer.tool}`);
+  }
+  const launch = db
+    .query<{ launch_id: string | null }, [string]>(
+      `SELECT launch_id
+       FROM agent_sessions
+       WHERE peer_id = ? AND launch_id IS NOT NULL
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId);
+  if (!launch?.launch_id) {
+    throw new HttpError(400, "invalid_stop", "peer_id stop requires an agent session with launch_id; pass title instead");
+  }
+  const group = db
+    .query<{ name: string | null }, [string]>(
+      `SELECT g.name
+       FROM group_members gm
+       JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.active = 1
+       ORDER BY gm.joined_at DESC
+       LIMIT 1`,
+    )
+    .get(peerId)?.name ?? undefined;
+  return aoeTitle({
+    launchId: launch.launch_id,
+    peerId,
+    ...(group ? { group } : {}),
+    sessionName: peer.session_name,
+    tool: peer.tool,
+  });
 }
 
 function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
@@ -2271,7 +2835,34 @@ async function main(): Promise<void> {
     backend: new AoeBackend({ profile: aoeProfileName(paths.home) }),
     home: paths.home,
   });
-  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
+
+  const summarizeWorker = isSummarizeEnabled() ? startSummarizeWorker(db) : null;
+  if (summarizeWorker) {
+    console.error(`[summarize] worker started (provider configured)`);
+  } else {
+    console.error(`[summarize] worker disabled (no OPENROUTER_API_KEY)`);
+  }
+
+  ctx = {
+    paths,
+    db,
+    startedAt,
+    token,
+    provenance,
+    server,
+    subscribers: new Map(),
+    webStateClients: new Set(),
+    stateVersion: 0,
+    launchService,
+    summarizeWorker,
+  };
+  ensureDefaultGroupPaths(ctx);
+
+  // Retention sweeper: run once at startup (cleans up peers that died while the
+  // daemon was down) then on an interval. unref so it never blocks shutdown.
+  sweepExpiredPeers(ctx);
+  const sweepTimer = setInterval(() => sweepExpiredPeers(ctx), SWEEP_INTERVAL_MS);
+  sweepTimer.unref?.();
 
   const discovery: DiscoveryFile = {
     pid: process.pid,

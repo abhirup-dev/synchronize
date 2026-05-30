@@ -21,6 +21,11 @@ export interface StatusResponse {
   };
 }
 
+/** Stored per-peer activity (instrumented agents only). */
+export type ActivityState = "initializing" | "working" | "idle";
+/** Derived presence shown in rosters. */
+export type Presence = "offline" | "online" | ActivityState;
+
 export interface Peer {
   peer_id: string;
   tool: string;
@@ -28,6 +33,11 @@ export interface Peer {
   purpose: string | null;
   lease_expires_at: string;
   online?: boolean;
+  /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */
+  activity_state?: ActivityState | null;
+  last_activity_at?: string | null;
+  /** Derived: offline if lease lapsed, else activity_state, else generic "online". */
+  presence?: Presence;
 }
 
 export interface AgentSessionBinding {
@@ -63,6 +73,75 @@ export interface Event {
   delivered_at?: string | null;
   read_at?: string | null;
   acked_at?: string | null;
+}
+
+export type SqlParam = string | number | boolean | null;
+
+export interface EventQueryResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  truncated: boolean;
+  elapsed_ms: number;
+}
+
+export interface ThreadDiscoveryRow {
+  root_event_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_activity_at: string;
+  reply_count: number;
+  participant_count: number;
+  preview: string | null;
+}
+
+export interface ThreadParticipantStatus {
+  peer_id: string;
+  session_name: string | null;
+  alias: string | null;
+  active: boolean;
+  event_count: number;
+  first_event_id: number;
+  last_event_id: number;
+  last_activity_at: string;
+}
+
+export interface ThreadStatus {
+  root_event_id: number;
+  group_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_event_id: number;
+  last_activity_at: string;
+  reply_count: number;
+  event_count: number;
+  participant_count: number;
+  participants: ThreadParticipantStatus[];
+}
+
+export interface ThreadResponse {
+  status: ThreadStatus;
+  events: Event[];
+  transcript?: string;
+}
+
+export interface ThreadSummaryResponse {
+  summary: string | null;
+  model: string | null;
+  strategy: "all" | "first_k" | "last_k" | "first_last" | null;
+  strategy_params: { k?: number; first_k?: number; last_k?: number } | null;
+  prompt_version: number | null;
+  covered_last_event_id: number | null;
+  covered_event_count: number | null;
+  updated_at: string | null;
+  stale: boolean;
+  status: "ready" | "pending" | "disabled";
 }
 
 export interface Group {
@@ -141,6 +220,8 @@ export interface SummaryResponse {
     tool: string;
     purpose: string | null;
     online: boolean;
+    presence: Presence;
+    activity_state: ActivityState | null;
     pending_inbox: number;
     groups: number;
     updated_at: string;

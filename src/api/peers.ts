@@ -1,4 +1,5 @@
 import { requestJson, type ClientConfig } from "../client.ts";
+import type { ActivityState } from "../constants.ts";
 import type { GroupMember, Peer } from "./types.ts";
 
 // /peers returns a different shape depending on whether `group` is set.
@@ -41,9 +42,31 @@ export function heartbeatPeer(client: ClientConfig, peerId: string): Promise<{ p
   });
 }
 
+// Operator-only: manual evict from the web UI. Normal client code paths must
+// NOT call this on shutdown — death is detected by lease lapse, not by an
+// explicit delete (see plan-agent-ttl-presence-v0.md "footgun removal").
 export function deletePeer(client: ClientConfig, peerId: string): Promise<{ ok: boolean; peer_id: string }> {
   return requestJson<{ ok: boolean; peer_id: string }>(client, `/peers/${encodeURIComponent(peerId)}`, {
     method: "DELETE",
+  });
+}
+
+// Push an activity transition. Pi sends { peerId }; the stateless Claude hook
+// sends { hostTool, hostSessionId } so the daemon resolves the peer. Refreshes
+// the lease as a side effect (activity = proof-of-life).
+export function setPeerActivity(
+  client: ClientConfig,
+  input:
+    | { peerId: string; state: ActivityState }
+    | { hostTool: string; hostSessionId: string; state: ActivityState },
+): Promise<{ peer: Peer }> {
+  const body =
+    "peerId" in input
+      ? { peer_id: input.peerId, state: input.state }
+      : { host_tool: input.hostTool, host_session_id: input.hostSessionId, state: input.state };
+  return requestJson<{ peer: Peer }>(client, "/peers/activity", {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

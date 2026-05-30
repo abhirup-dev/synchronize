@@ -1,6 +1,14 @@
 import { registerAgentSession } from "../../api/agent-sessions.ts";
+import { setPeerActivity } from "../../api/peers.ts";
 import { ensureDaemon } from "../../client.ts";
-import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../../constants.ts";
+import {
+  ACTIVITY_STATES,
+  type ActivityState,
+  ENV_HOOK_ENABLE,
+  ENV_LAUNCH_ID,
+  ENV_PEER_ID,
+  ENV_SESSION_NAME,
+} from "../../constants.ts";
 
 interface ClaudeHookInput {
   session_id?: string;
@@ -31,7 +39,46 @@ export async function run(argv: string[]): Promise<void> {
     await runPiHook();
     return;
   }
-  throw new Error("hook requires one of: claude-session, pi-session");
+  if (target === "activity") {
+    await runClaudeActivityHook(argv.slice(1));
+    return;
+  }
+  throw new Error("hook requires one of: claude-session, pi-session, activity");
+}
+
+// Claude activity hook. Installed on UserPromptSubmit/PreToolUse (--state
+// working) and Stop (--state idle). Stateless: reads session_id from the hook's
+// stdin JSON and POSTs the host-session form to /peers/activity so the daemon
+// resolves the peer. Strictly best-effort — any failure (daemon down, no peer
+// yet, bad input) exits quietly so it never surfaces as a Claude hook error.
+async function runClaudeActivityHook(argv: string[]): Promise<void> {
+  if (process.env[ENV_HOOK_ENABLE] !== "1") return;
+  const state = parseStateFlag(argv);
+  if (!state) return;
+  let hostSessionId: string | undefined;
+  try {
+    const input = await readHookInput<ClaudeHookInput>();
+    hostSessionId = stringOrUndefined(input.session_id);
+  } catch {
+    return;
+  }
+  if (!hostSessionId) return;
+  try {
+    const client = await ensureDaemon();
+    await setPeerActivity(client, { hostTool: "claude", hostSessionId, state });
+  } catch {
+    // best-effort: a missing peer / down daemon must not fail the hook.
+  }
+}
+
+function parseStateFlag(argv: string[]): ActivityState | undefined {
+  let raw: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--state") raw = argv[i + 1];
+    else if (arg?.startsWith("--state=")) raw = arg.slice("--state=".length);
+  }
+  return raw && (ACTIVITY_STATES as readonly string[]).includes(raw) ? (raw as ActivityState) : undefined;
 }
 
 async function runClaudeHook(): Promise<void> {
