@@ -11,6 +11,11 @@ export const LOCK_DIR = "daemon.lock";
 export const DB_FILE = "synchronize.db";
 export const MEDIA_DIR = "media";
 export const LOG_FILE = "daemon.log";
+// Free-form capture of the spawned daemon's stdout/stderr. Kept strictly
+// separate from LOG_FILE: daemon.log holds one JSON record per line and its
+// last line is parsed as JSON by readers, so unstructured stderr must never
+// land there.
+export const ERR_LOG_FILE = "daemon.err.log";
 export const CLI_IDENTITY_FILE = "cli-peer.json";
 
 export const ENV_HOME = "SYNCHRONIZE_HOME";

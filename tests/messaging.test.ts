@@ -227,6 +227,7 @@ test("Claude hook is env gated and registers native session binding when enabled
     env: {
       ...process.env,
       SYNCHRONIZE_HOME: home,
+      SYNCHRONIZE_PORT: "0",
       SYNCHRONIZE_HOOK_ENABLE: "1",
       SYNCHRONIZE_SESSION_NAME: "hooked-claude",
     },
