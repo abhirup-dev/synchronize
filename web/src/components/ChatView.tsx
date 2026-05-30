@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Room } from "../data/types.ts";
 import { useAgents, useMe, useMessages } from "../data/context.tsx";
@@ -7,16 +7,21 @@ import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { TimelineRail } from "./TimelineRail.tsx";
+import { ThreadSummaryPanel } from "./ThreadSummaryPanel.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 
 export function ChatView({
   room,
   onOpenThread,
   isThreadOpen = false,
+  threadSummaryOpen = false,
+  onToggleThreadSummary,
 }: {
   room: Room;
   onOpenThread?(parentId: string): void;
   isThreadOpen?: boolean;
+  threadSummaryOpen?: boolean;
+  onToggleThreadSummary?(): void;
 }) {
   const messages = useMessages(room.id);
   const agents = useAgents();
@@ -43,6 +48,48 @@ export function ChatView({
     overscan: 8,
   });
 
+  // ── Thread Summary panel support ──────────────────────────────────────────
+  // The panel aligns each thread's dot to its parent message and scroll-syncs
+  // with this list. Because the list is virtualized, we expose message offsets
+  // from the virtualizer rather than from the DOM.
+  const indexByMessageId = useMemo(
+    () => new Map(rows.map((row, index) => [row.m.id, index] as const)),
+    [rows],
+  );
+  const getAnchorTop = useCallback(
+    (messageId: string): number | null => {
+      const index = indexByMessageId.get(messageId);
+      if (index === undefined) return null;
+      // `measurementsCache` holds every item's absolute offset in content
+      // space (measured where rendered, estimated otherwise) — unlike
+      // getOffsetForIndex, which clamps to the scrollable range. We want the
+      // raw content offset so dots track their bubble even near the ends. The
+      // cache is refreshed every render via getTotalSize()/getVirtualItems().
+      const m = virtualizer.measurementsCache[index];
+      if (!m) return null;
+      return m.start + m.size / 2;
+    },
+    [indexByMessageId, virtualizer],
+  );
+  const getContentHeight = useCallback(() => virtualizer.getTotalSize(), [virtualizer]);
+  const handleJumpTo = useCallback(
+    (messageId: string) => {
+      const index = indexByMessageId.get(messageId);
+      if (index === undefined) return;
+      virtualizer.scrollToIndex(index, { align: "center" });
+      // Flash the bubble once it has been rendered into the DOM.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const el = document.getElementById(`msg-${messageId}`);
+          if (!el) return;
+          el.classList.add("flash-highlight");
+          window.setTimeout(() => el.classList.remove("flash-highlight"), 2400);
+        }),
+      );
+    },
+    [indexByMessageId, virtualizer],
+  );
+
   useEffect(() => {
     const last = messages.at(-1);
     if (!last) return;
@@ -55,46 +102,60 @@ export function ChatView({
   }, [messages, me.id, virtualizer]);
 
   return (
-    <div className="chat-view" data-vim-panel="chat">
-      {/* Top region: chat scroll area + timeline rail, side by side. The
-          composer lives BELOW this region so the timeline ends at the top of
-          the composer rather than running the full height of the panel. */}
-      <div className="chat-region">
-        <div className="chat-scroll-wrap">
-          <div className="chat-list autoscroll virtualized-list" ref={listRef}>
-            <div className="virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
-              {virtualizer.getVirtualItems().map((item) => {
-                const row = rows[item.index];
-                if (!row?.author) return null;
-                return (
-                  <div
-                    key={row.m.id}
-                    className={`virtualized-row message-virtual-row${row.grouped ? " is-grouped" : ""}${row.hasFollowup ? " has-followup" : ""}`}
-                    data-index={item.index}
-                    ref={virtualizer.measureElement}
-                    style={{ transform: `translateY(${item.start}px)` }}
-                  >
-                    <MessageRow
-                      message={row.m}
-                      author={row.author}
-                      agents={displayAgents}
-                      groupedWithPrev={row.grouped}
-                      {...(onOpenThread ? { onOpenThread } : {})}
-                    />
-                  </div>
-                );
-              })}
+    <div className={`chat-view${threadSummaryOpen ? " has-thread-summary" : ""}`} data-vim-panel="chat">
+      {threadSummaryOpen && (
+        <ThreadSummaryPanel
+          messages={messages}
+          agents={displayAgents}
+          onClose={() => onToggleThreadSummary?.()}
+          onJumpTo={handleJumpTo}
+          chatListRef={listRef}
+          getAnchorTop={getAnchorTop}
+          getContentHeight={getContentHeight}
+        />
+      )}
+      <div className="chat-col">
+        {/* Top region: chat scroll area + timeline rail, side by side. The
+            composer lives BELOW this region so the timeline ends at the top of
+            the composer rather than running the full height of the panel. */}
+        <div className="chat-region">
+          <div className="chat-scroll-wrap">
+            <div className="chat-list autoscroll virtualized-list" ref={listRef}>
+              <div className="virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualizer.getVirtualItems().map((item) => {
+                  const row = rows[item.index];
+                  if (!row?.author) return null;
+                  return (
+                    <div
+                      key={row.m.id}
+                      className={`virtualized-row message-virtual-row${row.grouped ? " is-grouped" : ""}${row.hasFollowup ? " has-followup" : ""}`}
+                      data-index={item.index}
+                      ref={virtualizer.measureElement}
+                      style={{ transform: `translateY(${item.start}px)` }}
+                    >
+                      <MessageRow
+                        message={row.m}
+                        author={row.author}
+                        agents={displayAgents}
+                        groupedWithPrev={row.grouped}
+                        {...(onOpenThread ? { onOpenThread } : {})}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+            <ScrollControls targetRef={listRef} newItemsKey={messages.at(-1)?.id ?? null} />
           </div>
-          <ScrollControls targetRef={listRef} newItemsKey={messages.at(-1)?.id ?? null} />
+          {!isThreadOpen && <TimelineRail roomId={room.id} />}
         </div>
-        {!isThreadOpen && <TimelineRail roomId={room.id} />}
+        <Composer
+          key={isThreadOpen ? "thread-open" : "thread-closed"}
+          roomId={room.id}
+          collapsedDefault={isThreadOpen}
+          {...(onToggleThreadSummary ? { threadSummaryOpen, onToggleThreadSummary } : {})}
+        />
       </div>
-      <Composer
-        key={isThreadOpen ? "thread-open" : "thread-closed"}
-        roomId={room.id}
-        collapsedDefault={isThreadOpen}
-      />
     </div>
   );
 }

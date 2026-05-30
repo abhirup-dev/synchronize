@@ -10,6 +10,7 @@ import type {
   SpawnAgentResult,
   Snapshot,
   Task,
+  ThreadSummary,
   TimelineEvent,
   TimelineEventType,
 } from "./types.ts";
@@ -109,6 +110,14 @@ interface WebStateResponse {
   media: DaemonMedia[];
 }
 
+// Subset of the daemon's ThreadSummaryResponse (src/api/types.ts) that the web
+// UI consumes. Declared locally to avoid coupling the web bundle to server types.
+interface DaemonThreadSummary {
+  summary: string | null;
+  status: "ready" | "pending" | "disabled";
+  stale?: boolean;
+}
+
 interface WebStateChange {
   cursor: number;
   type: "connected" | "state_changed";
@@ -153,6 +162,7 @@ export class DaemonDataSource implements DataSource {
   private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
+  private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
   private groupNameByRoomId = new Map<string, string>();
@@ -224,6 +234,57 @@ export class DaemonDataSource implements DataSource {
       this._artifacts.set(roomId, snap);
     }
     return snap;
+  }
+
+  threadSummary(parentMessageId: string): Snapshot<ThreadSummary> {
+    let snap = this._threadSummaries.get(parentMessageId);
+    if (!snap) {
+      // The web message id encodes the daemon event id (`e:<event_id>`); a
+      // thread's root_event_id is that root message's event id. Fetch the
+      // daemon summary and map its status onto the UI shape. While the worker
+      // is still computing ("pending"), poll a few times so the summary lands
+      // without a manual reload. The UI falls back to a generated headline for
+      // any non-"ok" status (bd sync-b8q).
+      snap = createSnapshot<ThreadSummary>({ text: null, status: "pending" });
+      this._threadSummaries.set(parentMessageId, snap);
+      void this.loadThreadSummary(parentMessageId, snap as MutableSnapshot<ThreadSummary>);
+    }
+    return snap;
+  }
+
+  private async loadThreadSummary(
+    parentMessageId: string,
+    snap: MutableSnapshot<ThreadSummary>,
+    attempt = 0,
+  ): Promise<void> {
+    let rootEventId: number;
+    try {
+      rootEventId = eventIdFromMessageId(parentMessageId);
+    } catch {
+      // Optimistic / non-daemon ids have no event to summarize.
+      snap.set({ text: null, status: "disabled" });
+      return;
+    }
+    try {
+      const res = await this.request<DaemonThreadSummary>(`/threads/${rootEventId}/summary`);
+      if (res.status === "ready" && res.summary) {
+        snap.set({ text: res.summary, status: "ok" });
+        return;
+      }
+      if (res.status === "pending") {
+        snap.set({ text: null, status: "pending" });
+        if (attempt < 3 && this.connected) {
+          window.setTimeout(
+            () => void this.loadThreadSummary(parentMessageId, snap, attempt + 1),
+            5_000,
+          );
+        }
+        return;
+      }
+      snap.set({ text: null, status: "disabled" });
+    } catch {
+      snap.set({ text: null, status: "disabled" });
+    }
   }
 
   async connect(): Promise<void> {

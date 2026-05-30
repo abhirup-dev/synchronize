@@ -8,6 +8,7 @@ import type {
   Message,
   Room,
   Task,
+  ThreadSummary,
   TimelineEvent,
 } from "./types.ts";
 
@@ -194,12 +195,22 @@ export const TIMELINE: Record<string, TimelineEvent[]> = {
 
 export const TASKS: Record<string, Task[]> = {
   "checkout-revamp": [
-    { id: "task1", roomId: "checkout-revamp", title: "Migrate checkout schema",    status: "shipped", assigneeId: "cortex", reviewerIds: ["you"] },
-    { id: "task2", roomId: "checkout-revamp", title: "Update checkout UI to v2",    status: "doing",   assigneeId: "atlas",  reviewerIds: [], progress: 65 },
-    { id: "task3", roomId: "checkout-revamp", title: "Canary rollout to 5 %",       status: "doing",   assigneeId: "vega",   reviewerIds: [], progress: 20 },
-    { id: "task4", roomId: "checkout-revamp", title: "Backfill analytics funnel",   status: "review",  assigneeId: "cortex", reviewerIds: ["you", "nova"] },
-    { id: "task5", roomId: "checkout-revamp", title: "QA: edge cases on coupon stack", status: "backlog", assigneeId: "nova", reviewerIds: [] },
+    { id: "task1", roomId: "checkout-revamp", title: "Migrate checkout schema",    status: "shipped", assigneeId: "cortex", reviewerIds: ["you"], priority: "high", tag: "BACKEND" },
+    { id: "task2", roomId: "checkout-revamp", title: "Update checkout UI to v2",    status: "doing",   assigneeId: "atlas",  reviewerIds: [], progress: 65, priority: "high", tag: "FRONTEND" },
+    { id: "task3", roomId: "checkout-revamp", title: "Canary rollout to 5 %",       status: "doing",   assigneeId: "vega",   reviewerIds: [], progress: 20, priority: "med", tag: "INFRA" },
+    { id: "task4", roomId: "checkout-revamp", title: "Backfill analytics funnel",   status: "review",  assigneeId: "cortex", reviewerIds: ["you", "nova"], priority: "high", tag: "DATA" },
+    { id: "task5", roomId: "checkout-revamp", title: "QA: edge cases on coupon stack", status: "backlog", assigneeId: "nova", reviewerIds: [], priority: "med", tag: "QA" },
   ],
+};
+
+// Demo thread summaries, keyed by parent (root) message id. The MockDataSource
+// serves these through `threadSummary()` with status "ok" so the Thread Summary
+// panel shows real prose; the live daemon adapter returns "disabled" until the
+// backend summarization feature (bd sync-b8q) is wired up.
+export const THREAD_SUMMARIES: Record<string, string> = {
+  m2: "Cortex laid out the **dual-write migration plan** for `checkout_v2`. Atlas signed off on the 24h dual-write window for the analytics consumer, and Nova committed to adding coverage on the `coupon_id` path before the read flag flips.",
+  m5: "Cortex confirmed **PR #4128 merged** and kicked off the 14M-row abandoned-cart backfill. Nova is tailing the warehouse rollback path (looks clean) and You asked for the final row-count once it lands.",
+  "hb-poll": "Morning heartbeat: Cortex, Atlas, Nova and Echo all checked in **alive**. Nova flagged 504s on `/api/charge` in staging — tracked in the main thread.",
 };
 
 export const ARTIFACTS: Record<string, Artifact[]> = {
