@@ -110,6 +110,14 @@ interface WebStateResponse {
   media: DaemonMedia[];
 }
 
+// Subset of the daemon's ThreadSummaryResponse (src/api/types.ts) that the web
+// UI consumes. Declared locally to avoid coupling the web bundle to server types.
+interface DaemonThreadSummary {
+  summary: string | null;
+  status: "ready" | "pending" | "disabled";
+  stale?: boolean;
+}
+
 interface WebStateChange {
   cursor: number;
   type: "connected" | "state_changed";
@@ -231,16 +239,52 @@ export class DaemonDataSource implements DataSource {
   threadSummary(parentMessageId: string): Snapshot<ThreadSummary> {
     let snap = this._threadSummaries.get(parentMessageId);
     if (!snap) {
-      // Integration seam for bd sync-b8q. The backend exposes summaries at
-      // `GET /threads/:root_event_id/summary` -> { summary, status }. To wire
-      // this up: map this web message id to the daemon's `root_event_id` (the
-      // message's originating event id), fetch the endpoint, and `snap.set(...)`
-      // with { text: summary, status }. The disabled stub below keeps the panel
-      // working (it falls back to a generated headline) until then.
-      snap = createSnapshot<ThreadSummary>({ text: null, status: "disabled" });
+      // The web message id encodes the daemon event id (`e:<event_id>`); a
+      // thread's root_event_id is that root message's event id. Fetch the
+      // daemon summary and map its status onto the UI shape. While the worker
+      // is still computing ("pending"), poll a few times so the summary lands
+      // without a manual reload. The UI falls back to a generated headline for
+      // any non-"ok" status (bd sync-b8q).
+      snap = createSnapshot<ThreadSummary>({ text: null, status: "pending" });
       this._threadSummaries.set(parentMessageId, snap);
+      void this.loadThreadSummary(parentMessageId, snap as MutableSnapshot<ThreadSummary>);
     }
     return snap;
+  }
+
+  private async loadThreadSummary(
+    parentMessageId: string,
+    snap: MutableSnapshot<ThreadSummary>,
+    attempt = 0,
+  ): Promise<void> {
+    let rootEventId: number;
+    try {
+      rootEventId = eventIdFromMessageId(parentMessageId);
+    } catch {
+      // Optimistic / non-daemon ids have no event to summarize.
+      snap.set({ text: null, status: "disabled" });
+      return;
+    }
+    try {
+      const res = await this.request<DaemonThreadSummary>(`/threads/${rootEventId}/summary`);
+      if (res.status === "ready" && res.summary) {
+        snap.set({ text: res.summary, status: "ok" });
+        return;
+      }
+      if (res.status === "pending") {
+        snap.set({ text: null, status: "pending" });
+        if (attempt < 3 && this.connected) {
+          window.setTimeout(
+            () => void this.loadThreadSummary(parentMessageId, snap, attempt + 1),
+            5_000,
+          );
+        }
+        return;
+      }
+      snap.set({ text: null, status: "disabled" });
+    } catch {
+      snap.set({ text: null, status: "disabled" });
+    }
   }
 
   async connect(): Promise<void> {

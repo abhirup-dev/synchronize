@@ -123,14 +123,15 @@ export interface Artifact {
   createdAt: string;
 }
 
-// LLM-generated thread summary. The daemon side (bd sync-b8q) computes this
-// once per cold thread and exposes it via `GET /threads/:root_event_id/summary`,
-// which returns `{ summary, status }`. Wiring the web UI to that endpoint is a
-// deliberate follow-up — for now the seam exists so a single adapter method is
-// all the integration needs. `status: "disabled"` is the graceful state when
-// the backend feature is off (no API key) or not yet wired; the UI then falls
-// back to a generated headline ("N replies from M agents").
-export type ThreadSummaryStatus = "ok" | "disabled";
+// LLM-generated thread summary. The daemon (bd sync-b8q) computes this once per
+// cold thread and exposes it via `GET /threads/:root_event_id/summary`, which
+// returns `{ summary, status: "ready"|"pending"|"disabled" }`. The DaemonDataSource
+// maps that onto the shape below: "ready" -> "ok" (with text), "pending" while the
+// worker is still computing, "disabled" when the feature is off (no API key) or the
+// id can't be resolved. The UI shows the summary only when status is "ok"; for
+// "pending"/"disabled" it falls back to a generated headline ("N replies from M
+// agents"). The MockDataSource only ever emits "ok"/"disabled".
+export type ThreadSummaryStatus = "ok" | "pending" | "disabled";
 
 export interface ThreadSummary {
   /** The summary prose, or null when unavailable. */
