@@ -21,3 +21,4 @@ docs/ui-reference/claude-design-screenshots/
 
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
+__pycache__/

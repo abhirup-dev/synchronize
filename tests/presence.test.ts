@@ -3,7 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
+import { createGroup, joinGroup } from "../src/api/groups.ts";
 import { deletePeer, heartbeatPeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
+import type { GroupMember } from "../src/api/types.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Peer } from "../src/api/types.ts";
 
@@ -68,6 +70,11 @@ async function startDaemon(env: DaemonEnv = {}): Promise<{ client: ClientConfig;
 async function rosterPeer(client: ClientConfig, peerId: string): Promise<Peer | undefined> {
   const response = (await listPeers(client)) as { peers: Peer[] };
   return response.peers.find((peer) => peer.peer_id === peerId);
+}
+
+async function activeMemberIds(client: ClientConfig, group: string): Promise<string[]> {
+  const response = (await listPeers(client, { group })) as { peers: GroupMember[] };
+  return response.peers.map((member) => member.peer_id);
 }
 
 test("instrumented agent: join → working → idle transitions drive presence", async () => {
@@ -176,10 +183,17 @@ test("resume: re-registering the same host session revives the same peer after o
       purpose: "claude session",
     });
     const peerId = first.binding.peer_id;
+    await createGroup(daemon.client, { name: "room", creatorPeerId: peerId });
+    await joinGroup(daemon.client, { name: "room", peerId, alias: "res" });
+    expect(await activeMemberIds(daemon.client, "room")).toContain(peerId);
 
     // Let the lease lapse — the session "ended" (no clean delete, lease-only).
     await Bun.sleep(700);
     expect((await rosterPeer(daemon.client, peerId))?.online).toBe(false);
+    // Going offline via lease lapse must NOT drop group membership — only a
+    // sweep/evict deactivates rows. (retention is 60s here, so the sweeper never
+    // fires; this guards offline != membership-loss, not the reactivation path.)
+    expect(await activeMemberIds(daemon.client, "room")).toContain(peerId);
 
     // Resume: same host_session_id → same peer, fresh lease, back online.
     const resumed = await registerAgentSession(daemon.client, {
@@ -192,6 +206,7 @@ test("resume: re-registering the same host session revives the same peer after o
     });
     expect(resumed.binding.peer_id).toBe(peerId);
     expect((await rosterPeer(daemon.client, peerId))?.online).toBe(true);
+    expect(await activeMemberIds(daemon.client, "room")).toContain(peerId);
   } finally {
     await daemon.stop();
   }
