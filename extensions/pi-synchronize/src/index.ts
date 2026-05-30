@@ -48,7 +48,13 @@ export interface PiExtensionAPI {
   sendUserMessage(content: string, options?: PiSendOptions): Promise<void> | void;
 }
 
-const HEARTBEAT_MS = 15_000;
+// Heartbeat cadence. Env-overridable (SYNCHRONIZE_PI_HEARTBEAT_MS) so the
+// AoE/integration harness can drive a short heartbeat and observe lease-lapse,
+// sweep, and the re-register recovery path within a test window.
+const HEARTBEAT_MS = (() => {
+  const raw = Number(process.env.SYNCHRONIZE_PI_HEARTBEAT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 15_000;
+})();
 
 export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let client: PiSyncClient | null = null;
@@ -57,6 +63,10 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let ctxRef: PiExtensionContext | null = null;
   let sessionFile: string | null = null;
+  // Identity captured at registration so the heartbeat loop can re-register the
+  // same peer_id if the daemon ever 404s it (retention sweep / operator evict).
+  let peerSessionName: string | null = null;
+  const PEER_PURPOSE = "pi-coding-agent session";
 
   // Process-lifetime peer. teardownSession runs on Pi's internal session
   // boundaries (before-switch) and only releases per-session state — the peer
@@ -139,9 +149,10 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     const { peer } = await registerPeer(client, {
       tool: "pi",
       sessionName,
-      purpose: "pi-coding-agent session",
+      purpose: PEER_PURPOSE,
     });
     peerId = peer.peer_id;
+    peerSessionName = sessionName;
     process.env.SYNCHRONIZE_PEER_ID = peerId;
     log(`registered peer_id=${peerId} session_name=${sessionName}`);
     if (piSessionId) {
@@ -168,12 +179,40 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     await sub.start();
 
     heartbeat = setInterval(() => {
-      if (!client || !peerId) return;
-      heartbeatPeer(client, peerId).catch((error) => log(`heartbeat failed: ${formatError(error)}`));
+      void maintainPeer();
     }, HEARTBEAT_MS);
 
     log(`startup complete daemon=${client.baseUrl} log_file=${getLogPath()}`);
     ctx.ui?.notify?.(`synchronize: connected as ${sessionName} (log: ${getLogPath()})`, "info");
+  }
+
+  // Heartbeat with recovery. A successful heartbeat just refreshes the lease.
+  // A failure most importantly covers the 404 case: the daemon no longer knows
+  // this peer (retention sweep after long downtime, or an operator evict). We
+  // re-register the same peer_id — which resurrects the peer AND, daemon-side,
+  // restores its group memberships — then rebuild the event subscription (the
+  // daemon dropped our subscriber when the peer was deleted). This mirrors the
+  // MCP adapter's maintainPeer so Pi is no longer the asymmetric laggard
+  // (sync-3nu). Transport errors are already retried with daemon re-discovery
+  // inside the client; this adds session re-establishment on top.
+  async function maintainPeer(): Promise<void> {
+    if (!client || !peerId) return;
+    try {
+      await heartbeatPeer(client, peerId);
+      return;
+    } catch (error) {
+      log(`heartbeat failed, attempting recovery: ${formatError(error)}`);
+    }
+    if (!client || !peerId || !peerSessionName) return;
+    try {
+      await registerPeer(client, { peerId, sessionName: peerSessionName, tool: "pi", purpose: PEER_PURPOSE });
+      sub?.stop();
+      sub = buildSubscription(peerId, client);
+      await sub.start();
+      log(`recovered peer ${peerId} after heartbeat failure`);
+    } catch (recoverError) {
+      log(`peer recovery failed ${peerId}: ${formatError(recoverError)}`);
+    }
   }
 
   function buildSubscription(currentPeerId: string, currentClient: PiSyncClient): PiEventSubscription {

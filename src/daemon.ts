@@ -1698,6 +1698,14 @@ function upsertPeer(
   // peer rejoins their old groups rather than having to re-issue join calls
   // (which would fail with alias-taken if anyone reclaimed in the interim —
   // resurrection is symmetric with the deletion that preceded it).
+  // Capture any prior soft-delete timestamp BEFORE the upsert clears it, so we
+  // can tell whether this register is a resurrection (and which group_members
+  // rows that death deactivated — see reactivateMembershipsOnResurrect).
+  const priorDeletedAt =
+    db
+      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
+      .get(input.peerId)?.deleted_at ?? null;
+
   // activity_state is set only on first INSERT (initializing for agents, NULL
   // for uninstrumented tools). On re-register/resurrect we COALESCE so an
   // existing working/idle state is preserved — a heartbeat-driven re-register
@@ -1723,6 +1731,32 @@ function upsertPeer(
     input.leaseExpiresAt,
     initialActivityState(input.tool),
   );
+
+  if (priorDeletedAt) reactivateMembershipsOnResurrect(db, input.peerId, priorDeletedAt);
+}
+
+// Restore the group memberships that a soft-delete (operator evict or retention
+// sweep) deactivated, when the peer re-registers. Both delete paths set
+// group_members.left_at to the SAME timestamp as peers.deleted_at, so rows with
+// left_at == the cleared deleted_at are exactly the ones killed by that death —
+// this distinguishes a death-deactivation from an earlier voluntary leave
+// (which carries an older left_at and must stay inactive). An alias reclaimed by
+// someone else during the gap is skipped so the unique-active-alias invariant
+// holds. Without this, a revived peer is online but silent in all its groups
+// (sync-3nu). The structural alternative (derive active from lease) is sync-<A>.
+function reactivateMembershipsOnResurrect(db: Database, peerId: string, deathTimestamp: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 1, left_at = NULL
+     WHERE peer_id = ? AND active = 0 AND left_at = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members other
+         WHERE other.group_id = group_members.group_id
+           AND other.alias = group_members.alias
+           AND other.active = 1
+           AND other.peer_id != group_members.peer_id
+       )`,
+  ).run(peerId, deathTimestamp);
 }
 
 function findPeerByHostSession(db: Database, hostTool: string, hostSessionId: string): string | undefined {
