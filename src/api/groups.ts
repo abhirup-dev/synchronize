@@ -32,6 +32,16 @@ export function listGroups(client: ClientConfig): Promise<{ groups: Group[] }> {
   return requestJson<{ groups: Group[] }>(client, "/groups");
 }
 
+export interface MyGroup extends Group {
+  alias: string;
+  joined_at: string;
+}
+
+/** Groups the given peer is an active member of, with the peer's alias + join time. */
+export function listMyGroups(client: ClientConfig, peerId: string): Promise<{ groups: MyGroup[] }> {
+  return requestJson<{ groups: MyGroup[] }>(client, `/groups?member=${encodeURIComponent(peerId)}`);
+}
+
 export interface JoinGroupResponse {
   member: GroupMember;
   // Null when the call was an idempotent no-op (peer already a member of the

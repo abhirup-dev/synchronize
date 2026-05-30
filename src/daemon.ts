@@ -20,8 +20,10 @@ import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
+import { AoeBackend } from "./launch/backend.ts";
+import { LaunchService, LaunchValidationError, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
 
-interface DaemonContext {
+export interface DaemonContext {
   paths: RuntimePaths;
   db: Database;
   startedAt: string;
@@ -31,6 +33,7 @@ interface DaemonContext {
   subscribers: Map<string, EventSubscriber>;
   webStateClients: Set<WebStateClient>;
   stateVersion: number;
+  launchService: LaunchService;
 }
 
 interface DiscoveryFile {
@@ -485,7 +488,48 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
 
     log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
     emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
+    // Server-side launch reconcile: if this register carries a launch_id with a
+    // pending group, auto-join the peer to that group (best-effort).
+    reconcileLaunch(ctx, optionalString(body, "launch_id") ?? null, peerId);
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/launch") {
+    const body = await readBody(request);
+    let launchRequest;
+    try {
+      launchRequest = validateLaunchRequest(body);
+    } catch (error) {
+      if (error instanceof LaunchValidationError) throw new HttpError(400, "invalid_launch", error.message);
+      throw error;
+    }
+    const result = await ctx.launchService.launch(launchRequest);
+    log(`agent launch title=${result.title} launch_id=${result.launchId} peer_id=${result.peerId} group=${result.group ?? "<none>"}`);
+    return jsonResponse(result, { status: 201 });
+  }
+
+  if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
+    const body = await readBody(request);
+    // Prefer the explicit title (always known from the launch response, works
+    // even before the agent has registered). Otherwise derive it from the
+    // durable peer row (session_name + peer_id8) for a known peer. NOTE: the
+    // peer_id path assumes session_name is unchanged since launch; if the peer
+    // was renamed, derivation is stale — stop by title for a guaranteed match.
+    const explicitTitle = optionalString(body, "title");
+    const peerId = optionalString(body, "peer_id");
+    let title: string;
+    if (explicitTitle) {
+      title = explicitTitle;
+    } else if (peerId) {
+      title = aoeTitle(getPeer(ctx.db, peerId).session_name, peerId);
+    } else {
+      throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
+    }
+    await ctx.launchService.stop(title);
+    // Drop any pending launch intent for this title (stopped before it registered).
+    ctx.launchService.forgetByTitle(title);
+    log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
+    return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
   }
 
   if (request.method === "GET" && url.pathname === "/agent-sessions") {
@@ -706,6 +750,23 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   }
 
   if (request.method === "GET" && url.pathname === "/groups") {
+    const member = url.searchParams.get("member");
+    if (member) {
+      // Scoped listing: groups this peer is an ACTIVE member of, with the
+      // peer's own alias + join time. Powers bridge_list_groups({ mine: true }).
+      const rows = ctx.db
+        .query<GroupRow & { alias: string; joined_at: string }, [string]>(
+          `SELECT g.*, gm.alias AS alias, gm.joined_at AS joined_at
+           FROM groups g
+           JOIN group_members gm ON gm.group_id = g.group_id
+           WHERE gm.peer_id = ? AND gm.active = 1
+           ORDER BY g.name ASC`,
+        )
+        .all(member);
+      return jsonResponse({
+        groups: rows.map((row) => ({ ...formatGroup(row), alias: row.alias, joined_at: row.joined_at })),
+      });
+    }
     const rows = ctx.db.query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC").all();
     return jsonResponse({ groups: rows.map(formatGroup) });
   }
@@ -743,74 +804,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       });
     }
 
-    let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
-    const joinEventId = ctx.db.transaction(() => {
-      if (peerId === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
-        deactivateWebAliasHolders(ctx.db, group.group_id, alias, peerId);
-      }
-      // Detect alias reclaim: the most-recently-departed prior holder of this
-      // alias belongs to a different peer_id. Respawn (same peer_id) is not a
-      // reclaim. v0 storage policy frees the alias on leave; the event leaves
-      // an audit trail so observers can distinguish respawn from a new peer.
-      const previousHolder = ctx.db
-        .query<{ peer_id: string }, [number, string]>(
-          `SELECT peer_id FROM group_members
-           WHERE group_id = ? AND alias = ? AND active = 0
-           ORDER BY COALESCE(left_at, joined_at) DESC
-           LIMIT 1`,
-        )
-        .get(group.group_id, alias);
-      if (previousHolder && previousHolder.peer_id !== peerId) {
-        ctx.db
-          .query(
-            `INSERT INTO events (type, sender_peer_id, group_id, body)
-             VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
-          )
-          .run(
-            peerId,
-            group.group_id,
-            JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }),
-          );
-        const reclaimEventId = Number(
-          ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id,
-        );
-        fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peerId);
-        reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
-      }
-      ctx.db
-        .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
-        .run(peerId, group.group_id, JSON.stringify({ alias, fresh }));
-      const eventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
-      fanoutRosterEventToInbox(ctx.db, group.group_id, eventId, peerId);
-      const firstEventId =
-        ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
-          ?.event_id ?? eventId;
-      const historyFrom = fresh ? eventId : firstEventId;
-      try {
-        ctx.db
-          .query(
-            `INSERT INTO group_members
-               (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
-             VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
-             ON CONFLICT(group_id, peer_id) DO UPDATE SET
-               alias = excluded.alias,
-               join_event_id = excluded.join_event_id,
-               history_from_event_id = excluded.history_from_event_id,
-               active = 1,
-               purpose = excluded.purpose,
-               joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-               left_at = NULL`,
-          )
-          .run(group.group_id, peerId, alias, eventId, historyFrom, peer.purpose);
-      } catch (error) {
-        throw mapSqliteConstraint(
-          error,
-          "alias_collision",
-          `Alias '${alias}' is already active in group '${group.name}'. Provide a unique alias to join this group.`,
-        );
-      }
-      return eventId;
-    })();
+    const { eventId: joinEventId, reclaimed } = joinGroupCore(ctx, group, peer, alias, fresh);
 
     emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId: joinEventId, groupId: group.group_id, peerId });
     return jsonResponse({
@@ -1565,7 +1559,7 @@ function leaseExpiresAtForTool(tool: string): string {
   return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
 }
 
-function upsertPeer(
+export function upsertPeer(
   db: Database,
   input: {
     peerId: string;
@@ -2013,6 +2007,137 @@ function getGroupById(db: Database, groupId: number): GroupRow {
   return group;
 }
 
+/**
+ * Core group-join transaction shared by the `/groups/:name/join` route and the
+ * server-side launch reconcile. Emits the join (and any alias-reclaim) events,
+ * fans them out to inboxes, and upserts the active membership. Throws
+ * `alias_collision` when the alias is already held by another active member.
+ * Callers own the idempotent short-circuit, web-state emit, and HTTP shaping.
+ */
+function joinGroupCore(
+  ctx: DaemonContext,
+  group: GroupRow,
+  peer: PeerRow,
+  alias: string,
+  fresh: boolean,
+): { eventId: number; reclaimed: { previous_peer_id: string; event_id: number } | null } {
+  let reclaimed: { previous_peer_id: string; event_id: number } | null = null;
+  const eventId = ctx.db.transaction(() => {
+    if (peer.peer_id === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
+      deactivateWebAliasHolders(ctx.db, group.group_id, alias, peer.peer_id);
+    }
+    // Detect alias reclaim: the most-recently-departed prior holder of this
+    // alias belongs to a different peer_id. Respawn (same peer_id) is not a
+    // reclaim. v0 storage policy frees the alias on leave; the event leaves
+    // an audit trail so observers can distinguish respawn from a new peer.
+    const previousHolder = ctx.db
+      .query<{ peer_id: string }, [number, string]>(
+        `SELECT peer_id FROM group_members
+         WHERE group_id = ? AND alias = ? AND active = 0
+         ORDER BY COALESCE(left_at, joined_at) DESC
+         LIMIT 1`,
+      )
+      .get(group.group_id, alias);
+    if (previousHolder && previousHolder.peer_id !== peer.peer_id) {
+      ctx.db
+        .query(
+          `INSERT INTO events (type, sender_peer_id, group_id, body)
+           VALUES ('group_member_alias_reclaimed', ?, ?, ?)`,
+        )
+        .run(peer.peer_id, group.group_id, JSON.stringify({ alias, previous_peer_id: previousHolder.peer_id }));
+      const reclaimEventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      fanoutRosterEventToInbox(ctx.db, group.group_id, reclaimEventId, peer.peer_id);
+      reclaimed = { previous_peer_id: previousHolder.peer_id, event_id: reclaimEventId };
+    }
+    ctx.db
+      .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_joined', ?, ?, ?)")
+      .run(peer.peer_id, group.group_id, JSON.stringify({ alias, fresh }));
+    const newEventId = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    fanoutRosterEventToInbox(ctx.db, group.group_id, newEventId, peer.peer_id);
+    const firstEventId =
+      ctx.db.query<{ event_id: number }, [number]>("SELECT MIN(event_id) AS event_id FROM events WHERE group_id = ?").get(group.group_id)
+        ?.event_id ?? newEventId;
+    const historyFrom = fresh ? newEventId : firstEventId;
+    try {
+      ctx.db
+        .query(
+          `INSERT INTO group_members
+             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
+           VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
+           ON CONFLICT(group_id, peer_id) DO UPDATE SET
+             alias = excluded.alias,
+             join_event_id = excluded.join_event_id,
+             history_from_event_id = excluded.history_from_event_id,
+             active = 1,
+             purpose = excluded.purpose,
+             joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+             left_at = NULL`,
+        )
+        .run(group.group_id, peer.peer_id, alias, newEventId, historyFrom, peer.purpose);
+    } catch (error) {
+      throw mapSqliteConstraint(
+        error,
+        "alias_collision",
+        `Alias '${alias}' is already active in group '${group.name}'. Provide a unique alias to join this group.`,
+      );
+    }
+    return newEventId;
+  })();
+  return { eventId, reclaimed };
+}
+
+/** Resolve a launch's target synchronize group, creating it durably if absent. */
+function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
+  const groupName = requireGroupName(name);
+  const existing = ctx.db.query<GroupRow, [string]>("SELECT * FROM groups WHERE LOWER(name) = LOWER(?)").get(groupName);
+  if (existing) return existing;
+  const mediaDir = `${ctx.paths.mediaPath}/${groupName.toLowerCase()}`;
+  const groupId = ctx.db.transaction(() => {
+    ctx.db
+      .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, 1, ?, NULL, NULL)")
+      .run(groupName, mediaDir);
+    const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+    ctx.db
+      .query("INSERT INTO events (type, sender_peer_id, group_id, body) VALUES ('group_created', NULL, ?, ?)")
+      .run(id, JSON.stringify({ name: groupName, durable: true }));
+    return id;
+  })();
+  emitWebStateChanged(ctx, { domains: ["groups", "events"], groupId });
+  return getGroupById(ctx.db, groupId);
+}
+
+/**
+ * Server-side launch reconcile: when a launched agent self-registers carrying
+ * its launch_id, consume the in-memory launch intent and, if it named a group,
+ * auto-join the peer (alias = launch name, fresh history). Best-effort: an
+ * alias collision or any join failure is logged as join_failed and never blocks
+ * registration — the session is alive, just unjoined (operator-recoverable).
+ */
+export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, peerId: string): void {
+  if (!launchId) return;
+  const pending = ctx.launchService.consume(launchId, peerId);
+  if (!pending || !pending.group) return;
+  try {
+    const group = ensureLaunchGroup(ctx, pending.group);
+    const peer = getPeer(ctx.db, peerId);
+    const existing = ctx.db
+      .query<{ alias: string; active: number }, [number, string]>(
+        "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (existing && existing.active === 1 && existing.alias === pending.alias) {
+      return; // already an active member under this alias — nothing to do
+    }
+    const { eventId } = joinGroupCore(ctx, group, peer, pending.alias, true);
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox"], eventId, groupId: group.group_id, peerId });
+    log(`launch auto-join peer_id=${peerId} group=${group.name} alias=${pending.alias} launch_id=${launchId}`);
+  } catch (error) {
+    log(
+      `launch auto-join join_failed peer_id=${peerId} group=${pending.group} alias=${pending.alias} launch_id=${launchId}: ${formatError(error)}`,
+    );
+  }
+}
+
 type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
 type FormattedMember = Omit<MemberRow, "active"> & { active: boolean };
 
@@ -2142,7 +2267,11 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0 };
+  const launchService = new LaunchService({
+    backend: new AoeBackend({ profile: aoeProfileName(paths.home) }),
+    home: paths.home,
+  });
+  ctx = { paths, db, startedAt, token, provenance, server, subscribers: new Map(), webStateClients: new Set(), stateVersion: 0, launchService };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,
@@ -2221,7 +2350,9 @@ async function serveWebAsset(pathname: string): Promise<Response> {
   });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exit(1);
+  });
+}

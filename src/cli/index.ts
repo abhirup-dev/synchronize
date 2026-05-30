@@ -6,6 +6,7 @@ import * as launch from "./commands/launch.ts";
 import * as media from "./commands/media.ts";
 import * as peers from "./commands/peers.ts";
 import * as register from "./commands/register.ts";
+import * as spawn from "./commands/spawn.ts";
 import * as status from "./commands/status.ts";
 import * as top from "./commands/top.ts";
 import * as whoami from "./commands/whoami.ts";
@@ -49,6 +50,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "launch":
       await launch.run(rest);
+      return;
+    case "spawn":
+      await spawn.run(rest);
       return;
     case "media":
       await media.run(rest);

@@ -10,6 +10,7 @@ import {
 } from "./state.ts";
 import type { ToolContext } from "./tools/context.ts";
 import { registerGroupTools } from "./tools/groups.ts";
+import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
@@ -31,11 +32,22 @@ export function createMcpServer(): SynchronizeMcpServer {
   }
 
   const ctx: ToolContext = { mcp, state, emit, lifecycle };
-  registerRegisterTools(ctx);
+  const { bootstrapEnvBoundPeer } = registerRegisterTools(ctx);
   registerPeerTools(ctx);
   registerMessagingTools(ctx);
   registerGroupTools(ctx);
+  registerLaunchTools(ctx);
   registerMediaTools(ctx);
+
+  // Once the client finishes initializing, proactively activate the live
+  // channel subscription for launch-bound sessions (gated on launch env), so a
+  // spawned idle agent receives pushed messages without a first tool call.
+  // Preserves any existing handler the SDK installed.
+  const priorOnInitialized = mcp.server.oninitialized;
+  mcp.server.oninitialized = () => {
+    priorOnInitialized?.();
+    void bootstrapEnvBoundPeer();
+  };
 
   return Object.assign(mcp, { cleanup: lifecycle.cleanup });
 }
