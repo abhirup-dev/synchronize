@@ -24,6 +24,7 @@ import { resolveProviderConfig } from "./llm/index.ts";
 import {
   isEnabled as isSummarizeEnabled,
   loadSummaryResponse,
+  makeProviderCaller,
   startSummarizeWorker,
   strategyFromInput,
   summarizeThread,
@@ -1105,7 +1106,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       first_k: optionalInteger(body, "first_k"),
       last_k: optionalInteger(body, "last_k"),
     });
-    await summarizeThread(ctx.db, cfg, rootEventId, { strategy });
+    await summarizeThread(ctx.db, makeProviderCaller(cfg), rootEventId, { strategy });
     return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true));
   }
 

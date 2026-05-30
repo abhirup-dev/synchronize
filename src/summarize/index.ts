@@ -11,7 +11,19 @@ import {
   resolveProviderConfig,
   summarizeTranscript,
   type ProviderConfig,
+  type SummarizeResult,
 } from "../llm/index.ts";
+
+/**
+ * A test seam: the function that turns a rendered transcript into a summary
+ * result. In production this hits the LLM via Vercel AI SDK; tests inject a
+ * deterministic stub so the suite stays offline.
+ */
+export type SummarizerCaller = (transcript: string) => Promise<SummarizeResult>;
+
+export function makeProviderCaller(cfg: ProviderConfig): SummarizerCaller {
+  return (transcript) => summarizeTranscript(cfg, transcript);
+}
 
 // ─── Strategies ───────────────────────────────────────────────────────────
 
@@ -256,7 +268,7 @@ export interface SummarizeOptions {
  */
 export async function summarizeThread(
   db: Database,
-  cfg: ProviderConfig,
+  caller: SummarizerCaller,
   rootEventId: number,
   opts: SummarizeOptions = {},
 ): Promise<ThreadSummaryRow> {
@@ -273,8 +285,9 @@ export async function summarizeThread(
     transcript = renderTranscript(db, selected, rootEventId);
   }
 
-  const result = await summarizeTranscript(cfg, transcript);
-  if (!result.text) {
+  const result = await caller(transcript);
+  const cleaned = result.text.trim();
+  if (!cleaned) {
     throw new Error("LLM returned empty summary");
   }
 
@@ -300,7 +313,7 @@ export async function summarizeThread(
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run(
     rootEventId,
-    result.text,
+    cleaned,
     result.model,
     resolved.strategy,
     paramsJson,
@@ -384,6 +397,7 @@ export function startSummarizeWorker(db: Database, env: NodeJS.ProcessEnv = proc
   async function runTick(): Promise<{ summarized: number; skipped: number; errors: number }> {
     const cfg = resolveProviderConfig(env);
     if (!cfg) return { summarized: 0, skipped: 0, errors: 0 };
+    const caller = makeProviderCaller(cfg);
     const now = Date.now();
     const eligible = pickEligible(db, wcfg, now, inFlight, errorBackoff);
     let summarized = 0;
@@ -392,7 +406,7 @@ export function startSummarizeWorker(db: Database, env: NodeJS.ProcessEnv = proc
       if (stopped) break;
       inFlight.add(t.root_event_id);
       try {
-        await summarizeThread(db, cfg, t.root_event_id);
+        await summarizeThread(db, caller, t.root_event_id);
         summarized++;
         errorBackoff.delete(t.root_event_id);
         console.error(
