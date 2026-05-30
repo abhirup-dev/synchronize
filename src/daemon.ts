@@ -264,7 +264,21 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/web/state") {
     requireAuth(request, ctx);
     const state = buildWebState(ctx, url);
-    const etag = `W/"${state.cursor}"`;
+    // The ETag must change whenever anything the client renders changes. The
+    // event cursor alone is insufficient: presence is time-derived (a lapsed
+    // lease flips a peer offline, and an activity push flips working/idle) with
+    // no new event, so the cursor stays put while the rendered roster changes.
+    // Without folding presence in, the browser revalidates, gets a 304, and
+    // serves a stale body — peers stay frozen at their page-load presence.
+    const presenceOf = (row: { presence?: string; online: boolean }): string =>
+      row.presence ?? (row.online ? "online" : "offline");
+    const presenceSig = [
+      ...state.peers.map((p) => `${p.peer_id}:${presenceOf(p)}`),
+      ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
+    ]
+      .sort()
+      .join("|");
+    const etag = `W/"${state.cursor}.${Bun.hash(presenceSig).toString(36)}"`;
     if (request.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { etag } });
     }

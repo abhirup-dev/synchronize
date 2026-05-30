@@ -15,7 +15,7 @@ import {
 } from "../src/api/groups.ts";
 import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
-import { deletePeer, listPeers, registerPeer } from "../src/api/peers.ts";
+import { deletePeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import { findReusablePeer } from "../src/api/status.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Event } from "../src/api/types.ts";
@@ -1324,7 +1324,10 @@ test("web state endpoint returns summaries and room-scoped event history", async
 
     const summary = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`);
     expect(summary.status).toBe(200);
-    expect(summary.headers.get("etag")).toBe(`W/"${sent.event.event_id}"`);
+    // ETag = event cursor + a digest of time-derived presence, so lease-lapse /
+    // activity transitions (which create no event) still bust the 304.
+    const summaryEtag = summary.headers.get("etag");
+    expect(summaryEtag).toMatch(new RegExp(`^W/"${sent.event.event_id}\\.[a-z0-9]+"$`));
     const summaryBody = await summary.json() as {
       groups: Array<{ group_id: number; name: string }>;
       room_summaries: Array<{ group_id: number; last_event_id: number | null; last_preview: string | null }>;
@@ -1339,9 +1342,19 @@ test("web state endpoint returns summaries and room-scoped event history", async
     expect(summaryBody.events).toHaveLength(0);
 
     const notModified = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
-      headers: { "if-none-match": `W/"${sent.event.event_id}"` },
+      headers: { "if-none-match": summaryEtag! },
     });
     expect(notModified.status).toBe(304);
+
+    // Regression: a presence change must bust the ETag even though it creates no
+    // new event (the cursor is unchanged). Without folding presence into the tag
+    // the conditional GET would 304 and the client would render stale presence.
+    await setPeerActivity(daemon.client, { peerId: alice.peer.peer_id, state: "working" });
+    const afterActivity = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}`, {
+      headers: { "if-none-match": summaryEtag! },
+    });
+    expect(afterActivity.status).toBe(200);
+    expect(afterActivity.headers.get("etag")).not.toBe(summaryEtag);
 
     const room = await fetch(
       `${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(web.peer.peer_id)}&room=group:${group.group.group_id}`,
