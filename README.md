@@ -233,8 +233,11 @@ notification dialect: `codex` (standard `notifications/message`) or `claude`
 | Pi     | `bun run scripts/pi-mcp-config.ts ~/.pi/agent/mcp.json` + writes `~/.pi/agent/extensions/synchronize.ts` |
 
 For Claude channel pushes to surface in the UI, launch Claude with
-`--dangerously-load-development-channels server:synchronize`. Without it,
-durable inbox tools still work but channel events stay silent.
+`--channels server:synchronize` (the supported path for a manually-configured
+MCP server channel — runs non-interactively). Without it, durable inbox tools
+still work but channel events stay silent. Avoid
+`--dangerously-load-development-channels`: it is for channels you are *building*
+and triggers an interactive "local development" confirmation on every launch.
 
 Pi has no `pi mcp add` CLI; `scripts/pi-mcp-config.ts` idempotently merges
 this entry into `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`)
@@ -270,7 +273,7 @@ see which external session owns a peer.
 
 ```bash
 synchronize hook claude-session
-synchronize launch claude --name backend-reviewer -- --dangerously-load-development-channels server:synchronize
+synchronize launch claude --name backend-reviewer   # auto-adds --channels server:synchronize
 ```
 
 Install the Claude `SessionStart` hook with `scripts/claude-hooks-config.ts`.
@@ -615,8 +618,16 @@ Authorization: Bearer <token>
 Confirm the MCP server was added with `SYNCHRONIZE_MCP_MODE=claude`, then start Claude with:
 
 ```bash
-claude --dangerously-load-development-channels server:synchronize
+claude --channels server:synchronize
 ```
+
+(`--channels server:synchronize` is the supported, non-interactive path for a
+manually-configured MCP server channel. The channel listens but a freshly
+spawned, *idle* session may not surface a push until it's active — durable
+inbox remains the fallback. Note: custom `server:` channels can't be added to
+the `allowedChannelPlugins` managed allowlist, which only covers marketplace
+plugins; the "server: entries need --dangerously-load-development-channels"
+startup line is an informational notice, not an error.)
 
 Inbox remains available through `bridge_inbox` even if channel notifications do not surface. Claude mode receives daemon events through one localhost callback subscription; it does not rely on per-group polling.
 
