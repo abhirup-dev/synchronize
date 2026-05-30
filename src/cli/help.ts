@@ -22,6 +22,7 @@ Usage:
   synchronize threads list [--group NAME] [--limit N]
   synchronize threads status ROOT_EVENT_ID
   synchronize threads show ROOT_EVENT_ID [--format json|transcript]
+  synchronize threads summary ROOT_EVENT_ID [--refresh] [--strategy all|first_k|last_k|first_last] [--k N] [--first-k N] [--last-k N] [--format text|json]
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
   synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]

@@ -20,6 +20,15 @@ import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { runEventQuery } from "./query/events.ts";
+import { resolveProviderConfig } from "./llm/index.ts";
+import {
+  isEnabled as isSummarizeEnabled,
+  loadSummaryResponse,
+  startSummarizeWorker,
+  strategyFromInput,
+  summarizeThread,
+  type WorkerHandle,
+} from "./summarize/index.ts";
 
 interface DaemonContext {
   paths: RuntimePaths;
@@ -28,6 +37,7 @@ interface DaemonContext {
   token: string | null;
   server: Bun.Server<unknown>;
   subscribers: Map<string, EventSubscriber>;
+  summarizeWorker: WorkerHandle | null;
 }
 
 interface DiscoveryFile {
@@ -1070,6 +1080,35 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ status: getThreadStatus(ctx.db, Number(threadStatusGet[1])) });
   }
 
+  // GET /threads/:root/summary — cached read. Returns status="disabled" when
+  // no LLM provider is configured (no OPENROUTER_API_KEY), "pending" when
+  // enabled but no row yet, "ready" otherwise. `stale` flag tells the caller
+  // whether new events have landed since the cached summary was written.
+  const threadSummaryGet = url.pathname.match(/^\/threads\/(\d+)\/summary$/);
+  if (request.method === "GET" && threadSummaryGet) {
+    const rootEventId = Number(threadSummaryGet[1]);
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, isSummarizeEnabled()));
+  }
+
+  // POST /threads/:root/summary — force regen. Bypasses cold-gate and
+  // min-replies (worker-side guards only). 503 if disabled.
+  if (request.method === "POST" && threadSummaryGet) {
+    const rootEventId = Number(threadSummaryGet[1]);
+    const cfg = resolveProviderConfig();
+    if (!cfg) {
+      throw new HttpError(503, "summarize_disabled", "thread summaries are not configured (set OPENROUTER_API_KEY)");
+    }
+    const body = await readBody(request).catch(() => ({}));
+    const strategy = strategyFromInput({
+      strategy: optionalString(body, "strategy"),
+      k: optionalInteger(body, "k"),
+      first_k: optionalInteger(body, "first_k"),
+      last_k: optionalInteger(body, "last_k"),
+    });
+    await summarizeThread(ctx.db, cfg, rootEventId, { strategy });
+    return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true));
+  }
+
   // GET /threads/:root_event_id — single-call thread state: status + events
   // and optional transcript. Kept global for v0; callers that need strict
   // per-peer visibility should continue using group history with peer_id.
@@ -1255,7 +1294,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerId = decodeURIComponent(inboxAck[1] ?? "");
     ensurePeer(ctx.db, peerId);
     const body = await readBody(request);
-    const ids = optionalNumberArray(body, "event_ids");
+    const ids = optionalIntegerArray(body, "event_ids");
     const now = new Date().toISOString();
     let changed = 0;
     if (ids && ids.length > 0) {
@@ -1369,7 +1408,7 @@ function optionalObjectJson(body: Record<string, unknown>, key: string): string 
   return JSON.stringify(value);
 }
 
-function optionalNumberArray(body: Record<string, unknown>, key: string): number[] | undefined {
+function optionalIntegerArray(body: Record<string, unknown>, key: string): number[] | undefined {
   const value = body[key];
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.some((item) => !Number.isInteger(item) || item < 1)) {
@@ -2014,7 +2053,14 @@ async function main(): Promise<void> {
     },
   });
 
-  ctx = { paths, db, startedAt, token, server, subscribers: new Map() };
+  const summarizeWorker = isSummarizeEnabled() ? startSummarizeWorker(db) : null;
+  if (summarizeWorker) {
+    console.error(`[summarize] worker started (provider configured)`);
+  } else {
+    console.error(`[summarize] worker disabled (no OPENROUTER_API_KEY)`);
+  }
+
+  ctx = { paths, db, startedAt, token, server, subscribers: new Map(), summarizeWorker };
 
   const discovery: DiscoveryFile = {
     pid: process.pid,

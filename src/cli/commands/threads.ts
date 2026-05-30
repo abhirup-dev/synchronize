@@ -1,4 +1,4 @@
-import { getThread, getThreadStatus, listThreads } from "../../api/threads.ts";
+import { getThread, getThreadStatus, getThreadSummary, listThreads, postThreadSummary } from "../../api/threads.ts";
 import { ensureDaemon } from "../../client.ts";
 import { parseFlags } from "../flags.ts";
 
@@ -42,6 +42,39 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     console.log(JSON.stringify(response, null, 2));
+    return;
+  }
+
+  if (subcommand === "summary") {
+    const [rootEventIdRaw, ...flagArgs] = rest;
+    const rootEventId = parseRequiredPositiveInt(rootEventIdRaw, "threads summary requires ROOT_EVENT_ID");
+    const args = parseFlags(flagArgs);
+    const refresh = args.flags.refresh === "true" || args.flags.refresh === "";
+    const format = args.flags.format ?? "text";
+    if (format !== "text" && format !== "json") throw new Error("--format must be text or json");
+    const response = refresh
+      ? await postThreadSummary(client, {
+          rootEventId,
+          ...(args.flags.strategy ? { strategy: args.flags.strategy } : {}),
+          ...(args.flags.k ? { k: parseRequiredPositiveInt(args.flags.k, "--k must be a positive integer") } : {}),
+          ...(args.flags["first-k"] ? { first_k: parseRequiredPositiveInt(args.flags["first-k"], "--first-k must be a positive integer") } : {}),
+          ...(args.flags["last-k"] ? { last_k: parseRequiredPositiveInt(args.flags["last-k"], "--last-k must be a positive integer") } : {}),
+        })
+      : await getThreadSummary(client, rootEventId);
+    if (format === "json") {
+      console.log(JSON.stringify(response, null, 2));
+      return;
+    }
+    if (response.status === "disabled") {
+      console.log("(thread summaries disabled — set OPENROUTER_API_KEY to enable)");
+      return;
+    }
+    if (response.status === "pending") {
+      console.log("(no summary yet — pass --refresh to compute one now)");
+      return;
+    }
+    console.log(response.summary ?? "");
+    if (response.stale) console.error("(stale — newer events have landed since this summary)");
     return;
   }
 

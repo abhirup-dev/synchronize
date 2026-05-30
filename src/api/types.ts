@@ -114,6 +114,19 @@ export interface ThreadResponse {
   transcript?: string;
 }
 
+export interface ThreadSummaryResponse {
+  summary: string | null;
+  model: string | null;
+  strategy: "all" | "first_k" | "last_k" | "first_last" | null;
+  strategy_params: { k?: number; first_k?: number; last_k?: number } | null;
+  prompt_version: number | null;
+  covered_last_event_id: number | null;
+  covered_event_count: number | null;
+  updated_at: string | null;
+  stale: boolean;
+  status: "ready" | "pending" | "disabled";
+}
+
 export interface Group {
   group_id: number;
   name: string;
