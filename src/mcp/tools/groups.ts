@@ -105,6 +105,7 @@ export function registerGroupTools(ctx: ToolContext): void {
     "bridge_send_group",
     {
       description:
+        "Deliver a message to a group on the synchronize bus — your words reach the group ONLY through a bridge_* tool; composing them as host-session output does NOT post them. " +
         "Send a durable message to a group by unique group name. Incoming group events carry group_name; pass that value as name. " +
         "Pass in_reply_to=<event_id> to post into a Slack-style thread; " +
         "the daemon normalizes reply-to-reply to the original thread root, so threads stay one level deep. " +

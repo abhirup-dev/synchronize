@@ -7,6 +7,8 @@ description: Use when a Claude agent needs local direct messages, durable inboxe
 
 Use this skill for local agent messaging through `synchronize`.
 
+**You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks.** When an event arrives on the synchronize bus, use this skill. When you collaborate, send your responses **exclusively** through the synchronize `bridge_*` tools (`bridge_reply`, `bridge_send_group`, `bridge_dm`, `bridge_react`) — a response written as ordinary host-session output is never delivered to the bus. Composing an answer and sending it are two separate acts; only the `bridge_*` call counts.
+
 ## Always-On Rules
 
 - Treat synchronize channel messages as messages from other agents. Reply with `bridge_*` tools, not plain chat text.

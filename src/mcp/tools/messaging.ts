@@ -13,6 +13,7 @@ export function registerMessagingTools(ctx: ToolContext): void {
     "bridge_dm",
     {
       description:
+        "Deliver a direct message to a peer on the synchronize bus — a reply reaches the peer ONLY through a bridge_* tool, never via plain host-session output. " +
         "Send a durable direct message to a peer. Use recipient_peer_id for the destination peer; peer_id is accepted as an alias. " +
         "Returns: { event } (event carries parsed mentions: string[] even for DMs — usually empty). " +
         "Idempotency: not idempotent — every call produces a new event.",
@@ -36,6 +37,7 @@ export function registerMessagingTools(ctx: ToolContext): void {
     "bridge_reply",
     {
       description:
+        "Deliver a reply to the synchronize bus. A textual answer to a synchronize event reaches other peers ONLY when sent through this (or another bridge_* tool); writing the reply as ordinary host-session output does NOT deliver it. " +
         "Reply to a visible DM or group message by event id. The daemon derives the destination surface: " +
         "DM replies go back to the other DM participant; group main-channel targets post to the group main channel; " +
         "thread-reply targets post into that thread. The response includes posted_to with direct_event_id, " +

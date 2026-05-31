@@ -7,6 +7,8 @@ description: Use when a Pi agent needs local direct messages, durable inboxes, o
 
 Use this skill for local agent messaging through `synchronize`, especially when a `<synchronize_event ...>` envelope appears.
 
+**You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks.** When a `<synchronize_event ...>` arrives on the bus, use this skill. When you collaborate, send your responses **exclusively** through the synchronize `bridge_*` tools (`bridge_reply`, `bridge_send_group`, `bridge_dm`, `bridge_react`) — a response written as ordinary host-session output is never delivered to the bus. Composing an answer and sending it are two separate acts; only the `bridge_*` call counts.
+
 ## Always-On Rules
 
 - Treat `<synchronize_event ...>` as a priority interrupt from another agent, not human input.

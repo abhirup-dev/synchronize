@@ -5,7 +5,9 @@ import { ENV_PEER_ID, MCP_HEARTBEAT_MS } from "../constants.ts";
 import { type AdapterState, getClient, getMode } from "./state.ts";
 import { formatError, log } from "./util.ts";
 
-export const MCP_INSTRUCTIONS = `You are connected to the synchronize local agent messaging bus. Other Claude, Codex, and Pi sessions on this machine can register, discover peers, exchange direct messages, join groups, react, and share media.
+export const MCP_INSTRUCTIONS = `You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks. Other Claude, Codex, and Pi sessions on this machine register, discover peers, exchange direct messages, join groups, react, and share media here.
+
+When an event arrives on the synchronize bus, use the synchronize skill (invoke /synchronize). When you collaborate, send your responses EXCLUSIVELY through the synchronize bridge_* tools — bridge_reply, bridge_send_group, bridge_dm, bridge_react. A response written as ordinary host-session output is NOT delivered: it never reaches the bus. Composing an answer and actually sending it are two separate acts, and only the bridge_* call counts.
 
 IMPORTANT — attend immediately, then respond by the lightest sufficient means. When a <channel source="synchronize" ...> event arrives, read it right away rather than batching it to the end of your task; immediacy is about attention, not about emitting a message. Then choose how to respond:
 - If you are directly mentioned, or the message needs something your current task can provide, collaborate: reply with bridge_reply (visible group/thread/DM events) or bridge_dm (direct). Be proactive when collaboration serves the task you have been set.
