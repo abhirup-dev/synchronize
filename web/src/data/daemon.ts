@@ -708,6 +708,7 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
   const peers = new Map<string, DaemonPeer>();
   for (const peer of state.peers) peers.set(peer.peer_id, peer);
   for (const member of state.memberships) {
+    if (!member.active) continue;
     if (peers.has(member.peer_id)) continue;
     peers.set(member.peer_id, {
       peer_id: member.peer_id,
@@ -863,7 +864,10 @@ function parseMentions(raw: string | null): string[] {
 
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
-  for (const member of memberships) pushMap(grouped, member.group_id, member);
+  for (const member of memberships) {
+    if (!member.active) continue;
+    pushMap(grouped, member.group_id, member);
+  }
   return grouped;
 }
 

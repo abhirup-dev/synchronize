@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db.ts";
-import { reconcileLaunch, upsertPeer, type DaemonContext } from "../src/daemon.ts";
+import { deactivateStoppedLaunchPeer, reconcileLaunch, upsertPeer, type DaemonContext } from "../src/daemon.ts";
 import { LaunchService } from "../src/launch/service.ts";
 import type { SessionBackend } from "../src/launch/backend.ts";
 import { createLaunchIntent, getLaunchIntent, listLaunchEvents, updateLaunchState } from "../src/launch/store.ts";
@@ -219,4 +219,23 @@ test("durable reconcile preserves intent on peer mismatch and lets the real peer
   reconcileLaunch(ctx, "durable-2", "peer-real");
   expect(memberOf(db, "release", "peer-real")).toMatchObject({ alias: "erin", active: 1 });
   expect(getLaunchIntent(db, "durable-2")?.state).toBe("running");
+});
+
+test("stopped launch cleanup soft-deletes peer and deactivates group membership", async () => {
+  const { ctx, db, launchService } = await harness();
+  const res = await launchService.launch({ tool: "claude", name: "alice", repo: "/r", group: "alpha" });
+  registerPeer(db, res.peerId, "alice");
+  reconcileLaunch(ctx, res.launchId, res.peerId);
+  expect(memberOf(db, "alpha", res.peerId)).toMatchObject({ alias: "alice", active: 1 });
+
+  expect(deactivateStoppedLaunchPeer(ctx, res.peerId)).toBe(true);
+  expect(memberOf(db, "alpha", res.peerId)).toMatchObject({ alias: "alice", active: 0 });
+  const peer = db
+    .query("SELECT deleted_at, lease_expires_at FROM peers WHERE peer_id = ?")
+    .get(res.peerId) as { deleted_at: string | null; lease_expires_at: string };
+  expect(peer.deleted_at).toBeTruthy();
+  const deletedAt = peer.deleted_at;
+  if (!deletedAt) throw new Error("expected stopped launch peer to be soft-deleted");
+  expect(peer.lease_expires_at).toBe(deletedAt);
+  expect(deactivateStoppedLaunchPeer(ctx, res.peerId)).toBe(false);
 });

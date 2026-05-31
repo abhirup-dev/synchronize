@@ -642,6 +642,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       .get(title);
     if (stoppedLaunch) {
       applyLaunchTransition(ctx, stoppedLaunch, { type: "stopped", reason: "operator_stop" });
+      const deactivated = deactivateStoppedLaunchPeer(ctx, stoppedLaunch.peer_id);
+      emitWebStateChanged(ctx, {
+        domains: deactivated ? ["peers", "groups", "agent_sessions"] : ["agent_sessions"],
+        peerId: stoppedLaunch.peer_id,
+      });
     }
     // Drop any pending launch intent for this title (stopped before it registered).
     ctx.launchService.forgetByTitle(title);
@@ -803,18 +808,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     // survives. Flip every active group_member row to inactive so rosters
     // and alias-collision checks don't trip over a peer that is no longer
     // online. left_at uses the same timestamp the peer was deleted at.
-    ctx.db.transaction(() => {
-      const now = new Date().toISOString();
-      ctx.db
-        .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ? WHERE peer_id = ?")
-        .run(now, now, peerId);
-      ctx.db
-        .query(
-          "UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1",
-        )
-        .run(now, peerId);
-    })();
-    ctx.subscribers.delete(peerId);
+    softDeletePeerIfPresent(ctx, peerId);
     log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
     emitWebStateChanged(ctx, { domains: ["peers", "groups"], peerId });
     return jsonResponse({ ok: true, peer_id: peerId });
@@ -1874,6 +1868,56 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
   }
 }
 
+function softDeletePeerIfPresent(
+  ctx: Pick<DaemonContext, "db" | "subscribers">,
+  peerId: string,
+  deletedAt = new Date().toISOString(),
+): boolean {
+  const exists = ctx.db
+    .query<{ count: number }, [string]>(
+      "SELECT COUNT(*) AS count FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId)?.count ?? 0;
+  if (exists === 0) return false;
+  ctx.db.transaction(() => {
+    ctx.db
+      .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ?, updated_at = ? WHERE peer_id = ? AND deleted_at IS NULL")
+      .run(deletedAt, deletedAt, deletedAt, peerId);
+    ctx.db
+      .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+      .run(deletedAt, peerId);
+  })();
+  ctx.subscribers.delete(peerId);
+  return true;
+}
+
+export function deactivateStoppedLaunchPeer(ctx: DaemonContext, peerId: string): boolean {
+  return softDeletePeerIfPresent(ctx, peerId);
+}
+
+function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
+  const rows = ctx.db
+    .query<{ peer_id: string }, []>(
+      `SELECT DISTINCT li.peer_id
+       FROM launch_intents li
+       JOIN peers p ON p.peer_id = li.peer_id
+       WHERE li.state = 'stopped'
+         AND p.deleted_at IS NULL`,
+    )
+    .all();
+  if (rows.length === 0) return 0;
+  const deletedAt = new Date().toISOString();
+  let deactivated = 0;
+  for (const row of rows) {
+    if (softDeletePeerIfPresent(ctx, row.peer_id, deletedAt)) deactivated += 1;
+  }
+  if (deactivated > 0) {
+    log(`launch cleanup soft-deleted ${deactivated} stopped launch peer(s)`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"] });
+  }
+  return deactivated;
+}
+
 export function upsertPeer(
   db: Database,
   input: {
@@ -2419,6 +2463,8 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.active = 1
+         AND p.deleted_at IS NULL
        ORDER BY gm.group_id ASC, gm.alias ASC`,
     )
     .all(now)
@@ -3169,6 +3215,7 @@ async function main(): Promise<void> {
   ctx.launchWorker = startLaunchWorker(ctx);
   console.error(`[launch] worker started`);
   ensureDefaultGroupPaths(ctx);
+  sweepStoppedLaunchPeers(ctx);
 
   // Retention sweeper: run once at startup (cleans up peers that died while the
   // daemon was down) then on an interval. unref so it never blocks shutdown.
