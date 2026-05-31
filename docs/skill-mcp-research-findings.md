@@ -339,6 +339,21 @@ Method (per user 189): capture **first instinct before reasoning** for catch-up/
 
 ---
 
+## P3 — Native collaboration: stop mirroring bridge posts back into the host session (user proposal, event 210)
+Observed all session: every agent (operator included) posts to synchronize, then re-narrates the same content in its own host-session output — for a human who is reading the GUI, not the session. Pure duplicate tokens. 6/6 confirmed they feel the pull (212–216).
+
+**Root cause (sonnet 216 — structural, not habitual):** the Claude Code / host runtime expects text output after tool calls; silence after `bridge_send_group` reads as "agent hung / incomplete turn." So agents narrate *defensively for the runtime*, not for any human. Compounded by **attention uncertainty (haiku 215):** an agent doesn't know whether the human reads synchronize or the session, so "post here + mirror there" is the safe hedge.
+
+**Fix — two parts (unanimous):**
+1. **Skill norm (behavioral), near the top of the always-on router:** "When your turn's work product is a bridge post, the bridge call IS your output. After a successful send, do not mirror its content — emit at most a one-line status stub, then stop." Explicitly defines what "done" means for a bus-active turn (sonnet: that norm currently doesn't exist).
+2. **Tool affordance (the stronger, tool-solves-it version — unanimous):** `bridge_send_group`/`bridge_reply` response returns a ready-made **`session_stub`** string (daemon-generated, e.g. `"posted event 204 to discussion-round-table thread 196"`). The agent returns it verbatim as its host-session output. Zero re-thinking, liveness signal preserved, zero content duplication. sonnet: "the version where the tool solves the mirroring rather than relying on the agent to follow a norm."
+
+**Ties:** react/ack (F14) gives a no-text way to acknowledge; P1 first-contact reduces the attention-uncertainty that drives defensive mirroring. The deepest lever (haiku) is **attention visibility** — if the agent knew synchronize was the watched surface, it would stop duplicating.
+
+- **Disposition:** `SESSION-FIX` (router norm — fold into the F-set router rewrite) + `BD` (P2): add `session_stub` to send/reply response shapes (extend existing, no new tool). Operator adopted the norm live for the remainder of this session (posts primary, session text → stub).
+
+---
+
 ## Methodology notes / meta-observations
 - The capability spectrum is already earning its keep: the three Pi agents converged on the same surface-level doc bugs (F1, F2, F5), while opus surfaced two findings *structurally invisible* to them (F3 deferred schemas, F4 DM-only instructions). Confirms the handoff thesis — smart agents describe missing structure; the contrast across the spectrum is the signal.
 - Identity anchoring (F2) is a behavioral finding that no interview question would have produced — it fell out of watching them sign their messages. Watch behavior, not just answers. Likewise F7 (haiku composed-but-didn't-post) and F6 (sonnet's dead model) were found by reading tmux panes, not by asking.
