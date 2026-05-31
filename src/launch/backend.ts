@@ -12,6 +12,8 @@ export interface SessionBackend {
   ensureReady(): Promise<void>;
   /** Create + start one agent session. Throws on backend failure. */
   spawn(spec: LaunchSpec): Promise<void>;
+  /** Best-effort prompt confirmation for sessions that need local acceptance. */
+  confirmPrompt?(title: string): Promise<boolean>;
   /** Tear down one session by its backend title. Throws on failure. */
   stop(title: string): Promise<void>;
   /** List live sessions known to the backend. */
@@ -171,20 +173,24 @@ export class AoeBackend implements SessionBackend {
       await this.run(this.aoe(["remove", "--force", spec.title]));
       throw new Error(failure("aoe session start", spec.title, started));
     }
-    // claude's --dangerously-load-development-channels shows a one-time
-    // "I am using this for local development" confirmation in the pane on every
-    // launch. Auto-dismiss it so the spawned session is unattended. Best-effort
-    // and non-blocking: never delays or fails the launch.
+    // In direct/non-durable use, keep the old best-effort non-blocking prompt
+    // confirmer. The daemon's durable worker also calls confirmPrompt as an
+    // explicit lifecycle step, and duplicate Enter attempts are harmless.
     if (this.confirmDevChannel && spec.tool === "claude") {
-      void this.autoConfirmDevChannelPrompt(spec.title).catch(() => {});
+      void this.confirmPrompt(spec.title).catch(() => {});
     }
+  }
+
+  async confirmPrompt(title: string): Promise<boolean> {
+    if (!this.confirmDevChannel) return true;
+    return this.autoConfirmDevChannelPrompt(title);
   }
 
   /**
    * Poll the session's tmux pane for claude's dev-channel confirmation prompt
    * and accept it. Bounded and best-effort.
    */
-  async autoConfirmDevChannelPrompt(title: string): Promise<void> {
+  async autoConfirmDevChannelPrompt(title: string): Promise<boolean> {
     const PROMPT = /I am using this for local development|Enter to confirm/i;
     let confirmationsSent = 0;
     for (let attempt = 0; attempt < 24; attempt += 1) {
@@ -195,17 +201,18 @@ export class AoeBackend implements SessionBackend {
       const target = paneTarget ?? session;
       const promptVisible = await this.isPromptVisible(target, PROMPT);
       if (!promptVisible) {
-        if (confirmationsSent > 0) return;
+        if (confirmationsSent > 0) return true;
         continue;
       }
 
       await this.sendEnter(target);
       await this.sleep(250);
-      if (!(await this.isPromptVisible(target, PROMPT))) return;
+      if (!(await this.isPromptVisible(target, PROMPT))) return true;
       await this.sendCarriageReturn(target);
       confirmationsSent += 1;
-      if (confirmationsSent >= 3) return;
+      if (confirmationsSent >= 3) return false;
     }
+    return false;
   }
 
   private async isPromptVisible(target: string, prompt: RegExp): Promise<boolean> {

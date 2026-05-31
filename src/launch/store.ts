@@ -202,7 +202,20 @@ export function listLaunchEvents(db: Database, launchId: string): LaunchEventRow
 export function updateLaunchState(db: Database, input: UpdateLaunchStateInput): LaunchIntentRow {
   const timestampColumn = TIMESTAMP_COLUMNS[input.state];
   db.transaction(() => {
-    if (timestampColumn) {
+    if (input.state === "prompt_waiting") {
+      db
+        .query(
+          `UPDATE launch_intents
+           SET state = ?,
+               updated_at = ?,
+               spawned_at = COALESCE(spawned_at, ?),
+               prompt_seen_at = COALESCE(prompt_seen_at, ?),
+               failure_code = ?,
+               failure_message = ?
+           WHERE launch_id = ?`,
+        )
+        .run(input.state, input.now, input.now, input.now, input.failureCode ?? null, input.failureMessage ?? null, input.launchId);
+    } else if (timestampColumn) {
       db
         .query(
           `UPDATE launch_intents

@@ -97,10 +97,22 @@ interface DaemonMedia {
   created_at: string;
 }
 
+interface DaemonLaunchLifecycle {
+  launch_id: string;
+  peer_id: string;
+  session_name: string;
+  target_group: string | null;
+  backend_title: string;
+  state: string;
+  failure_code: string | null;
+  failure_message: string | null;
+}
+
 interface WebStateResponse {
   ok: true;
   cursor: number;
   launch_tools?: Partial<Record<"claude" | "pi", { tool: "claude" | "pi"; available: boolean; path?: string }>>;
+  launch_lifecycle?: DaemonLaunchLifecycle[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
   group_paths: DaemonGroupPath[];
@@ -707,7 +719,12 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
       ...(member.presence ? { presence: member.presence } : {}),
     });
   }
-  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId));
+  const launchByPeer = new Map<string, DaemonLaunchLifecycle>();
+  for (const launch of state.launch_lifecycle ?? []) {
+    const existing = launchByPeer.get(launch.peer_id);
+    if (!existing) launchByPeer.set(launch.peer_id, launch);
+  }
+  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id)));
 }
 
 // Map the daemon's derived presence onto the roster's status palette. working
@@ -731,9 +748,10 @@ function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
   }
 }
 
-function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
+function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifecycle): Agent {
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
+  const launchNote = launch ? launchStatusNote(launch) : undefined;
   return {
     id: peer.peer_id,
     name,
@@ -741,7 +759,18 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
     status: statusForPeer(peer, isMe),
-    ...(peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(launchNote ? { statusNote: launchNote } : peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(launch
+      ? {
+          launchLifecycle: {
+            launchId: launch.launch_id,
+            state: launch.state,
+            ...(launch.target_group ? { targetGroup: launch.target_group } : {}),
+            ...(launch.failure_code ? { failureCode: launch.failure_code } : {}),
+            ...(launch.failure_message ? { failureMessage: launch.failure_message } : {}),
+          },
+        }
+      : {}),
     ...(peer.aoe_session
       ? {
           aoeSession: {
@@ -753,6 +782,15 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
       : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
+}
+
+function launchStatusNote(launch: DaemonLaunchLifecycle): string | undefined {
+  if (launch.state === "running") return undefined;
+  if (launch.state === "registered_unjoined") return `launch: unjoined${launch.target_group ? ` #${launch.target_group}` : ""}`;
+  if (launch.state === "failed") return `launch failed${launch.failure_code ? `: ${launch.failure_code}` : ""}`;
+  if (launch.state === "stale") return "launch stale";
+  if (launch.state === "stopped") return "launch stopped";
+  return `launch: ${launch.state}`;
 }
 
 function mapMessage(event: DaemonEvent, roomId: string, status?: Message["status"]): Message {

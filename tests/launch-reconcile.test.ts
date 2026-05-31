@@ -6,6 +6,7 @@ import { openDatabase } from "../src/db.ts";
 import { reconcileLaunch, upsertPeer, type DaemonContext } from "../src/daemon.ts";
 import { LaunchService } from "../src/launch/service.ts";
 import type { SessionBackend } from "../src/launch/backend.ts";
+import { createLaunchIntent, getLaunchIntent, listLaunchEvents, updateLaunchState } from "../src/launch/store.ts";
 
 const dirs: string[] = [];
 
@@ -149,4 +150,73 @@ test("re-running reconcile after a successful join is idempotent", async () => {
     .query("SELECT COUNT(*) AS n FROM events WHERE group_id = ? AND type = 'group_joined'")
     .get(g.group_id) as { n: number };
   expect(joins.n).toBe(1);
+});
+
+test("durable reconcile joins after in-memory pending state is gone", async () => {
+  const { ctx, db } = await harness();
+  createLaunchIntent(db, {
+    launchId: "durable-1",
+    peerId: "peer-durable",
+    tool: "claude",
+    sessionName: "dora",
+    alias: "dora",
+    cwd: "/repo",
+    targetGroup: "release",
+    backend: "local_aoe",
+    backendTitle: "abc12345-dora",
+    now: "2026-05-31T00:00:00.000Z",
+  });
+  updateLaunchState(db, {
+    launchId: "durable-1",
+    fromState: "accepted",
+    state: "prompt_accepted",
+    eventKind: "prompt_accepted",
+    now: "2026-05-31T00:00:01.000Z",
+  });
+  registerPeer(db, "peer-durable", "dora");
+
+  reconcileLaunch(ctx, "durable-1", "peer-durable");
+
+  expect(memberOf(db, "release", "peer-durable")).toMatchObject({ alias: "dora", active: 1 });
+  expect(getLaunchIntent(db, "durable-1")).toMatchObject({
+    state: "running",
+    registered_at: expect.any(String),
+    joined_at: expect.any(String),
+  });
+  expect(listLaunchEvents(db, "durable-1").map((event) => event.kind)).toContain("join_succeeded");
+  expect(ctx.launchService.pending()).toHaveLength(0);
+});
+
+test("durable reconcile preserves intent on peer mismatch and lets the real peer join later", async () => {
+  const { ctx, db } = await harness();
+  createLaunchIntent(db, {
+    launchId: "durable-2",
+    peerId: "peer-real",
+    tool: "claude",
+    sessionName: "erin",
+    alias: "erin",
+    cwd: "/repo",
+    targetGroup: "release",
+    backend: "local_aoe",
+    backendTitle: "abc12345-erin",
+    now: "2026-05-31T00:00:00.000Z",
+  });
+  updateLaunchState(db, {
+    launchId: "durable-2",
+    fromState: "accepted",
+    state: "prompt_accepted",
+    eventKind: "prompt_accepted",
+    now: "2026-05-31T00:00:01.000Z",
+  });
+
+  registerPeer(db, "peer-fake", "imposter");
+  reconcileLaunch(ctx, "durable-2", "peer-fake");
+  expect(memberOf(db, "release", "peer-fake")).toBeNull();
+  expect(getLaunchIntent(db, "durable-2")?.state).toBe("prompt_accepted");
+  expect(listLaunchEvents(db, "durable-2").map((event) => event.kind)).toContain("launch.peer_mismatch");
+
+  registerPeer(db, "peer-real", "erin");
+  reconcileLaunch(ctx, "durable-2", "peer-real");
+  expect(memberOf(db, "release", "peer-real")).toMatchObject({ alias: "erin", active: 1 });
+  expect(getLaunchIntent(db, "durable-2")?.state).toBe("running");
 });
