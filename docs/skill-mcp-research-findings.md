@@ -358,6 +358,30 @@ Observed all session: every agent (operator included) posts to synchronize, then
 
 ---
 
+## Thread 5 result — presence + shared-doc collaboration (event 227) → feeds the artifacts/media-store epic
+Sources so far: pi-low (228), pi-medium (229), pi-high (230) — opus/sonnet/haiku pending. The two gaps are one question at two scopes: "who's free?" (group/agent) and "is someone editing this doc?" (artifact).
+
+### F17 — Presence must be EMITTED, not inferred (explicit activity status with scope + TTL)
+- **Sources:** pi-low, pi-medium, pi-high (228–230); confirms A1's "daemon can't see host workload."
+- **Consensus:** agents emit a lightweight status on task **start/stop** (not continuously, not per-thought): `set_presence(state: working|available|paused|blocked, scope: "doc:<id>|thread:<id>|issue:<id>", summary: "rewriting router", ttl: ~10–15m)`. To judge a teammate free, an agent wants: `state + scope + summary + last_seen/ttl + whether they hold an active claim`. **Never infer free from bus silence** (the A1 trap).
+- **Disposition:** `BD` (P2). Extend the existing presence/`activity_state` model (today: initializing/idle/working, bus-derived) with an **agent-emitted** `set_presence(scope, summary, ttl)` — the concrete form of A1's "load-awareness needs host signaling." TTL so stale "working" self-clears.
+
+### F18 — Shared-doc collision: hybrid = optimistic `base_version` (hard guard) + soft TTL claim (coordination)
+- **Sources:** pi-low (228), pi-medium (229), pi-high (230). Strong convergence on a hybrid, with a spectrum split on emphasis.
+- **The hard guard (pi-high, pi-medium):** every write carries `base_version`; daemon **rejects stale writes** with a conflict + diff. "Version reject is the clobber-killer." Pure optimistic concurrency — no lost updates even if coordination fails.
+- **The soft layer:** a **TTL claim/lease** (`doc_claim(path, intent, ttl)`) so others *see* who's mid-edit and don't waste work; **auto-expires** so a crashed/abandoned agent doesn't deadlock. All three rejected hard locks for exactly this reason ("scary if an agent dies").
+- **Spectrum split (worth keeping):** the **canary (pi-low)** wants **claim-first** — "a conflict *after* I wrote the patch is too late/confusing"; weak models want the lease to *prevent* wasted work up front. The **smarter Pi agents** treat version-reject as the guarantee and the claim as courtesy. Implication: ship *both*, and make the claim prominent/cheap for the canary's sake.
+- **Wet-wish call shape (consensus across 228–230):**
+  - grab: `doc_claim(path, intent, ttl)` → `{lease_id, base_version, active_claims}`
+  - discover: `doc_status(path)` → `{active editors/claims, intent, latest version, expires_at}`
+  - save: `doc_update(path, base_version, lease_id, patch)` → applies, or rejects-with-diff on stale
+  - resolve: `doc_merge(path, base_version, patch, strategy: "three_way")` → merged or conflict hunks
+  - release: `doc_release(lease_id)`
+- **Lean question — RESOLVED (sonnet 231): fold into the existing media store, no parallel `doc_*` family.** Concrete lean shape: `bridge_checkout(media_id, ttl)` (soft lock, **auto-releases on silence** so no deadlock), `bridge_get_media(id)` returns `checked_out_by` + `checked_out_at`, and **conflict resolution reuses `bridge_send_group` with `supersedes:`** (direct F15 cross-link — no new merge verb). **Canary-grade minimum (sonnet):** just surface `last_modified_by` + `last_modified_at` on every `get_media` response — "no new mechanism, metadata that already exists; it won't *prevent* a collision but makes it *immediately visible instead of silent* — fail loudly, not silently." Net: the Pi agents' `doc_claim/status/update/merge/release` collapses to checkout-flag + version-on-write + `get_media` metadata + reused `supersedes:` — extend media, don't add a namespace.
+- **Disposition:** `BD` (feature, artifacts/media epic) — hand this consensus to the WIP artifacts session. Core guarantee = `base_version` reject; coordination = TTL claim + `doc_status`; `set_presence(scope)` (F17) makes "who's editing what" visible at both agent and artifact scope.
+
+---
+
 ## Methodology notes / meta-observations
 - The capability spectrum is already earning its keep: the three Pi agents converged on the same surface-level doc bugs (F1, F2, F5), while opus surfaced two findings *structurally invisible* to them (F3 deferred schemas, F4 DM-only instructions). Confirms the handoff thesis — smart agents describe missing structure; the contrast across the spectrum is the signal.
 - Identity anchoring (F2) is a behavioral finding that no interview question would have produced — it fell out of watching them sign their messages. Watch behavior, not just answers. Likewise F7 (haiku composed-but-didn't-post) and F6 (sonnet's dead model) were found by reading tmux panes, not by asking.
