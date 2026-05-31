@@ -68,6 +68,7 @@ export interface Event {
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
+  reply_to_event_id: number | null;
   mentions_json: string | null;
   created_at: string;
   delivered_at?: string | null;
@@ -80,7 +81,7 @@ export type ReplySurface = "dm" | "group_main" | "thread";
 
 export interface ReplyDestination {
   surface: ReplySurface;
-  direct_event_id: number;
+  direct_event_id: number | null;
   direct_sender_peer_id: string | null;
   direct_sender: string | null;
   direct_preview: string | null;

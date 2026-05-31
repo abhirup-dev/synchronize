@@ -679,6 +679,16 @@ test("thread replies collapse to root and main-channel history excludes them", a
       inReplyTo: root.event.event_id,
     });
     expect(reply1.event.parent_event_id).toBe(root.event.event_id);
+    expect(reply1.event.reply_to_event_id).toBe(root.event.event_id);
+    expect(reply1.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: root.event.event_id,
+      direct_sender: "alice",
+      direct_preview: "root",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "alice",
+      thread_root_preview: "root",
+    });
 
     // Reply to reply normalizes to root.
     const reply2 = await sendGroupMessage(daemon.client, {
@@ -688,6 +698,16 @@ test("thread replies collapse to root and main-channel history excludes them", a
       inReplyTo: reply1.event.event_id,
     });
     expect(reply2.event.parent_event_id).toBe(root.event.event_id);
+    expect(reply2.event.reply_to_event_id).toBe(reply1.event.event_id);
+    expect(reply2.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: reply1.event.event_id,
+      direct_sender: "bob",
+      direct_preview: "reply-to-root",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "alice",
+      thread_root_preview: "root",
+    });
 
     // Unrelated main-channel message.
     await sendGroupMessage(daemon.client, {
@@ -710,6 +730,21 @@ test("thread replies collapse to root and main-channel history excludes them", a
     });
     const threadMessages = threadHistory.events.filter((event) => event.type === "group_message");
     expect(threadMessages.map((event) => event.body)).toEqual(["root", "reply-to-root", "reply-to-reply"]);
+    expect(threadMessages.map((event) => event.reply_to_event_id)).toEqual([null, root.event.event_id, reply1.event.event_id]);
+
+    const directRows = await queryEvents(daemon.client, {
+      sql: "select body, reply_to_event_id, direct_body, thread_root_event_id, thread_root_body from thread_events where reply_to_event_id = ?",
+      params: [reply1.event.event_id],
+    });
+    expect(directRows.rows).toEqual([
+      {
+        body: "reply-to-reply",
+        reply_to_event_id: reply1.event.event_id,
+        direct_body: "reply-to-root",
+        thread_root_event_id: root.event.event_id,
+        thread_root_body: "root",
+      },
+    ]);
   } finally {
     await daemon.stop();
   }

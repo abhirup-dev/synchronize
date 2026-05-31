@@ -62,6 +62,7 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
     body: "hello",
     media_id: null,
     parent_event_id: null,
+    reply_to_event_id: null,
     mentions_json: null,
     created_at: new Date().toISOString(),
   };

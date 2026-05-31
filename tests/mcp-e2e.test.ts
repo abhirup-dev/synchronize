@@ -91,23 +91,26 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
     const root = parseToolText(
       await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
-    ) as { event: { event_id: number } };
+    ) as { event: { event_id: number; reply_to_event_id: number | null } };
+    expect(root.event.reply_to_event_id).toBeNull();
     const threadReply = parseToolText(
       await client.callTool({
         name: "bridge_send_group",
         arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
       }),
-    ) as { event: { event_id: number } };
+    ) as { event: { event_id: number; reply_to_event_id: number | null } };
+    expect(threadReply.event.reply_to_event_id).toBe(root.event.event_id);
     const mainReply = parseToolText(
       await client.callTool({
         name: "bridge_reply",
         arguments: { in_reply_to: root.event.event_id, message: "main bridge reply" },
       }),
     ) as {
-      event: { event_id: number; parent_event_id: number | null };
+      event: { event_id: number; parent_event_id: number | null; reply_to_event_id: number | null };
       posted_to: { surface: string; direct_event_id: number; direct_sender: string; direct_preview: string };
     };
     expect(mainReply.event.parent_event_id).toBeNull();
+    expect(mainReply.event.reply_to_event_id).toBe(root.event.event_id);
     expect(mainReply.posted_to).toMatchObject({
       surface: "group_main",
       direct_event_id: root.event.event_id,
@@ -120,7 +123,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         arguments: { in_reply_to: threadReply.event.event_id, message: "threaded bridge reply" },
       }),
     ) as {
-      event: { parent_event_id: number | null };
+      event: { parent_event_id: number | null; reply_to_event_id: number | null };
       posted_to: {
         surface: string;
         direct_event_id: number;
@@ -132,6 +135,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       };
     };
     expect(threadedBridgeReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(threadedBridgeReply.event.reply_to_event_id).toBe(threadReply.event.event_id);
     expect(threadedBridgeReply.posted_to).toMatchObject({
       surface: "thread",
       direct_event_id: threadReply.event.event_id,
@@ -141,9 +145,19 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       thread_root_sender: "codex",
       thread_root_preview: "hello room",
     });
-    await client.callTool({
+    const secondThreadReply = parseToolText(await client.callTool({
       name: "bridge_send_group",
       arguments: { name: "mcp-room", message: "second thread reply", in_reply_to: root.event.event_id },
+    })) as {
+      event: { parent_event_id: number | null; reply_to_event_id: number | null };
+      posted_to: { surface: string; direct_event_id: number; thread_root_event_id: number };
+    };
+    expect(secondThreadReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(secondThreadReply.event.reply_to_event_id).toBe(root.event.event_id);
+    expect(secondThreadReply.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: root.event.event_id,
+      thread_root_event_id: root.event.event_id,
     });
     const history = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
@@ -188,6 +202,24 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       "thread reply",
       "threaded bridge reply",
       "second thread reply",
+    ]);
+    const directQueried = parseToolText(
+      await client.callTool({
+        name: "bridge_query_events",
+        arguments: {
+          sql: "select body, reply_to_event_id, direct_body, thread_root_event_id, thread_root_body from thread_events where reply_to_event_id = ? order by event_id",
+          params: [threadReply.event.event_id],
+        },
+      }),
+    ) as { rows: Array<{ body: string; reply_to_event_id: number; direct_body: string; thread_root_event_id: number; thread_root_body: string }> };
+    expect(directQueried.rows).toEqual([
+      {
+        body: "threaded bridge reply",
+        reply_to_event_id: threadReply.event.event_id,
+        direct_body: "thread reply",
+        thread_root_event_id: root.event.event_id,
+        thread_root_body: "hello room",
+      },
     ]);
   } finally {
     await client.close();

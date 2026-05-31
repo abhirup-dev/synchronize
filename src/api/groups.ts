@@ -1,5 +1,5 @@
 import { requestJson, type ClientConfig } from "../client.ts";
-import type { Event, Group, GroupMember } from "./types.ts";
+import type { Event, Group, GroupMember, ReplyDestination } from "./types.ts";
 
 export function createGroup(
   client: ClientConfig,
@@ -117,6 +117,7 @@ export interface DeliverySummary {
 
 export interface SendGroupMessageResponse {
   event: Event;
+  posted_to: ReplyDestination;
   warnings: MentionWarning[];
   delivery: DeliverySummary;
 }

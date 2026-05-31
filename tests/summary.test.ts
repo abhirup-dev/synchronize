@@ -81,6 +81,7 @@ interface FakeEvent {
   sender_peer_id: string | null;
   body: string | null;
   parent_event_id: number | null;
+  reply_to_event_id: number | null;
   created_at: string;
 }
 
@@ -90,6 +91,7 @@ function evt(id: number, parent: number | null = null): FakeEvent {
     sender_peer_id: `peer-${id}`,
     body: `body-${id}`,
     parent_event_id: parent,
+    reply_to_event_id: parent,
     created_at: `2026-05-31T00:00:${String(id).padStart(2, "0")}Z`,
   };
 }

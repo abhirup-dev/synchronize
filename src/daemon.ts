@@ -119,6 +119,7 @@ interface EventRow {
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
+  reply_to_event_id: number | null;
   mentions_json: string | null;
   created_at: string;
   reactions?: ReactionSummary[];
@@ -903,10 +904,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       const eventId = ctx.db.transaction(() => {
         ctx.db
           .query(
-            `INSERT INTO events (type, sender_peer_id, recipient_peer_id, body)
-             VALUES ('dm', ?, ?, ?)`,
+            `INSERT INTO events (type, sender_peer_id, recipient_peer_id, body, reply_to_event_id)
+             VALUES ('dm', ?, ?, ?, ?)`,
           )
-          .run(senderPeerId, recipientPeerId, message);
+          .run(senderPeerId, recipientPeerId, message, target.event_id);
         const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
         ctx.db
           .query("INSERT INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)")
@@ -937,9 +938,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
-          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, reply_to_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?, ?)",
         )
-        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
+        .run(senderPeerId, group.group_id, message, parentEventId, target.event_id, mentionsJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
       allRecipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
@@ -1220,6 +1221,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
+    const directReplyTarget = inReplyTo !== undefined ? getEvent(ctx.db, inReplyTo) : null;
     const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
     // Self-mentions are filtered out: `mentions_json` should reflect peers
     // actually targeted by the mention semantics. Since the sender is always
@@ -1233,9 +1235,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
-          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, reply_to_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?, ?)",
         )
-        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
+        .run(senderPeerId, group.group_id, message, parentEventId, directReplyTarget?.event_id ?? null, mentionsJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
       // Durable inbox fanout: every active member except the sender, regardless
       // of mention status — durable visibility is the same as v0; only push
@@ -1278,7 +1280,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       pushed_to: pushTargets,
       inbox_only: allRecipients.filter((peerId) => !pushTargets.includes(peerId)),
     };
-    return jsonResponse({ event, warnings, delivery }, { status: 201 });
+    return jsonResponse({ event, posted_to: buildReplyDestination(ctx.db, directReplyTarget, event), warnings, delivery }, { status: 201 });
   }
 
   const groupHistory = url.pathname.match(/^\/groups\/([^/]+)\/history$/);
@@ -2247,13 +2249,13 @@ function getVisibleEvent(db: Database, eventId: number, peerId: string): EventRo
   return event;
 }
 
-function buildReplyDestination(db: Database, directEvent: EventRow, createdEvent: EventRow): ReplyDestination {
-  const directSender = describeEventSender(db, directEvent);
+function buildReplyDestination(db: Database, directEvent: EventRow | null, createdEvent: EventRow): ReplyDestination {
+  const directSender = directEvent ? describeEventSender(db, directEvent) : { peerId: null, display: null };
   const base = {
-    direct_event_id: directEvent.event_id,
+    direct_event_id: directEvent?.event_id ?? null,
     direct_sender_peer_id: directSender.peerId,
     direct_sender: directSender.display,
-    direct_preview: previewEventBody(directEvent),
+    direct_preview: directEvent ? previewEventBody(directEvent) : null,
   };
 
   if (createdEvent.type === "dm") {

@@ -122,6 +122,7 @@ function migrate(db: Database): void {
       body TEXT,
       media_id TEXT,
       parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
+      reply_to_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL,
       mentions_json TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
@@ -180,11 +181,17 @@ function migrate(db: Database): void {
         g.name AS group_name,
         sp.session_name AS sender_session_name,
         sp.tool AS sender_tool,
+        direct.sender_peer_id AS direct_sender_peer_id,
+        direct.body AS direct_body,
+        dsp.session_name AS direct_sender_session_name,
+        dsp.tool AS direct_sender_tool,
         rp.session_name AS recipient_session_name,
         rp.tool AS recipient_tool
       FROM events e
       LEFT JOIN groups g ON g.group_id = e.group_id
       LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      LEFT JOIN events direct ON direct.event_id = e.reply_to_event_id
+      LEFT JOIN peers dsp ON dsp.peer_id = direct.sender_peer_id
       LEFT JOIN peers rp ON rp.peer_id = e.recipient_peer_id;
 
     CREATE VIEW IF NOT EXISTS thread_events AS
@@ -194,10 +201,22 @@ function migrate(db: Database): void {
         CASE WHEN e.parent_event_id IS NULL THEN 0 ELSE 1 END AS thread_position,
         g.name AS group_name,
         sp.session_name AS sender_session_name,
-        sp.tool AS sender_tool
+        sp.tool AS sender_tool,
+        direct.sender_peer_id AS direct_sender_peer_id,
+        direct.body AS direct_body,
+        dsp.session_name AS direct_sender_session_name,
+        dsp.tool AS direct_sender_tool,
+        root.sender_peer_id AS thread_root_sender_peer_id,
+        root.body AS thread_root_body,
+        rsp.session_name AS thread_root_sender_session_name,
+        rsp.tool AS thread_root_sender_tool
       FROM events e
       LEFT JOIN groups g ON g.group_id = e.group_id
       LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+      LEFT JOIN events direct ON direct.event_id = e.reply_to_event_id
+      LEFT JOIN peers dsp ON dsp.peer_id = direct.sender_peer_id
+      LEFT JOIN events root ON root.event_id = CASE WHEN e.parent_event_id IS NULL THEN e.event_id ELSE e.parent_event_id END
+      LEFT JOIN peers rsp ON rsp.peer_id = root.sender_peer_id
       WHERE e.type = 'group_message';
 
     CREATE VIEW IF NOT EXISTS discoverable_threads AS
@@ -385,6 +404,73 @@ function migrate(db: Database): void {
         ON message_reactions (peer_id, created_at);
     `);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)`);
+  }
+
+  // Migration v7 — preserve the direct reply target separately from the
+  // normalized thread root. `parent_event_id` remains the placement root for
+  // one-level threads; `reply_to_event_id` records the exact event the sender
+  // answered so responses, SQL, and UI can show both levels.
+  const hasV7 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
+    .get();
+  if (!hasV7) {
+    const hasReplyToEventId = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'reply_to_event_id'")
+      .get();
+    if (!hasReplyToEventId) {
+      db.exec(`ALTER TABLE events ADD COLUMN reply_to_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL`);
+    }
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_events_reply_to_event
+        ON events (reply_to_event_id, event_id);
+
+      DROP VIEW IF EXISTS event_log;
+      CREATE VIEW event_log AS
+        SELECT
+          e.*,
+          g.name AS group_name,
+          sp.session_name AS sender_session_name,
+          sp.tool AS sender_tool,
+          direct.sender_peer_id AS direct_sender_peer_id,
+          direct.body AS direct_body,
+          dsp.session_name AS direct_sender_session_name,
+          dsp.tool AS direct_sender_tool,
+          rp.session_name AS recipient_session_name,
+          rp.tool AS recipient_tool
+        FROM events e
+        LEFT JOIN groups g ON g.group_id = e.group_id
+        LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+        LEFT JOIN events direct ON direct.event_id = e.reply_to_event_id
+        LEFT JOIN peers dsp ON dsp.peer_id = direct.sender_peer_id
+        LEFT JOIN peers rp ON rp.peer_id = e.recipient_peer_id;
+
+      DROP VIEW IF EXISTS thread_events;
+      CREATE VIEW thread_events AS
+        SELECT
+          e.*,
+          CASE WHEN e.parent_event_id IS NULL THEN e.event_id ELSE e.parent_event_id END AS thread_root_event_id,
+          CASE WHEN e.parent_event_id IS NULL THEN 0 ELSE 1 END AS thread_position,
+          g.name AS group_name,
+          sp.session_name AS sender_session_name,
+          sp.tool AS sender_tool,
+          direct.sender_peer_id AS direct_sender_peer_id,
+          direct.body AS direct_body,
+          dsp.session_name AS direct_sender_session_name,
+          dsp.tool AS direct_sender_tool,
+          root.sender_peer_id AS thread_root_sender_peer_id,
+          root.body AS thread_root_body,
+          rsp.session_name AS thread_root_sender_session_name,
+          rsp.tool AS thread_root_sender_tool
+        FROM events e
+        LEFT JOIN groups g ON g.group_id = e.group_id
+        LEFT JOIN peers sp ON sp.peer_id = e.sender_peer_id
+        LEFT JOIN events direct ON direct.event_id = e.reply_to_event_id
+        LEFT JOIN peers dsp ON dsp.peer_id = direct.sender_peer_id
+        LEFT JOIN events root ON root.event_id = CASE WHEN e.parent_event_id IS NULL THEN e.event_id ELSE e.parent_event_id END
+        LEFT JOIN peers rsp ON rsp.peer_id = root.sender_peer_id
+        WHERE e.type = 'group_message';
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
   }
 }
 
