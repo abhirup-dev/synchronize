@@ -2,6 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { closeSync, openSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
+import { loadDaemonEnvFiles } from "./env-files.ts";
 import {
   API_VERSION,
   ENV_STARTED_BY_CLIENT,
@@ -12,6 +13,7 @@ import {
 } from "./constants.ts";
 import { ensureDir, pathAgeMs, readJson, removePath } from "./fs.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
+import { collectDaemonProvenance } from "./provenance.ts";
 
 export interface Discovery {
   pid: number;
@@ -141,6 +143,8 @@ async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): P
 async function startDaemon(paths: RuntimePaths): Promise<ChildProcess> {
   await ensureDir(paths.home);
   const daemonPath = resolve(import.meta.dir, "daemon.ts");
+  const provenance = collectDaemonProvenance();
+  const fileEnv = await loadDaemonEnvFiles(paths, provenance.source_root, process.env);
   // Capture the spawned daemon's stdout/stderr to a dedicated file so an early
   // crash (e.g. EADDRINUSE on the default port) is diagnosable instead of
   // silently swallowed by stdio:"ignore". This file is intentionally distinct
@@ -152,6 +156,7 @@ async function startDaemon(paths: RuntimePaths): Promise<ChildProcess> {
       stdio: ["ignore", errFd, errFd],
       env: {
         ...process.env,
+        ...fileEnv,
         [ENV_STARTED_BY_CLIENT]: "1",
       },
     });

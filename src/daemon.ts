@@ -20,6 +20,7 @@ import {
   API_VERSION,
 } from "./constants.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
+import { applyDaemonEnvFiles } from "./env-files.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
@@ -3752,6 +3753,11 @@ async function main(): Promise<void> {
   const paths = getRuntimePaths();
   await ensureDir(paths.home);
   await ensureDir(paths.mediaPath);
+  const provenance = collectDaemonProvenance();
+  const loadedEnvKeys = await applyDaemonEnvFiles(paths, provenance.source_root);
+  if (loadedEnvKeys.length > 0) {
+    console.error(`[env] loaded daemon env keys=${loadedEnvKeys.join(",")}`);
+  }
 
   const { db } = await openDatabase(paths.dbPath);
   await pruneEphemeralGroups(db, async (mediaDir) => {
@@ -3762,7 +3768,6 @@ async function main(): Promise<void> {
     }
   });
   const startedAt = new Date().toISOString();
-  const provenance = collectDaemonProvenance();
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);
   assertLanModeIsProtected(host, token);

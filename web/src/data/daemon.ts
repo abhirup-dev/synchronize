@@ -320,7 +320,14 @@ export class DaemonDataSource implements DataSource {
       }
       if (res.status === "pending") {
         snap.set({ text: null, status: "pending" });
-        if (attempt < 3 && this.connected) {
+        if (attempt === 0) {
+          const generated = await this.generateThreadSummary(rootEventId).catch(() => null);
+          if (generated?.status === "ready" && generated.summary) {
+            snap.set({ text: generated.summary, status: "ok" });
+            return;
+          }
+        }
+        if (attempt < 12 && this.connected) {
           window.setTimeout(
             () => void this.loadThreadSummary(parentMessageId, snap, attempt + 1),
             5_000,
@@ -332,6 +339,10 @@ export class DaemonDataSource implements DataSource {
     } catch {
       snap.set({ text: null, status: "disabled" });
     }
+  }
+
+  private generateThreadSummary(rootEventId: number): Promise<DaemonThreadSummary> {
+    return this.request<DaemonThreadSummary>(`/threads/${rootEventId}/summary`, { method: "POST" });
   }
 
   async connect(): Promise<void> {

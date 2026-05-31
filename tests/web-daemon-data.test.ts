@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { DaemonDataSource } from "../web/src/data/daemon.ts";
-import type { Message } from "../web/src/data/types.ts";
+import type { Message, ThreadSummary } from "../web/src/data/types.ts";
 import type { MutableSnapshot } from "../web/src/data/store.ts";
 
 const originalFetch = globalThis.fetch;
@@ -192,3 +192,86 @@ test("daemon data source sends selected skill directives with group messages", a
     },
   });
 });
+
+test("daemon data source force-generates pending thread summaries for visible panel rows", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  const calls: Array<{ path: string; method: string }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    calls.push({ path: url.pathname, method });
+    if (url.pathname !== "/threads/123/summary") throw new Error(`unexpected fetch: ${url.pathname}`);
+    if (method === "GET") {
+      return new Response(JSON.stringify({
+        summary: null,
+        model: null,
+        strategy: null,
+        strategy_params: null,
+        prompt_version: null,
+        covered_last_event_id: null,
+        covered_event_count: null,
+        updated_at: null,
+        stale: false,
+        status: "pending",
+      }));
+    }
+    return new Response(JSON.stringify({
+      summary: "Generated summary text.",
+      model: "openrouter:test",
+      strategy: "first_k",
+      strategy_params: { k: 3 },
+      prompt_version: 1,
+      covered_last_event_id: 124,
+      covered_event_count: 2,
+      updated_at: "2026-06-01T00:00:00.000Z",
+      stale: false,
+      status: "ready",
+    }));
+  });
+
+  const summary = ds.threadSummary("e:123") as MutableSnapshot<ThreadSummary>;
+  await waitFor(() => summary.get().status === "ok");
+
+  expect(summary.get()).toEqual({ text: "Generated summary text.", status: "ok" });
+  expect(calls).toEqual([
+    { path: "/threads/123/summary", method: "GET" },
+    { path: "/threads/123/summary", method: "POST" },
+  ]);
+});
+
+test("daemon data source uses cached thread summaries without forcing regeneration", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  const calls: Array<{ path: string; method: string }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    calls.push({ path: url.pathname, method });
+    if (url.pathname !== "/threads/456/summary") throw new Error(`unexpected fetch: ${url.pathname}`);
+    return new Response(JSON.stringify({
+      summary: "Cached summary text.",
+      model: "openrouter:test",
+      strategy: "first_k",
+      strategy_params: { k: 3 },
+      prompt_version: 1,
+      covered_last_event_id: 457,
+      covered_event_count: 2,
+      updated_at: "2026-06-01T00:00:00.000Z",
+      stale: false,
+      status: "ready",
+    }));
+  });
+
+  const summary = ds.threadSummary("e:456") as MutableSnapshot<ThreadSummary>;
+  await waitFor(() => summary.get().status === "ok");
+
+  expect(summary.get()).toEqual({ text: "Cached summary text.", status: "ok" });
+  expect(calls).toEqual([{ path: "/threads/456/summary", method: "GET" }]);
+});
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    if (predicate()) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("condition was not met");
+}
