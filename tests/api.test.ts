@@ -714,8 +714,8 @@ test("skill directives are stored canonically and prefixed only for mentioned re
     expect(aliceInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
     expect(bobInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe(`${prefix}\n\nplease inspect @bob`);
 
-    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id, threadOf: root.event.event_id });
-    expect(history.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
+    const history = await getThread(daemon.client, { rootEventId: root.event.event_id, format: "events", selectors: { strategy: "all" } });
+    expect(history.events?.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
   } finally {
     await sink.stop();
     await daemon.stop();

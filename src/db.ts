@@ -416,13 +416,13 @@ function migrate(db: Database): void {
   // Launch intent, lifecycle evidence, and side-effect work are stored in
   // SQLite so delayed registration, daemon restart, and HTTP timeout cannot
   // lose the group auto-join contract.
-  const hasV7 = db
+  const hasLaunchLifecycleV7 = db
     .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
     .get();
   const hasLaunchIntents = db
     .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'launch_intents'")
     .get();
-  if (!hasV7 || !hasLaunchIntents) {
+  if (!hasLaunchLifecycleV7 || !hasLaunchIntents) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS launch_intents (
         launch_id TEXT PRIMARY KEY,
@@ -502,38 +502,36 @@ function migrate(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_launch_work_launch
         ON launch_work (launch_id, status);
     `);
-    if (!hasV7) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+    if (!hasLaunchLifecycleV7) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
   }
 
   // Migration v8 — message-scoped skill directives. The stored event body
   // stays canonical; recipients get directive prefixes at read/push time.
-  const hasV8 = db
+  const hasSkillDirectivesV8 = db
     .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 8")
     .get();
   const hasSkillDirectives = db
     .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'skill_directives_json'")
     .get();
-  if (!hasV8 || !hasSkillDirectives) {
+  if (!hasSkillDirectivesV8 || !hasSkillDirectives) {
     if (!hasSkillDirectives) {
       db.exec(`ALTER TABLE events ADD COLUMN skill_directives_json TEXT`);
     }
-    if (!hasV8) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)`);
+    if (!hasSkillDirectivesV8) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)`);
   }
 
-  // Migration v7 — preserve the direct reply target separately from the
+  // Migration v9 — preserve the direct reply target separately from the
   // normalized thread root. `parent_event_id` remains the placement root for
   // one-level threads; `reply_to_event_id` records the exact event the sender
   // answered so responses, SQL, and UI can show both levels.
-  const hasV7 = db
-    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
+  const hasReplyTargetV9 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 9")
     .get();
-  if (!hasV7) {
-    const hasReplyToEventId = db
-      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'reply_to_event_id'")
-      .get();
-    if (!hasReplyToEventId) {
-      db.exec(`ALTER TABLE events ADD COLUMN reply_to_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL`);
-    }
+  const hasReplyToEventId = db
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'reply_to_event_id'")
+    .get();
+  if (!hasReplyTargetV9 || !hasReplyToEventId) {
+    if (!hasReplyToEventId) db.exec(`ALTER TABLE events ADD COLUMN reply_to_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL`);
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_events_reply_to_event
         ON events (reply_to_event_id, event_id);
@@ -584,24 +582,20 @@ function migrate(db: Database): void {
         LEFT JOIN peers rsp ON rsp.peer_id = root.sender_peer_id
         WHERE e.type = 'group_message';
     `);
-    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+    if (!hasReplyTargetV9) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (9)`);
   }
 
-  // Migration v8 — capture per-agent git context at host-session binding time
+  // Migration v10 — capture per-agent git context at host-session binding time
   // so bridge_whoami can surface the exact cwd/branch/dirty state agents are
   // operating in.
-  const hasV8 = db
-    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 8")
+  const hasAgentSessionGitV10 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 10")
     .get();
-  if (!hasV8) {
-    const cols = db.query<{ name: string }, []>("PRAGMA table_info(agent_sessions)").all().map((col) => col.name);
-    if (!cols.includes("git_branch")) {
-      db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_branch TEXT`);
-    }
-    if (!cols.includes("git_dirty")) {
-      db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_dirty INTEGER`);
-    }
-    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)`);
+  const agentSessionCols = db.query<{ name: string }, []>("PRAGMA table_info(agent_sessions)").all().map((col) => col.name);
+  if (!hasAgentSessionGitV10 || !agentSessionCols.includes("git_branch") || !agentSessionCols.includes("git_dirty")) {
+    if (!agentSessionCols.includes("git_branch")) db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_branch TEXT`);
+    if (!agentSessionCols.includes("git_dirty")) db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_dirty INTEGER`);
+    if (!hasAgentSessionGitV10) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (10)`);
   }
 }
 
