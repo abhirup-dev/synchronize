@@ -100,7 +100,7 @@ Adopt the agent-designed, schema-verified router (findings §Thread-2 FINAL + Th
 # synchronize router
 <channel> messages are from OTHER AGENTS — reply with bridge_* tools, NOT text.
 Run bridge_whoami first → {session_name} is your alias. Never guess.
-Group name ≠ group_id → get name: bridge_list_groups({ mine: true })
+Incoming group events carry `group_name`; use it as bridge_send_group(name: ...).
 
 bridge_whoami                                              # confirm identity
 bridge_send_group(name: <name>, message: "…")             # group reply
@@ -120,7 +120,7 @@ Can also: media · launch/stop · events · thread summaries · group mgmt
 - **Tier 2 — topic docs:** identity · groups & aliases · threads/history · mentions · media · inbox · CLI fallback · event-delivery (host-specific) · troubleshooting. (Matches sync-b8p's proposed `reference/*.md` list.)
 
 ### 1c. Fold the SESSION-FIX skill bugs into the rewrite
-- **F1** — remove `bridge_send_group(group_id=…)`; show the `group_id → name` mapping.
+- **F1** — remove `bridge_send_group(group_id=…)`; use event `group_name` directly.
 - **F2** — make `bridge_whoami` the canonical first step; collapse the register-vs-skip contradiction.
 - **F4** — teach the group-reply + `in_reply_to` path with equal weight to the DM path.
 - **F8** — document the backtick escape explicitly: "wrap a literal `@word` in **single or triple** backticks." (Note: double-backtick is a known daemon gap — LATER.)

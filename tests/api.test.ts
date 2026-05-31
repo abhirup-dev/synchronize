@@ -33,6 +33,10 @@ afterAll(async () => {
 test("agent session bindings upsert by native session and rename by peer id", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-agent-session-"));
   homes.push(home);
+  const gitRepo = await mkdtemp(join(tmpdir(), "synchronize-agent-session-git-"));
+  homes.push(gitRepo);
+  const gitInit = Bun.spawnSync({ cmd: ["git", "init", "-b", "context-test"], cwd: gitRepo, stdout: "pipe", stderr: "pipe" });
+  expect(gitInit.exitCode).toBe(0);
   const daemon = await startDaemon(home);
 
   try {
@@ -40,7 +44,7 @@ test("agent session bindings upsert by native session and rename by peer id", as
       hostTool: "claude",
       hostSessionId: "claude-native-1",
       hostSessionFile: "/tmp/claude-native-1.jsonl",
-      cwd: "/tmp/project",
+      cwd: gitRepo,
       sessionName: "backend-review",
       tool: "claude",
       purpose: "claude session",
@@ -51,6 +55,9 @@ test("agent session bindings upsert by native session and rename by peer id", as
     expect(registered.binding.host_session_id).toBe("claude-native-1");
     expect(registered.binding.peer.session_name).toBe("backend-review");
     expect(registered.binding.peer.tool).toBe("claude");
+    expect(registered.binding.cwd).toBe(gitRepo);
+    expect(registered.binding.git_branch).toBe("context-test");
+    expect(registered.binding.git_dirty).toBe(false);
 
     const renamed = await renameAgentSession(daemon.client, {
       peerId: registered.binding.peer_id,
@@ -80,6 +87,8 @@ test("agent session bindings upsert by native session and rename by peer id", as
     });
     expect(upserted.binding.peer_id).toBe(registered.binding.peer_id);
     expect(upserted.binding.cwd).toBe("/tmp/project-2");
+    expect(upserted.binding.git_branch).toBeNull();
+    expect(upserted.binding.git_dirty).toBeNull();
 
     const allClaude = await listAgentSessions(daemon.client, { hostTool: "claude" });
     expect(allClaude.bindings).toHaveLength(1);
@@ -1262,12 +1271,14 @@ test("event SQL query endpoint exposes views and rejects non-read-only SQL", asy
       senderPeerId: alice.peer.peer_id,
       message: "sql root",
     });
+    expect(root.event.group_name).toBe(groupName);
     const reply = await sendGroupMessage(daemon.client, {
       name: groupName,
       senderPeerId: bob.peer.peer_id,
       message: "sql reply",
       inReplyTo: root.event.event_id,
     });
+    expect(reply.event.group_name).toBe(groupName);
 
     const eventLog = await queryEvents(daemon.client, {
       sql: "select event_id, group_name, sender_session_name from event_log where event_id = ?",

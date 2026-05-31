@@ -47,6 +47,8 @@ export interface AgentSessionBinding {
   host_session_id: string;
   host_session_file: string | null;
   cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
   pid: number | null;
   source: string | null;
   model: string | null;
@@ -65,6 +67,7 @@ export interface Event {
   sender_peer_id: string | null;
   recipient_peer_id: string | null;
   group_id: number | null;
+  group_name: string | null;
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;

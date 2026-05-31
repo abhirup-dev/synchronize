@@ -66,7 +66,8 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
     {
       description:
         "Show this adapter peer identity. " +
-        "Returns: { peer, registered, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Returns: { peer, registered, runtime_context, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Agent-session bindings include cwd, git_branch, and git_dirty when the host provided a cwd. " +
         "Idempotency: pure read.",
     },
     wrap(async () => {
@@ -79,10 +80,18 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
       }
     }
     const agentSessions = client && state.peer ? (await listAgentSessions(client, { peerId: state.peer.peer_id })).bindings : [];
+    const activeSession = agentSessions[0] ?? null;
     return text({
       peer: state.peer,
       registered: Boolean(state.peer),
       agent_sessions: agentSessions,
+      runtime_context: activeSession
+        ? {
+            cwd: activeSession.cwd,
+            git_branch: activeSession.git_branch,
+            git_dirty: activeSession.git_dirty,
+          }
+        : null,
       notify_mode: getMode(),
       claude_channel_subscription_active: state.subscription?.isActive() ?? false,
       codex_notifier_active: Boolean(state.notifier),

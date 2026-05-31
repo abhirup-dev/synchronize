@@ -100,7 +100,8 @@ export function registerGroupTools(ctx: ToolContext): void {
     "bridge_send_group",
     {
       description:
-        "Send a durable message to a group. Pass in_reply_to=<event_id> to post into a Slack-style thread; " +
+        "Send a durable message to a group by unique group name. Incoming group events carry group_name; pass that value as name. " +
+        "Pass in_reply_to=<event_id> to post into a Slack-style thread; " +
         "the daemon normalizes reply-to-reply to the original thread root, so threads stay one level deep. " +
         "Use @alias tokens in the body to mention members; in the main channel only mentioned peers get push " +
         "notifications. In a thread, the root author and prior thread posters are notified along with new " +

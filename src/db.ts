@@ -55,6 +55,8 @@ function migrate(db: Database): void {
       host_session_id TEXT NOT NULL,
       host_session_file TEXT,
       cwd TEXT,
+      git_branch TEXT,
+      git_dirty INTEGER,
       pid INTEGER,
       source TEXT,
       model TEXT,
@@ -471,6 +473,23 @@ function migrate(db: Database): void {
         WHERE e.type = 'group_message';
     `);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+  }
+
+  // Migration v8 — capture per-agent git context at host-session binding time
+  // so bridge_whoami can surface the exact cwd/branch/dirty state agents are
+  // operating in.
+  const hasV8 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 8")
+    .get();
+  if (!hasV8) {
+    const cols = db.query<{ name: string }, []>("PRAGMA table_info(agent_sessions)").all().map((col) => col.name);
+    if (!cols.includes("git_branch")) {
+      db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_branch TEXT`);
+    }
+    if (!cols.includes("git_dirty")) {
+      db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_dirty INTEGER`);
+    }
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)`);
   }
 }
 

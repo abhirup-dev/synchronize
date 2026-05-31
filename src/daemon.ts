@@ -23,7 +23,7 @@ import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { ensureDir, writeJson } from "./fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
-import { collectDaemonProvenance, type DaemonProvenance } from "./provenance.ts";
+import { collectDaemonProvenance, collectGitContext, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
 import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
 import { isLaunchTool } from "./launch/build.ts";
@@ -90,6 +90,8 @@ interface AgentSessionRow {
   host_session_id: string;
   host_session_file: string | null;
   cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
   pid: number | null;
   source: string | null;
   model: string | null;
@@ -116,6 +118,7 @@ interface EventRow {
   sender_peer_id: string | null;
   recipient_peer_id: string | null;
   group_id: number | null;
+  group_name: string | null;
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
@@ -557,6 +560,8 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const leaseExpiresAt = leaseExpiresAtForTool(tool);
     const metadata = optionalObjectJson(body, "metadata");
     const bindingId = `${hostTool}:${hostSessionId}`;
+    const cwd = optionalString(body, "cwd") ?? null;
+    const gitContext = collectGitContext(cwd);
 
     ctx.db.transaction(() => {
       upsertPeer(ctx.db, {
@@ -570,14 +575,16 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ctx.db
         .query(
           `INSERT INTO agent_sessions (
-             binding_id, peer_id, host_tool, host_session_id, host_session_file, cwd, pid,
+             binding_id, peer_id, host_tool, host_session_id, host_session_file, cwd, git_branch, git_dirty, pid,
              source, model, agent_type, metadata_json, launch_id, last_seen_at
            )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
            ON CONFLICT(host_tool, host_session_id) DO UPDATE SET
              peer_id = excluded.peer_id,
              host_session_file = excluded.host_session_file,
              cwd = excluded.cwd,
+             git_branch = excluded.git_branch,
+             git_dirty = excluded.git_dirty,
              pid = excluded.pid,
              source = excluded.source,
              model = excluded.model,
@@ -593,7 +600,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
           hostTool,
           hostSessionId,
           optionalString(body, "host_session_file") ?? null,
-          optionalString(body, "cwd") ?? null,
+          cwd,
+          gitContext.git_branch,
+          gitContext.git_dirty === null ? null : Number(gitContext.git_dirty),
           optionalInteger(body, "pid") ?? null,
           optionalString(body, "source") ?? null,
           optionalString(body, "model") ?? null,
@@ -1296,7 +1305,12 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     let rows: EventRow[];
     if (threadOf !== undefined) {
       const root = ctx.db
-        .query<EventRow, [number, number]>("SELECT * FROM events WHERE event_id = ? AND group_id = ?")
+        .query<EventRow, [number, number]>(
+          `SELECT e.*, g.name AS group_name
+           FROM events e
+           LEFT JOIN groups g ON g.group_id = e.group_id
+           WHERE e.event_id = ? AND e.group_id = ?`,
+        )
         .get(threadOf, group.group_id);
       if (!root) throw new HttpError(404, "thread_root_not_found", `No such event in group: ${threadOf}`);
       if (root.parent_event_id !== null) {
@@ -1304,9 +1318,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       }
       rows = ctx.db
         .query<EventRow, [number, number, number, number, number]>(
-          `SELECT * FROM events
-           WHERE group_id = ? AND event_id >= ? AND (event_id = ? OR parent_event_id = ?)
-           ORDER BY event_id ASC
+          `SELECT e.*, g.name AS group_name
+           FROM events e
+           LEFT JOIN groups g ON g.group_id = e.group_id
+           WHERE e.group_id = ? AND e.event_id >= ? AND (e.event_id = ? OR e.parent_event_id = ?)
+           ORDER BY e.event_id ASC
            LIMIT ?`,
         )
         .all(group.group_id, historyFrom, threadOf, threadOf, limit);
@@ -1319,9 +1335,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       const mainRows = ctx.db
         .query<MainRow, [number, number, number]>(
           `SELECT e.*,
+                  g.name AS group_name,
                   (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
                   (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id
            FROM events e
+           LEFT JOIN groups g ON g.group_id = e.group_id
            WHERE e.group_id = ? AND e.event_id >= ? AND e.parent_event_id IS NULL
            ORDER BY e.event_id ASC
            LIMIT ?`,
@@ -1443,9 +1461,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     const replies = attachReactions(ctx.db, ctx.db
       .query<EventRow, [number, number]>(
-        `SELECT * FROM events
-         WHERE group_id = ? AND parent_event_id = ?
-         ORDER BY event_id ASC`,
+        `SELECT e.*, g.name AS group_name
+         FROM events e
+         LEFT JOIN groups g ON g.group_id = e.group_id
+         WHERE e.group_id = ? AND e.parent_event_id = ?
+         ORDER BY e.event_id ASC`,
       )
       .all(root.group_id, rootEventId));
     // Participants: deduped sender peer_ids across root + replies, with their
@@ -1572,9 +1592,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const ackClause = includeAcked ? "" : "AND i.acked_at IS NULL";
     const rows = ctx.db
       .query<InboxRow, [string, number, number]>(
-        `SELECT e.*, i.delivered_at, i.read_at, i.acked_at
+        `SELECT e.*, g.name AS group_name, i.delivered_at, i.read_at, i.acked_at
          FROM inbox i
          JOIN events e ON e.event_id = i.event_id
+         LEFT JOIN groups g ON g.group_id = e.group_id
          WHERE i.recipient_peer_id = ? AND e.event_id > ? ${ackClause}
          ORDER BY e.event_id ASC
          LIMIT ?`,
@@ -1631,9 +1652,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const cursor = parseCursor(url.searchParams.get("cursor"));
     const rows = ctx.db
       .query<InboxRow, [string, number, number]>(
-        `SELECT e.*, i.delivered_at, i.read_at, i.acked_at
+        `SELECT e.*, g.name AS group_name, i.delivered_at, i.read_at, i.acked_at
          FROM inbox i
          JOIN events e ON e.event_id = i.event_id
+         LEFT JOIN groups g ON g.group_id = e.group_id
          WHERE i.recipient_peer_id = ? AND e.event_id > ?
          ORDER BY e.event_id ASC
          LIMIT ?`,
@@ -2191,6 +2213,8 @@ function formatAgentSession(
     host_session_id: row.host_session_id,
     host_session_file: row.host_session_file,
     cwd: row.cwd,
+    git_branch: row.git_branch,
+    git_dirty: row.git_dirty === null ? null : Boolean(row.git_dirty),
     pid: row.pid,
     source: row.source,
     model: row.model,
@@ -2219,7 +2243,14 @@ function formatAgentSession(
 }
 
 function getEvent(db: Database, eventId: number): EventRow {
-  const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
+  const event = db
+    .query<EventRow, [number]>(
+      `SELECT e.*, g.name AS group_name
+       FROM events e
+       LEFT JOIN groups g ON g.group_id = e.group_id
+       WHERE e.event_id = ?`,
+    )
+    .get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
   return attachReactions(db, [event])[0]!;
 }
@@ -2753,12 +2784,14 @@ function launchToolStatusFor(tool: "claude" | "pi"): WebLaunchToolStatus {
 
 function webEventSelectSql(where: string): string {
   return `SELECT e.*,
+                 g.name AS group_name,
                  (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
                  (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id,
                  (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.delivered_at IS NOT NULL) AS delivered_count,
                  (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.read_at IS NOT NULL) AS read_count,
                  (SELECT COUNT(*) FROM inbox i WHERE i.event_id = e.event_id AND i.acked_at IS NOT NULL) AS acked_count
           FROM events e
+          LEFT JOIN groups g ON g.group_id = e.group_id
           ${where}
           ORDER BY e.event_id DESC
           LIMIT ?`;

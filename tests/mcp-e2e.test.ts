@@ -73,6 +73,30 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       await client.callTool({ name: "bridge_register", arguments: { session_name: "codex-e2e", purpose: "test" } }),
     ) as { peer: { peer_id: string } };
     const peerId = registered.peer.peer_id;
+    const gitRepo = await mkdtemp(join(tmpdir(), "synchronize-mcp-git-"));
+    homes.push(gitRepo);
+    const gitInit = Bun.spawnSync({ cmd: ["git", "init", "-b", "mcp-context"], cwd: gitRepo, stdout: "pipe", stderr: "pipe" });
+    expect(gitInit.exitCode).toBe(0);
+    const { baseUrl } = (await Bun.file(join(home, "daemon.json")).json()) as { baseUrl: string };
+    const bindingResponse = await fetch(`${baseUrl}/agent-sessions/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        peer_id: peerId,
+        host_tool: "codex",
+        host_session_id: "codex-e2e-session",
+        session_name: "codex-e2e",
+        tool: "codex",
+        cwd: gitRepo,
+      }),
+    });
+    expect(bindingResponse.ok).toBe(true);
+    const whoami = parseToolText(await client.callTool({ name: "bridge_whoami", arguments: {} })) as {
+      runtime_context: { cwd: string | null; git_branch: string | null; git_dirty: boolean | null } | null;
+      agent_sessions: Array<{ cwd: string | null; git_branch: string | null; git_dirty: boolean | null }>;
+    };
+    expect(whoami.runtime_context).toEqual({ cwd: gitRepo, git_branch: "mcp-context", git_dirty: false });
+    expect(whoami.agent_sessions[0]).toMatchObject({ cwd: gitRepo, git_branch: "mcp-context", git_dirty: false });
 
     await client.callTool({ name: "bridge_dm", arguments: { recipient_peer_id: peerId, message: "self notify" } });
     await client.callTool({ name: "bridge_dm", arguments: { peer_id: peerId, message: "self notify via alias" } });
@@ -91,7 +115,8 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
     const root = parseToolText(
       await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
-    ) as { event: { event_id: number; reply_to_event_id: number | null } };
+    ) as { event: { event_id: number; group_name: string | null; reply_to_event_id: number | null } };
+    expect(root.event.group_name).toBe("mcp-room");
     expect(root.event.reply_to_event_id).toBeNull();
     const threadReply = parseToolText(
       await client.callTool({
