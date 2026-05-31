@@ -48,6 +48,13 @@
 | `session-tracker/plan-group-policy-v0.md` | 385 | Group policy v0: durable vs ephemeral, member alias semantics, soft-delete (sync-dmc), MCP adapter pass, dx2 TUI. | Group lifecycle, alias-vs-session_name split, soft-delete migration v2 |
 | `session-tracker/plan-agent-ttl-presence-v0.md` | 116 | Agent TTL + 3-state presence. Two-knob model: short liveness lease (60s, `SYNCHRONIZE_LEASE_MS`) as the only offline detector + 24h retention sweeper; `activity_state` (initializing/working/idle) fed by Pi `agent_start`/`agent_end` and Claude hooks + MCP-adapter channel-delivery push. Footgun removal (no client `deletePeer`). | `sync-6mz` (Unit 1) + `sync-ztr` epic (Unit 2), lease/offline semantics, `peers.activity_state` grain, resume identity via `findPeerByHostSession` |
 
+### Research findings
+
+| File | Lines | Topic |
+|---|---|---|
+| `docs/skill-mcp-research-findings.md` | ~600 | 2026-05-31 live customer research — six agents (opus/sonnet/haiku/pi-high/pi-medium/pi-low) interviewed on skill + MCP surface friction. F1–F18 + P1/P2/P3 + A1 findings, all cross-checked against daemon schema. Authoritative spec for skill progressive-disclosure rewrite (sync-b8p) and MCP lean consolidation issues (sync-bsvi, sync-ever, sync-89g3, sync-3a59, sync-n151, sync-gpr4, sync-gjj6). |
+| `docs/skill-mcp-roadmap.md` | ~80 | NOW/LATER phased roadmap from the 2026-05-31 research session. Phase 1 = skill rewrite (pure doc, closes sync-b8p). LATER phases = injection layer (A1), MCP consolidation, collaboration primitives, perf/index, host/harness. |
+
 ### Design docs
 
 | File | Lines | Topic |
