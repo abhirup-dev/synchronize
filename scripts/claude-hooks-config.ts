@@ -1,0 +1,161 @@
+#!/usr/bin/env bun
+/**
+ * Merge or remove the synchronize Claude SessionStart hook in settings.json.
+ * The installed hook is env-gated before resolving the synchronize binary:
+ * without SYNCHRONIZE_HOOK_ENABLE=1 it exits successfully without touching
+ * PATH, Bun shims, or the daemon.
+ *
+ * Usage:
+ *   bun run scripts/claude-hooks-config.ts <path>
+ *   bun run scripts/claude-hooks-config.ts --remove <path>
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+interface HookCommand {
+  type: string;
+  command: string;
+}
+
+interface HookEntry {
+  matcher?: string;
+  hooks?: HookCommand[];
+  [key: string]: unknown;
+}
+
+interface ClaudeSettings {
+  hooks?: Record<string, HookEntry[]>;
+  [key: string]: unknown;
+}
+
+const LEGACY_COMMAND = "synchronize hook claude-session";
+const CONFIGURED_CLI = join(dirname(dirname(fileURLToPath(import.meta.url))), "bin", "synchronize");
+
+// The synchronize hooks installed into Claude settings.json. SessionStart
+// registers the agent_session/peer; the activity hooks drive 3-state presence:
+// UserPromptSubmit + PreToolUse mark the agent working, Stop returns it to idle
+// (channel-driven turns are covered separately by the MCP adapter's
+// markWorking). See session-tracker/plan-agent-ttl-presence-v0.md.
+interface HookSpec {
+  event: string;
+  subcommand: string;
+}
+const HOOK_SPECS: HookSpec[] = [
+  { event: "SessionStart", subcommand: "hook claude-session" },
+  { event: "UserPromptSubmit", subcommand: "hook activity --state working" },
+  { event: "PreToolUse", subcommand: "hook activity --state working" },
+  { event: "Stop", subcommand: "hook activity --state idle" },
+];
+const COMMANDS: Map<string, string> = new Map(
+  HOOK_SPECS.map((spec) => [`${spec.event} ${spec.subcommand}`, buildHookCommand(CONFIGURED_CLI, spec.subcommand)]),
+);
+function commandFor(spec: HookSpec): string {
+  return COMMANDS.get(`${spec.event} ${spec.subcommand}`)!;
+}
+
+function parseArgs(argv: string[]): { remove: boolean; path: string } {
+  const args = argv.slice(2);
+  let remove = false;
+  const positional: string[] = [];
+  for (const arg of args) {
+    if (arg === "--remove" || arg === "-r") remove = true;
+    else positional.push(arg);
+  }
+  if (positional.length !== 1) {
+    process.stderr.write("Usage: claude-hooks-config.ts [--remove] <settings.json>\n");
+    process.exit(2);
+  }
+  return { remove, path: positional[0]! };
+}
+
+function readSettings(path: string): ClaudeSettings {
+  if (!existsSync(path)) return {};
+  const raw = readFileSync(path, "utf8").trim();
+  if (raw === "") return {};
+  return JSON.parse(raw) as ClaudeSettings;
+}
+
+function writeSettings(path: string, settings: ClaudeSettings): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+function applyAdd(settings: ClaudeSettings): string {
+  settings.hooks ??= {};
+  const added: string[] = [];
+  let updated = false;
+  let unchanged = 0;
+  for (const spec of HOOK_SPECS) {
+    const command = commandFor(spec);
+    const entries = settings.hooks[spec.event] ?? [];
+    // Legacy migration only applies to the SessionStart command shape.
+    if (spec.event === "SessionStart") {
+      for (const entry of entries) {
+        for (const hook of entry.hooks ?? []) {
+          if (hook.command === LEGACY_COMMAND) {
+            hook.command = command;
+            updated = true;
+          }
+        }
+      }
+    }
+    const existing = entries.some((entry) => entry.hooks?.some((hook) => hook.command === command));
+    if (existing) {
+      unchanged += 1;
+    } else {
+      entries.push({ matcher: "", hooks: [{ type: "command", command }] });
+      added.push(spec.event);
+    }
+    settings.hooks[spec.event] = entries;
+  }
+  if (added.length > 0) return `added synchronize hooks: ${added.join(", ")}`;
+  if (updated) return "updated synchronize hooks";
+  return `synchronize hooks already present (${unchanged})`;
+}
+
+function applyRemove(settings: ClaudeSettings): string {
+  if (!settings.hooks) return "synchronize hooks not present";
+  const removed: string[] = [];
+  for (const spec of HOOK_SPECS) {
+    const command = commandFor(spec);
+    const entries = settings.hooks[spec.event];
+    if (!entries) continue;
+    const next = entries
+      .map((entry) => ({
+        ...entry,
+        hooks: entry.hooks?.filter(
+          (hook) =>
+            hook.command !== command && !(spec.event === "SessionStart" && hook.command === LEGACY_COMMAND),
+        ),
+      }))
+      .filter((entry) => (entry.hooks?.length ?? 0) > 0);
+    if (next.length !== entries.length) removed.push(spec.event);
+    settings.hooks[spec.event] = next;
+  }
+  return removed.length > 0 ? `removed synchronize hooks: ${removed.join(", ")}` : "synchronize hooks not present";
+}
+
+function buildHookCommand(configuredCli: string, subcommand: string): string {
+  const script = [
+    '[ "${SYNCHRONIZE_HOOK_ENABLE:-}" = "1" ] || exit 0',
+    'for candidate in "${SYNCHRONIZE_CLI:-}" "${SYNCHRONIZE_CONFIGURED_CLI:-}" "$(command -v synchronize 2>/dev/null)"; do',
+    '  [ -n "$candidate" ] || continue',
+    '  [ -x "$candidate" ] || continue',
+    '  "$candidate" status >/dev/null 2>&1 || continue',
+    `  exec "$candidate" ${subcommand}`,
+    "done",
+    "exit 0",
+  ].join("\n");
+  return `SYNCHRONIZE_CONFIGURED_CLI=${shellQuote(configuredCli)} sh -c ${shellQuote(script)}`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+const { remove, path } = parseArgs(process.argv);
+const settings = readSettings(path);
+const message = remove ? applyRemove(settings) : applyAdd(settings);
+writeSettings(path, settings);
+process.stdout.write(`${path}: ${message}\n`);

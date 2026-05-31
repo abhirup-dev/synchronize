@@ -1,0 +1,30 @@
+node_modules/
+.demo-synchronize/
+.dev-synchronize/
+.synchronize-itest/
+*.log
+.DS_Store
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# bd export artefact at repo root (real state lives in .beads/issues.jsonl)
+/issues.jsonl
+
+# graphify knowledge-graph outputs (regeneratable via /graphify)
+graphify-out/
+
+# Local UI reference captures
+docs/ui-reference/claude-design-screenshots/
+
+# Claude-created nested worktrees should stay local
+.claude/worktrees/
+
+# Local scratch / vendored exploration trees
+work/
+
+# Python bytecode from the integration-aoe harness
+__pycache__/
+*.pyc

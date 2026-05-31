@@ -1,0 +1,26 @@
+{
+  "name": "synchronize",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "synchronize": "./bin/synchronize",
+    "synchronize-mcp": "./bin/synchronize-mcp"
+  },
+  "scripts": {
+    "daemon": "bun run src/daemon.ts",
+    "mcp": "bun run src/mcp.ts",
+    "synchronize": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "ai": "^6.0.191"
+  }
+}

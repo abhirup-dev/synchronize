@@ -1,0 +1,1935 @@
+/* Component-specific selectors that aren't already in the prototype's
+   verbatim styles.css. Keeps each component shell-style clean while letting
+   the bulk of the visual system stay in styles.css. */
+
+/* ─── Sidebar sections — two independent scrollers ──────────────────────── */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.sidebar-section + .sidebar-section {
+  border-top: var(--line-bold);
+  padding-top: var(--space-10);
+  margin-top: -2px;
+}
+.sidebar-section .list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-8);
+}
+
+/* ─── Auto-hide scrollbar ────────────────────────────────────────────────
+   Applied to anything tagged `.autoscroll`. The `is-scrolling` class is
+   toggled by `useAutoScrollbar` (JS) while the user is actively scrolling
+   and removed ~800ms after the last scroll event. The thumb is also visible
+   while the user hovers or focuses inside the container, so they can grab it.
+
+   The thumb tint per scroller is set via the local `--scroll-bg` custom
+   property (paper-2 for sidebar, paper for chat/thread). The mix with --ink
+   stays subtle — one tonal step darker than the surface. */
+.autoscroll {
+  --scroll-bg: var(--paper);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  /* Firefox: scrollbar-color cannot animate, so we still use a fixed thumb
+     when interacting; the JS class adds a CSS variable to drive opacity-like
+     fade for Chromium below. */
+  scrollbar-color: transparent transparent;
+}
+.autoscroll.is-scrolling,
+.autoscroll:hover,
+.autoscroll:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--ink) 22%, var(--scroll-bg)) transparent;
+}
+.autoscroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.autoscroll::-webkit-scrollbar-track { background: transparent; }
+.autoscroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--radius-pill);
+  transition: background 220ms ease;
+}
+.autoscroll.is-scrolling::-webkit-scrollbar-thumb,
+.autoscroll:hover::-webkit-scrollbar-thumb,
+.autoscroll:focus-within::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 22%, var(--scroll-bg));
+}
+.autoscroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink) 38%, var(--scroll-bg));
+}
+
+/* Per-surface tint so the thumb matches its panel background. */
+.sidebar-section .list.autoscroll { --scroll-bg: var(--paper-2); }
+.chat-list.autoscroll            { --scroll-bg: var(--paper); }
+.thread-pane-body.autoscroll     { --scroll-bg: var(--paper); }
+
+/* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────── */
+.scroll-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  z-index: var(--z-scroll-controls);
+  pointer-events: none; /* let underlying content receive clicks unless on a button */
+}
+.scroll-ctrl {
+  pointer-events: auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: var(--line-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-display);
+  font-size: var(--text-13);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 160ms ease, transform 80ms ease, box-shadow 80ms ease;
+}
+.scroll-ctrl:hover:not(:disabled) {
+  opacity: 1;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hover);
+}
+.scroll-ctrl.has-new-items {
+  opacity: 1;
+  background: var(--lime);
+  animation: new-message-pop 900ms ease-out infinite;
+}
+.scroll-ctrl:disabled {
+  opacity: 0.18;
+  cursor: default;
+}
+
+@keyframes new-message-pop {
+  0% {
+    transform: translateY(0) scale(1);
+    box-shadow: var(--shadow-presence-in);
+  }
+  55% {
+    transform: translateY(-2px) scale(1.06);
+    box-shadow: var(--shadow-presence-peak);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: var(--shadow-presence-out);
+  }
+}
+
+/* ─── Composer collapse ──────────────────────────────────────────────────── */
+.composer {
+  position: relative;
+}
+.composer-collapse-btn {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--ink-soft);
+  border: var(--line-none);
+  box-shadow: var(--shadow-none);
+  border-radius: var(--radius-none);
+  padding: 0;
+  font-size: var(--text-11);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  z-index: var(--z-local-control);
+  transition: opacity 140ms ease, color 140ms ease;
+}
+.composer-collapse-btn:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.composer-collapsed {
+  padding: var(--space-button-pad-md);
+}
+.composer-collapsed-stub {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+  padding: var(--space-button-pad-md);
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  border: var(--line-sm);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font: inherit;
+  font-size: var(--text-13);
+  cursor: pointer;
+  text-align: left;
+}
+.composer-collapsed-stub:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hover);
+  color: var(--ink);
+}
+.composer-collapsed-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-collapse-toggle {
+  font-size: var(--text-11);
+  color: var(--ink);
+}
+
+/* ─── Theme toggle (floating) ────────────────────────────────────────────── */
+.theme-toggle {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-2);
+  border: var(--line-2);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-18);
+  z-index: var(--z-floating-control);
+  display: grid;
+  place-items: center;
+}
+.theme-toggle:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+
+/* ─── Placeholder tab content ────────────────────────────────────────────── */
+.placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 16px,
+      rgba(0,0,0,0.03) 16px 17px
+    );
+}
+.placeholder-stamp {
+  font-family: var(--font-display);
+  font-size: var(--text-22);
+  letter-spacing: var(--tracking-md);
+  padding: 18px 28px;
+  background: var(--paper-2);
+  border: var(--line);
+  box-shadow: var(--shadow);
+  transform: rotate(-2deg);
+}
+
+/* ─── Composer (extras the prototype put inline) ─────────────────────────── */
+.composer {
+  border: var(--line-md);
+  border-top: 3.5px solid var(--rule);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  background: var(--paper);
+  margin: 8px 12px 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+@media (max-width: 920px) {
+  .composer { margin: 8px 10px 10px; }
+}
+.composer-toolbar {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+  background: transparent;
+  border: var(--line-none);
+  border-bottom: var(--line-sm);
+  border-radius: var(--radius-none);
+  padding: 8px 10px;
+  width: 100%;
+  box-shadow: var(--shadow-none);
+}
+.ct-btn {
+  background: var(--paper-2);
+  border: var(--line-sm);
+  padding: 6px 9px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-chip);
+  color: var(--ink);
+  font-size: var(--text-13);
+  font-weight: 800;
+}
+.ct-btn:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover-sm); }
+.ct-btn:disabled { opacity: 0.4; cursor: default; }
+
+.composer-input-wrap {
+  position: relative;
+  background: transparent;
+  border: var(--line-none);
+  border-radius: var(--radius-none);
+  box-shadow: var(--shadow-none);
+}
+.composer-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 78px;
+  padding: 14px 18px;
+  background: transparent;
+  color: var(--ink);
+  border: var(--line-none);
+  outline: none;
+  font: inherit;
+  font-size: var(--text-14);
+  line-height: 1.5;
+}
+.composer-input::placeholder { color: var(--ink-faint); }
+
+.composer-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: var(--line-rule-dashed-sm);
+}
+.composer-hint { font-size: var(--text-10-5); color: var(--ink-soft); }
+.composer-send {
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-2);
+  border-radius: var(--radius-md);
+  padding: 9px 18px;
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-md);
+  box-shadow: var(--shadow-sm);
+}
+.composer-send:disabled { opacity: 0.52; cursor: default; filter: grayscale(0.35); }
+.composer-send:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+
+/* ─── Mention popup ──────────────────────────────────────────────────────── */
+.mention-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-mention-overlay);
+  width: 380px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mention-pop .mention-name { color: var(--ink); }
+.mention-pop .mention-handle { color: var(--ink-soft); }
+.mention-pop .mention-note { color: var(--ink-soft); }
+.mention-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: var(--space-10);
+  align-items: center;
+  padding: 6px 8px;
+  background: transparent;
+  border: var(--line-none);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.mention-row.focused, .mention-row:hover { background: var(--paper-2); }
+.mention-av {
+  width: 28px;
+  height: 28px;
+  border: var(--line-sm);
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: var(--text-13);
+  box-shadow: var(--shadow-xs);
+}
+.mention-meta { display: flex; flex-direction: column; min-width: 0; }
+.mention-name { font-weight: 600; font-size: var(--text-13); }
+.mention-handle { font-family: var(--font-mono); font-size: var(--text-11); color: var(--ink-soft); }
+.mention-note { font-size: var(--text-11); color: var(--ink-soft); max-width: 160px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Room header (extras) ───────────────────────────────────────────────── */
+.room-header {
+  border-bottom: var(--line-bold);
+}
+.room-header-top {
+  gap: var(--space-18);
+  padding: 18px 24px 20px;
+}
+.room-id-text { display: flex; flex-direction: column; min-width: 0; }
+.room-id-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-26);
+}
+.room-title {
+  font-family: var(--font-display);
+  font-size: var(--text-28);
+  display: flex;
+  align-items: center;
+  gap: var(--space-18);
+  line-height: 1;
+}
+.room-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+  color: var(--ink-soft);
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+.busy-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--ink);
+  font-weight: 800;
+}
+.busy-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: var(--radius-pill);
+  background: var(--pink);
+  border: var(--line-sm);
+  box-shadow: var(--shadow-xs);
+}
+.room-topic {
+  font-size: var(--text-12);
+  color: var(--ink-soft);
+  margin-top: 4px;
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-pile { display: flex; align-items: center; }
+.member-pile-item {
+  display: inline-block;
+  margin-left: var(--space-0);
+}
+.member-pile-item + .member-pile-item {
+  margin-left: calc(var(--space-8) * -1);
+}
+.room-header-actions { display: flex; gap: 6px; }
+
+.room-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 8px 18px 7px 18px;
+  border-top: var(--line-2);
+}
+.room-tab {
+  background: transparent;
+  border: var(--line-transparent);
+  padding: 5px 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-lg);
+  color: var(--ink-soft);
+  transform: rotate(-1deg);
+}
+.room-tab.active {
+  color: var(--ink);
+  background: var(--yellow);
+  border-color: var(--rule);
+  box-shadow: var(--shadow-sm);
+}
+.room-activity {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.activity-spark { letter-spacing: var(--tracking-pixel); color: var(--ink); }
+
+/* ─── Chat / messages ────────────────────────────────────────────────────── */
+.chat-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+/* Top region of the chat column: chat scroll area + timeline rail beside it.
+   Sits above the composer; the composer spans the full chat-column width
+   below this row, which is why the timeline visually ends at the composer
+   top rather than running the entire panel height. */
+.chat-region {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+.chat-region:has(.timeline-rail[hidden]),
+.chat-region:not(:has(.timeline-rail)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.chat-scroll-wrap,
+.thread-scroll-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 24px 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.chat-list.virtualized-list {
+  display: block;
+}
+.virtualized-spacer {
+  position: relative;
+  width: 100%;
+}
+.virtualized-row {
+  --bubble-shadow-offset: 2px;
+  --bubble-shadow-gutter: calc(var(--bubble-shadow-offset) + 2px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% - var(--bubble-shadow-gutter));
+  box-sizing: border-box;
+  overflow: visible;
+  /* Keep virtualization cheap without paint containment, which clips the
+     offset message shadows at row edges. */
+  contain: layout style;
+}
+.message-virtual-row {
+  padding-bottom: var(--space-16);
+}
+.message-virtual-row.has-followup {
+  padding-bottom: var(--space-6);
+}
+.message-virtual-row.is-grouped {
+  padding-bottom: var(--space-16);
+}
+.message-virtual-row.is-grouped.has-followup {
+  padding-bottom: var(--space-6);
+}
+.thread-virtual-row {
+  padding-bottom: var(--space-18);
+}
+.bubble pre,
+.bubble code {
+  scrollbar-width: thin;
+}
+.bubble pre::-webkit-scrollbar { height: 6px; }
+.bubble pre::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: var(--radius-xs); }
+.message-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 880px);
+  gap: var(--space-4);
+  align-items: start;
+  content-visibility: auto;
+  contain-intrinsic-size: 148px;
+}
+.message-gutter {
+  display: flex;
+  justify-content: center;
+  padding-top: 0;
+  height: 34px;
+}
+.message-row.is-grouped { margin-top: 0; }
+.message-row.is-you { justify-self: end; grid-template-columns: minmax(0, 880px) 34px; }
+/* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
+   colored author-name pill above the bubble carries the identity instead. */
+.message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
+.message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
+.message-row.is-you .message-gutter { order: 2; }
+.message-row.is-you .message-body { order: 1; align-items: flex-end; }
+/* Tight gap between the author pill and the bubble it labels — they should
+   read as a single unit. Inter-message spacing is governed by the parent
+   container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
+.message-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-right: var(--bubble-shadow-gutter, 6px);
+  padding-bottom: var(--bubble-shadow-gutter, 6px);
+}
+
+.author-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: 3px;
+}
+.author-name {
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-md);
+  padding: 3px 7px;
+  border: var(--line-sm);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-chip);
+}
+.mention-chip {
+  --mention-color: var(--teal);
+  --mention-ink: var(--ink);
+  display: inline-flex;
+  align-items: baseline;
+  padding: 3px 7px;
+  margin-inline: 2px;
+  background: var(--mention-color);
+  color: var(--mention-ink);
+  border: var(--line-xxs);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: var(--shadow-xxs);
+}
+.mention-chip-self {
+  box-shadow: var(--shadow-xs);
+}
+.author-role {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+
+.bubble {
+  background: var(--bubble);
+  border: var(--line-2);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--rule);
+  padding: var(--space-bubble-pad);
+  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
+  min-width: 0;
+}
+.message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
+
+.message-status {
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+}
+
+/* ─── Markdown body inside bubbles ───────────────────────────────────────── */
+.markdown > * { margin: 0 0 8px; }
+.markdown > *:last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2, .markdown h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-15);
+  letter-spacing: var(--tracking-tight);
+  margin: 12px 0 6px;
+}
+.markdown p { line-height: 1.6; }
+.markdown ul, .markdown ol { padding-left: 22px; line-height: 1.64; }
+.markdown li { margin: 2px 0; }
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  background: var(--paper-3);
+  padding: var(--space-chip-pad-xs);
+  border-radius: var(--radius-xs);
+}
+.markdown pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: var(--line-2);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+  font-size: var(--text-12);
+  line-height: 1.5;
+  color: var(--code-fg);
+}
+.markdown blockquote {
+  border-left: 4px solid var(--rule);
+  padding: 4px 12px;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+}
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.markdown th, .markdown td {
+  border: var(--line-xs);
+  padding: 6px 10px;
+  text-align: left;
+}
+.markdown tr:nth-child(2n) td { background: var(--paper-2); }
+.markdown a { color: var(--ink); text-decoration: underline; }
+.markdown del { color: var(--ink-faint); }
+
+/* ─── Agent roster ───────────────────────────────────────────────────────── */
+.agent-roster {
+  border-left: var(--line-2);
+  padding: 14px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  overflow-y: auto;
+  min-height: 0;
+}
+.roster-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font-family: var(--font-display);
+  font-size: var(--text-14);
+  letter-spacing: var(--tracking-lg);
+  padding: 8px 14px;
+  background: var(--lime);
+  color: var(--on-accent);
+  border: var(--line-md);
+  border-radius: var(--radius-none);
+  box-shadow: var(--shadow-md);
+  transform: rotate(-2deg);
+  width: fit-content;
+  margin: 0 0 6px 4px;
+}
+.focus-banner {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  padding: 6px 8px;
+  background: var(--pink);
+  color: var(--on-accent);
+  border: var(--line-2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-chip);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.focus-clear {
+  background: transparent;
+  border: var(--line-none);
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  font-weight: 700;
+}
+.roster-section { display: flex; flex-direction: column; gap: 6px; }
+.roster-section-head {
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  letter-spacing: var(--tracking-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--ink-soft);
+}
+.roster-busy { padding-left: 6px; border-left: 2px solid var(--pink); }
+.roster-card {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--space-10);
+  align-items: flex-start;
+  padding: 8px 2px;
+  background: transparent;
+  border: var(--line-none);
+  border-radius: var(--radius-none);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+.roster-card:hover { transform: translateX(1px); }
+.roster-card.focused {
+  transform: translateX(1px);
+}
+.roster-name { font-weight: 600; font-size: var(--text-13); }
+.roster-role { font-family: var(--font-mono); font-size: var(--text-10-5); color: var(--ink-soft); }
+.roster-note { font-size: var(--text-11); color: var(--ink-soft); margin-top: 3px; }
+
+/* ─── Timeline rail slot (V0 reserved space) ────────────────────────────── */
+.timeline-rail-slot {
+  border-left: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
+  background: transparent;
+}
+
+/* Timeline tooltip needs to escape the rail's overflow; we render it as
+   position:fixed in JSX so this rule just keeps the head-area visible. */
+.timeline-rail { overflow: visible; }
+.timeline-track { overflow-x: visible; }
+
+/* ─── Toast stack ────────────────────────────────────────────────────────── */
+/* Pill-shaped notifications anchored to the top-center of the chat region.
+   Mount point is `.main` (position: relative is added in styles.css) so toasts
+   live OVER the chat content, never over the sidebar or roster. Multiple
+   toasts stack vertically with a small gap. Click to dismiss. */
+.toast-stack {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  max-width: min(560px, 80vw);
+  padding: 8px 16px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-12-5);
+  border: var(--line-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  animation: toast-in 180ms ease;
+  text-align: center;
+}
+.toast:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow);
+}
+.toast-warn  { background: color-mix(in srgb, var(--yellow) 30%, var(--paper)); }
+.toast-error { background: color-mix(in srgb, var(--red) 26%, var(--paper)); }
+.toast-success { background: color-mix(in srgb, var(--lime) 30%, var(--paper)); }
+@keyframes toast-in {
+  from { transform: translate(-50%, -12px); opacity: 0; }
+  to   { transform: translate(-50%, 0);     opacity: 1; }
+}
+/* Override the centering transform that toast-in animates, so the stack's
+   center-transform isn't double-applied to each child after the keyframe
+   ends. The stack already provides the X-centering; individual toasts just
+   need their Y. */
+.toast-stack .toast { transform: none; animation-fill-mode: both; }
+
+/* ─── Agent color picker ─────────────────────────────────────────────────── */
+.agent-color-picker {
+  position: fixed;
+  z-index: var(--z-agent-color-picker);
+  width: 240px;
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  padding: var(--space-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  font-family: var(--font-mono);
+}
+.acp-head { display: flex; align-items: center; justify-content: space-between; }
+.acp-title {
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+  color: var(--ink);
+}
+.acp-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-6);
+}
+.acp-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: var(--line-sm);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  display: grid;
+  place-items: center;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.acp-swatch:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hover);
+}
+.acp-swatch.is-current {
+  outline: 2px dashed var(--ink);
+  outline-offset: 2px;
+}
+.acp-custom {
+  border-top: var(--line-rule-dashed-xs);
+  padding-top: var(--space-8);
+}
+.acp-custom-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.acp-custom-row input[type="color"] {
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: var(--line-sm);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+.acp-custom-hex { margin-left: auto; font-weight: 600; color: var(--ink); }
+.acp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: var(--line-rule-dashed-xs);
+  padding-top: var(--space-8);
+}
+.acp-reset {
+  background: transparent;
+  border: var(--line-xs);
+  border-radius: var(--radius-sm);
+  padding: var(--space-button-pad-sm);
+  font: inherit;
+  font-size: var(--text-10-5);
+  color: var(--ink);
+  cursor: pointer;
+}
+.acp-reset:hover { background: var(--paper-2); }
+.acp-default-chip {
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  padding: 2px 6px;
+  border: var(--line-xs);
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Vim navigation focus ──────────────────────────────────────────────────
+   A subtle steady yellow ring on the item under the J/K cursor. Explicitly
+   NOT animated — the timeline-click `.flash-highlight` is the loud one;
+   this stays calm so the eye can rest while moving through items.
+
+   Each panel applies the ring to its semantic "card" element:
+   - Message rows → on the .bubble (so the avatar/pill don't get a ring too)
+   - Sidebar room items → on the button itself
+   - Roster cards → on the button itself
+*/
+.message-row[data-vim-focused="true"] .bubble {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tangerine) 55%, transparent),
+    0 0 12px 0 color-mix(in srgb, var(--tangerine) 28%, transparent),
+    var(--shadow);
+  transition: box-shadow 140ms ease;
+}
+.room-item[data-vim-focused="true"],
+.roster-card[data-vim-focused="true"] {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tangerine) 60%, transparent),
+    0 0 12px 0 color-mix(in srgb, var(--tangerine) 28%, transparent),
+    var(--shadow-sm);
+}
+
+/* ─── Vim mode chip (rides above the user bubble) ────────────────────────── */
+.vim-mode-chip {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: var(--text-8);
+  letter-spacing: var(--tracking-lg);
+  padding: var(--space-chip-pad-sm);
+  border: var(--line-xs-ink);
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+}
+.vim-mode-chip.vim-mode-navigate {
+  background: var(--tangerine);
+  color: var(--ink);
+}
+.vim-mode-chip.vim-mode-typing {
+  background: var(--lime);
+  color: var(--ink);
+}
+
+/* ─── Flash highlight when scrolled to via timeline ──────────────────────── */
+/* Three-cycle throb with a soft yellow glow ring, plus an opacity pulse on the
+   bubble itself so the eye unambiguously catches the jump target even on long
+   message lists. Total duration ~2.4 s; the JS adds/removes the class within
+   that window. */
+.message-row.flash-highlight {
+  animation: flash-row 2.4s ease-out;
+}
+.message-row.flash-highlight .bubble {
+  animation: flash-throb 800ms ease-in-out 3;
+  position: relative;
+  z-index: var(--z-local-base);
+}
+@keyframes flash-throb {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--yellow) 90%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--yellow) 0%, transparent),
+      var(--shadow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--yellow) 75%, transparent),
+      0 0 24px 6px color-mix(in srgb, var(--yellow) 55%, transparent),
+      var(--shadow);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--yellow) 0%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--yellow) 0%, transparent),
+      var(--shadow);
+  }
+}
+@keyframes flash-row {
+  0%, 100% { transform: scale(1); }
+  6%       { transform: scale(1.015); }
+  12%      { transform: scale(1); }
+}
+
+/* ─── Context menu ──────────────────────────────────────────────────────── */
+.ctx-menu {
+  position: fixed;
+  z-index: var(--z-context-menu);
+  min-width: 220px;
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: 7px 10px;
+  background: transparent;
+  border: var(--line-none);
+  text-align: left;
+  font-size: var(--text-13);
+  color: var(--ink);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.ctx-item:hover { background: var(--paper-2); }
+.ctx-item:disabled {
+  opacity: 0.46;
+  cursor: default;
+}
+.ctx-item:disabled:hover { background: transparent; }
+.ctx-item.ctx-danger { color: var(--pink); }
+.ctx-item.ctx-danger:hover { background: color-mix(in srgb, var(--pink) 18%, transparent); }
+.ctx-shortcut {
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.ctx-divider {
+  height: 1.5px;
+  background: var(--ink-faint);
+  margin: 3px 4px;
+}
+
+/* ─── Thread badge under message ─────────────────────────────────────────── */
+.thread-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: 1px;
+  padding: 4px 8px 4px 4px;
+  background: transparent;
+  border: var(--line-none);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink);
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--radius-pill);
+}
+.thread-badge:hover { background: var(--paper-2); }
+.thread-badge-avs {
+  display: inline-flex;
+}
+.thread-badge-av {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  border: var(--line-xs);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  box-shadow: var(--shadow-xs);
+  margin-left: -4px;
+}
+.thread-badge-av:first-child { margin-left: 0; }
+.thread-badge-count {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--yellow);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.thread-badge-time { color: var(--ink-soft); }
+
+/* ─── Thread pane (right-side) ───────────────────────────────────────────── */
+/* When a thread is open, App.tsx sets the grid template inline based on the
+   user-resizable thread width. We don't override it here. */
+
+/* ─── Resize handle (between chat column and thread pane) ────────────────── */
+.resize-handle {
+  position: relative;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+}
+/* A 12px-wide invisible overlay makes the handle easy to grab without the
+   visible bar itself being thick. */
+.resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+.resize-handle-grip {
+  display: block;
+  width: 2px;
+  height: 36px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: var(--radius-pill);
+  transition: background 140ms ease, height 140ms ease;
+}
+.resize-handle:hover .resize-handle-grip,
+.resize-handle:focus-visible .resize-handle-grip,
+.resize-handle.is-dragging .resize-handle-grip {
+  background: var(--rule);
+  height: 60px;
+}
+.resize-handle:focus-visible { outline: none; }
+.thread-pane {
+  display: flex;
+  flex-direction: column;
+  border-left: var(--line-md);
+  background: var(--paper);
+  min-height: 0;
+  overflow: hidden;
+}
+.thread-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-button-pad-md);
+  border-bottom: var(--line);
+  background: var(--paper-2);
+}
+.thread-pane-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-family: var(--font-display);
+  font-size: var(--text-13);
+}
+.thread-pane-sep { color: var(--ink-faint); }
+.thread-pane-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+.thread-pane-close {
+  background: transparent;
+  border: var(--line-none);
+  font-size: var(--text-20);
+  line-height: 1;
+  padding: var(--space-button-pad-sm);
+  cursor: pointer;
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+}
+.thread-pane-close:hover { background: var(--paper-3); }
+.thread-pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  /* Without avatar gutters, consecutive messages need more vertical air so the
+     next author's pill doesn't run into the previous bubble. */
+  gap: var(--space-20);
+}
+.thread-replies {
+  display: block;
+}
+.thread-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  letter-spacing: var(--tracking-md);
+  padding: 4px 0;
+}
+.thread-divider-line {
+  flex: 1;
+  height: 1.5px;
+  background: var(--ink-faint);
+}
+.thread-empty {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+  padding: 18px 8px;
+  text-align: center;
+}
+.thread-parent .bubble {
+  background: var(--paper-2);
+}
+/* Slightly tighter bubble padding inside the thread pane — the pane itself is
+   narrower than the main chat, so 16px horizontal padding eats too much. */
+.thread-pane-body .bubble {
+  padding: 10px 12px;
+}
+.thread-pane-body .thread-divider {
+  margin: 4px 0;
+}
+
+/* ─── Poll widget ────────────────────────────────────────────────────────── */
+.poll-widget {
+  margin-top: 10px;
+  border: var(--line-sm);
+  border-radius: var(--radius-xl);
+  background: var(--paper-2);
+  padding: var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  box-shadow: var(--shadow-sm);
+}
+.poll-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+.poll-label {
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-lg);
+  background: var(--ink);
+  color: var(--on-ink);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+.poll-question {
+  font-family: var(--font-display);
+  font-size: var(--text-14);
+  color: var(--ink);
+}
+.poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.poll-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-10);
+  padding: 8px 10px;
+  border: var(--line-sm);
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  color: var(--ink);
+}
+.poll-option:hover { background: var(--paper-3); }
+/* Brutalist rule: borders are always --ink. Picked-state communicates via the
+   fill (the `.poll-option-fill` lime wash) plus a thicker shadow — not a
+   colored border. */
+.poll-option.picked {
+  border-color: var(--rule);
+  box-shadow: var(--shadow-hover);
+}
+.poll-option-icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: var(--line-xs);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  z-index: var(--z-local-base);
+}
+.poll-option-label {
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-sm);
+  z-index: var(--z-local-base);
+}
+.poll-option-fill {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--lime) 35%, transparent);
+  transition: width 240ms ease;
+  z-index: var(--z-local-floor);
+  pointer-events: none;
+}
+.poll-option.picked .poll-option-fill {
+  background: color-mix(in srgb, var(--lime) 55%, transparent);
+}
+.poll-option-count {
+  z-index: var(--z-local-base);
+  font-weight: 700;
+}
+.poll-option-voters {
+  display: inline-flex;
+  z-index: var(--z-local-base);
+}
+.poll-voter {
+  width: 18px;
+  height: 18px;
+  border: var(--line-xs);
+  border-radius: var(--radius-xs);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  margin-left: -4px;
+  box-shadow: var(--shadow-xs);
+}
+.poll-voter:first-child { margin-left: 0; }
+.poll-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  border-top: var(--line-dashed-faint);
+  padding-top: var(--space-8);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.poll-foot strong { color: var(--ink); }
+.poll-sep { color: var(--ink-faint); }
+
+.connection-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+  padding: var(--space-24);
+}
+
+.connection-error-box {
+  max-width: 560px;
+  border: var(--line-bold);
+  box-shadow: var(--shadow-lg);
+  background: var(--paper-2);
+  padding: var(--space-24);
+}
+
+.connection-error-box h1 {
+  margin: 16px 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-24);
+}
+
+.connection-error-box p {
+  margin: 8px 0 0;
+  font-family: var(--font-ui);
+  line-height: 1.45;
+}
+
+.empty-main {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+  border-left: var(--line-2);
+}
+
+.empty-main-box {
+  max-width: 520px;
+  border: var(--line-bold);
+  box-shadow: var(--shadow-lg);
+  background: var(--paper-2);
+  padding: var(--space-24);
+}
+
+.empty-main-box h1 {
+  margin: 16px 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-24);
+}
+
+.empty-main-box p {
+  margin: 8px 0 0;
+  font-family: var(--font-ui);
+  line-height: 1.45;
+}
+
+
+/* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
+/* Ported from the Claude Design prototype (board.jsx); colors/fonts/borders
+   mapped onto the app's existing design tokens. */
+
+.board-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+}
+.board-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: var(--line-2);
+  flex-wrap: wrap;
+}
+.board-title { display: flex; align-items: center; gap: 12px; }
+.board-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.board-filters {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  background: var(--paper);
+  color: var(--ink);
+  border: var(--line-md);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  letter-spacing: var(--tracking-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.filter-chip.active { background: var(--ink); color: var(--paper); }
+.filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
+
+.board-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 18px 22px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+.board-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.board-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: var(--line);
+  border-radius: var(--radius-panel-top);
+  border-bottom-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-md);
+  color: var(--ink);
+}
+.col-count {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+}
+.board-col-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px;
+  background: var(--paper-2);
+  border: var(--line);
+  border-radius: var(--radius-panel-bottom);
+  overflow-y: auto;
+  min-height: 0;
+}
+.task-card {
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-lg);
+  padding: 10px 11px 9px;
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+.task-card:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+.task-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.task-tag {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  padding: 1px 6px;
+  border: var(--line-xs-ink);
+  border-radius: var(--radius-xs);
+  color: var(--ink);
+}
+.task-tag-out {
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+.task-title {
+  font-weight: 600;
+  font-size: var(--text-13);
+  line-height: 1.35;
+  margin-bottom: 9px;
+  text-wrap: pretty;
+}
+.task-progress {
+  position: relative;
+  height: 14px;
+  border: var(--line-sm);
+  border-radius: var(--radius-xs);
+  background: var(--paper-3);
+  margin-bottom: 9px;
+  overflow: hidden;
+}
+.task-progress-fill {
+  height: 100%;
+  background: var(--yellow);
+  border-right: var(--line-sm);
+}
+.task-progress-label {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 700;
+  text-shadow: 0 0 2px var(--paper);
+}
+.task-reviewers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 5px 8px;
+  background: var(--paper-2);
+  border: var(--line-dashed-xs);
+  border-radius: var(--radius-sm);
+}
+.reviewer-label {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  letter-spacing: var(--tracking-md);
+}
+.reviewer-stack { display: flex; }
+.reviewer-stack > * { margin-left: -6px; }
+.reviewer-stack > *:first-child { margin-left: 0; }
+/* Stacked participant pills use the same box corner + offset shadow as the
+   message-row thread badge (.thread-badge-av) — not the default rounder avatar
+   chip — so the small avatars stay consistent with the rest of the UI. */
+.reviewer-stack .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+.task-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 7px;
+  border-top: var(--line-dashed-xs);
+}
+.task-assignee {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.task-assignee-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 600;
+}
+.task-live-pill {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  color: var(--ink);
+  background: var(--pink);
+  border: var(--line-xs-ink);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  animation: ticker 1.4s ease-in-out infinite;
+}
+.task-check {
+  font-family: var(--font-display);
+  font-size: var(--text-16);
+  color: var(--lime);
+  -webkit-text-stroke: 1.5px var(--ink);
+}
+.add-card {
+  background: transparent;
+  color: var(--ink-soft);
+  border: var(--line-dashed-sm);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  margin-top: 4px;
+  cursor: pointer;
+}
+.add-card:hover { background: var(--paper); color: var(--ink); }
+
+
+/* ═══════════════════ Thread Summary panel (CHAT tab) ═══════════════════ */
+/* Slides in from the left of the chat column; dots are aligned to each thread's
+   parent message and scroll-synced with the (virtualized) chat list by
+   ThreadSummaryPanel.tsx. Ported from thread-summary.jsx. */
+
+/* Layout glue: the chat column (messages + composer) and the optional summary
+   panel sit side by side inside .chat-view. */
+.chat-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-view.has-thread-summary { flex-direction: row; }
+
+.thread-summary-panel {
+  width: var(--thread-summary-width, 340px);
+  min-width: min(240px, 45vw);
+  max-width: min(620px, 70vw);
+  flex: 0 0 var(--thread-summary-width, 340px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+  position: relative;
+  border-right: var(--line);
+  container-type: inline-size;
+  animation: thread-summary-slide-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes thread-summary-slide-in {
+  from { transform: translateX(-14px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.thread-summary-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.thread-summary-empty p {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-13);
+  max-width: 28ch;
+}
+.thread-summary-scroll {
+  /* Native scroll is intentionally OFF — the track mirrors the chat list's
+     scroll via a transform (ThreadSummaryPanel.tsx), because the panel's
+     viewport is taller than the chat list and can't stay in 1:1 scrollTop
+     sync. Wheel events here are forwarded to the chat list. */
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.thread-summary-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  z-index: var(--z-local-control);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.thread-summary-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: transparent;
+}
+.thread-summary-resize-grip {
+  width: 2px;
+  height: 42px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+  opacity: 0.85;
+  transition: background 120ms ease, height 120ms ease, opacity 120ms ease;
+}
+.thread-summary-resize-handle:hover .thread-summary-resize-grip,
+.thread-summary-resize-handle:focus-visible .thread-summary-resize-grip,
+.thread-summary-resize-handle.is-dragging .thread-summary-resize-grip {
+  height: 64px;
+  opacity: 1;
+  background: var(--rule);
+}
+.thread-summary-resize-handle:focus-visible { outline: none; }
+.thread-summary-track {
+  position: relative;
+  width: 100%;
+  will-change: transform;
+}
+/* dotted vertical axis on the right edge of the panel */
+.thread-summary-axis {
+  position: absolute;
+  right: 18px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--ink) 0 6px,
+    transparent 6px 12px
+  );
+  opacity: 0.55;
+}
+.ts-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* `top` set inline by the rAF loop = the Y center of the linked bubble */
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  cursor: pointer;
+  outline: none;
+  min-width: 0;
+}
+.ts-row:focus-visible .ts-body {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+}
+.ts-body {
+  flex: 1;
+  min-width: 0;
+  width: calc(100% - 38px);
+  max-width: calc(100% - 38px);
+  box-sizing: border-box;
+  padding: 6px 14px 6px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  text-align: right;
+}
+.ts-meta {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-10-5);
+  color: var(--ink-faint);
+  letter-spacing: var(--tracking-xs);
+}
+.ts-author {
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+  text-transform: uppercase;
+}
+.ts-meta-sep { color: var(--ink-faint); }
+.ts-time { color: var(--ink-soft); }
+.ts-replies { color: var(--ink-soft); }
+.ts-summary {
+  font-family: var(--font-ui);
+  font-size: var(--text-11-5);
+  line-height: 1.32;
+  color: var(--ink);
+  text-wrap: pretty;
+  width: min(38ch, 100%);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  box-sizing: border-box;
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--ts-summary-lines, 3);
+}
+.ts-summary.is-truncated {
+  padding-right: 1.4ch;
+}
+.ts-summary.is-truncated::after {
+  content: "...";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+}
+.ts-summary * { overflow-wrap: anywhere; }
+.ts-summary p { margin: 0; }
+.ts-summary p + p { margin-top: 6px; }
+.ts-summary strong { font-weight: 700; color: var(--ink); }
+.ts-summary code {
+  font-family: var(--font-mono);
+  font-size: var(--text-12-5);
+  background: var(--paper-2);
+  padding: 0 4px;
+  border: var(--line-hair-faint);
+}
+.ts-foot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-10-5);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.ts-avatars {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.ts-avatars > * { margin-left: -5px; }
+.ts-avatars > *:first-child { margin-left: 0; }
+/* Match the message-row thread badge: box corner + offset shadow, not the
+   default rounder avatar chip. */
+.ts-avatars .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+.ts-avatars-more {
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  margin-left: 4px;
+}
+.ts-last {
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.ts-connector {
+  flex-shrink: 0;
+  width: 12px;
+  height: 2px;
+  background: var(--ink);
+  align-self: center;
+  opacity: 0.65;
+}
+.ts-dot {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: var(--line-md);
+  margin-right: 11px; /* 18 (axis offset) - 7 (half dot) */
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 1;
+}
+
+@container (max-width: 290px) {
+  .ts-body {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .ts-meta {
+    gap: 4px;
+  }
+  .ts-foot {
+    gap: 6px;
+  }
+}
+
+/* Composer footer toggle that opens/closes the panel */
+.thread-scan-btn {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-2);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-family: var(--font-display);
+  font-size: var(--text-10-5);
+  letter-spacing: var(--tracking-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.thread-scan-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+.thread-scan-btn.active { background: var(--lilac); }

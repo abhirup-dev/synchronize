@@ -1,0 +1,19 @@
+{
+  "name": "@synchronize/pi-extension",
+  "version": "0.1.0",
+  "description": "Pi coding-agent extension that subscribes to the synchronize daemon's event stream and injects incoming events as user messages (steer / followUp).",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": { "optional": true }
+  }
+}
