@@ -970,7 +970,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     const group = getGroupById(ctx.db, target.group_id);
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
-    const parentEventId = target.parent_event_id;
+    // Thread root: if the target is already a thread reply, inherit its root;
+    // if the target is a top-level message, the target itself becomes the root.
+    // Must match resolveThreadParent so bridge_reply and bridge_send_group(in_reply_to)
+    // thread identically (a top-level reply target was previously left parentless).
+    const parentEventId = target.parent_event_id ?? target.event_id;
     const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
     const mentionedPeerIds = rawMentionedPeerIds.filter((peerId) => peerId !== senderPeerId);
     const mentionsJson = mentionedPeerIds.length > 0 ? JSON.stringify(mentionedPeerIds) : null;

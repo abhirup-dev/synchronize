@@ -132,10 +132,14 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       event: { event_id: number; parent_event_id: number | null; reply_to_event_id: number | null };
       posted_to: { surface: string; direct_event_id: number; direct_sender: string; direct_preview: string };
     };
-    expect(mainReply.event.parent_event_id).toBeNull();
+    // Regression: bridge_reply to a TOP-LEVEL message must derive parent_event_id
+    // (the target becomes the thread root) so it threads identically to
+    // bridge_send_group(in_reply_to). The daemon owns parent derivation; the agent
+    // only supplies in_reply_to. Both parent_event_id and reply_to_event_id are filled.
+    expect(mainReply.event.parent_event_id).toBe(root.event.event_id);
     expect(mainReply.event.reply_to_event_id).toBe(root.event.event_id);
     expect(mainReply.posted_to).toMatchObject({
-      surface: "group_main",
+      surface: "thread",
       direct_event_id: root.event.event_id,
       direct_sender: "codex",
       direct_preview: "hello room",
@@ -186,7 +190,9 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
-    expect(history.events.some((event) => event.body === "main bridge reply")).toBe(true);
+    // "main bridge reply" now threads under root (parent derived), so it is NOT a
+    // flat main-channel row — it lives in the thread, asserted below.
+    expect(history.events.some((event) => event.body === "main bridge reply")).toBe(false);
     const reacted = parseToolText(
       await client.callTool({ name: "bridge_react", arguments: { event_id: root.event.event_id, emoji: "👍" } }),
     ) as { reactions: Array<{ emoji: string; count: number; by: Array<{ session_name: string }> }> };
@@ -200,11 +206,11 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     const threads = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room", view: "threads" } }),
     ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
-    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 3 })]);
+    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 4 })]);
     const status = parseToolText(
       await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "status" } }),
     ) as { status: { root_event_id: number; event_count: number } };
-    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 4 });
+    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 5 });
     const transcript = parseToolText(
       await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "transcript" } }),
     ) as { transcript: string };
@@ -223,6 +229,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     expect(queried.rows.map((row) => row.body)).toEqual([
       "hello room",
       "thread reply",
+      "main bridge reply",
       "threaded bridge reply",
       "second thread reply",
     ]);
