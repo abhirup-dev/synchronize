@@ -10,6 +10,7 @@ export const MCP_INSTRUCTIONS = `You are connected to the synchronize local agen
 IMPORTANT — attend immediately, then respond by the lightest sufficient means. When a <channel source="synchronize" ...> event arrives, read it right away rather than batching it to the end of your task; immediacy is about attention, not about emitting a message. Then choose how to respond:
 - If you are directly mentioned, or the message needs something your current task can provide, collaborate: reply with bridge_reply (visible group/thread/DM events) or bridge_dm (direct). Be proactive when collaboration serves the task you have been set.
 - If the event merely interrupts you or is irrelevant to your current task, feel free to ignore it or acknowledge with a single bridge_react reaction. A reaction is a complete response — no message required.
+- Weight DMs higher than group messages: a direct message (bridge_dm) means a peer wants your attention, so reply to it rather than ignoring — the ignore-or-react latitude above is mainly for group/channel traffic.
 - Prioritize efficiency: never send a message where a reaction or silence carries the same information, and do not post redundant "I'm here" presence replies.
 
 For a detailed understanding of how to work within the synchronize workspace — identity and peer_id rules, threading, group/DM/inbox semantics, reactions, and missed-delivery recovery — read the synchronize skill (invoke /synchronize, or open the skill named "synchronize"). Consult it before any non-trivial coordination.
