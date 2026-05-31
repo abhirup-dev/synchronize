@@ -323,6 +323,22 @@ Sources: pi-low (172), pi-medium (173), pi-high (174), haiku (175/177/180/182/18
 
 ---
 
+## Thread 4 result — query instinct & thread collaboration (event 196) → performance/index signal
+Method (per user 189): capture **first instinct before reasoning** for catch-up/triage/query tasks; the instinct↔tool divergence is the finding, and call-frequency tells us which surfaces to make performant. Sources: pi-low (197), pi-high (198), pi-medium (199), haiku (200), sonnet (201) — opus pending. (Operator note: the Thread-4 prompt itself dogfooded F8 — bare `@X` warned `alias_not_in_group`.)
+
+### F16 — Instinct→tool map, and the performance/index priorities it implies
+- **S1 — catch up on a ~100-message thread you were tagged into:** instinct splits by host — Pi → `get_thread(format: transcript)`; Claude (haiku, sonnet) → `get_thread_summary` (digest first, then tail). **Divergence/gap:** thread tools are **root-keyed**, but the envelope gives the *mention* event-id, not the root — agents want `get_thread(event_id: <current>)` to resolve the root itself (pi-high 198, pi-medium 199). Chain today: 1 if root known, 2 if root must be discovered. Ties to F12 (`reply` should be event-id-relative too).
+- **S2 — triage a new group with many threads:** **unanimous `list_threads`.** Finding (sonnet 201, haiku 200): they want it to be a **triage tool** — one-line preview per thread (title / reply_count / last-activity / snippet) so triage doesn't fan out to **N+1** (`list_threads` then a summary per thread). Today it's "just a list."
+- **S3 — "what has @X been doing lately in this group?":** **unanimous GAP.** Everyone's instinct is `query_events` with a sender filter, but all are *guessing* the SQL/views AND need an alias→peer_id resolution first. Multiple independently proposed a first-class reader: `bridge_group_activity(name, alias)` (pi-low, pi-high) or `group_history(author:, since:, mentions:)` (pi-medium, sonnet). "Raw SQL is the wrong answer at scale" (pi-high). **This is the sharpest missing surface.**
+- **S4 — gist of one long thread:** **unanimous `get_thread_summary`, 1 call** — the one scenario where the surface matches instinct exactly (sonnet: "no hesitation").
+- **Performance / index priorities (the user's actual goal here):**
+  1. **Author-activity query (S3) is the #1 index candidate** — build it as a first-class `group_history(author:, since:)` (NOT raw SQL) backed by an index on `(group_id, sender_peer_id, created_at)`. It's both a missing tool and the heaviest scan if left to `query_events`.
+  2. **`get_thread` / `get_thread_summary` are hot paths (S1, S4)** — keep thread-by-root and summary fast; cache summaries (the summary is requested first, before reading).
+  3. **`list_threads` needs preview fields (S2)** so triage is one call, not N+1 — enrich the response with `(title?, reply_count, last_event_at, snippet)`; ensure those are cheap (reply_count/last_reply_event_id already exist on history rows).
+- **Disposition:** `BD` (P2) author-filtered `group_history` + index; `BD` (P2) `list_threads` triage-preview response shape; `BD` (P3) summary caching. All reframe as *extend existing* readers, not new SQL surface. Note: S1's root-resolution gap is largely covered by F12 (`reply`) + F11 (`get_thread` accepting an event-id, not only a root).
+
+---
+
 ## Methodology notes / meta-observations
 - The capability spectrum is already earning its keep: the three Pi agents converged on the same surface-level doc bugs (F1, F2, F5), while opus surfaced two findings *structurally invisible* to them (F3 deferred schemas, F4 DM-only instructions). Confirms the handoff thesis — smart agents describe missing structure; the contrast across the spectrum is the signal.
 - Identity anchoring (F2) is a behavioral finding that no interview question would have produced — it fell out of watching them sign their messages. Watch behavior, not just answers. Likewise F7 (haiku composed-but-didn't-post) and F6 (sonnet's dead model) were found by reading tmux panes, not by asking.
