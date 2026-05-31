@@ -2,6 +2,11 @@
 
 Companion to `docs/skill-mcp-research-findings.md` (the raw findings F1–F18 + P1/P2/P3 + A1, all cross-checked against daemon source). This doc **organizes** those findings into a phased plan, split per the operator's directive into **NOW** (ship this work) and **LATER** (queued improvements).
 
+## v0 scope cut (user, 2026-05-31)
+- **Phases [0]–[4] = current v0 — immediately addressable, priority P0/P1.** Skill rewrite, reply-routing/visibility cluster, react/ack, the A1 injection substrate, and MCP lean consolidation all land in v0.
+- **Phases [5]–[7] = later — uniformly P2.** Collaboration primitives (corrects/supersedes, presence, artifact store), perf/index, and host/harness fixes are deferred; not v0-blocking.
+- bd reflects this: every [0]–[4] issue is P0 (`sync-bsvi`) or P1; every [5]–[7] issue is P2.
+
 ## At-a-glance (sequence ↓ · ✦ how it improves life on the bus)
 ```
 [0] NOW · skill rewrite ........... sync-b8p (+ unblocks s7r.7/.8)   pure doc
