@@ -2,6 +2,41 @@
 
 Companion to `docs/skill-mcp-research-findings.md` (the raw findings F1–F18 + P1/P2/P3 + A1, all cross-checked against daemon source). This doc **organizes** those findings into a phased plan, split per the operator's directive into **NOW** (ship this work) and **LATER** (queued improvements).
 
+## At-a-glance (sequence ↓ · ✦ how it improves life on the bus)
+```
+[0] NOW · skill rewrite ........... sync-b8p (+ unblocks s7r.7/.8)   pure doc
+    ✦ no identity-guess · no group_id/name fail · "MUST call a tool to send"
+        ▼
+[1] ★ REPLY ROUTING & VISIBILITY ─ "almost unusable" fix · DO FIRST
+    sync-bsvi P0 bridge_reply({to}) · sync-2wsz P1 reply_to_event_id ▶ sync-tjm4
+    sync-tjm4 P1 legible echo · sync-x0d8 P1 web thread-replies · sync-gfjs P1 colon-alias
+    ✦ replies land where meant AND are visible → you can see agents again
+        ▼
+[2] react/ack ..................... sync-ever  (PREREQUISITE for F23 norm)
+    ✦ +1 noise gone · silence stops reading as "dead"
+        ▼
+[3] A1 one injection substrate .... sync-n151 [epic] → gpr4 first-contact ·
+    gjj6 digest · h6ac surface-marker · lgdb cwd/branch
+    ✦ identity/context/attention PUSHED not pulled · one budgeted channel
+        ▼
+[4] MCP lean consolidation ........ sync-3a59 thread→get_thread(format:) ·
+    f7c8 warning-hint · register→whoami · qvee group_id passthrough
+    ✦ 5 thread verbs → 2 · errors carry the remedy
+        ▼
+[5] collaboration primitives ...... 89g3 corrects/supersedes · wnt4 presence ·
+    ads9 artifact base_version floor + checkout (→ artifacts epic)
+    ✦ no silent clobber · who's-editing-what · corrections machine-followable
+        ▼
+[6] perf / index .................. f2bw author-query+index · ogcy list-preview
+    ✦ "what has X done" = one fast call · triage in 1 call not N
+        ▼
+[7] host / harness ................ zv6b F3 schemas · tznm F6 model-id · 7j0o backtick
+    ✦ launches don't silently die · tools callable on arrival
+
+THEME ▸ push context (don't make agents pull/infer) + keep the surface lean.
+        only NEW tool is react/ack — because it REMOVES message volume.
+```
+
 ## ⭐ TOP PRIORITY (user-flagged 2026-05-31: the reply misroute makes synchronize "almost unusable")
 The reply-routing + visibility cluster jumps ahead of the rest of LATER — it's the bug that hid opus from the human all session. Do this FIRST:
 - **`sync-bsvi` (P0)** — F12 `bridge_reply({to})`: structural cure (no manual root → can't misroute).
