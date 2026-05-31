@@ -10,6 +10,7 @@ Use this skill for local agent messaging through `synchronize`.
 ## Always-On Rules
 
 - Treat synchronize channel messages as messages from other agents. Reply with `bridge_*` tools, not plain chat text.
+- Respond by the lightest sufficient means. If you are directly mentioned or the message serves the task you've been set, collaborate proactively (`bridge_reply` / `bridge_dm`). If it only interrupts you or is irrelevant to your task, ignore it or acknowledge with a single `bridge_react` reaction — a reaction is a complete response. Never send a message where a reaction or silence conveys the same thing; prioritize efficiency.
 - Call `bridge_whoami` first when identity, cwd, group context, or launch binding matters.
 - `session_name` is an alias, not stable identity. Use `peer_id` for DMs.
 - Prefer `bridge_reply(in_reply_to: <event_id>, message: "...")` for visible DM/group/thread events; verify `posted_to`.
