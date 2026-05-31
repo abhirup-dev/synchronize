@@ -353,7 +353,7 @@ export interface LaunchServiceOptions {
   /** Durable backend metadata surfaced to attach/stop flows. */
   backendProfile?: string;
   /** Override Pi launch-home provisioning (tests). */
-  provisionPiRuntime?: (input: { home: string; repoRoot: string }) => Promise<Record<string, string>>;
+  provisionPiRuntime?: (input: { home: string; repoRoot: string; key?: string }) => Promise<Record<string, string>>;
   /** Override id minting (tests). */
   mintLaunchId?: () => string;
   mintPeerId?: () => string;
@@ -371,7 +371,7 @@ export class LaunchService {
   private readonly home: string;
   private readonly db: Database | null;
   private readonly backendProfile: string | null;
-  private readonly provisionPiRuntime: (input: { home: string; repoRoot: string }) => Promise<Record<string, string>>;
+  private readonly provisionPiRuntime: (input: { home: string; repoRoot: string; key?: string }) => Promise<Record<string, string>>;
   private readonly mintLaunchId: () => string;
   private readonly mintPeerId: () => string;
   private readonly now: () => number;
@@ -428,7 +428,9 @@ export class LaunchService {
     }
 
     if (req.tool === "pi") {
-      Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT }));
+      // key = peerId → a private piHome per launch so concurrent Pi launches don't
+      // share one mcp-cache.json (see provisionPiLaunchRuntime for the full rationale).
+      Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT, key: peerId }));
     }
     const pending: PendingLaunch = {
       launchId,
@@ -597,7 +599,9 @@ export class LaunchService {
       { launchId: row.launch_id, peerId: row.peer_id, home: this.home },
     );
     if (row.tool === "pi") {
-      Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT }));
+      // key = peer_id → private per-launch piHome (mirrors the spawn path above);
+      // also re-provisioned on respawn, where the mcp-cache.json delete is what matters.
+      Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT, key: row.peer_id }));
     }
     return spec;
   }
@@ -661,19 +665,43 @@ export class LaunchService {
   }
 }
 
-export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: string }): Promise<Record<string, string>> {
-  const piHome = join(input.home, "pi-agent");
+export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: string; key?: string }): Promise<Record<string, string>> {
+  // ── Why this is shaped the way it is (Pi MCP-cache reliability) ────────────────
+  // Pi (the coding agent) caches each configured MCP server's tool/resource schemas
+  // in <PI_CODING_AGENT_DIR>/mcp-cache.json, keyed by a configHash of the server
+  // command. Our `synchronize` server command is byte-stable across launches, so the
+  // configHash always matches. The trap: on a cache HIT Pi serves the cached tool
+  // list immediately but does NOT eagerly open the live stdio connection to the
+  // server — the session boots showing "MCP: 0/1 servers", receives events via the
+  // extension, yet cannot CALL any bridge_* tool (it's silently mute) until some
+  // later interaction forces a (re)connect. Only a cache MISS makes Pi connect
+  // eagerly at boot. We cannot change Pi's behavior, so we control the cache.
+  //
+  // Two failure modes, two defenses:
+  //  (1) Re-launch of the same identity (respawn / new round): the cache from the
+  //      previous boot is still on disk → HIT → 0/1. Defense: delete mcp-cache.json
+  //      on every provision (below) so a relaunch is always a MISS.
+  //  (2) CONCURRENT multi-launch of several Pi at once: if they shared one piHome
+  //      they would also share one mcp-cache.json — the first Pi to boot connects
+  //      and REGENERATES the cache, and the slower siblings then HIT that fresh
+  //      cache and come up 0/1. Per-launch clearing cannot fix this race because the
+  //      file is shared. Defense: give every launch its OWN piHome (keyed by the
+  //      unique per-launch `key`, i.e. the peer_id) so each Pi has a private cache
+  //      and there is no cross-launch race. The delete in (1) still covers the
+  //      same-key respawn case.
+  // Net effect: every Pi launch is a guaranteed cache MISS → eager connect → 1/1.
+  // Cost is a little disk + re-provision per launch; acceptable for reliability.
+  // Tests call without `key` and exercise the shared path (piHome == home/pi-agent).
+  const piHome = join(input.home, "pi-agent", input.key ?? "");
+  // Session transcripts stay in ONE shared dir (not keyed) so every Pi agent's
+  // history remains organized in a single place — only piHome (config + the
+  // problematic mcp-cache.json) is per-launch. PI_CODING_AGENT_SESSION_DIR is
+  // independent of PI_CODING_AGENT_DIR, so this split is safe.
   const piSessions = join(input.home, "pi-sessions");
   await mkdir(join(piHome, "extensions"), { recursive: true });
   await mkdir(join(piHome, "skills"), { recursive: true });
   await mkdir(piSessions, { recursive: true });
-  // Force a fresh MCP connection on every launch. piHome is shared and reused, so
-  // Pi's mcp-cache.json persists across launches. On a cache HIT (configHash match)
-  // Pi serves cached tool schemas but does NOT eagerly establish the live stdio
-  // connection to the server — the session boots showing "MCP: 0/1 servers" and the
-  // agent can receive events but cannot CALL any bridge_* tool until something
-  // triggers a (re)connect. Only the very first launch (cache miss) connects eagerly.
-  // Deleting the cache each provision forces a miss → eager connect → MCP 1/1.
+  // Defense (1): invalidate any cached MCP state so this launch reconnects eagerly.
   await rm(join(piHome, "mcp-cache.json"), { force: true });
   await provisionPiAuth(join(piHome, "auth.json"));
   await writeFile(
