@@ -28,6 +28,15 @@ These three came out of the in-session thread-misroute incident (opus invisible 
 - **Sequencing note:** F19's response-echo is the highest-leverage of the three (turns a *silent* misroute *loud* with no behavior change) — pairs naturally with react/ack as an early, cheap Phase-3 quick-win. F21 is small but high-impact (it silently cut the operator's own surface out of thread pushes).
 - **Still un-filed (fold when convenient):** F3 (deferred-schema host fix / doc-mitigation), F6 (sonnet launch model-id + health-check), F8-daemon (double-backtick strip). The NOW skill-fixes (F1-skill/F2/F4/F8-doc/F10-skill/P3-norm/F19-skill-line) live inside `sync-b8p`, not separate issues.
 
+### Post-status-update additions (F22–F23 + F19 enrichments — accounting for everything shared after the event-287 wrap)
+The 287 status-update reflected F1–F21. These came after and are now reconciled in:
+- **F19 enrichments** (filed/linked): `sync-2wsz` (preserve `reply_to_event_id`, **blocks** `sync-tjm4`); the legible-echo spec (root-preview + accidental-thread nudge); the GUI surface-thread-replies item (P6/web); the regression-after-nudge evidence (band-aid skill-line insufficient → structural echo/`bridge_reply` needed).
+- **F22 — message formatting awareness → NOW, folds into `sync-b8p`.** GFM renders (`sync-0ur` shipped) but undocumented; add a **failure-first** formatting reference: (1) blank-line-between-blocks (single `\n` collapses — no `remark-breaks`, *silent*), (2) backtick escape incl. the double-backtick gap, (3) safe palette, (4) "images not yet." No MCP change.
+- **F23 — reply discipline → react/ack becomes a PREREQUISITE, not just "first cheap win".** F14 (`sync-ever`) must ship **before** the F23 norm, because norm-without-ack makes silence read as dead (proven live, event 256). The norm itself (reader-side test: react=deference, reply=independent contribution; no designated responder) folds into `sync-b8p`. **Priority bump: `sync-ever` (react/ack) is now gating, ahead of the P1/P2 injector.**
+- **`sync-b8p` NOW-scope grew** — it now also carries: the F19 "`in_reply_to` isn't sticky" skill line, the F22 formatting reference doc, and the F23 reply-discipline norm. Still pure-doc; still closes with `sync-s7r.7/.8`.
+
+**Net:** everything shared after the 287 wrap is filed (F19-data-model/F20/F21/F3/F6/F8-daemon) or folded into `sync-b8p` (F19-line/F22/F23), with react/ack repriced as a prerequisite. Nothing post-287 is dangling.
+
 ---
 
 # NOW — ship this session/epic (pure skill + doc; finishes `sync-b8p`)
