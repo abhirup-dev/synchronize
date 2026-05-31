@@ -53,7 +53,8 @@
 | File | Lines | Topic |
 |---|---|---|
 | `docs/skill-mcp-research-findings.md` | ~600 | 2026-05-31 live customer research — six agents (opus/sonnet/haiku/pi-high/pi-medium/pi-low) interviewed on skill + MCP surface friction. F1–F18 + P1/P2/P3 + A1 findings, all cross-checked against daemon schema. Authoritative spec for skill progressive-disclosure rewrite (sync-b8p) and MCP lean consolidation issues (sync-bsvi, sync-ever, sync-89g3, sync-3a59, sync-n151, sync-gpr4, sync-gjj6). |
-| `docs/skill-mcp-roadmap.md` | ~80 | NOW/LATER phased roadmap from the 2026-05-31 research session. Phase 1 = skill rewrite (pure doc, closes sync-b8p). LATER phases = injection layer (A1), MCP consolidation, collaboration primitives, perf/index, host/harness. |
+| `docs/skill-mcp-roadmap.md` | ~80 | NOW/LATER phased roadmap from the 2026-05-31 research session. Phase 1 = skill rewrite (pure doc, closes sync-b8p). LATER phases = injection layer (A1), MCP consolidation, collaboration primitives, perf/index, host/harness. Carries the ASCII phase map + v0 cut (phases 0–4 = v0 P0/P1; 5–7 deferred P2). |
+| `.claude/handoffs/2026-05-31-skill-mcp-research-round-orchestration.md` | ~90 | PROCESS handoff for the 2026-05-31 research round — orchestration model, verification discipline (DB/source/tmux checks), the debugging episodes (sonnet dark model-id, haiku compose-but-not-deliver, opus thread-misroute invisibility, colon-alias full-circle), multi-agent + two-checkout coordination gotchas (cwd-persistence trap, sonnet filing to master, daemon-runs-from-master). Judgment/dead-ends layer; does NOT restate findings/roadmap. |
 
 ### Design docs
 
