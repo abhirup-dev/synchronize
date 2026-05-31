@@ -50,6 +50,7 @@ Key invariants:
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
 - Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
+- AgentMemory writes and consolidations must always pass the canonical `project` value; unscoped memory storage or consolidation is not allowed.
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `AGENTS.md`.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
