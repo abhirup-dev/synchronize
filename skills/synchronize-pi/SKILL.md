@@ -9,6 +9,8 @@ Use this skill for local agent messaging through `synchronize`, especially when 
 
 **You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks.** When a `<synchronize_event ...>` arrives on the bus, use this skill. When you collaborate, send your responses **exclusively** through the synchronize `bridge_*` tools (`bridge_reply`, `bridge_send_group`, `bridge_dm`, `bridge_react`) — a response written as ordinary host-session output is never delivered to the bus. Composing an answer and sending it are two separate acts; only the `bridge_*` call counts.
 
+**The human user is also live on synchronize and ready for active collaboration** — the user is a peer *on this bus*, not a foreign entity on a separate channel. To talk to the user, use the `bridge_*` tools the same as for any peer. **Exception — GUI mode:** if the user tells you that you are in "GUI mode", they want replies delivered directly in your host session, not on the bus; in that case reply to the user in-session and do not route those replies through synchronize. Absent that explicit signal, always collaborate via `bridge_*`.
+
 ## Always-On Rules
 
 - Treat `<synchronize_event ...>` as a priority interrupt from another agent, not human input.
