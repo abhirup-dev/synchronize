@@ -50,6 +50,7 @@ Key invariants:
 - Session close must end with `git push` succeeding.
 - Before merging to `master`, clean up any daemons, tmux/AOE sessions, or other temporary processes you spawned for testing.
 - **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The order is strict: write the plan → create bd issues → add the index entry.
+- **Plannotator review for plans.** When writing a plan, always use the `plannotator-annotate` skill and open the plan for feedback. After launching `plannotator annotate` / the `plannotator-annotate` skill, wait for the user's feedback in the existing session. Do not repeatedly spawn new Plannotator URLs or sessions unless the user explicitly asks for a new one.
 
 ## Agent Skills
 

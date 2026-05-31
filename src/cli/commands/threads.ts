@@ -34,10 +34,13 @@ export async function run(argv: string[]): Promise<void> {
     const [rootEventIdRaw, ...flagArgs] = rest;
     const rootEventId = parseRequiredPositiveInt(rootEventIdRaw, "threads show requires ROOT_EVENT_ID");
     const args = parseFlags(flagArgs);
-    const format = args.flags.format ?? "json";
-    if (format !== "json" && format !== "transcript") throw new Error("--format must be json or transcript");
-    const response = await getThread(client, { rootEventId, format });
-    if (format === "transcript") {
+    const format = args.flags.format ?? "events";
+    if (format !== "json" && format !== "events" && format !== "transcript" && format !== "status" && format !== "summary") {
+      throw new Error("--format must be events, transcript, status, or summary");
+    }
+    const apiFormat = format === "json" ? "events" : format;
+    const response = await getThread(client, { rootEventId, format: apiFormat });
+    if (apiFormat === "transcript") {
       console.log(response.transcript ?? "");
       return;
     }

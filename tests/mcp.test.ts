@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NotificationBridge } from "../src/mcp/codex-notifier.ts";
-import { emitMcpNotification } from "../src/mcp/notifications.ts";
+import { emitMcpNotification, formatClaudeChannelMeta } from "../src/mcp/notifications.ts";
 import type { ClientConfig } from "../src/client.ts";
 
 const homes: string[] = [];
@@ -59,9 +59,11 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
     sender_peer_id: "a",
     recipient_peer_id: "b",
     group_id: null,
+    group_name: null,
     body: "hello",
     media_id: null,
     parent_event_id: null,
+    reply_to_event_id: null,
     mentions_json: null,
     skill_directives_json: null,
     created_at: new Date().toISOString(),
@@ -92,6 +94,15 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
   const claudeCall = calls[1] as { params: { meta: Record<string, unknown> } };
   expect(claudeCall.params.meta).not.toHaveProperty("source");
   expect(Object.values(claudeCall.params.meta).every((value) => typeof value === "string")).toBe(true);
+  expect(
+    formatClaudeChannelMeta({
+      ...event,
+      type: "group_message",
+      recipient_peer_id: null,
+      group_id: 2,
+      group_name: "discussion-round-table",
+    }),
+  ).toMatchObject({ group_id: "2", group_name: "discussion-round-table" });
 });
 
 test("Codex NotificationBridge polls one peer event stream and keeps a bounded buffer", async () => {

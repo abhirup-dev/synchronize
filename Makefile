@@ -214,8 +214,7 @@ install-claude: link
 		claude mcp add synchronize --scope user -e SYNCHRONIZE_MCP_MODE=claude -- sh -c "$$cmd"
 	@bun run scripts/claude-hooks-config.ts $(CLAUDE_DIR)/settings.json
 	@mkdir -p $(CLAUDE_DIR)/skills
-	@rm -rf $(CLAUDE_DIR)/skills/synchronize
-	@cp -R skills/synchronize-claude $(CLAUDE_DIR)/skills/synchronize
+	@bun run scripts/install-skill.ts claude $(CLAUDE_DIR)/skills/synchronize
 	@echo "Claude: MCP server registered + hook configured + skill copied to $(CLAUDE_DIR)/skills/synchronize"
 
 install-codex: link
@@ -239,7 +238,7 @@ install-pi: link
 		'}' \
 		> $(PI_AGENT_DIR)/extensions/synchronize.ts
 	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
-	@cp -R skills/synchronize-pi $(PI_AGENT_DIR)/skills/synchronize
+	@bun run scripts/install-skill.ts pi $(PI_AGENT_DIR)/skills/synchronize
 	@echo "Pi: mcp.json updated + extension shim written + skill copied to $(PI_AGENT_DIR)/skills/synchronize"
 
 install-all: install-claude install-codex install-pi

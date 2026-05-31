@@ -33,6 +33,10 @@ afterAll(async () => {
 test("agent session bindings upsert by native session and rename by peer id", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-agent-session-"));
   homes.push(home);
+  const gitRepo = await mkdtemp(join(tmpdir(), "synchronize-agent-session-git-"));
+  homes.push(gitRepo);
+  const gitInit = Bun.spawnSync({ cmd: ["git", "init", "-b", "context-test"], cwd: gitRepo, stdout: "pipe", stderr: "pipe" });
+  expect(gitInit.exitCode).toBe(0);
   const daemon = await startDaemon(home);
 
   try {
@@ -40,7 +44,7 @@ test("agent session bindings upsert by native session and rename by peer id", as
       hostTool: "claude",
       hostSessionId: "claude-native-1",
       hostSessionFile: "/tmp/claude-native-1.jsonl",
-      cwd: "/tmp/project",
+      cwd: gitRepo,
       sessionName: "backend-review",
       tool: "claude",
       purpose: "claude session",
@@ -51,6 +55,9 @@ test("agent session bindings upsert by native session and rename by peer id", as
     expect(registered.binding.host_session_id).toBe("claude-native-1");
     expect(registered.binding.peer.session_name).toBe("backend-review");
     expect(registered.binding.peer.tool).toBe("claude");
+    expect(registered.binding.cwd).toBe(gitRepo);
+    expect(registered.binding.git_branch).toBe("context-test");
+    expect(registered.binding.git_dirty).toBe(false);
 
     const renamed = await renameAgentSession(daemon.client, {
       peerId: registered.binding.peer_id,
@@ -80,6 +87,8 @@ test("agent session bindings upsert by native session and rename by peer id", as
     });
     expect(upserted.binding.peer_id).toBe(registered.binding.peer_id);
     expect(upserted.binding.cwd).toBe("/tmp/project-2");
+    expect(upserted.binding.git_branch).toBeNull();
+    expect(upserted.binding.git_dirty).toBeNull();
 
     const allClaude = await listAgentSessions(daemon.client, { hostTool: "claude" });
     expect(allClaude.bindings).toHaveLength(1);
@@ -260,7 +269,7 @@ test("alias is freed on leave and reclaim by a different peer emits an audit eve
     await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "scribe" });
 
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: bob.peer.peer_id });
-    const reclaims = history.events.filter((event) => event.type === "group_member_alias_reclaimed");
+    const reclaims = (history.events ?? []).filter((event) => event.type === "group_member_alias_reclaimed");
     expect(reclaims).toHaveLength(1);
     expect(reclaims[0]?.sender_peer_id).toBe(bob.peer.peer_id);
     const body = JSON.parse(reclaims[0]?.body ?? "{}") as { alias: string; previous_peer_id: string };
@@ -302,7 +311,7 @@ test("rename_in_group renames the requesting peer and emits an audit event", asy
     ).rejects.toThrow();
 
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
-    const renames = history.events.filter((event) => event.type === "group_member_renamed");
+    const renames = (history.events ?? []).filter((event) => event.type === "group_member_renamed");
     expect(renames).toHaveLength(1);
     const body = JSON.parse(renames[0]?.body ?? "{}") as { old_alias: string; new_alias: string };
     expect(body.old_alias).toBe("scribe");
@@ -705,8 +714,8 @@ test("skill directives are stored canonically and prefixed only for mentioned re
     expect(aliceInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
     expect(bobInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe(`${prefix}\n\nplease inspect @bob`);
 
-    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id, threadOf: root.event.event_id });
-    expect(history.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
+    const history = await getThread(daemon.client, { rootEventId: root.event.event_id, format: "events", selectors: { strategy: "all" } });
+    expect(history.events?.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
   } finally {
     await sink.stop();
     await daemon.stop();
@@ -817,6 +826,16 @@ test("thread replies collapse to root and main-channel history excludes them", a
       inReplyTo: root.event.event_id,
     });
     expect(reply1.event.parent_event_id).toBe(root.event.event_id);
+    expect(reply1.event.reply_to_event_id).toBe(root.event.event_id);
+    expect(reply1.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: root.event.event_id,
+      direct_sender: "alice",
+      direct_preview: "root",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "alice",
+      thread_root_preview: "root",
+    });
 
     // Reply to reply normalizes to root.
     const reply2 = await sendGroupMessage(daemon.client, {
@@ -826,6 +845,16 @@ test("thread replies collapse to root and main-channel history excludes them", a
       inReplyTo: reply1.event.event_id,
     });
     expect(reply2.event.parent_event_id).toBe(root.event.event_id);
+    expect(reply2.event.reply_to_event_id).toBe(reply1.event.event_id);
+    expect(reply2.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: reply1.event.event_id,
+      direct_sender: "bob",
+      direct_preview: "reply-to-root",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "alice",
+      thread_root_preview: "root",
+    });
 
     // Unrelated main-channel message.
     await sendGroupMessage(daemon.client, {
@@ -836,24 +865,40 @@ test("thread replies collapse to root and main-channel history excludes them", a
 
     // Main-channel history hides thread replies; both roots remain.
     const mainHistory = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
-    const mainMessages = mainHistory.events.filter((event) => event.type === "group_message");
+    expect(mainHistory.view).toBe("flat");
+    const mainMessages = (mainHistory.items ?? []).filter((event) => event.type === "group_message");
     expect(mainMessages.map((event) => event.body)).toEqual(["root", "another root"]);
     expect(mainMessages.every((event) => event.parent_event_id === null)).toBe(true);
 
-    // Thread view returns root + replies in chronological order.
-    const threadHistory = await getGroupHistory(daemon.client, {
-      name: groupName,
-      peerId: alice.peer.peer_id,
-      threadOf: root.event.event_id,
+    // Thread content now lives behind the canonical thread reader.
+    const threadHistory = await getThread(daemon.client, {
+      rootEventId: root.event.event_id,
+      format: "events",
+      selectors: { strategy: "all" },
     });
-    const threadMessages = threadHistory.events.filter((event) => event.type === "group_message");
+    const threadMessages = (threadHistory.events ?? []).filter((event) => event.type === "group_message");
     expect(threadMessages.map((event) => event.body)).toEqual(["root", "reply-to-root", "reply-to-reply"]);
+    expect(threadMessages.map((event) => event.reply_to_event_id)).toEqual([null, root.event.event_id, reply1.event.event_id]);
+
+    const directRows = await queryEvents(daemon.client, {
+      sql: "select body, reply_to_event_id, direct_body, thread_root_event_id, thread_root_body from thread_events where reply_to_event_id = ?",
+      params: [reply1.event.event_id],
+    });
+    expect(directRows.rows).toEqual([
+      {
+        body: "reply-to-reply",
+        reply_to_event_id: reply1.event.event_id,
+        direct_body: "reply-to-root",
+        thread_root_event_id: root.event.event_id,
+        thread_root_body: "root",
+      },
+    ]);
   } finally {
     await daemon.stop();
   }
 });
 
-test("thread_of rejects non-root and non-existent events", async () => {
+test("group history rejects thread_of and thread-reply event lookups", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-threads-validation-"));
   homes.push(home);
   const daemon = await startDaemon(home);
@@ -877,10 +922,10 @@ test("thread_of rejects non-root and non-existent events", async () => {
     });
 
     await expect(
-      getGroupHistory(daemon.client, {
-        name: groupName,
-        peerId: alice.peer.peer_id,
-        threadOf: reply.event.event_id,
+      fetch(
+        `${daemon.client.baseUrl}/groups/${encodeURIComponent(groupName)}/history?peer_id=${encodeURIComponent(alice.peer.peer_id)}&thread_of=${reply.event.event_id}`,
+      ).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
       }),
     ).rejects.toThrow();
 
@@ -888,7 +933,8 @@ test("thread_of rejects non-root and non-existent events", async () => {
       getGroupHistory(daemon.client, {
         name: groupName,
         peerId: alice.peer.peer_id,
-        threadOf: 999_999,
+        view: "events",
+        eventIds: [reply.event.event_id],
       }),
     ).rejects.toThrow();
 
@@ -964,7 +1010,7 @@ test("idempotent re-join with same alias returns already_member without emitting
 
     // Only ONE group_joined event in history, not two.
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
-    const joins = history.events.filter((event) => event.type === "group_joined");
+    const joins = (history.events ?? []).filter((event) => event.type === "group_joined");
     expect(joins).toHaveLength(1);
     expect(joins[0]?.event_id).toBe(firstJoinEventId);
   } finally {
@@ -1007,7 +1053,7 @@ test("idempotent leave when peer is not a group member returns already_left with
     // Read history as carol (still an active member) to verify exactly one
     // group_left event exists despite multiple no-op leave calls.
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: carol.peer.peer_id });
-    const lefts = history.events.filter((event) => event.type === "group_left");
+    const lefts = (history.events ?? []).filter((event) => event.type === "group_left");
     expect(lefts).toHaveLength(1);
   } finally {
     await daemon.stop();
@@ -1178,7 +1224,7 @@ test("main-channel history rows carry reply_count and last_reply_event_id for th
 
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
     const rowsByEventId = new Map<number, Event & { reply_count?: number; last_reply_event_id?: number | null }>();
-    for (const row of history.events as unknown as Array<Event & { reply_count?: number; last_reply_event_id?: number | null }>) {
+    for (const row of (history.events ?? []) as unknown as Array<Event & { reply_count?: number; last_reply_event_id?: number | null }>) {
       rowsByEventId.set(row.event_id, row);
     }
 
@@ -1281,7 +1327,7 @@ test("in_reply_to rejects roster events with reply_target_not_message", async ()
   }
 });
 
-test("threads endpoint returns root, replies, participants, and last_event_id in a single call", async () => {
+test("threads endpoint returns selected events and status in projection form", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-threads-endpoint-"));
   homes.push(home);
   const daemon = await startDaemon(home);
@@ -1314,34 +1360,36 @@ test("threads endpoint returns root, replies, participants, and last_event_id in
       inReplyTo: root.event.event_id,
     });
 
-    const res = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${alice.peer.peer_id}`);
+    const res = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${alice.peer.peer_id}&format=events&selector_strategy=all`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      root: Event;
-      replies: Event[];
-      participants: Array<{ peer_id: string; alias: string | null; active: boolean }>;
-      reply_count: number;
-      last_event_id: number;
+      format: "events";
+      events: Event[];
+      status: {
+        participants: Array<{ peer_id: string; alias: string | null; active: boolean }>;
+        reply_count: number;
+        last_event_id: number;
+      };
     };
 
-    expect(body.root.event_id).toBe(root.event.event_id);
-    expect(body.replies.map((r) => r.event_id).sort()).toEqual([bobReply.event.event_id, carolReply.event.event_id].sort());
-    expect(body.reply_count).toBe(2);
-    expect(body.last_event_id).toBe(Math.max(bobReply.event.event_id, carolReply.event.event_id));
+    expect(body.format).toBe("events");
+    expect(body.events.map((event) => event.event_id)).toEqual([root.event.event_id, bobReply.event.event_id, carolReply.event.event_id]);
+    expect(body.status.reply_count).toBe(2);
+    expect(body.status.last_event_id).toBe(Math.max(bobReply.event.event_id, carolReply.event.event_id));
 
-    const participantIds = body.participants.map((p) => p.peer_id).sort();
+    const participantIds = body.status.participants.map((p) => p.peer_id).sort();
     expect(participantIds).toEqual([alice.peer.peer_id, bob.peer.peer_id, carol.peer.peer_id].sort());
-    for (const p of body.participants) {
+    for (const p of body.status.participants) {
       expect(p.active).toBe(true);
     }
 
     // Reply id is rejected (must pass the root).
-    const onReply = await fetch(`${daemon.client.baseUrl}/threads/${bobReply.event.event_id}?peer_id=${alice.peer.peer_id}`);
+    const onReply = await fetch(`${daemon.client.baseUrl}/threads/${bobReply.event.event_id}?peer_id=${alice.peer.peer_id}&format=events`);
     expect(onReply.status).toBe(400);
 
     // Non-member is rejected.
     const stranger = await registerPeer(daemon.client, { sessionName: "stranger", tool: "cli" });
-    const strangerFetch = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${stranger.peer.peer_id}`);
+    const strangerFetch = await fetch(`${daemon.client.baseUrl}/threads/${root.event.event_id}?peer_id=${stranger.peer.peer_id}&format=events`);
     expect(strangerFetch.status).toBe(404);
   } finally {
     await daemon.stop();
@@ -1365,12 +1413,14 @@ test("event SQL query endpoint exposes views and rejects non-read-only SQL", asy
       senderPeerId: alice.peer.peer_id,
       message: "sql root",
     });
+    expect(root.event.group_name).toBe(groupName);
     const reply = await sendGroupMessage(daemon.client, {
       name: groupName,
       senderPeerId: bob.peer.peer_id,
       message: "sql reply",
       inReplyTo: root.event.event_id,
     });
+    expect(reply.event.group_name).toBe(groupName);
 
     const eventLog = await queryEvents(daemon.client, {
       sql: "select event_id, group_name, sender_session_name from event_log where event_id = ?",
@@ -1472,7 +1522,7 @@ test("thread discovery status and transcript APIs expose first-class thread work
     expect(status.participants.map((participant) => participant.session_name).sort()).toEqual(["alice", "bob"]);
 
     const thread = await getThread(daemon.client, { rootEventId: root.event.event_id, format: "transcript" });
-    expect(thread.events.map((event) => event.event_id)).toEqual([root.event.event_id, reply.event.event_id]);
+    expect(thread.selected_event_count).toBe(2);
     expect(thread.transcript).toContain("alice: thread root");
     expect(thread.transcript).toContain("bob: thread reply");
   } finally {
@@ -1883,7 +1933,7 @@ test("emoji reactions are durable metadata on visible messages without adding ch
     expect(listed.reactions[0]?.by[0]?.peer_id).toBe(bob.peer.peer_id);
 
     const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
-    const historyEvent = history.events.find((event) => event.event_id === sent.event.event_id);
+    const historyEvent = (history.events ?? []).find((event) => event.event_id === sent.event.event_id);
     expect(historyEvent?.reactions?.[0]?.emoji).toBe("👍");
 
     const webState = await fetch(

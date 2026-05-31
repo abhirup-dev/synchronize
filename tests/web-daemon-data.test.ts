@@ -47,6 +47,7 @@ test("web reactions update message snapshots without resetting room state", asyn
         body: "react here",
         media_id: null,
         parent_event_id: null,
+        reply_to_event_id: null,
         mentions_json: null,
         skill_directives_json: null,
         created_at: "2026-05-31T00:00:00.000Z",
