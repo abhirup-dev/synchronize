@@ -55,6 +55,7 @@
 | `web/DESIGN.md` | 427 | Web UI design — DataSource interface, ChatView/MessageRow/Sidebar component layout, theme tokens. |
 | `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
 | `docs/plans/multi-machine-support.md` | 137 | Feasibility + phased plan for remote sessions joining one daemon over Tailscale, rendered together in the UI (sync-kp1 epic; sync-2bo, sync-stn, sync-xl3, sync-h9h, sync-jeb, sync-8ga). |
+| `docs/plans/launch-lifecycle-kernel.md` | 386 | Durable launch lifecycle kernel for local AOE launches and future remote executors — continues `docs/plans/aoe-agent-launch.md` and `sync-6wlv` (epic sync-txpj). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
 | `docs/plans/aoe-agent-launch.md` | 161 | Daemon-managed AOE-backed launch of persistent Claude/Pi sessions with server-side group auto-join; REST+CLI+MCP, no UI (v0). Decisions: in-memory launch map (no table), pin peer_id at launch, swappable SessionBackend, rely on global install (epic sync-gsx; slices sync-lb1/62d/0g9/0at/32k/tm4/rh5/1c2/ewj/2xt/qkl/7u4). |
@@ -89,6 +90,7 @@ document to load (or whether the answer is in current code instead):
 | Thread normalization | `src/daemon.ts` (`parent_event_id` logic) | `session-tracker/plan-group-policy-v0.md` (threads section) |
 | SessionStart hook & launch-id correlation | `src/cli/commands/hook.ts`, `scripts/claude-hooks-config.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
 | agent_sessions table | `src/db.ts`, `src/api/agent-sessions.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
+| Durable launch lifecycle and remote-executor seam | `src/launch/*`, `src/daemon.ts`, `src/db.ts` | `docs/plans/launch-lifecycle-kernel.md` |
 | Web UI data flow | `src/web/*` + `web/DESIGN.md` | `web/DESIGN.md` itself is current; load it directly when the question is UI-design |
 | Local web session identity | `src/daemon.ts`, `web/src/data/daemon.ts`, plus `glossary.md` | `docs/plans/web-local-session-store.md` |
 | tmux integration harness | `scripts/integration-*.py`, `scripts/integration-aoe/` | `docs/integration-tmux.md` |
