@@ -31,17 +31,21 @@ import { runEventQuery } from "./query/events.ts";
 import { resolveProviderConfig } from "./llm/index.ts";
 import {
   defaultStrategyFromEnv,
+  getCachedSummary,
   isEnabled as isSummarizeEnabled,
   loadSummaryResponse,
   makeProviderCaller,
   startSummarizeWorker,
   strategyFromInput,
   summarizeThread,
+  type ResolvedStrategy,
   type WorkerHandle,
 } from "./summarize/index.ts";
-import type { ReactionSummary, ReplyDestination } from "./api/types.ts";
+import type { ReactionSummary, ReplyDestination, SelectorStrategy, ThreadFormat } from "./api/types.ts";
 
 const REPLY_CONTEXT_PREVIEW_WORDS = 30;
+const DEFAULT_SELECTOR_STRATEGY: SelectorStrategy = "last";
+const DEFAULT_SELECTOR_K = 5;
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -284,6 +288,13 @@ interface ThreadStatusRow {
   event_count: number;
   participant_count: number;
 }
+
+interface NormalizedSelectors {
+  strategy: SelectorStrategy;
+  k?: number;
+}
+
+type GroupHistoryView = "flat" | "threads" | "events";
 
 function log(message: string): void {
   console.error(`[synchronize-daemon] ${message}`);
@@ -1298,56 +1309,48 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const peerId = url.searchParams.get("peer_id");
     if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
     const member = ensureActiveMember(ctx.db, group.group_id, peerId);
-    const limit = parseLimit(url.searchParams.get("limit"));
     const cursor = parseCursor(url.searchParams.get("cursor"));
-    const threadOf = parseOptionalPositiveInt(url.searchParams.get("thread_of"), "thread_of");
-    const historyFrom = Math.max(member.history_from_event_id ?? 0, cursor + 1);
-    let rows: EventRow[];
-    if (threadOf !== undefined) {
-      const root = ctx.db
-        .query<EventRow, [number, number]>(
-          `SELECT e.*, g.name AS group_name
-           FROM events e
-           LEFT JOIN groups g ON g.group_id = e.group_id
-           WHERE e.event_id = ? AND e.group_id = ?`,
-        )
-        .get(threadOf, group.group_id);
-      if (!root) throw new HttpError(404, "thread_root_not_found", `No such event in group: ${threadOf}`);
-      if (root.parent_event_id !== null) {
-        throw new HttpError(400, "thread_of_not_root", `thread_of must reference a thread root (event ${threadOf} is itself a reply)`);
-      }
-      rows = ctx.db
-        .query<EventRow, [number, number, number, number, number]>(
-          `SELECT e.*, g.name AS group_name
-           FROM events e
-           LEFT JOIN groups g ON g.group_id = e.group_id
-           WHERE e.group_id = ? AND e.event_id >= ? AND (e.event_id = ? OR e.parent_event_id = ?)
-           ORDER BY e.event_id ASC
-           LIMIT ?`,
-        )
-        .all(group.group_id, historyFrom, threadOf, threadOf, limit);
-    } else {
-      // Main-channel view augments each row with reply_count + last_reply_event_id
-      // so agents can discover threads without an extra per-event probe.
-      // This is the affordance that sync-0gl asked for: default history alone
-      // tells the caller which messages have replies and how to drill in.
-      type MainRow = EventRow & { reply_count: number; last_reply_event_id: number | null };
-      const mainRows = ctx.db
-        .query<MainRow, [number, number, number]>(
-          `SELECT e.*,
-                  g.name AS group_name,
-                  (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
-                  (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id
-           FROM events e
-           LEFT JOIN groups g ON g.group_id = e.group_id
-           WHERE e.group_id = ? AND e.event_id >= ? AND e.parent_event_id IS NULL
-           ORDER BY e.event_id ASC
-           LIMIT ?`,
-        )
-        .all(group.group_id, historyFrom, limit);
-      return jsonResponse({ events: attachReactions(ctx.db, mainRows), next_cursor: mainRows.at(-1)?.event_id ?? cursor });
+    if (url.searchParams.has("thread_of")) {
+      throw new HttpError(400, "invalid_request", "thread_of was removed from group history; use bridge_get_thread(root_event_id: ...)");
     }
-    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? cursor });
+    const view = parseGroupHistoryView(url.searchParams.get("view"), url.searchParams.has("event_ids"));
+    const selectors = parseSelectorsFromUrl(url);
+    const historyFrom = Math.max(member.history_from_event_id ?? 0, cursor + 1);
+    if (view === "events") {
+      const eventIds = parseEventIdsParam(url.searchParams.get("event_ids"));
+      const rows = eventIds.map((eventId) => {
+        const event = getVisibleEvent(ctx.db, eventId, peerId);
+        if (event.group_id !== group.group_id) {
+          throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible in group ${group.name}`);
+        }
+        if (event.parent_event_id !== null) {
+          throw new HttpError(
+            400,
+            "event_is_thread_reply",
+            `Event ${eventId} is a thread reply; use bridge_get_thread(root_event_id: ${event.parent_event_id})`,
+          );
+        }
+        return event;
+      });
+      return jsonResponse({ view, events: rows, truncated: false });
+    }
+    if (view === "threads") {
+      const threads = listGroupHistoryThreads(ctx.db, group.name, url, selectors);
+      return jsonResponse({ view, threads: threads.rows, truncated: threads.truncated });
+    }
+
+    // Main-channel view augments each row with reply_count + last_reply_event_id
+    // so agents can discover threads without an extra per-event probe.
+    // It remains top-level-only: thread replies are read through /threads/:id.
+    const mainRows = listGroupHistoryFlat(ctx.db, group.group_id, historyFrom, selectors);
+    const items = attachReactions(ctx.db, mainRows.rows);
+    return jsonResponse({
+      view,
+      items,
+      events: items,
+      next_cursor: items.at(-1)?.event_id ?? cursor,
+      truncated: mainRows.truncated,
+    });
   }
 
   // GET /events/:event_id — single-event lookup with visibility enforcement.
@@ -1430,15 +1433,16 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse(loadSummaryResponse(ctx.db, rootEventId, true, strategy));
   }
 
-  // GET /threads/:root_event_id — single-call thread state: status + events
-  // and optional transcript. Kept global for v0; callers that need strict
-  // per-peer visibility should continue using group history with peer_id.
+  // GET /threads/:root_event_id — canonical one-thread reader. Projection is
+  // selected by `format`; event-bearing formats are bounded by selectors so
+  // the default path stays context-light.
   const threadGet = url.pathname.match(/^\/threads\/(\d+)$/);
   if (request.method === "GET" && threadGet) {
     const rootEventId = Number(threadGet[1]);
-    const format = url.searchParams.get("format") ?? "json";
-    if (format !== "json" && format !== "transcript") {
-      throw new HttpError(400, "invalid_request", "format must be json or transcript");
+    const format = parseThreadFormat(url.searchParams.get("format"));
+    const selectors = parseSelectorsFromUrl(url);
+    if (format === "summary") {
+      return jsonResponse(await loadThreadSummaryProjection(ctx, rootEventId, selectors));
     }
     const root = getEvent(ctx.db, rootEventId);
     if (root.group_id === null) {
@@ -1468,32 +1472,26 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
          ORDER BY e.event_id ASC`,
       )
       .all(root.group_id, rootEventId));
-    // Participants: deduped sender peer_ids across root + replies, with their
-    // current alias in the group (NULL when the peer has since left or never
-    // joined under an active alias). Mirrors what a thread header UI shows.
-    const senderIds = new Set<string>([root.sender_peer_id, ...replies.map((r) => r.sender_peer_id)].filter((s): s is string => s !== null));
-    const participants = [...senderIds].map((senderId) => {
-      const aliasRow = ctx.db
-        .query<{ alias: string; active: number }, [number, string]>(
-          "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
-        )
-        .get(root.group_id!, senderId);
-      return {
-        peer_id: senderId,
-        alias: aliasRow?.alias ?? null,
-        active: aliasRow ? Boolean(aliasRow.active) : false,
-      };
-    });
-    const lastEventId = replies.length > 0 ? replies[replies.length - 1]!.event_id : rootEventId;
+    const events = [root, ...replies];
+    const status = getThreadStatus(ctx.db, rootEventId);
+    if (format === "status") {
+      return jsonResponse({ format, status });
+    }
+    const selected = selectThreadEvents(events, selectors);
+    const base = {
+      format,
+      selectors,
+      status,
+      selected_event_count: selected.events.length,
+      total_event_count: events.length,
+      truncated: selected.truncated,
+    };
+    if (format === "events") {
+      return jsonResponse({ ...base, events: selected.events });
+    }
     return jsonResponse({
-      root,
-      replies,
-      participants,
-      reply_count: replies.length,
-      last_event_id: lastEventId,
-      status: getThreadStatus(ctx.db, rootEventId),
-      events: [root, ...replies],
-      ...(format === "transcript" ? { transcript: renderThreadTranscript(ctx.db, [root, ...replies]) } : {}),
+      ...base,
+      transcript: renderThreadTranscript(ctx.db, selected.events),
     });
   }
 
@@ -1812,20 +1810,88 @@ function parseLimit(raw: string | null): number {
   return Math.min(value, MAX_PAGE_LIMIT);
 }
 
+function parseSelectorsFromUrl(url: URL): NormalizedSelectors {
+  const rawStrategy = url.searchParams.get("selector_strategy");
+  const rawK = url.searchParams.get("selector_k") ?? url.searchParams.get("limit");
+  return normalizeSelectors(rawStrategy, rawK === null ? undefined : Number.parseInt(rawK, 10));
+}
+
+function parseThreadFormat(raw: string | null): ThreadFormat {
+  if (raw === null || raw === "") return "summary";
+  if (raw === "summary" || raw === "status" || raw === "events" || raw === "transcript") return raw;
+  if (raw === "json") {
+    throw new HttpError(400, "invalid_request", "format=json was removed; use format=events");
+  }
+  throw new HttpError(400, "invalid_request", "format must be summary, status, events, or transcript");
+}
+
+function parseGroupHistoryView(raw: string | null, hasEventIds: boolean): GroupHistoryView {
+  if ((raw === null || raw === "") && hasEventIds) return "events";
+  if (raw === null || raw === "") return "flat";
+  if (raw === "flat" || raw === "threads" || raw === "events") return raw;
+  throw new HttpError(400, "invalid_request", "view must be flat, threads, or events");
+}
+
+function parseEventIdsParam(raw: string | null): number[] {
+  if (raw === null || raw.trim() === "") {
+    throw new HttpError(400, "invalid_request", "event_ids is required when view=events");
+  }
+  return raw.split(",").map((part) => {
+    const value = Number.parseInt(part.trim(), 10);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new HttpError(400, "invalid_request", "event_ids must contain positive integer event ids");
+    }
+    return value;
+  });
+}
+
+function normalizeSelectors(rawStrategy: string | null | undefined, rawK?: number): NormalizedSelectors {
+  const strategy = (rawStrategy ?? DEFAULT_SELECTOR_STRATEGY).trim();
+  if (strategy !== "first" && strategy !== "last" && strategy !== "all") {
+    throw new HttpError(400, "invalid_selectors", "selectors.strategy must be first, last, or all");
+  }
+  if (strategy === "all") {
+    if (rawK !== undefined) {
+      throw new HttpError(400, "invalid_selectors", "selectors.k is not allowed when strategy is all");
+    }
+    return { strategy };
+  }
+  if (rawK !== undefined && (!Number.isInteger(rawK) || rawK < 1)) {
+    throw new HttpError(400, "invalid_selectors", "selectors.k must be a positive integer");
+  }
+  if (strategy === "first" && rawK === undefined) {
+    throw new HttpError(400, "invalid_selectors", "selectors.k is required when strategy is first");
+  }
+  return { strategy, k: Math.min(rawK ?? DEFAULT_SELECTOR_K, MAX_PAGE_LIMIT) };
+}
+
+function selectorLimit(selectors: NormalizedSelectors): number {
+  return selectors.strategy === "all" ? MAX_PAGE_LIMIT : selectors.k ?? DEFAULT_SELECTOR_K;
+}
+
+function selectorToSummaryStrategy(selectors: NormalizedSelectors): ResolvedStrategy {
+  if (selectors.strategy === "all") return { strategy: "all", params: {} };
+  if (selectors.strategy === "first") return { strategy: "first_k", params: { k: selectors.k! } };
+  return { strategy: "last_k", params: { k: selectors.k ?? DEFAULT_SELECTOR_K } };
+}
+
+function selectThreadEvents(events: EventRow[], selectors: NormalizedSelectors): { events: EventRow[]; truncated: boolean } {
+  if (events.length === 0) return { events: [], truncated: false };
+  if (selectors.strategy === "all") {
+    return { events: events.slice(0, MAX_PAGE_LIMIT), truncated: events.length > MAX_PAGE_LIMIT };
+  }
+  const root = events[0]!;
+  const replies = events.slice(1);
+  const k = selectors.k ?? DEFAULT_SELECTOR_K;
+  const selectedReplies = selectors.strategy === "first" ? replies.slice(0, k) : replies.slice(Math.max(0, replies.length - k));
+  return { events: [root, ...selectedReplies], truncated: replies.length > selectedReplies.length };
+}
+
 function parseCursor(raw: string | null): number {
   if (!raw) return 0;
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value < 0) {
     throw new HttpError(400, "invalid_request", "cursor must be a non-negative integer");
-  }
-  return value;
-}
-
-function parseOptionalPositiveInt(raw: string | null, label: string): number | undefined {
-  if (raw === null || raw === "") return undefined;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new HttpError(400, "invalid_request", `${label} must be a positive integer`);
   }
   return value;
 }
@@ -2429,6 +2495,50 @@ function attachReactions<T extends EventRow>(db: Database, events: T[]): T[] {
   }));
 }
 
+type MainGroupHistoryRow = EventRow & { reply_count: number; last_reply_event_id: number | null };
+
+function listGroupHistoryFlat(
+  db: Database,
+  groupId: number,
+  historyFrom: number,
+  selectors: NormalizedSelectors,
+): { rows: MainGroupHistoryRow[]; truncated: boolean } {
+  const limit = selectorLimit(selectors);
+  const queryLimit = Math.min(limit + 1, MAX_PAGE_LIMIT + 1);
+  const order = selectors.strategy === "last" ? "DESC" : "ASC";
+  const rows = db
+    .query<MainGroupHistoryRow, [number, number, number]>(
+      `SELECT e.*,
+              g.name AS group_name,
+              (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count,
+              (SELECT MAX(event_id) FROM events r WHERE r.parent_event_id = e.event_id) AS last_reply_event_id
+       FROM events e
+       LEFT JOIN groups g ON g.group_id = e.group_id
+       WHERE e.group_id = ? AND e.event_id >= ? AND e.parent_event_id IS NULL
+       ORDER BY e.event_id ${order}
+       LIMIT ?`,
+    )
+    .all(groupId, historyFrom, queryLimit);
+  const truncated = rows.length > limit;
+  const selected = rows.slice(0, limit);
+  return { rows: selectors.strategy === "last" ? selected.reverse() : selected, truncated };
+}
+
+function listGroupHistoryThreads(
+  db: Database,
+  groupName: string,
+  sourceUrl: URL,
+  selectors: NormalizedSelectors,
+): { rows: ThreadDiscoveryRow[]; truncated: boolean } {
+  const limit = selectorLimit(selectors);
+  const url = new URL(sourceUrl.toString());
+  url.searchParams.set("group", groupName);
+  url.searchParams.set("limit", String(Math.min(limit + 1, MAX_PAGE_LIMIT + 1)));
+  if (selectors.strategy === "first") url.searchParams.set("order", "asc");
+  const rows = listThreadDiscoveries(db, url);
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit };
+}
+
 function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
   const limit = parseLimit(url.searchParams.get("limit"));
   const clauses: string[] = [];
@@ -2439,6 +2549,7 @@ function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
   const participatedByPeerId = url.searchParams.get("participated_by_peer_id")?.trim();
   const participatedBySessionName = url.searchParams.get("participated_by_session_name")?.trim();
   const activeSince = url.searchParams.get("active_since")?.trim();
+  const order = url.searchParams.get("order") === "asc" ? "ASC" : "DESC";
 
   if (group) {
     clauses.push("dt.group_name = ?");
@@ -2491,7 +2602,7 @@ function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
          dt.preview
        FROM discoverable_threads dt
        ${where}
-       ORDER BY dt.last_activity_at DESC, dt.root_event_id DESC
+       ORDER BY dt.last_activity_at ${order}, dt.root_event_id ${order}
        LIMIT ?`,
     )
     .all(...params, limit);
@@ -2557,6 +2668,37 @@ function renderThreadTranscript(db: Database, events: EventRow[]): string {
       return `[${event.created_at}] ${sender}: ${event.body ?? ""}`;
     })
     .join("\n");
+}
+
+async function loadThreadSummaryProjection(
+  ctx: DaemonContext,
+  rootEventId: number,
+  selectors: NormalizedSelectors,
+): Promise<Record<string, unknown>> {
+  // Validate that this is a thread root before any cache/provider work.
+  const root = getEvent(ctx.db, rootEventId);
+  if (root.group_id === null || root.parent_event_id !== null || root.type !== "group_message") {
+    throw new HttpError(400, "thread_of_not_root", `Event ${rootEventId} is not a thread root`);
+  }
+  const cached = getCachedSummary(ctx.db, rootEventId);
+  const cfg = resolveProviderConfig();
+  if (!cached && cfg) {
+    await summarizeThread(ctx.db, makeProviderCaller(cfg), rootEventId, { strategy: selectorToSummaryStrategy(selectors) });
+  }
+  const response = loadSummaryResponse(ctx.db, rootEventId, Boolean(cached || cfg));
+  return {
+    format: "summary",
+    selectors,
+    summary: response.summary,
+    summary_status: response.status,
+    stale: response.stale,
+    covered_last_event_id: response.covered_last_event_id,
+    covered_event_count: response.covered_event_count,
+    selected_event_count: response.covered_event_count,
+    ...(response.status === "disabled"
+      ? { fallback: { suggested_format: "transcript", selectors } }
+      : {}),
+  };
 }
 
 function emitWebStateChanged(

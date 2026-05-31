@@ -1,11 +1,16 @@
 import { z } from "zod";
 import { createGroup, getGroupHistory, joinGroup, leaveGroup, listGroups, listMyGroups, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
-import { getEvent } from "../../api/events.ts";
-import { ApiError } from "../../client.ts";
 import { getClient, requirePeer } from "../state.ts";
-import { invalidArgument, text, wrap } from "../util.ts";
+import { text, wrap } from "../util.ts";
 import { formatEventForMcp, formatNullableEventForMcp } from "./event-format.ts";
 import type { ToolContext } from "./context.ts";
+
+const selectorsSchema = z
+  .object({
+    strategy: z.enum(["first", "last", "all"]).optional(),
+    k: z.number().int().positive().optional(),
+  })
+  .optional();
 
 export function registerGroupTools(ctx: ToolContext): void {
   const { mcp, state } = ctx;
@@ -128,44 +133,46 @@ export function registerGroupTools(ctx: ToolContext): void {
     "bridge_group_history",
     {
       description:
-        "Read group history visible to this peer. Three mutually exclusive modes:\n" +
-        "  (1) DEFAULT (no thread_of, no event_ids): main channel only; thread replies are HIDDEN.\n" +
-        "  (2) thread_of=<root_event_id>: ONE thread; returns the root event + every reply in posting order. Main-channel siblings are HIDDEN.\n" +
-        "  (3) event_ids=[<id>,...]: fetch SPECIFIC events by id, regardless of whether they live on the main channel or inside a thread. Skips the main-channel/thread split entirely. Use this to re-read events whose ids you already have (e.g., from a channel notification or an earlier history page).\n" +
-        "Passing both thread_of and event_ids returns invalid_argument. " +
+        "Read top-level group surfaces visible to this peer. Default view=flat returns main-channel items only; " +
+        "thread replies are not expanded inline. Use view=threads for lightweight thread discovery rows, " +
+        "or view=events with event_ids to re-read specific top-level events whose ids you already have. " +
+        "If an event_id is a thread reply, the daemon returns event_is_thread_reply; use bridge_get_thread(root_event_id). " +
+        "Selectors default to {strategy:'last', k:5}. " +
         "Each returned event carries a parsed mentions: string[] (sender excluded). " +
-        "Returns: { events: Event[], next_cursor? }. " +
+        "Returns: { view, items?/events?/threads?, next_cursor?, truncated? }. " +
         "Idempotency: pure read.",
       inputSchema: {
         name: z.string().min(1),
-        thread_of: z.number().int().positive().optional(),
+        view: z.enum(["flat", "threads", "events"]).optional(),
+        selectors: selectorsSchema,
         event_ids: z.array(z.number().int().positive()).optional(),
+        started_by_peer_id: z.string().optional(),
+        started_by_session_name: z.string().optional(),
+        participated_by_peer_id: z.string().optional(),
+        participated_by_session_name: z.string().optional(),
+        active_since: z.string().optional(),
       },
     },
     wrap(async (args) => {
       const client = await getClient(state);
       const peer = requirePeer(state);
-      if (args.event_ids && args.event_ids.length > 0) {
-        if (args.thread_of !== undefined) {
-          invalidArgument("bridge_group_history: pass either thread_of or event_ids, not both");
-        }
-        const events = await Promise.all(
-          args.event_ids.map(async (eventId) => {
-            const { event } = await getEvent(client, { eventId, peerId: peer.peer_id });
-            if (event.group_id === null) {
-              throw new ApiError(404, "event_not_in_group", `Event ${eventId} is not a group event`);
-            }
-            return formatEventForMcp(event);
-          }),
-        );
-        return text({ events });
-      }
       const history = await getGroupHistory(client, {
         name: args.name,
         peerId: peer.peer_id,
-        ...(args.thread_of !== undefined ? { threadOf: args.thread_of } : {}),
+        ...(args.view ? { view: args.view } : {}),
+        ...(args.selectors ? { selectors: args.selectors } : {}),
+        ...(args.event_ids ? { eventIds: args.event_ids } : {}),
+        ...(args.started_by_peer_id ? { startedByPeerId: args.started_by_peer_id } : {}),
+        ...(args.started_by_session_name ? { startedBySessionName: args.started_by_session_name } : {}),
+        ...(args.participated_by_peer_id ? { participatedByPeerId: args.participated_by_peer_id } : {}),
+        ...(args.participated_by_session_name ? { participatedBySessionName: args.participated_by_session_name } : {}),
+        ...(args.active_since ? { activeSince: args.active_since } : {}),
       });
-      return text({ ...history, events: history.events.map(formatEventForMcp) });
+      return text({
+        ...history,
+        ...(history.items ? { items: history.items.map(formatEventForMcp) } : {}),
+        ...(history.events ? { events: history.events.map(formatEventForMcp) } : {}),
+      });
     }),
   );
 

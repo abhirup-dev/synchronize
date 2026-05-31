@@ -63,8 +63,6 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_query_events",
         "bridge_react",
         "bridge_list_reactions",
-        "bridge_list_threads",
-        "bridge_get_thread_status",
         "bridge_get_thread",
       ]),
     );
@@ -200,11 +198,11 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     ) as { reactions: Array<{ emoji: string; count: number }> };
     expect(listedReactions.reactions).toEqual([expect.objectContaining({ emoji: "👍", count: 1 })]);
     const threads = parseToolText(
-      await client.callTool({ name: "bridge_list_threads", arguments: { group: "mcp-room" } }),
+      await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room", view: "threads" } }),
     ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
     expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 3 })]);
     const status = parseToolText(
-      await client.callTool({ name: "bridge_get_thread_status", arguments: { root_event_id: root.event.event_id } }),
+      await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "status" } }),
     ) as { status: { root_event_id: number; event_count: number } };
     expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 4 });
     const transcript = parseToolText(
@@ -520,14 +518,22 @@ test("MCP errors surface as structured {error:{code,message,status?}} JSON with 
       expect(Array.isArray(left.event.mentions)).toBe(true);
     }
 
-    // 4. event_ids + thread_of together → invalid_argument from the adapter.
-    const conflictErr = parseError(
+    // 4. view=events refuses thread replies and points callers at bridge_get_thread.
+    await client.callTool({ name: "bridge_join_group", arguments: { name: "structured-room", alias: "canary" } });
+    const reply = parseToolText(
+      await client.callTool({
+        name: "bridge_send_group",
+        arguments: { name: "structured-room", message: "reply row", in_reply_to: sent.event.event_id },
+      }),
+    ) as { event: { event_id: number } };
+    const replyLookupErr = parseError(
       await client.callTool({
         name: "bridge_group_history",
-        arguments: { name: "structured-room", event_ids: [sent.event.event_id], thread_of: sent.event.event_id },
+        arguments: { name: "structured-room", view: "events", event_ids: [reply.event.event_id] },
       }),
     );
-    expect(conflictErr.code).toBe("invalid_argument");
+    expect(replyLookupErr.code).toBe("event_is_thread_reply");
+    expect(replyLookupErr.message).toMatch(/bridge_get_thread/);
 
     // Use `registered.peer.peer_id` to silence the unused-var lint.
     expect(registered.peer.peer_id).toMatch(/^[0-9a-f-]+$/);

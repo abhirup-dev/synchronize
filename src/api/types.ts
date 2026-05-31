@@ -165,10 +165,30 @@ export interface ThreadStatus {
   participants: ThreadParticipantStatus[];
 }
 
+export type SelectorStrategy = "first" | "last" | "all";
+
+export interface EventSelectors {
+  strategy?: SelectorStrategy | undefined;
+  k?: number | undefined;
+}
+
+export type ThreadFormat = "summary" | "status" | "events" | "transcript";
+
 export interface ThreadResponse {
-  status: ThreadStatus;
-  events: Event[];
+  format: ThreadFormat;
+  selectors?: { strategy: SelectorStrategy; k?: number };
+  status?: ThreadStatus;
+  events?: Event[];
   transcript?: string;
+  summary?: string | null;
+  summary_status?: "ready" | "pending" | "disabled";
+  stale?: boolean;
+  covered_last_event_id?: number | null;
+  covered_event_count?: number | null;
+  selected_event_count?: number;
+  total_event_count?: number;
+  truncated?: boolean;
+  fallback?: { suggested_format: Exclude<ThreadFormat, "summary">; selectors: { strategy: SelectorStrategy; k?: number } };
 }
 
 export interface ThreadSummaryResponse {

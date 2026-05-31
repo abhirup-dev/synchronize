@@ -1,5 +1,5 @@
 import { requestJson, type ClientConfig } from "../client.ts";
-import type { ThreadDiscoveryRow, ThreadResponse, ThreadStatus, ThreadSummaryResponse } from "./types.ts";
+import type { EventSelectors, ThreadDiscoveryRow, ThreadFormat, ThreadResponse, ThreadStatus, ThreadSummaryResponse } from "./types.ts";
 
 export interface ListThreadsInput {
   group?: string;
@@ -33,12 +33,19 @@ export function getThreadStatus(client: ClientConfig, rootEventId: number): Prom
 
 export function getThread(
   client: ClientConfig,
-  input: { rootEventId: number; format?: "json" | "transcript" },
+  input: { rootEventId: number; format?: ThreadFormat; selectors?: EventSelectors },
 ): Promise<ThreadResponse> {
   const params = new URLSearchParams();
   if (input.format) params.set("format", input.format);
+  addSelectors(params, input.selectors);
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return requestJson<ThreadResponse>(client, `/threads/${input.rootEventId}${query}`);
+}
+
+function addSelectors(params: URLSearchParams, selectors: EventSelectors | undefined): void {
+  if (!selectors) return;
+  if (selectors.strategy) params.set("selector_strategy", selectors.strategy);
+  if (selectors.k !== undefined) params.set("selector_k", String(selectors.k));
 }
 
 export function getThreadSummary(
