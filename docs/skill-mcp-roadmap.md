@@ -20,6 +20,14 @@ A1 is the unifying architecture: identity-on-arrival + mention-digest + reply-su
 - **(opus 253, Q2) react/ack jumps ahead of the P1/P2 injector — decisive.** It's cheap (a reaction row + one endpoint; none of the ambient-injection machinery or per-agent answered-state the injector needs), independently valuable day one, AND enabling (later clears a P2 digest row with a thumbs-up vs a paragraph). Shipping the hard thing (injector) before the cheap-and-enabling thing is backwards. **react/ack = the first code item after the skill.**
 - **(opus 253, Q3) re-buckets:** (1) **double-backtick strip is a DAEMON bug** (`stripBacktickedRegions`, `src/daemon.ts:1694`), not host — move it into the first daemon-touching phase (rides with P3/F11) as the one-liner it is. (2) **Author-query + index pulled forward** from P5 to ride with P3's surface work — it's the #1 instinct hot-path (everyone reached for it in T4/S3) and cheap (one index + a thin `group_history(author:,since:)`). Don't bury the query everyone's hand reaches for behind four phases.
 
+### Post-research-debugging additions (F19–F21 — surfaced live this session, filed after sonnet's initial backlog)
+These three came out of the in-session thread-misroute incident (opus invisible to the human). Slotted:
+- **F19 — post-send destination echo (`sync-tjm4`, P2) → Phase 3.** Two parts: (a) NOW skill line ("`in_reply_to` is not sticky; omit for top-level") folds into **`sync-b8p`**; (b) daemon send-response echoes a *legible* destination (root-message preview + reply count + accidental-thread nudge — not a bare id) → Phase 3 response-shape work, tight with F11 (`sync-3a59`, status-as-projection) and F12 (`sync-bsvi`, `bridge_reply` = the structural cure).
+- **F20 — surface cwd/branch/git-state (`sync-lgdb`, P2) → Phase 2/4.** Push-context (whoami + P1 first-contact + presence); daemon already has cwd, add branch/git_dirty. Ties A1 (`sync-n151`) and P1 (`sync-gpr4`).
+- **F21 — colon-alias un-mentionable (`sync-gfjs`, P2) → Phase 3.** The `@\w+` parser truncates `web:local-human` → un-mentionable → un-pushable in threads (the load-bearing cause of the human-invisibility incident). Same parser as F8. Fix: parser accepts the daemon's own alias charset.
+- **Sequencing note:** F19's response-echo is the highest-leverage of the three (turns a *silent* misroute *loud* with no behavior change) — pairs naturally with react/ack as an early, cheap Phase-3 quick-win. F21 is small but high-impact (it silently cut the operator's own surface out of thread pushes).
+- **Still un-filed (fold when convenient):** F3 (deferred-schema host fix / doc-mitigation), F6 (sonnet launch model-id + health-check), F8-daemon (double-backtick strip). The NOW skill-fixes (F1-skill/F2/F4/F8-doc/F10-skill/P3-norm/F19-skill-line) live inside `sync-b8p`, not separate issues.
+
 ---
 
 # NOW — ship this session/epic (pure skill + doc; finishes `sync-b8p`)
