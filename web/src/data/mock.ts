@@ -8,6 +8,7 @@ import type {
   Artifact,
   DataSource,
   Message,
+  ReactToMessageInput,
   Room,
   SendMessageInput,
   SpawnAgentInput,
@@ -161,6 +162,37 @@ export class MockDataSource implements DataSource {
       target.update((prev) => prev.map((m) => (m.id === msg.id ? ack : m)));
     }, 280);
     return msg;
+  }
+
+  async reactToMessage(input: ReactToMessageInput): Promise<Message> {
+    const me = this._me.get();
+    const update = (messages: Message[]) =>
+      messages.map((message) => {
+        if (message.id !== input.messageId) return message;
+        const reactions = message.reactions.map((reaction) => ({ ...reaction, by: [...reaction.by] }));
+        const existing = reactions.find((reaction) => reaction.emoji === input.emoji);
+        const hasReacted = Boolean(existing?.by.includes(me.id));
+        const shouldAdd = input.op === "add" || (input.op !== "remove" && !hasReacted);
+        if (shouldAdd) {
+          if (existing) existing.by = [...new Set([...existing.by, me.id])];
+          else reactions.push({ emoji: input.emoji, by: [me.id] });
+        } else if (existing) {
+          existing.by = existing.by.filter((id) => id !== me.id);
+        }
+        return { ...message, reactions: reactions.filter((reaction) => reaction.by.length > 0) };
+      });
+
+    const snap = this._messages.get(input.roomId);
+    if (snap?.get().some((message) => message.id === input.messageId)) {
+      snap.update(update);
+      return snap.get().find((message) => message.id === input.messageId)!;
+    }
+    for (const replySnap of this._threadReplies.values()) {
+      if (!replySnap.get().some((message) => message.id === input.messageId)) continue;
+      replySnap.update(update);
+      return replySnap.get().find((message) => message.id === input.messageId)!;
+    }
+    throw new Error(`Unknown message: ${input.messageId}`);
   }
 
   async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {

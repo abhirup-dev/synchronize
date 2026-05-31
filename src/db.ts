@@ -147,6 +147,20 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_parent_event
       ON events (parent_event_id, event_id);
 
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+      peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+      emoji TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      PRIMARY KEY (event_id, emoji, peer_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_message_reactions_event
+      ON message_reactions (event_id, emoji, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_message_reactions_peer
+      ON message_reactions (peer_id, created_at);
+
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
       event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -345,6 +359,32 @@ function migrate(db: Database): void {
         ON thread_summaries (updated_at);
     `);
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)`);
+  }
+
+  // Migration v6 — durable emoji reactions attached to message events.
+  // Reactions are structured acknowledgments: no message body, no thread
+  // reply, and no push notification. They are keyed by (event, emoji, peer)
+  // so a peer can react once per emoji and toggle/remove idempotently.
+  const hasV6 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 6")
+    .get();
+  if (!hasV6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reactions (
+        event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+        emoji TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        PRIMARY KEY (event_id, emoji, peer_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_message_reactions_event
+        ON message_reactions (event_id, emoji, created_at);
+
+      CREATE INDEX IF NOT EXISTS idx_message_reactions_peer
+        ON message_reactions (peer_id, created_at);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)`);
   }
 }
 

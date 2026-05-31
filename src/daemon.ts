@@ -39,6 +39,7 @@ import {
   summarizeThread,
   type WorkerHandle,
 } from "./summarize/index.ts";
+import type { ReactionSummary } from "./api/types.ts";
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -117,6 +118,17 @@ interface EventRow {
   media_id: string | null;
   parent_event_id: number | null;
   mentions_json: string | null;
+  created_at: string;
+  reactions?: ReactionSummary[];
+}
+
+interface ReactionRow {
+  event_id: number;
+  emoji: string;
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  alias: string | null;
   created_at: string;
 }
 
@@ -343,6 +355,12 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
           }`,
       ),
       ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
+      ...state.events.map((e) =>
+        `${e.event_id}:${(e.reactions ?? [])
+          .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.by.map((actor) => actor.peer_id).sort().join(",")}`)
+          .sort()
+          .join(";")}`,
+      ),
     ]
       .sort()
       .join("|");
@@ -1203,9 +1221,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
            LIMIT ?`,
         )
         .all(group.group_id, historyFrom, limit);
-      return jsonResponse({ events: mainRows, next_cursor: mainRows.at(-1)?.event_id ?? cursor });
+      return jsonResponse({ events: attachReactions(ctx.db, mainRows), next_cursor: mainRows.at(-1)?.event_id ?? cursor });
     }
-    return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
+    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? cursor });
   }
 
   // GET /events/:event_id — single-event lookup with visibility enforcement.
@@ -1217,27 +1235,37 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const eventId = Number(eventGet[1]);
     const peerId = url.searchParams.get("peer_id");
     if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
-    const event = getEvent(ctx.db, eventId);
-    if (event.group_id !== null) {
-      // Group event: caller must be (or have been) a member of that group.
-      // Match the history endpoint's visibility model: history_from_event_id
-      // cuts off events the joiner shouldn't see.
-      const member = ctx.db
-        .query<{ history_from_event_id: number | null }, [number, string]>(
-          "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
-        )
-        .get(event.group_id, peerId);
-      if (!member) throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
-      if (event.event_id < (member.history_from_event_id ?? 0)) {
-        throw new HttpError(404, "event_not_found", `Event ${eventId} is before peer's history_from boundary`);
-      }
-    } else if (event.recipient_peer_id !== null) {
-      // DM: caller must be sender or recipient.
-      if (event.sender_peer_id !== peerId && event.recipient_peer_id !== peerId) {
-        throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
-      }
-    }
+    const event = getVisibleEvent(ctx.db, eventId, peerId);
     return jsonResponse({ event });
+  }
+
+  const eventReactions = url.pathname.match(/^\/events\/(\d+)\/reactions$/);
+  if (eventReactions) {
+    const eventId = Number(eventReactions[1]);
+    if (request.method === "GET") {
+      const peerId = url.searchParams.get("peer_id");
+      if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+      const event = getVisibleEvent(ctx.db, eventId, peerId);
+      return jsonResponse({ event, reactions: event.reactions ?? [] });
+    }
+    if (request.method === "POST") {
+      const body = await readBody(request);
+      const peerId = requireString(body, "peer_id");
+      const emoji = requireEmoji(requireString(body, "emoji"));
+      const op = optionalReactionOp(body);
+      const event = getVisibleEvent(ctx.db, eventId, peerId);
+      ensureReactableEvent(event);
+      if (event.group_id !== null) ensureActiveMember(ctx.db, event.group_id, peerId);
+      const result = applyReaction(ctx.db, { eventId, peerId, emoji, op });
+      const updated = getEvent(ctx.db, eventId);
+      emitWebStateChanged(ctx, {
+        domains: ["reactions"],
+        eventId,
+        groupId: updated.group_id,
+        peerId: updated.group_id === null ? reactionDmPeerId(updated, peerId) : peerId,
+      });
+      return jsonResponse({ ...result, event: updated, reactions: updated.reactions ?? [] });
+    }
   }
 
   if (request.method === "GET" && url.pathname === "/threads") {
@@ -1307,13 +1335,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         throw new HttpError(404, "thread_not_visible", `Thread ${rootEventId} is before peer's history_from boundary`);
       }
     }
-    const replies = ctx.db
+    const replies = attachReactions(ctx.db, ctx.db
       .query<EventRow, [number, number]>(
         `SELECT * FROM events
          WHERE group_id = ? AND parent_event_id = ?
          ORDER BY event_id ASC`,
       )
-      .all(root.group_id, rootEventId);
+      .all(root.group_id, rootEventId));
     // Participants: deduped sender peer_ids across root + replies, with their
     // current alias in the group (NULL when the peer has since left or never
     // joined under an active alias). Mirrors what a thread header UI shows.
@@ -1457,7 +1485,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         .run(now, peerId, ...rows.map((row) => row.event_id));
       emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? after });
+    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? after });
   }
 
   const inboxAck = url.pathname.match(/^\/peers\/([^/]+)\/inbox\/ack$/);
@@ -1517,7 +1545,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
       emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: rows, next_cursor: rows.at(-1)?.event_id ?? cursor });
+    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? cursor });
   }
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
@@ -1558,6 +1586,22 @@ function optionalInteger(body: Record<string, unknown>, key: string): number | u
     throw new HttpError(400, "invalid_request", `${key} must be an integer`);
   }
   return value as number;
+}
+
+type ReactionOp = "add" | "remove" | "toggle";
+
+function optionalReactionOp(body: Record<string, unknown>): ReactionOp {
+  const value = body["op"];
+  if (value === undefined || value === null) return "add";
+  if (value === "add" || value === "remove" || value === "toggle") return value;
+  throw new HttpError(400, "invalid_request", "op must be add, remove, or toggle");
+}
+
+function requireEmoji(value: string): string {
+  if (value.length > 32 || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) {
+    throw new HttpError(400, "invalid_emoji", "emoji must be a short emoji or emoji alias");
+  }
+  return value;
 }
 
 function optionalSqlParams(body: Record<string, unknown>, key: string): Array<string | number | boolean | null> | undefined {
@@ -2063,7 +2107,116 @@ function formatAgentSession(
 function getEvent(db: Database, eventId: number): EventRow {
   const event = db.query<EventRow, [number]>("SELECT * FROM events WHERE event_id = ?").get(eventId);
   if (!event) throw new HttpError(404, "event_not_found", `Event not found: ${eventId}`);
+  return attachReactions(db, [event])[0]!;
+}
+
+function getVisibleEvent(db: Database, eventId: number, peerId: string): EventRow {
+  ensurePeer(db, peerId);
+  const event = getEvent(db, eventId);
+  if (event.group_id !== null) {
+    // Group event: caller must be (or have been) a member of that group.
+    // Match the history endpoint's visibility model: history_from_event_id
+    // cuts off events the joiner shouldn't see.
+    const member = db
+      .query<{ history_from_event_id: number | null }, [number, string]>(
+        "SELECT history_from_event_id FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(event.group_id, peerId);
+    if (!member) throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+    if (event.event_id < (member.history_from_event_id ?? 0)) {
+      throw new HttpError(404, "event_not_found", `Event ${eventId} is before peer's history_from boundary`);
+    }
+  } else if (event.recipient_peer_id !== null) {
+    // DM: caller must be sender or recipient.
+    if (event.sender_peer_id !== peerId && event.recipient_peer_id !== peerId) {
+      throw new HttpError(404, "event_not_found", `Event ${eventId} is not visible to peer ${peerId}`);
+    }
+  }
   return event;
+}
+
+function ensureReactableEvent(event: EventRow): void {
+  if (event.type !== "group_message" && event.type !== "dm") {
+    throw new HttpError(400, "reaction_target_not_message", `Cannot react to event ${event.event_id}: type is '${event.type}'`);
+  }
+}
+
+function applyReaction(
+  db: Database,
+  input: { eventId: number; peerId: string; emoji: string; op: ReactionOp },
+): { changed: boolean; active: boolean } {
+  const existing = db
+    .query<{ peer_id: string }, [number, string, string]>(
+      "SELECT peer_id FROM message_reactions WHERE event_id = ? AND emoji = ? AND peer_id = ?",
+    )
+    .get(input.eventId, input.emoji, input.peerId);
+  if (input.op === "add" || (input.op === "toggle" && !existing)) {
+    db
+      .query("INSERT OR IGNORE INTO message_reactions (event_id, emoji, peer_id) VALUES (?, ?, ?)")
+      .run(input.eventId, input.emoji, input.peerId);
+    return { changed: !existing, active: true };
+  }
+  if (input.op === "remove" || (input.op === "toggle" && existing)) {
+    const result = db
+      .query("DELETE FROM message_reactions WHERE event_id = ? AND emoji = ? AND peer_id = ?")
+      .run(input.eventId, input.emoji, input.peerId);
+    return { changed: result.changes > 0, active: false };
+  }
+  return { changed: false, active: Boolean(existing) };
+}
+
+function reactionDmPeerId(event: EventRow, actorPeerId: string): string | null {
+  if (event.recipient_peer_id === null) return actorPeerId;
+  return event.sender_peer_id === actorPeerId ? event.recipient_peer_id : event.sender_peer_id;
+}
+
+function attachReactions<T extends EventRow>(db: Database, events: T[]): T[] {
+  if (events.length === 0) return events;
+  const ids = [...new Set(events.map((event) => event.event_id))];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db
+    .query<ReactionRow, number[]>(
+      `SELECT
+         mr.event_id,
+         mr.emoji,
+         mr.peer_id,
+         mr.created_at,
+         p.session_name,
+         p.tool,
+         gm.alias
+       FROM message_reactions mr
+       JOIN events e ON e.event_id = mr.event_id
+       JOIN peers p ON p.peer_id = mr.peer_id
+       LEFT JOIN group_members gm ON gm.group_id = e.group_id AND gm.peer_id = mr.peer_id
+       WHERE mr.event_id IN (${placeholders})
+       ORDER BY mr.event_id ASC, mr.emoji ASC, mr.created_at ASC`,
+    )
+    .all(...ids);
+  const byEvent = new Map<number, Map<string, ReactionSummary>>();
+  for (const row of rows) {
+    let byEmoji = byEvent.get(row.event_id);
+    if (!byEmoji) {
+      byEmoji = new Map();
+      byEvent.set(row.event_id, byEmoji);
+    }
+    let summary = byEmoji.get(row.emoji);
+    if (!summary) {
+      summary = { emoji: row.emoji, count: 0, by: [] };
+      byEmoji.set(row.emoji, summary);
+    }
+    summary.count += 1;
+    summary.by.push({
+      peer_id: row.peer_id,
+      session_name: row.session_name,
+      tool: row.tool,
+      alias: row.alias,
+      created_at: row.created_at,
+    });
+  }
+  return events.map((event) => ({
+    ...event,
+    reactions: [...(byEvent.get(event.event_id)?.values() ?? [])],
+  }));
 }
 
 function listThreadDiscoveries(db: Database, url: URL): ThreadDiscoveryRow[] {
@@ -2442,19 +2595,20 @@ function readWebRoomEvents(
     if (!Number.isInteger(groupId) || groupId < 1) {
       throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
     }
-    return ctx.db
+    const rows = ctx.db
       .query<WebEventRow, [number, number, number]>(
         webEventSelectSql("WHERE e.group_id = ? AND e.event_id > ?"),
       )
       .all(groupId, input.since, input.limit)
       .reverse();
+    return attachReactions(ctx.db, rows);
   }
   if (input.room.startsWith("dm:")) {
     if (!input.webPeerId) throw new HttpError(400, "invalid_request", "peer_id is required for dm room state");
     const otherPeerId = input.room.slice("dm:".length);
     ensurePeer(ctx.db, input.webPeerId);
     ensurePeer(ctx.db, otherPeerId);
-    return ctx.db
+    const rows = ctx.db
       .query<WebEventRow, [string, string, string, string, number, number]>(
         webEventSelectSql(
           `WHERE e.type = 'dm'
@@ -2465,6 +2619,7 @@ function readWebRoomEvents(
       )
       .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, input.since, input.limit)
       .reverse();
+    return attachReactions(ctx.db, rows);
   }
   throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
 }

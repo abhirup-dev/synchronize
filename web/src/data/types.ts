@@ -161,6 +161,13 @@ export interface SendMessageInput {
   parentMessageId?: string;
 }
 
+export interface ReactToMessageInput {
+  messageId: string;
+  roomId: string;
+  emoji: string;
+  op?: "add" | "remove" | "toggle";
+}
+
 export type AgentLaunchTool = "claude" | "pi";
 
 export interface LaunchToolAvailability {
@@ -201,6 +208,7 @@ export interface DataSource {
 
   // commands
   sendMessage(input: SendMessageInput): Promise<Message>;
+  reactToMessage(input: ReactToMessageInput): Promise<Message>;
   spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult>;
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */

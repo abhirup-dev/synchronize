@@ -36,6 +36,11 @@ export function useSendMessage() {
   return ds.sendMessage.bind(ds);
 }
 
+export function useReactToMessage() {
+  const ds = useDataSource();
+  return ds.reactToMessage.bind(ds);
+}
+
 export function useSpawnAgent() {
   const ds = useDataSource();
   return ds.spawnAgent.bind(ds);

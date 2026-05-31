@@ -73,6 +73,21 @@ export interface Event {
   delivered_at?: string | null;
   read_at?: string | null;
   acked_at?: string | null;
+  reactions?: ReactionSummary[];
+}
+
+export interface ReactionActor {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  alias: string | null;
+  created_at: string;
+}
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  by: ReactionActor[];
 }
 
 export type SqlParam = string | number | boolean | null;

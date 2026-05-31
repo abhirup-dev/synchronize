@@ -4,6 +4,7 @@ import type {
   Artifact,
   DataSource,
   Message,
+  ReactToMessageInput,
   Room,
   SendMessageInput,
   SpawnAgentInput,
@@ -85,6 +86,21 @@ interface DaemonEvent {
   delivered_count?: number;
   read_count?: number;
   acked_count?: number;
+  reactions?: DaemonReaction[];
+}
+
+interface DaemonReactionActor {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  alias: string | null;
+  created_at: string;
+}
+
+interface DaemonReaction {
+  emoji: string;
+  count: number;
+  by: DaemonReactionActor[];
 }
 
 interface DaemonMedia {
@@ -365,6 +381,27 @@ export class DaemonDataSource implements DataSource {
     }
   }
 
+  async reactToMessage(input: ReactToMessageInput): Promise<Message> {
+    const eventId = eventIdFromMessageId(input.messageId);
+    const rollback = this.findMessageSnapshot(input.messageId, input.roomId);
+    this.applyLocalReaction(input);
+    const response = await this.request<{ event: DaemonEvent }>(`/events/${eventId}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: this.peerId,
+        emoji: input.emoji,
+        op: input.op ?? "toggle",
+      }),
+    }).catch((error) => {
+      if (rollback) this.updateMessageSnapshots(rollback);
+      throw error;
+    });
+    const roomId = roomIdForEvent(response.event, this.peerId) ?? input.roomId;
+    const updated = mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId));
+    this.updateMessageSnapshots(updated);
+    return updated;
+  }
+
   async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
     const group = this.groupNameByRoomId.get(input.roomId);
     if (!group) throw new Error(`Unknown group room: ${input.roomId}`);
@@ -429,6 +466,48 @@ export class DaemonDataSource implements DataSource {
   private removeOptimistic(input: SendMessageInput, optimisticId: string): void {
     const snap = input.parentMessageId ? this._threadReplies.get(input.parentMessageId) : this._messages.get(input.roomId);
     snap?.set(snap.get().filter((message) => message.id !== optimisticId));
+  }
+
+  private findMessageSnapshot(messageId: string, roomId: string): Message | null {
+    const message = this._messages.get(roomId)?.get().find((candidate) => candidate.id === messageId);
+    if (message) return message;
+    for (const snap of this._threadReplies.values()) {
+      const reply = snap.get().find((candidate) => candidate.id === messageId);
+      if (reply) return reply;
+    }
+    return null;
+  }
+
+  private applyLocalReaction(input: ReactToMessageInput): void {
+    const update = (messages: Message[]) =>
+      reuseEqualMessages(messages, messages.map((message) =>
+        message.id === input.messageId ? applyReactionToMessage(message, this.peerId, input.emoji, input.op ?? "toggle") : message,
+      ));
+    this._messages.get(input.roomId)?.update(update);
+    for (const [parentId, snap] of this._threadReplies) {
+      snap.update(update);
+      const cached = this.threadReplyCache.get(parentId);
+      if (cached) this.threadReplyCache.set(parentId, update(cached));
+    }
+  }
+
+  private updateMessageSnapshots(updated: Message): void {
+    this._messages.get(updated.roomId)?.update((messages) =>
+      reuseEqualMessages(messages, messages.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message)),
+    );
+    const parentId = updated.parentId;
+    if (parentId) {
+      this._threadReplies.get(parentId)?.update((messages) =>
+        reuseEqualMessages(messages, messages.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message)),
+      );
+      const cached = this.threadReplyCache.get(parentId);
+      if (cached) {
+        this.threadReplyCache.set(
+          parentId,
+          cached.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message),
+        );
+      }
+    }
   }
 
   private async refresh(): Promise<void> {
@@ -659,6 +738,10 @@ export class DaemonDataSource implements DataSource {
   }
 
   private scheduleInvalidation(change: WebStateChange): void {
+    if (change.domains.includes("reactions")) {
+      if (change.event_id !== undefined) void this.refreshEvent(change.event_id);
+      return;
+    }
     if (change.group_id) this.pendingRooms.add(groupRoomId(change.group_id));
     if (change.peer_id) {
       const dmId = dmRoomId(change.peer_id);
@@ -669,10 +752,19 @@ export class DaemonDataSource implements DataSource {
       this.coalesceTimer = undefined;
       void this.refresh();
       for (const roomId of this.pendingRooms) {
-        if (this._messages.has(roomId) || this._timeline.has(roomId)) void this.refreshRoom(roomId);
+        if (this._messages.has(roomId) || this._timeline.has(roomId)) {
+          void this.refreshRoom(roomId, { reset: change.domains.includes("reactions") });
+        }
       }
       this.pendingRooms.clear();
     }, 50);
+  }
+
+  private async refreshEvent(eventId: number): Promise<void> {
+    const response = await this.request<{ event: DaemonEvent }>(`/events/${eventId}?peer_id=${encodeURIComponent(this.peerId)}`);
+    const roomId = roomIdForEvent(response.event, this.peerId);
+    if (!roomId) return;
+    this.updateMessageSnapshots(mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId)));
   }
 
   private request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -763,12 +855,36 @@ function mapMessage(event: DaemonEvent, roomId: string, status?: Message["status
     body: event.body ?? "",
     createdAt: event.created_at,
     mentions: parseMentions(event.mentions_json),
-    reactions: [],
+    reactions: (event.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      by: reaction.by.map((actor) => actor.peer_id),
+    })),
     ...(event.reply_count !== undefined && event.reply_count > 0 ? { threadReplyCount: event.reply_count } : {}),
     ...(event.last_reply_event_id ? { threadLastReplyAt: event.created_at } : {}),
     ...(event.parent_event_id ? { parentId: messageId(event.parent_event_id) } : {}),
     ...(status ? { status } : {}),
   };
+}
+
+function applyReactionToMessage(message: Message, peerId: string, emoji: string, op: ReactToMessageInput["op"] = "toggle"): Message {
+  const reactions = message.reactions.map((reaction) => ({ ...reaction, by: [...reaction.by] }));
+  const existing = reactions.find((reaction) => reaction.emoji === emoji);
+  const hasReacted = Boolean(existing?.by.includes(peerId));
+  const shouldAdd = op === "add" || (op === "toggle" && !hasReacted);
+  if (shouldAdd) {
+    if (existing) existing.by = [...new Set([...existing.by, peerId])];
+    else reactions.push({ emoji, by: [peerId] });
+  } else if ((op === "remove" || op === "toggle") && existing) {
+    existing.by = existing.by.filter((id) => id !== peerId);
+  }
+  return { ...message, reactions: reactions.filter((reaction) => reaction.by.length > 0) };
+}
+
+function roomIdForEvent(event: DaemonEvent, peerId: string): string | null {
+  if (event.group_id !== null) return groupRoomId(event.group_id);
+  if (event.type !== "dm" || !event.sender_peer_id || !event.recipient_peer_id) return null;
+  const other = event.sender_peer_id === peerId ? event.recipient_peer_id : event.sender_peer_id;
+  return dmRoomId(other);
 }
 
 function mapTimelineEvent(event: DaemonEvent, groupById: Map<number, DaemonGroup>, peerById: Map<string, DaemonPeer>): TimelineEvent {
