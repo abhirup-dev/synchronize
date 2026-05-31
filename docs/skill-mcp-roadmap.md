@@ -2,6 +2,16 @@
 
 Companion to `docs/skill-mcp-research-findings.md` (the raw findings F1–F18 + P1/P2/P3 + A1, all cross-checked against daemon source). This doc **organizes** those findings into a phased plan, split per the operator's directive into **NOW** (ship this work) and **LATER** (queued improvements).
 
+## ⭐ TOP PRIORITY (user-flagged 2026-05-31: the reply misroute makes synchronize "almost unusable")
+The reply-routing + visibility cluster jumps ahead of the rest of LATER — it's the bug that hid opus from the human all session. Do this FIRST:
+- **`sync-bsvi` (P0)** — F12 `bridge_reply({to})`: structural cure (no manual root → can't misroute).
+- **`sync-2wsz` (P1)** — preserve `reply_to_event_id` (blocks the echo).
+- **`sync-tjm4` (P1)** — F19 legible post-send echo (root-preview + nudge) so a misroute is visible turn-1.
+- **`sync-x0d8` (P1)** — web: surface thread replies in the main timeline (+ unread badge) — most direct fix for the human's visibility.
+- **`sync-gfjs` (P1)** — F21 colon-alias un-mentionable (so the web human can be pushed at all).
+- Plus the NOW skill line ("`in_reply_to` isn't sticky") in `sync-b8p`.
+Rationale: regression-after-nudge (F19) proved the skill line alone won't hold; the daemon echo + `bridge_reply` + GUI surfacing are what actually restore usability. react/ack (`sync-ever`) remains the next prerequisite after this cluster.
+
 ## The throughline (why these group the way they do)
 Almost every finding is one of two shapes:
 1. **Push, don't make the agent pull/infer** — identity, reply-path, context, presence, attention. (P1, P2, P3, A1, F2, F12, F17.)
