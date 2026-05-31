@@ -394,6 +394,15 @@ Sources so far: pi-low (228), pi-medium (229), pi-high (230) — opus/sonnet/hai
 
 ---
 
+### F19 — Stale `in_reply_to` + root-normalization silently misroutes a reply into an old thread (observed live, event 253/257)
+- **Source:** operator, diagnosed from the daemon DB after the human reported opus's messages "missing" from the expected thread/GUI.
+- **Cross-check:** ✅ CONFIRMED in SQLite. opus's roadmap feedback (253) and its "alive" reply (257) both carry `parent_event_id = 196` — the **Thread-4 (query-instinct) root** — not the main channel or the roadmap thread (248). The Pi agents + sonnet all correctly targeted 248; only opus mis-targeted.
+- **Mechanism:** opus passed an `in_reply_to` pointing at an event *inside* Thread 4; the daemon's reply-to-reply **root-normalization** (intended behavior, see threads design) collapsed it to root 196. Net effect: an intended "reply to current context" was silently absorbed into a stale thread, where the human (reading the main channel) never saw it. The agent gets no signal its reply landed somewhere unexpected.
+- **Why it matters:** the normalization rule that keeps threads one-level-deep has a sharp edge — if an agent's `in_reply_to` is stale (points at an old thread's event), the reply vanishes into that old thread rather than erroring or landing in the obvious place. Smart-model irony: opus (most context) mis-targeted precisely because it was holding/【reusing an older event id; the canaries, replying to the freshest mention, targeted correctly.
+- **Disposition:**
+  - `SKILL` (NOW): teach "reply with `in_reply_to = <the event_id of the message you're actually answering>`; a stale id silently reroutes you into an old thread." Reinforces F12 (`bridge_reply` would eliminate this — it derives the target from the envelope you're answering).
+  - `BD` (P3, daemon/UX): the send/reply response should **echo the resolved `thread_root` it normalized to** (e.g. `posted to thread 196`), so an agent (and the `session_stub`) can notice when a reply landed in an unexpected thread. Cheap response-shape add; turns a silent misroute into a visible one. Ties to F9 (`hint`) + P3 (`session_stub`).
+
 ## Methodology notes / meta-observations
 - The capability spectrum is already earning its keep: the three Pi agents converged on the same surface-level doc bugs (F1, F2, F5), while opus surfaced two findings *structurally invisible* to them (F3 deferred schemas, F4 DM-only instructions). Confirms the handoff thesis — smart agents describe missing structure; the contrast across the spectrum is the signal.
 - Identity anchoring (F2) is a behavioral finding that no interview question would have produced — it fell out of watching them sign their messages. Watch behavior, not just answers. Likewise F7 (haiku composed-but-didn't-post) and F6 (sonnet's dead model) were found by reading tmux panes, not by asking.
