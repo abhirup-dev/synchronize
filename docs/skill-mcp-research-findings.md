@@ -272,6 +272,57 @@ Priority order, by leverage vs. cost:
 
 ---
 
+## Thread 3 result — MCP surface lean audit (event 171, 6/6)
+Sources: pi-low (172), pi-medium (173), pi-high (174), haiku (175/177/180/182/184/186/190), sonnet (176/179/181/183/187/191), opus (178/185/188). Very high convergence; opus & sonnet grounded their audits in tools they *actually called* today.
+
+**Lean core (consensus ~6–8 tools):** `whoami`, `send_group`, `dm`, `list_groups`, `inbox`, `get_thread`, `group_history` (+ `list_peers`/media situational). Everything else → reference/power-user tier.
+
+### F11 — Thread/history/query family is over-split → collapse to `get_thread(format:)` + one reader
+- **Sources:** all 6; the most-agreed MCP finding. haiku: "the cluster is broken." opus: "worst overlap offender AND worst name-clarity offender — same fix solves both."
+- **Evidence (opus 178, observation not inference):** `bridge_get_thread(format: transcript)` already returns root + replies + participants + a status block (counts, last_event_id, reply_count). So `get_thread_status`/`get_thread_summary` are **projections of data `get_thread` already returns** — shapes, not verbs.
+- **Fix:** `get_thread(root_event_id, format: "transcript|json|status|summary")` (5→… folds 3 verbs to 1). Keep `list_threads` for *discovery* only. Make `group_history` one reader with `view: flat|threads` and **drop `thread_of:`** (overlaps `get_thread`). `query_events` = the ONE low-level/SQL escape hatch, demoted to reference (sonnet: keep the friendly default, demote the superset, never both at equal prominence).
+- **Disposition:** `BD` (P2, MCP surface). Thread family 5 verbs → 2. Fold-into-existing per the lean rule.
+
+### F12 — Most-wanted tool: `bridge_reply({in_reply_to, message})` — envelope-routed reply (ADDITIVE)
+- **Sources:** pi-low/medium/high (172–174), sonnet (176), opus (185). Highest-leverage convenience.
+- **Shape (opus 185, refined):** `reply({in_reply_to: <event_id>, message})` looks up the event, routes by its `type` (`group_message`→group/thread, `dm`→DM), resolves `group_id→name` itself (daemon already owns the mapping — no param needed, sonnet 179). It is **additive, not a replacement**: covers the ~90% reply case; `send_group`/`dm` stay as primitives for *cold initiation* (new DM, new top-level post) and drop to reference-tier. `reply` becomes the turn-1 router line.
+- **Lean angle — net-subtractive at the friction layer:** dissolves F1 (group_id-vs-name), most of F4, F10 — at the tool layer, so the canary can't get it wrong; cuts the common reply from 2 calls to 1.
+- **Disposition:** `BD` (P1, MCP surface). Daemon-side complement to P1's router cheat-sheet.
+
+### F13 — Edit/retract: requested (opus 178) then REJECTED by the table → keep append-only
+- **Resolution (sonnet 183, haiku 184, opus conceded 188):** keep `send_group`/`dm` append-only. Retract wouldn't undo propagation (137/139 were read before any retract could fire) and enables *silent* cleanup with no correction trail — worse for group epistemics. Visible corrections are the right behavior; they just need (a) a lighter affordance (F14) and (b) a machine-readable link (F15).
+- **Disposition:** `WON'T-DO` — record the rationale so it isn't re-litigated.
+
+### F14 — Missing: lightweight react/ack primitive — top recommended ADDITION
+- **Sources:** opus (178) "single highest-value addition"; sonnet (181) "prioritize over any cut"; haiku (180).
+- **Ask:** `bridge_react(event_id, emoji)` — no body, no push, no thread pollution — to signal "seen/agreed/corrected."
+- **Why high-leverage:** attacks the +1-noise failure mode *structurally* (if "+1 reply" is the path of least resistance and ack doesn't exist, the noise is structural). **Correction (opus 185, sonnet 187): react and P2 are ORTHOGONAL, not substitutes** — react is *output-side* (noise an agent emits), P2 is *input-side* (attention an agent misses; a heads-down agent won't react to a thread it never saw). They **compose** (react makes clearing a P2 digest row cheap — thumbs-up vs paragraph). Ship react first; do NOT cancel P2 on its account.
+- **Disposition:** `BD` (P1, feature). The one genuinely-additive tool the lean audit endorses — it removes message volume rather than adding surface.
+
+### F15 — Missing: a typed `corrects:`/`supersedes:` link on messages (append-only)
+- **Source:** opus (188), refined by sonnet (191), endorsed haiku (190). The motivating bug is *this thread*: opus's 141 corrected its 137, but only prose says so.
+- **Problem:** corrections are discoverable only by linear reading. A late reader — critically `get_thread_summary` — has no signal 137 was overturned; it ingests the wrong claim as a peer to the correction and double-counts/averages. **The prose-only correction link breaks the very digest P2 depends on.**
+- **Fix:** an append-only annotation on the correcting event — `send_group({..., corrects: <event_id>})`. Nothing deleted (137 stays); 137 is *structurally marked* corrected-by-141. Audit trail gets *stronger*, not weaker. **Typed, narrow (sonnet 191):** `corrects:` for factual override (maybe `supersedes:` for design decisions); NOT a generic `relates_to:` — generic links give summarizers no folding signal, typed ones do. Pair with a `get_thread_summary` patch that folds `corrects:` chains before summarizing.
+- **Fold-operation contract (opus 193 — the point of typing the links):** `corrects: <id>` = target is *factually wrong* → summarizer does **delete-and-replace** (drop the target, keep only the correction; never surface the wrong claim). `supersedes: <id>` = target was a *valid prior position now replaced* → summarizer does **collapse-keeping-latest** (keep both, weight the newer, show the evolution/reasoning trail). Two different folds; this is the contract `get_thread_summary` must honor. Example: 137→141 is `corrects:` (137 was wrong); the 153→162 router drafts were `supersedes:` (evolution, not error — erasing 153 would lose the trail). Stop at two types — generic `relates_to:` gives the summarizer no fold rule.
+- **Disposition:** `BD` (P2, MCP surface + summary). Append-only-compatible; protects P2/summary correctness.
+
+### Merges / hides (consensus, beyond F11)
+- `register` → fold into **`whoami({session_name})` upsert** (opus 178, sonnet 181): "ensure identity," register-if-needed, return identity either way. Kills Thread-1's register-vs-whoami paralysis (F2) at the API; router's "call whoami first" needs no asterisk. `BD` (P2).
+- **Group-local identity hole (opus 178, pi-high/medium):** `whoami` returns `session_name` but not the caller's *group* alias → needs a second `list_groups({mine:true})`. Fold group alias into `whoami` (or F12's reply context). F2's identity-is-pull gap as a concrete API hole.
+- `list_media` → `get_media()` with no id; `rename_session`/`rename_in_group` → params on `whoami`/`join_group`; `launch`/`stop` → keep but in a **separate non-messaging namespace** so orchestration doesn't clutter the messaging core.
+
+### Implementation priority (table consensus, haiku 190 / opus 186):
+1. Skill redesign (router + tiered reference docs) — pure doc, highest leverage.
+2. **react/ack** (F14) — output-side noise.
+3. **`corrects:`/`supersedes:`** (F15) — correction structure (unblocks correct summaries).
+4. First-contact context injection (P1) — input-side awareness.
+5. P2 mention digest — input-side engagement (now correctly handles superseded claims).
+6. MCP consolidations (F11 `get_thread` formats, F12 `reply`, `whoami` upsert).
+
+### Canary name-confusion (haiku 175, opus 178): the `get_thread_*` trio (worst — prefix screams overlap), `group_history(thread_of:)`, `query_events`, `rename_in_group` vs `rename_session`, `share_media`, `dm`'s `recipient_peer_id` vs `peer_id` (F10). Self-explanatory: `whoami`, `dm`, `send_group`, `join_group`, `leave_group`, `list_peers`, `list_groups`. Worst names == worst overlaps; one fix (F11) solves both.
+
+---
+
 ## Methodology notes / meta-observations
 - The capability spectrum is already earning its keep: the three Pi agents converged on the same surface-level doc bugs (F1, F2, F5), while opus surfaced two findings *structurally invisible* to them (F3 deferred schemas, F4 DM-only instructions). Confirms the handoff thesis — smart agents describe missing structure; the contrast across the spectrum is the signal.
 - Identity anchoring (F2) is a behavioral finding that no interview question would have produced — it fell out of watching them sign their messages. Watch behavior, not just answers. Likewise F7 (haiku composed-but-didn't-post) and F6 (sonnet's dead model) were found by reading tmux panes, not by asking.
