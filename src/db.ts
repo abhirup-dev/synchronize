@@ -368,7 +368,10 @@ function migrate(db: Database): void {
   const hasV6 = db
     .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 6")
     .get();
-  if (!hasV6) {
+  const hasMessageReactions = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_reactions'")
+    .get();
+  if (!hasV6 || !hasMessageReactions) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS message_reactions (
         event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -384,7 +387,97 @@ function migrate(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_message_reactions_peer
         ON message_reactions (peer_id, created_at);
     `);
-    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)`);
+    if (!hasV6) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)`);
+  }
+
+  // Migration v7 — durable launch lifecycle kernel (sync-txpj).
+  // Launch intent, lifecycle evidence, and side-effect work are stored in
+  // SQLite so delayed registration, daemon restart, and HTTP timeout cannot
+  // lose the group auto-join contract.
+  const hasV7 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
+    .get();
+  if (!hasV7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS launch_intents (
+        launch_id TEXT PRIMARY KEY,
+        peer_id TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        session_name TEXT NOT NULL,
+        alias TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        target_group TEXT,
+        model TEXT,
+        thinking TEXT,
+        args_json TEXT,
+        backend TEXT NOT NULL,
+        backend_profile TEXT,
+        backend_title TEXT NOT NULL,
+        state TEXT NOT NULL,
+        failure_code TEXT,
+        failure_message TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        accepted_at TEXT,
+        spawned_at TEXT,
+        prompt_seen_at TEXT,
+        prompt_accepted_at TEXT,
+        registered_at TEXT,
+        reconciled_at TEXT,
+        joined_at TEXT,
+        stale_at TEXT,
+        failed_at TEXT,
+        stopped_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_launch_intents_peer
+        ON launch_intents (peer_id);
+
+      CREATE INDEX IF NOT EXISTS idx_launch_intents_state_updated
+        ON launch_intents (state, updated_at);
+
+      CREATE INDEX IF NOT EXISTS idx_launch_intents_backend_title
+        ON launch_intents (backend, backend_title);
+
+      CREATE TABLE IF NOT EXISTS launch_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        launch_id TEXT NOT NULL REFERENCES launch_intents(launch_id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        from_state TEXT,
+        to_state TEXT,
+        payload_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_launch_events_launch_event
+        ON launch_events (launch_id, event_id);
+
+      CREATE INDEX IF NOT EXISTS idx_launch_events_kind_created
+        ON launch_events (kind, created_at);
+
+      CREATE TABLE IF NOT EXISTS launch_work (
+        work_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        launch_id TEXT NOT NULL REFERENCES launch_intents(launch_id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        claimed_by TEXT,
+        lease_expires_at TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL,
+        next_run_at TEXT NOT NULL,
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_launch_work_ready
+        ON launch_work (status, next_run_at, lease_expires_at);
+
+      CREATE INDEX IF NOT EXISTS idx_launch_work_launch
+        ON launch_work (launch_id, status);
+    `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
   }
 }
 

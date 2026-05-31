@@ -103,7 +103,7 @@ test("autoConfirmDevChannelPrompt sends Enter to the pane when the dev-channel p
     ],
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(true);
   const capture = calls.find((c) => c.includes("capture-pane"));
   expect(capture).toEqual(["tmux", "capture-pane", "-p", "-J", "-S", "-200", "-t", "%42"]);
   const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
@@ -119,7 +119,7 @@ test("autoConfirmDevChannelPrompt falls back to C-m and retries when the prompt 
     "capture-pane": { exitCode: 0, stdout: "I am using this for local development\nEnter to confirm", stderr: "" },
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(false);
   const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
   expect(sentEnter).toHaveLength(3);
   expect(sentEnter.every((c) => c.join(" ") === "tmux send-keys -t %42 Enter")).toBe(true);
@@ -143,7 +143,7 @@ test("autoConfirmDevChannelPrompt resolves AOE-truncated tmux names through sess
     ],
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("abcd1234-verylong");
+  await expect(backend.autoConfirmDevChannelPrompt("abcd1234-verylong")).resolves.toBe(true);
   const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
   expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "%43", "Enter"]);
 });
@@ -154,7 +154,7 @@ test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears",
     "capture-pane": { exitCode: 0, stdout: "just a normal claude UI, no prompt", stderr: "" },
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(false);
   expect(calls.some((c) => c.includes("send-keys"))).toBe(false);
 });
 

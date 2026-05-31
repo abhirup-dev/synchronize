@@ -13,6 +13,13 @@ export interface Agent {
   role: string;
   status: AgentStatus;
   statusNote?: string;
+  launchLifecycle?: {
+    launchId: string;
+    state: string;
+    targetGroup?: string;
+    failureCode?: string;
+    failureMessage?: string;
+  };
   aoeSession?: {
     profile: string;
     title: string;
