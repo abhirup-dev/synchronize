@@ -1,4 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   LaunchService,
   LaunchValidationError,
@@ -11,6 +14,14 @@ import {
 } from "../src/launch/service.ts";
 import type { LaunchSpec, SessionBackend } from "../src/launch/backend.ts";
 import { ENV_HOME, ENV_PEER_ID, ENV_SESSION_NAME } from "../src/constants.ts";
+import { openDatabase } from "../src/db.ts";
+import { getLaunchIntent, listLaunchEvents, listLaunchWork } from "../src/launch/store.ts";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+});
 
 function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBackend; spawned: LaunchSpec[]; stopped: string[] } {
   const spawned: LaunchSpec[] = [];
@@ -27,6 +38,37 @@ function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBack
     list: async () => [],
   };
   return { backend, spawned, stopped };
+}
+
+function promptBackend(opts: { failSpawn?: boolean; failPrompt?: boolean; promptAccepted?: boolean; existingTitles?: string[] } = {}): {
+  backend: SessionBackend;
+  spawned: LaunchSpec[];
+  confirmed: string[];
+} {
+  const spawned: LaunchSpec[] = [];
+  const confirmed: string[] = [];
+  return {
+    spawned,
+    confirmed,
+    backend: {
+      ensureReady: async () => {},
+      spawn: async (spec) => {
+        if (opts.failSpawn) throw new Error("spawn boom");
+        spawned.push(spec);
+      },
+      confirmPrompt: async (title) => {
+        if (opts.failPrompt) throw new Error("prompt boom");
+        confirmed.push(title);
+        if (opts.promptAccepted === false) return false;
+        return true;
+      },
+      stop: async () => {},
+      list: async () => [
+        ...(opts.existingTitles ?? []).map((title) => ({ title })),
+        ...spawned.map((spec) => ({ title: spec.title })),
+      ],
+    },
+  };
 }
 
 const fakePiRuntime = async () => ({
@@ -282,4 +324,163 @@ test("no warning when nothing is pending after consume", async () => {
   expect(res.group).toBeUndefined();
   svc.consume("L1", "P1xxxxxx");
   expect(svc.pending()).toHaveLength(0);
+});
+
+test("durable launch persists intent and queues spawn without calling backend inline", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-durable-"));
+  dirs.push(dir);
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  const { backend, spawned } = promptBackend();
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    backendProfile: "synchronize-test",
+    mintLaunchId: () => "launch-1",
+    mintPeerId: () => "peer-1",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+
+  const res = await svc.launch({
+    tool: "claude",
+    name: "alice",
+    repo: "/repo",
+    group: "release",
+    model: "claude-haiku-4-5-20251001",
+    thinking: "high",
+  });
+
+  expect(res).toMatchObject({
+    launchId: "launch-1",
+    peerId: "peer-1",
+    sessionName: "alice",
+    group: "release",
+    pendingCount: 1,
+  });
+  expect(spawned).toHaveLength(0);
+  expect(getLaunchIntent(db, "launch-1")).toMatchObject({
+    state: "accepted",
+    backend_profile: "synchronize-test",
+    target_group: "release",
+    model: "claude-haiku-4-5-20251001",
+  });
+  expect(listLaunchWork(db, "launch-1").map((work) => work.kind)).toEqual(["spawn"]);
+  expect(listLaunchEvents(db, "launch-1").map((event) => event.kind)).toEqual(["launch.accepted"]);
+});
+
+test("durable spawn and prompt work advance lifecycle and preserve backend title", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-work-"));
+  dirs.push(dir);
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  const { backend, spawned, confirmed } = promptBackend();
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    provisionPiRuntime: fakePiRuntime,
+    backendProfile: "synchronize-test",
+    mintLaunchId: () => "launch-2",
+    mintPeerId: () => "peer-2",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+  const res = await svc.launch({ tool: "claude", name: "alice", repo: "/repo", group: "release" });
+
+  await svc.runWork("spawn", "launch-2");
+  expect(spawned).toHaveLength(1);
+  expect(spawned[0]?.title).toBe(res.title);
+  expect(getLaunchIntent(db, "launch-2")).toMatchObject({
+    state: "prompt_waiting",
+    backend_title: res.title,
+    spawned_at: "2026-05-31T00:00:00.000Z",
+    prompt_seen_at: "2026-05-31T00:00:00.000Z",
+  });
+  expect(listLaunchWork(db, "launch-2").map((work) => work.kind)).toEqual(["spawn", "prompt_confirm"]);
+
+  await svc.runWork("prompt_confirm", "launch-2");
+  expect(confirmed).toEqual([res.title]);
+  expect(getLaunchIntent(db, "launch-2")).toMatchObject({
+    state: "prompt_accepted",
+    prompt_accepted_at: "2026-05-31T00:00:00.000Z",
+  });
+  expect(listLaunchEvents(db, "launch-2").map((event) => event.kind)).toEqual([
+    "launch.accepted",
+    "spawn_started",
+    "spawn_succeeded",
+    "prompt_accepted",
+  ]);
+});
+
+test("durable spawn failure leaves launch retryable for the work queue", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-fail-"));
+  dirs.push(dir);
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  const { backend } = promptBackend({ failSpawn: true });
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    mintLaunchId: () => "launch-fail",
+    mintPeerId: () => "peer-fail",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+  await svc.launch({ tool: "pi", name: "fail", repo: "/repo" });
+
+  await expect(svc.runWork("spawn", "launch-fail")).rejects.toThrow(/spawn boom/);
+  expect(getLaunchIntent(db, "launch-fail")).toMatchObject({
+    state: "spawning",
+    failure_code: null,
+    failure_message: null,
+  });
+});
+
+test("durable prompt exhaustion leaves launch retryable instead of false acceptance", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-prompt-fail-"));
+  dirs.push(dir);
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  const { backend } = promptBackend({ promptAccepted: false });
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    mintLaunchId: () => "launch-prompt-fail",
+    mintPeerId: () => "peer-prompt-fail",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+  await svc.launch({ tool: "claude", name: "pfail", repo: "/repo" });
+  await svc.runWork("spawn", "launch-prompt-fail");
+
+  await expect(svc.runWork("prompt_confirm", "launch-prompt-fail")).rejects.toThrow(/prompt confirmation attempts exhausted/);
+  expect(getLaunchIntent(db, "launch-prompt-fail")).toMatchObject({
+    state: "prompt_waiting",
+    failure_code: null,
+    failure_message: null,
+  });
+});
+
+test("durable spawn retry treats existing backend title as success", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-existing-"));
+  dirs.push(dir);
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  let expectedTitle = "";
+  const { backend, spawned } = promptBackend({
+    get existingTitles() {
+      return expectedTitle ? [expectedTitle] : [];
+    },
+  } as { existingTitles: string[] });
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    mintLaunchId: () => "launch-existing",
+    mintPeerId: () => "peer-existing",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+  const res = await svc.launch({ tool: "claude", name: "exist", repo: "/repo", group: "release" });
+  expectedTitle = res.title;
+
+  await svc.runWork("spawn", "launch-existing");
+
+  expect(spawned).toHaveLength(0);
+  expect(getLaunchIntent(db, "launch-existing")?.state).toBe("prompt_waiting");
+  expect(listLaunchWork(db, "launch-existing").map((work) => work.kind)).toEqual(["spawn", "prompt_confirm"]);
 });

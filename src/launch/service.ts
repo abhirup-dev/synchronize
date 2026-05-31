@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import type { Database } from "bun:sqlite";
 import { copyFile, cp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -7,6 +8,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildAgentCommand, buildLaunchEnv, isLaunchTool, type LaunchTool } from "./build.ts";
 import type { LaunchSpec, SessionBackend } from "./backend.ts";
+import { transitionLaunch, type LaunchLifecycleEvent } from "./lifecycle.ts";
+import {
+  appendLaunchEvent,
+  createLaunchIntent,
+  enqueueLaunchWork,
+  getLaunchIntent,
+  updateLaunchState,
+  type LaunchIntentRow,
+} from "./store.ts";
 
 /**
  * Ad-hoc launch request (the v0 input). A config-driven resolver would later
@@ -338,6 +348,10 @@ export interface LaunchServiceOptions {
   backend: SessionBackend;
   /** SYNCHRONIZE_HOME, injected into the agent so it registers to this daemon. */
   home: string;
+  /** SQLite enables durable daemon launch mode. Omitted in narrow service tests. */
+  db?: Database;
+  /** Durable backend metadata surfaced to attach/stop flows. */
+  backendProfile?: string;
   /** Override Pi launch-home provisioning (tests). */
   provisionPiRuntime?: (input: { home: string; repoRoot: string }) => Promise<Record<string, string>>;
   /** Override id minting (tests). */
@@ -355,6 +369,8 @@ export interface LaunchServiceOptions {
 export class LaunchService {
   private readonly backend: SessionBackend;
   private readonly home: string;
+  private readonly db: Database | null;
+  private readonly backendProfile: string | null;
   private readonly provisionPiRuntime: (input: { home: string; repoRoot: string }) => Promise<Record<string, string>>;
   private readonly mintLaunchId: () => string;
   private readonly mintPeerId: () => string;
@@ -364,6 +380,8 @@ export class LaunchService {
   constructor(opts: LaunchServiceOptions) {
     this.backend = opts.backend;
     this.home = opts.home;
+    this.db = opts.db ?? null;
+    this.backendProfile = opts.backendProfile ?? null;
     this.provisionPiRuntime = opts.provisionPiRuntime ?? provisionPiLaunchRuntime;
     this.mintLaunchId = opts.mintLaunchId ?? (() => crypto.randomUUID());
     this.mintPeerId = opts.mintPeerId ?? (() => crypto.randomUUID());
@@ -374,6 +392,41 @@ export class LaunchService {
     const launchId = this.mintLaunchId();
     const peerId = this.mintPeerId();
     const spec = resolveLaunchSpec(req, { launchId, peerId, home: this.home });
+    if (this.db) {
+      const now = this.nowIso();
+      const row = createLaunchIntent(this.db, {
+        launchId,
+        peerId,
+        tool: req.tool,
+        sessionName: req.name,
+        alias: req.name,
+        cwd: req.repo,
+        backend: "local_aoe",
+        backendProfile: this.backendProfile,
+        backendTitle: spec.title,
+        targetGroup: req.group ?? null,
+        model: req.model ?? null,
+        thinking: req.thinking ?? null,
+        args: req.args ?? null,
+        now,
+      });
+      appendLaunchEvent(this.db, {
+        launchId,
+        kind: "launch.accepted",
+        toState: row.state,
+        payload: { tool: req.tool, group: req.group ?? null, backend: "local_aoe" },
+        createdAt: now,
+      });
+      enqueueLaunchWork(this.db, {
+        launchId,
+        kind: "spawn",
+        idempotencyKey: `${launchId}:spawn`,
+        nextRunAt: now,
+        maxAttempts: 3,
+      });
+      return this.launchResultFromRow(row);
+    }
+
     if (req.tool === "pi") {
       Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT }));
     }
@@ -440,10 +493,171 @@ export class LaunchService {
     return [...this.pendingByLaunch.values()];
   }
 
+  durableIntent(launchId: string): LaunchIntentRow | null {
+    return this.db ? getLaunchIntent(this.db, launchId) : null;
+  }
+
+  async runWork(kind: "spawn" | "prompt_confirm", launchId: string): Promise<void> {
+    if (!this.db) throw new Error("durable launch work requires a database");
+    const row = getLaunchIntent(this.db, launchId);
+    if (!row) throw new Error(`launch intent not found: ${launchId}`);
+    if (kind === "spawn") {
+      await this.runSpawnWork(row);
+      return;
+    }
+    await this.runPromptConfirmWork(row);
+  }
+
   private pendingWarning(): string | undefined {
-    const count = this.pendingByLaunch.size;
+    const count = this.db
+      ? this.db
+          .query<{ count: number }, []>(
+            `SELECT COUNT(*) AS count
+             FROM launch_intents
+             WHERE state NOT IN ('running', 'registered_unjoined', 'stale', 'failed', 'stopped')`,
+          )
+          .get()?.count ?? 0
+      : this.pendingByLaunch.size;
     if (count === 0) return undefined;
     return `${count} launch${count === 1 ? "" : "es"} not yet registered. Inspect or clear them via the AOE HUD (\`aoe -p <profile> list\`).`;
+  }
+
+  private async runSpawnWork(row: LaunchIntentRow): Promise<void> {
+    if (["prompt_waiting", "prompt_accepted", "registered", "reconciling", "joined", "running"].includes(row.state)) return;
+    const current = row.state === "accepted" ? this.applyTransition(row, { type: "spawn_started" }) : row;
+    try {
+      const existing = await this.findBackendSession(row.backend_title);
+      if (existing) {
+        this.markSpawnSucceeded(getLaunchIntent(this.db!, row.launch_id) ?? current, row.tool === "claude");
+        return;
+      }
+      const spec = await this.specFromRow(row);
+      await this.backend.spawn(spec);
+      this.markSpawnSucceeded(getLaunchIntent(this.db!, row.launch_id)!, row.tool === "claude");
+    } catch (error) {
+      if (await this.findBackendSession(row.backend_title)) {
+        this.markSpawnSucceeded(getLaunchIntent(this.db!, row.launch_id) ?? current, row.tool === "claude");
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private markSpawnSucceeded(row: LaunchIntentRow, promptRequired: boolean): void {
+    const afterSpawn = this.applyTransition(row, {
+      type: "spawn_succeeded",
+      promptRequired,
+    });
+    if (promptRequired) {
+      enqueueLaunchWork(this.db!, {
+        launchId: row.launch_id,
+        kind: "prompt_confirm",
+        idempotencyKey: `${row.launch_id}:prompt_confirm`,
+        nextRunAt: this.nowIso(),
+        maxAttempts: 5,
+      });
+    } else {
+      void afterSpawn;
+    }
+  }
+
+  private async findBackendSession(title: string): Promise<boolean> {
+    try {
+      return (await this.backend.list()).some((session) => session.title === title);
+    } catch {
+      return false;
+    }
+  }
+
+  private async runPromptConfirmWork(row: LaunchIntentRow): Promise<void> {
+    const latest = getLaunchIntent(this.db!, row.launch_id) ?? row;
+    if (!["prompt_waiting", "spawned", "prompt_accepted", "registered", "reconciling", "joined", "running"].includes(latest.state)) return;
+    if (latest.state === "prompt_accepted" || latest.state === "registered" || latest.state === "reconciling" || latest.state === "joined" || latest.state === "running") return;
+    try {
+      const accepted = await this.backend.confirmPrompt?.(latest.backend_title);
+      if (accepted === false) throw new Error("prompt confirmation attempts exhausted");
+      this.applyTransition(getLaunchIntent(this.db!, row.launch_id) ?? latest, { type: "prompt_accepted" });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  private async specFromRow(row: LaunchIntentRow): Promise<LaunchSpec> {
+    const args = row.args_json ? (JSON.parse(row.args_json) as string[]) : undefined;
+    const spec = resolveLaunchSpec(
+      {
+        tool: row.tool,
+        name: row.session_name,
+        repo: row.cwd,
+        ...(row.target_group ? { group: row.target_group } : {}),
+        ...(row.model ? { model: row.model } : {}),
+        ...(row.thinking ? { thinking: row.thinking } : {}),
+        ...(args ? { args } : {}),
+      },
+      { launchId: row.launch_id, peerId: row.peer_id, home: this.home },
+    );
+    if (row.tool === "pi") {
+      Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT }));
+    }
+    return spec;
+  }
+
+  private applyTransition(row: LaunchIntentRow, event: LaunchLifecycleEvent): LaunchIntentRow {
+    const transition = transitionLaunch(row.state, event);
+    const now = this.nowIso();
+    if (!transition.ok) {
+      appendLaunchEvent(this.db!, {
+        launchId: row.launch_id,
+        kind: `launch.invalid.${event.type}`,
+        fromState: row.state,
+        toState: row.state,
+        payload: { error: transition.error },
+        createdAt: now,
+      });
+      return row;
+    }
+    return updateLaunchState(this.db!, {
+      launchId: row.launch_id,
+      fromState: transition.from,
+      state: transition.to,
+      eventKind: event.type,
+      payload: {
+        ...(transition.reason ? { reason: transition.reason } : {}),
+        ...(transition.message ? { message: transition.message } : {}),
+      },
+      failureCode: event.type === "failed" ? event.reason : null,
+      failureMessage: "message" in event ? event.message ?? null : null,
+      now,
+    });
+  }
+
+  private launchResultFromRow(row: LaunchIntentRow): LaunchResult {
+    const result: LaunchResult = {
+      launchId: row.launch_id,
+      peerId: row.peer_id,
+      sessionName: row.session_name,
+      title: row.backend_title,
+      ...(row.target_group ? { group: row.target_group } : {}),
+      pendingCount: this.pendingCount(),
+    };
+    const warning = this.pendingWarning();
+    if (warning) result.warning = warning;
+    return result;
+  }
+
+  private pendingCount(): number {
+    if (!this.db) return this.pendingByLaunch.size;
+    return this.db
+      .query<{ count: number }, []>(
+        `SELECT COUNT(*) AS count
+         FROM launch_intents
+         WHERE state NOT IN ('running', 'registered_unjoined', 'stale', 'failed', 'stopped')`,
+      )
+      .get()?.count ?? 0;
+  }
+
+  private nowIso(): string {
+    return new Date(this.now()).toISOString();
   }
 }
 

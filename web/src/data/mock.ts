@@ -11,6 +11,7 @@ import type {
   ReactToMessageInput,
   Room,
   SendMessageInput,
+  SkillCatalogEntry,
   SpawnAgentInput,
   SpawnAgentResult,
   Snapshot,
@@ -52,6 +53,26 @@ function writeColorOverrides(overrides: Record<string, string>): void {
   }
 }
 const SEEDED_COLOR_BY_ID = new Map(AGENTS.map((a) => [a.id, a.color] as const));
+const MOCK_SKILL_CATALOG: SkillCatalogEntry[] = [
+  {
+    id: "diagnose",
+    name: "diagnose",
+    description: "Disciplined diagnosis loop for hard bugs and regressions.",
+    runtimes: ["claude", "pi"],
+  },
+  {
+    id: "code-review",
+    name: "code-review",
+    description: "Review code changes for bugs, regressions, and missing tests.",
+    runtimes: ["claude"],
+  },
+  {
+    id: "query-sharechat-spanner",
+    name: "query-sharechat-spanner",
+    description: "Query and inspect ShareChat Cloud Spanner data.",
+    runtimes: ["pi"],
+  },
+];
 
 export class MockDataSource implements DataSource {
   readonly kind = "mock" as const;
@@ -71,10 +92,12 @@ export class MockDataSource implements DataSource {
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
+  private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
 
   agents(): Snapshot<Agent[]> { return this._agents; }
   rooms(): Snapshot<Room[]>   { return this._rooms; }
   me(): Snapshot<Agent>        { return this._me; }
+  skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);

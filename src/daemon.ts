@@ -27,8 +27,19 @@ import { collectDaemonProvenance, collectGitContext, type DaemonProvenance } fro
 import { AoeBackend } from "./launch/backend.ts";
 import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
 import { isLaunchTool } from "./launch/build.ts";
+import { transitionLaunch, type LaunchLifecycleEvent } from "./launch/lifecycle.ts";
+import {
+  appendLaunchEvent,
+  claimNextLaunchWork,
+  completeLaunchWork,
+  failLaunchWork,
+  getLaunchIntent,
+  updateLaunchState,
+  type LaunchIntentRow,
+} from "./launch/store.ts";
 import { runEventQuery } from "./query/events.ts";
 import { resolveProviderConfig } from "./llm/index.ts";
+import { loadSkillCatalog } from "./skill-catalog.ts";
 import {
   defaultStrategyFromEnv,
   getCachedSummary,
@@ -41,7 +52,7 @@ import {
   type ResolvedStrategy,
   type WorkerHandle,
 } from "./summarize/index.ts";
-import type { ReactionSummary, ReplyDestination, SelectorStrategy, ThreadFormat } from "./api/types.ts";
+import type { ReactionSummary, ReplyDestination, SelectorStrategy, SkillCatalogEntry, ThreadFormat } from "./api/types.ts";
 
 const REPLY_CONTEXT_PREVIEW_WORDS = 30;
 const DEFAULT_SELECTOR_STRATEGY: SelectorStrategy = "last";
@@ -58,7 +69,9 @@ export interface DaemonContext {
   webStateClients: Set<WebStateClient>;
   stateVersion: number;
   launchService: LaunchService;
+  launchWorker: WorkerHandle | null;
   summarizeWorker: WorkerHandle | null;
+  skillCatalog: SkillCatalogEntry[];
 }
 
 interface DiscoveryFile {
@@ -128,6 +141,7 @@ interface EventRow {
   parent_event_id: number | null;
   reply_to_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   reactions?: ReactionSummary[];
 }
@@ -345,6 +359,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         "event_subscriptions",
         "media",
         "summary",
+        "skill_catalog",
       ],
       pid: process.pid,
       started_at: ctx.startedAt,
@@ -365,6 +380,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       row.presence ?? (row.online ? "online" : "offline");
     const renderSig = [
       ...Object.values(state.launch_tools).map((tool) => `${tool.tool}:${tool.available}:${tool.path ?? ""}`),
+      ...state.launch_lifecycle.map(
+        (launch) =>
+          `${launch.launch_id}:${launch.peer_id}:${launch.state}:${launch.target_group ?? ""}:${launch.backend_title}:${
+            launch.failure_code ?? ""
+          }:${launch.updated_at}`,
+      ),
+      ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
           `${p.peer_id}:${presenceOf(p)}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
@@ -661,6 +683,17 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
     }
     await ctx.launchService.stop(title);
+    const stoppedLaunch = ctx.db
+      .query<LaunchIntentRow, [string]>("SELECT * FROM launch_intents WHERE backend_title = ? ORDER BY created_at DESC LIMIT 1")
+      .get(title);
+    if (stoppedLaunch) {
+      applyLaunchTransition(ctx, stoppedLaunch, { type: "stopped", reason: "operator_stop" });
+      const deactivated = deactivateStoppedLaunchPeer(ctx, stoppedLaunch.peer_id);
+      emitWebStateChanged(ctx, {
+        domains: deactivated ? ["peers", "groups", "agent_sessions"] : ["agent_sessions"],
+        peerId: stoppedLaunch.peer_id,
+      });
+    }
     // Drop any pending launch intent for this title (stopped before it registered).
     ctx.launchService.forgetByTitle(title);
     log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
@@ -821,18 +854,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     // survives. Flip every active group_member row to inactive so rosters
     // and alias-collision checks don't trip over a peer that is no longer
     // online. left_at uses the same timestamp the peer was deleted at.
-    ctx.db.transaction(() => {
-      const now = new Date().toISOString();
-      ctx.db
-        .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ? WHERE peer_id = ?")
-        .run(now, now, peerId);
-      ctx.db
-        .query(
-          "UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1",
-        )
-        .run(now, peerId);
-    })();
-    ctx.subscribers.delete(peerId);
+    softDeletePeerIfPresent(ctx, peerId);
     log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
     emitWebStateChanged(ctx, { domains: ["peers", "groups"], peerId });
     return jsonResponse({ ok: true, peer_id: peerId });
@@ -1243,6 +1265,8 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
     const directReplyTarget = inReplyTo !== undefined ? getEvent(ctx.db, inReplyTo) : null;
     const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    const skillDirectives = optionalStringArray(body, "skill_directives") ?? [];
+    const skillDirectivesJson = skillDirectives.length > 0 ? JSON.stringify(skillDirectives) : null;
     // Self-mentions are filtered out: `mentions_json` should reflect peers
     // actually targeted by the mention semantics. Since the sender is always
     // excluded from both push and inbox fanout, advertising a self-mention
@@ -1255,9 +1279,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
-          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, reply_to_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, reply_to_event_id, mentions_json, skill_directives_json) VALUES ('group_message', ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(senderPeerId, group.group_id, message, parentEventId, directReplyTarget?.event_id ?? null, mentionsJson);
+        .run(senderPeerId, group.group_id, message, parentEventId, directReplyTarget?.event_id ?? null, mentionsJson, skillDirectivesJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
       // Durable inbox fanout: every active member except the sender, regardless
       // of mention status — durable visibility is the same as v0; only push
@@ -1610,7 +1634,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         .run(now, peerId, ...rows.map((row) => row.event_id));
       emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? after });
+    return jsonResponse({
+      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      next_cursor: rows.at(-1)?.event_id ?? after,
+    });
   }
 
   const inboxAck = url.pathname.match(/^\/peers\/([^/]+)\/inbox\/ack$/);
@@ -1671,7 +1698,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
       emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? cursor });
+    return jsonResponse({
+      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      next_cursor: rows.at(-1)?.event_id ?? cursor,
+    });
   }
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
@@ -1766,6 +1796,15 @@ function optionalIntegerArray(body: Record<string, unknown>, key: string): numbe
     throw new HttpError(400, "invalid_request", `${key} must be an array of positive integers`);
   }
   return value as number[];
+}
+
+function optionalStringArray(body: Record<string, unknown>, key: string): string[] | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) {
+    throw new HttpError(400, "invalid_request", `${key} must be an array of non-empty strings`);
+  }
+  return [...new Set(value.map((item) => item.trim()))];
 }
 
 function requireLocalCallbackUrl(value: string): string {
@@ -2097,6 +2136,56 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
   }
 }
 
+function softDeletePeerIfPresent(
+  ctx: Pick<DaemonContext, "db" | "subscribers">,
+  peerId: string,
+  deletedAt = new Date().toISOString(),
+): boolean {
+  const exists = ctx.db
+    .query<{ count: number }, [string]>(
+      "SELECT COUNT(*) AS count FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId)?.count ?? 0;
+  if (exists === 0) return false;
+  ctx.db.transaction(() => {
+    ctx.db
+      .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ?, updated_at = ? WHERE peer_id = ? AND deleted_at IS NULL")
+      .run(deletedAt, deletedAt, deletedAt, peerId);
+    ctx.db
+      .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+      .run(deletedAt, peerId);
+  })();
+  ctx.subscribers.delete(peerId);
+  return true;
+}
+
+export function deactivateStoppedLaunchPeer(ctx: DaemonContext, peerId: string): boolean {
+  return softDeletePeerIfPresent(ctx, peerId);
+}
+
+function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
+  const rows = ctx.db
+    .query<{ peer_id: string }, []>(
+      `SELECT DISTINCT li.peer_id
+       FROM launch_intents li
+       JOIN peers p ON p.peer_id = li.peer_id
+       WHERE li.state = 'stopped'
+         AND p.deleted_at IS NULL`,
+    )
+    .all();
+  if (rows.length === 0) return 0;
+  const deletedAt = new Date().toISOString();
+  let deactivated = 0;
+  for (const row of rows) {
+    if (softDeletePeerIfPresent(ctx, row.peer_id, deletedAt)) deactivated += 1;
+  }
+  if (deactivated > 0) {
+    log(`launch cleanup soft-deleted ${deactivated} stopped launch peer(s)`);
+    emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"] });
+  }
+  return deactivated;
+}
+
 export function upsertPeer(
   db: Database,
   input: {
@@ -2409,6 +2498,28 @@ function previewEventBody(event: EventRow): string | null {
   if (words.length === 0) return "";
   const preview = words.slice(0, REPLY_CONTEXT_PREVIEW_WORDS).join(" ");
   return words.length > REPLY_CONTEXT_PREVIEW_WORDS ? `${preview}...` : preview;
+}
+
+function eventForRecipient<T extends EventRow>(event: T, recipientPeerId: string): T {
+  const skillDirectives = parseJsonStringArray(event.skill_directives_json);
+  if (event.type !== "group_message" || skillDirectives.length === 0) return event;
+  const mentionedPeerIds = parseJsonStringArray(event.mentions_json);
+  if (!mentionedPeerIds.includes(recipientPeerId)) return event;
+  const prefix = `You must use the following skills for this message: ${skillDirectives.join(", ")}.`;
+  return {
+    ...event,
+    body: event.body ? `${prefix}\n\n${event.body}` : prefix,
+  };
+}
+
+function parseJsonStringArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function ensureReactableEvent(event: EventRow): void {
@@ -2783,6 +2894,7 @@ interface WebStateResponse {
     token_required: boolean;
   };
   launch_tools: Record<"claude" | "pi", WebLaunchToolStatus>;
+  launch_lifecycle: WebLaunchLifecycleRow[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
@@ -2790,7 +2902,36 @@ interface WebStateResponse {
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
   media: MediaRow[];
+  skill_catalog: SkillCatalogEntry[];
 }
+
+type WebLaunchLifecycleRow = Pick<
+  LaunchIntentRow,
+  | "launch_id"
+  | "peer_id"
+  | "tool"
+  | "session_name"
+  | "alias"
+  | "cwd"
+  | "target_group"
+  | "backend_profile"
+  | "backend_title"
+  | "state"
+  | "failure_code"
+  | "failure_message"
+  | "created_at"
+  | "updated_at"
+  | "accepted_at"
+  | "spawned_at"
+  | "prompt_seen_at"
+  | "prompt_accepted_at"
+  | "registered_at"
+  | "reconciled_at"
+  | "joined_at"
+  | "stale_at"
+  | "failed_at"
+  | "stopped_at"
+>;
 
 interface WebAoeSession {
   profile: string;
@@ -2828,6 +2969,18 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const webPeerId = url.searchParams.get("peer_id");
   const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
   const aoeProfile = aoeProfileName(ctx.paths.home);
+  const launchLifecycle = ctx.db
+    .query<WebLaunchLifecycleRow, []>(
+      `SELECT launch_id, peer_id, tool, session_name, alias, cwd, target_group,
+              backend_profile, backend_title, state, failure_code, failure_message,
+              created_at, updated_at, accepted_at, spawned_at, prompt_seen_at,
+              prompt_accepted_at, registered_at, reconciled_at, joined_at,
+              stale_at, failed_at, stopped_at
+       FROM launch_intents
+       ORDER BY created_at DESC
+       LIMIT 200`,
+    )
+    .all();
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
@@ -2860,6 +3013,8 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.active = 1
+         AND p.deleted_at IS NULL
        ORDER BY gm.group_id ASC, gm.alias ASC`,
     )
     .all(now)
@@ -2898,6 +3053,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       token_required: Boolean(ctx.token),
     },
     launch_tools: launchToolStatus(),
+    launch_lifecycle: launchLifecycle,
     peers,
     groups,
     group_paths: groupPaths,
@@ -2905,6 +3061,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     room_summaries: roomSummaries,
     events,
     media,
+    skill_catalog: ctx.skillCatalog,
   };
 }
 
@@ -2913,6 +3070,102 @@ function launchToolStatus(): Record<"claude" | "pi", WebLaunchToolStatus> {
     claude: launchToolStatusFor("claude"),
     pi: launchToolStatusFor("pi"),
   };
+}
+
+function startLaunchWorker(ctx: DaemonContext): WorkerHandle {
+  const workerId = `launch-worker:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
+  const pollIntervalMs = positiveEnvInt("SYNCHRONIZE_LAUNCH_WORKER_POLL_MS", 500);
+  const leaseMs = positiveEnvInt("SYNCHRONIZE_LAUNCH_WORKER_LEASE_MS", 60_000);
+  const batchSize = positiveEnvInt("SYNCHRONIZE_LAUNCH_WORKER_BATCH_SIZE", 4);
+  let stopped = false;
+  let ticking = false;
+  recoverLocalLaunchWork(ctx.db);
+
+  async function tick(): Promise<{ summarized: number; skipped: number; errors: number }> {
+    if (ticking) return { summarized: 0, skipped: 1, errors: 0 };
+    ticking = true;
+    let handled = 0;
+    let skipped = 0;
+    let errors = 0;
+    try {
+      for (let index = 0; index < batchSize; index += 1) {
+        const now = new Date();
+        const work = claimNextLaunchWork(ctx.db, {
+          workerId,
+          now: now.toISOString(),
+          leaseExpiresAt: new Date(now.getTime() + leaseMs).toISOString(),
+        });
+        if (!work) {
+          skipped += 1;
+          break;
+        }
+        try {
+          if (work.kind === "spawn" || work.kind === "prompt_confirm") {
+            await ctx.launchService.runWork(work.kind, work.launch_id);
+          }
+          completeLaunchWork(ctx.db, work.work_id, new Date().toISOString());
+          handled += 1;
+          emitWebStateChanged(ctx, { domains: ["agent_sessions"] });
+        } catch (error) {
+          errors += 1;
+          const message = formatError(error);
+          const nextRunAt = new Date(Date.now() + Math.min(30_000, 1_000 * 2 ** work.attempts)).toISOString();
+          const failed = failLaunchWork(ctx.db, work.work_id, {
+            error: message,
+            nextRunAt,
+            now: new Date().toISOString(),
+          });
+          if (failed.status === "failed") {
+            const launch = getLaunchIntent(ctx.db, work.launch_id);
+            if (launch && launch.state !== "failed") {
+              applyLaunchTransition(ctx, launch, {
+                type: "failed",
+                reason: "max_attempts_exceeded",
+                message,
+              });
+            }
+          }
+          log(`launch worker ${work.kind} failed launch_id=${work.launch_id} attempts=${work.attempts}: ${message}`);
+        }
+      }
+      return { summarized: handled, skipped, errors };
+    } finally {
+      ticking = false;
+    }
+  }
+
+  const timer = setInterval(() => {
+    if (!stopped) void tick();
+  }, pollIntervalMs);
+  timer.unref?.();
+  void tick();
+  return {
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+    },
+    tick,
+  };
+}
+
+function recoverLocalLaunchWork(db: Database): void {
+  db
+    .query(
+      `UPDATE launch_work
+       SET status = 'queued',
+           claimed_by = NULL,
+           lease_expires_at = NULL,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       WHERE status = 'running'`,
+    )
+    .run();
+}
+
+function positiveEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 function launchToolStatusFor(tool: "claude" | "pi"): WebLaunchToolStatus {
@@ -3005,7 +3258,7 @@ async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: E
             "content-type": "application/json",
             "x-synchronize-subscription-token": subscriber.token,
           },
-          body: JSON.stringify({ event }),
+          body: JSON.stringify({ event: eventForRecipient(event, peerId) }),
         });
         if (!response.ok) {
           ctx.subscribers.delete(peerId);
@@ -3151,6 +3404,11 @@ function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
  */
 export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, peerId: string): void {
   if (!launchId) return;
+  const durable = getLaunchIntent(ctx.db, launchId);
+  if (durable) {
+    reconcileDurableLaunch(ctx, durable, peerId);
+    return;
+  }
   const pending = ctx.launchService.consume(launchId, peerId);
   if (!pending || !pending.group) return;
   try {
@@ -3173,6 +3431,89 @@ export function reconcileLaunch(ctx: DaemonContext, launchId: string | null, pee
       `launch auto-join join_failed peer_id=${peerId} group=${pending.group} alias=${pending.alias} launch_id=${launchId}: ${formatError(error)}`,
     );
   }
+}
+
+function reconcileDurableLaunch(ctx: DaemonContext, launch: LaunchIntentRow, peerId: string): void {
+  if (launch.state === "running") return;
+  if (launch.state === "failed" || launch.state === "stale" || launch.state === "stopped") return;
+  if (launch.peer_id !== peerId) {
+    appendLaunchEvent(ctx.db, {
+      launchId: launch.launch_id,
+      kind: "launch.peer_mismatch",
+      fromState: launch.state,
+      toState: launch.state,
+      payload: { expectedPeerId: launch.peer_id, actualPeerId: peerId },
+      createdAt: new Date().toISOString(),
+    });
+    log(`launch reconcile peer_mismatch launch_id=${launch.launch_id} expected=${launch.peer_id} actual=${peerId}`);
+    return;
+  }
+
+  const registered = applyLaunchTransition(ctx, launch, { type: "registered" });
+  if (launch.target_group === null) {
+    applyLaunchTransition(ctx, registered, { type: "running_observed" });
+    emitWebStateChanged(ctx, { domains: ["agent_sessions"], peerId });
+    log(`launch registered peer_id=${peerId} launch_id=${launch.launch_id} group=<none>`);
+    return;
+  }
+
+  const reconciling = applyLaunchTransition(ctx, registered, { type: "reconcile_started" });
+  try {
+    const group = ensureLaunchGroup(ctx, launch.target_group);
+    insertGroupPath(ctx.db, group.group_id, launch.cwd);
+    const peer = getPeer(ctx.db, peerId);
+    const existing = ctx.db
+      .query<{ alias: string; active: number }, [number, string]>(
+        "SELECT alias, active FROM group_members WHERE group_id = ? AND peer_id = ?",
+      )
+      .get(group.group_id, peerId);
+    if (!(existing && existing.active === 1 && existing.alias === launch.alias)) {
+      joinGroupCore(ctx, group, peer, launch.alias, true);
+    }
+    const joined = applyLaunchTransition(ctx, reconciling, { type: "join_succeeded" });
+    applyLaunchTransition(ctx, joined, { type: "running_observed" });
+    emitWebStateChanged(ctx, { domains: ["groups", "events", "inbox", "agent_sessions"], groupId: group.group_id, peerId });
+    log(`launch durable auto-join peer_id=${peerId} group=${group.name} alias=${launch.alias} launch_id=${launch.launch_id}`);
+  } catch (error) {
+    applyLaunchTransition(ctx, reconciling, {
+      type: "join_failed",
+      reason: "join_failed",
+      message: formatError(error),
+    });
+    emitWebStateChanged(ctx, { domains: ["agent_sessions"], peerId });
+    log(
+      `launch durable auto-join join_failed peer_id=${peerId} group=${launch.target_group} alias=${launch.alias} launch_id=${launch.launch_id}: ${formatError(error)}`,
+    );
+  }
+}
+
+function applyLaunchTransition(ctx: DaemonContext, launch: LaunchIntentRow, event: LaunchLifecycleEvent): LaunchIntentRow {
+  const transition = transitionLaunch(launch.state, event);
+  const now = new Date().toISOString();
+  if (!transition.ok) {
+    appendLaunchEvent(ctx.db, {
+      launchId: launch.launch_id,
+      kind: `launch.invalid.${event.type}`,
+      fromState: launch.state,
+      toState: launch.state,
+      payload: { error: transition.error },
+      createdAt: now,
+    });
+    return launch;
+  }
+  return updateLaunchState(ctx.db, {
+    launchId: launch.launch_id,
+    fromState: transition.from,
+    state: transition.to,
+    eventKind: event.type,
+    payload: {
+      ...(transition.reason ? { reason: transition.reason } : {}),
+      ...(transition.message ? { message: transition.message } : {}),
+    },
+    failureCode: event.type === "failed" ? event.reason : null,
+    failureMessage: "message" in event ? event.message ?? null : null,
+    now,
+  });
 }
 
 type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
@@ -3259,6 +3600,8 @@ function deriveBackendTitleForPeer(db: Database, peerId: string): string {
   if (!launch?.launch_id) {
     throw new HttpError(400, "invalid_stop", "peer_id stop requires an agent session with launch_id; pass title instead");
   }
+  const durable = getLaunchIntent(db, launch.launch_id);
+  if (durable?.backend_title) return durable.backend_title;
   const group = db
     .query<{ name: string | null }, [string]>(
       `SELECT g.name
@@ -3385,6 +3728,8 @@ async function main(): Promise<void> {
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);
   assertLanModeIsProtected(host, token);
+  const skillCatalog = await loadSkillCatalog({ repoRoot: provenance.source_root, env: process.env });
+  log(`skill catalog loaded entries=${skillCatalog.length}`);
 
   let ctx: DaemonContext;
   const server = Bun.serve({
@@ -3395,9 +3740,12 @@ async function main(): Promise<void> {
     },
   });
 
+  const launchProfile = aoeProfileName(paths.home);
   const launchService = new LaunchService({
-    backend: new AoeBackend({ profile: aoeProfileName(paths.home) }),
+    backend: new AoeBackend({ profile: launchProfile }),
     home: paths.home,
+    db,
+    backendProfile: launchProfile,
   });
 
   const summarizeWorker = isSummarizeEnabled() ? startSummarizeWorker(db) : null;
@@ -3418,9 +3766,14 @@ async function main(): Promise<void> {
     webStateClients: new Set(),
     stateVersion: 0,
     launchService,
+    launchWorker: null,
     summarizeWorker,
+    skillCatalog,
   };
+  ctx.launchWorker = startLaunchWorker(ctx);
+  console.error(`[launch] worker started`);
   ensureDefaultGroupPaths(ctx);
+  sweepStoppedLaunchPeers(ctx);
 
   // Retention sweeper: run once at startup (cleans up peers that died while the
   // daemon was down) then on an interval. unref so it never blocks shutdown.

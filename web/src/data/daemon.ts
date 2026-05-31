@@ -7,6 +7,7 @@ import type {
   ReactToMessageInput,
   Room,
   SendMessageInput,
+  SkillCatalogEntry,
   SpawnAgentInput,
   SpawnAgentResult,
   Snapshot,
@@ -80,6 +81,7 @@ interface DaemonEvent {
   media_id: string | null;
   parent_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   reply_count?: number;
   last_reply_event_id?: number | null;
@@ -113,10 +115,30 @@ interface DaemonMedia {
   created_at: string;
 }
 
+interface DaemonLaunchLifecycle {
+  launch_id: string;
+  peer_id: string;
+  session_name: string;
+  target_group: string | null;
+  backend_title: string;
+  state: string;
+  failure_code: string | null;
+  failure_message: string | null;
+}
+
+interface DaemonSkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: Array<"claude" | "pi">;
+  source_path?: string;
+}
+
 interface WebStateResponse {
   ok: true;
   cursor: number;
   launch_tools?: Partial<Record<"claude" | "pi", { tool: "claude" | "pi"; available: boolean; path?: string }>>;
+  launch_lifecycle?: DaemonLaunchLifecycle[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
   group_paths: DaemonGroupPath[];
@@ -130,6 +152,7 @@ interface WebStateResponse {
   }>;
   events: DaemonEvent[];
   media: DaemonMedia[];
+  skill_catalog?: DaemonSkillCatalogEntry[];
 }
 
 // Subset of the daemon's ThreadSummaryResponse (src/api/types.ts) that the web
@@ -185,6 +208,7 @@ export class DaemonDataSource implements DataSource {
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
+  private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
   private groupNameByRoomId = new Map<string, string>();
@@ -210,6 +234,7 @@ export class DaemonDataSource implements DataSource {
   agents(): Snapshot<Agent[]> { return this._agents; }
   rooms(): Snapshot<Room[]> { return this._rooms; }
   me(): Snapshot<Agent> { return this._me; }
+  skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);
@@ -345,6 +370,7 @@ export class DaemonDataSource implements DataSource {
             sender_peer_id: this.peerId,
             message: body,
             ...(inReplyTo !== undefined ? { in_reply_to: inReplyTo } : {}),
+            ...(input.skillDirectives?.length ? { skill_directives: input.skillDirectives } : {}),
           }),
         });
         const delivered = mapMessage(response.event, input.roomId, "delivered");
@@ -613,6 +639,7 @@ export class DaemonDataSource implements DataSource {
     this._agents.set(reuseEqualAgents(this._agents.get(), agents));
     this._me.set(me);
     this._rooms.set(reuseEqualRooms(this._rooms.get(), [...groupRooms, ...dmRooms]));
+    this._skillCatalog.set(reuseEqualSkillCatalog(this._skillCatalog.get(), mapSkillCatalog(state.skill_catalog ?? [])));
   }
 
   private async refreshRoom(roomId: string, opts: { reset?: boolean } = {}): Promise<void> {
@@ -788,6 +815,7 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
   const peers = new Map<string, DaemonPeer>();
   for (const peer of state.peers) peers.set(peer.peer_id, peer);
   for (const member of state.memberships) {
+    if (!member.active) continue;
     if (peers.has(member.peer_id)) continue;
     peers.set(member.peer_id, {
       peer_id: member.peer_id,
@@ -799,7 +827,12 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
       ...(member.presence ? { presence: member.presence } : {}),
     });
   }
-  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId));
+  const launchByPeer = new Map<string, DaemonLaunchLifecycle>();
+  for (const launch of state.launch_lifecycle ?? []) {
+    const existing = launchByPeer.get(launch.peer_id);
+    if (!existing) launchByPeer.set(launch.peer_id, launch);
+  }
+  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id)));
 }
 
 // Map the daemon's derived presence onto the roster's status palette. working
@@ -823,9 +856,10 @@ function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
   }
 }
 
-function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
+function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifecycle): Agent {
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
+  const launchNote = launch ? launchStatusNote(launch) : undefined;
   return {
     id: peer.peer_id,
     name,
@@ -833,7 +867,18 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
     status: statusForPeer(peer, isMe),
-    ...(peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(launchNote ? { statusNote: launchNote } : peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(launch
+      ? {
+          launchLifecycle: {
+            launchId: launch.launch_id,
+            state: launch.state,
+            ...(launch.target_group ? { targetGroup: launch.target_group } : {}),
+            ...(launch.failure_code ? { failureCode: launch.failure_code } : {}),
+            ...(launch.failure_message ? { failureMessage: launch.failure_message } : {}),
+          },
+        }
+      : {}),
     ...(peer.aoe_session
       ? {
           aoeSession: {
@@ -845,6 +890,15 @@ function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
       : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
+}
+
+function launchStatusNote(launch: DaemonLaunchLifecycle): string | undefined {
+  if (launch.state === "running") return undefined;
+  if (launch.state === "registered_unjoined") return `launch: unjoined${launch.target_group ? ` #${launch.target_group}` : ""}`;
+  if (launch.state === "failed") return `launch failed${launch.failure_code ? `: ${launch.failure_code}` : ""}`;
+  if (launch.state === "stale") return "launch stale";
+  if (launch.state === "stopped") return "launch stopped";
+  return `launch: ${launch.state}`;
 }
 
 function mapMessage(event: DaemonEvent, roomId: string, status?: Message["status"]): Message {
@@ -941,7 +995,10 @@ function parseMentions(raw: string | null): string[] {
 
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
-  for (const member of memberships) pushMap(grouped, member.group_id, member);
+  for (const member of memberships) {
+    if (!member.active) continue;
+    pushMap(grouped, member.group_id, member);
+  }
   return grouped;
 }
 
@@ -1018,6 +1075,16 @@ function artifactKind(contentType: string, path: string): Artifact["kind"] {
   return "doc";
 }
 
+function mapSkillCatalog(entries: DaemonSkillCatalogEntry[]): SkillCatalogEntry[] {
+  return entries.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    runtimes: entry.runtimes,
+    ...(entry.source_path ? { sourcePath: entry.source_path } : {}),
+  }));
+}
+
 function pushMap<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const existing = map.get(key);
   if (existing) existing.push(value);
@@ -1053,5 +1120,9 @@ function reuseEqualRooms(prev: Room[], next: Room[]): Room[] {
 }
 
 function reuseEqualMessages(prev: Message[], next: Message[]): Message[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualSkillCatalog(prev: SkillCatalogEntry[], next: SkillCatalogEntry[]): SkillCatalogEntry[] {
   return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }

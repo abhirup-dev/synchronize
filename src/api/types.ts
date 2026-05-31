@@ -73,6 +73,7 @@ export interface Event {
   parent_event_id: number | null;
   reply_to_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;
@@ -99,6 +100,16 @@ export interface ReplyDestination {
 export interface ReplyResponse {
   event: Event;
   posted_to: ReplyDestination;
+}
+
+export type SkillRuntime = "claude" | "pi";
+
+export interface SkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: SkillRuntime[];
+  source_path?: string;
 }
 
 export interface ReactionActor {

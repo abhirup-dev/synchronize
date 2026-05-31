@@ -48,6 +48,7 @@ Key invariants:
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `CLAUDE.md`.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding.
+- Before merging to `master`, clean up any daemons, tmux/AOE sessions, or other temporary processes you spawned for testing.
 - **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The order is strict: write the plan → create bd issues → add the index entry.
 - **Plannotator review for plans.** When writing a plan, always use the `plannotator-annotate` skill and open the plan for feedback. After launching `plannotator annotate` / the `plannotator-annotate` skill, wait for the user's feedback in the existing session. Do not repeatedly spawn new Plannotator URLs or sessions unless the user explicitly asks for a new one.
 
@@ -154,7 +155,7 @@ bd close <id>         # Complete work
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
+5. **Clean up** - Clear stashes, prune remote branches, and stop any daemons or temporary test sessions you spawned
 6. **Verify** - All changes committed AND pushed
 7. **Hand off** - Provide context for next session
 
