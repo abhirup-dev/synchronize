@@ -166,6 +166,7 @@ export interface SendMessageInput {
   body: string;
   mentions: string[];
   parentMessageId?: string;
+  skillDirectives?: string[];
 }
 
 export interface ReactToMessageInput {
@@ -176,6 +177,14 @@ export interface ReactToMessageInput {
 }
 
 export type AgentLaunchTool = "claude" | "pi";
+
+export interface SkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: AgentLaunchTool[];
+  sourcePath?: string;
+}
 
 export interface LaunchToolAvailability {
   tool: AgentLaunchTool;
@@ -211,6 +220,7 @@ export interface DataSource {
   /** Summary for a thread, keyed by its parent (root) message id. Integration
    *  seam for bd sync-b8q — see {@link ThreadSummary}. */
   threadSummary(parentMessageId: string): Snapshot<ThreadSummary>;
+  skillCatalog(): Snapshot<SkillCatalogEntry[]>;
   me(): Snapshot<Agent>;
 
   // commands

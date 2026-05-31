@@ -63,6 +63,7 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
     media_id: null,
     parent_event_id: null,
     mentions_json: null,
+    skill_directives_json: null,
     created_at: new Date().toISOString(),
   };
   const calls: unknown[] = [];

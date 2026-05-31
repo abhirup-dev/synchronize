@@ -123,6 +123,7 @@ function migrate(db: Database): void {
       media_id TEXT,
       parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
       mentions_json TEXT,
+      skill_directives_json TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
@@ -397,7 +398,10 @@ function migrate(db: Database): void {
   const hasV7 = db
     .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
     .get();
-  if (!hasV7) {
+  const hasLaunchIntents = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'launch_intents'")
+    .get();
+  if (!hasV7 || !hasLaunchIntents) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS launch_intents (
         launch_id TEXT PRIMARY KEY,
@@ -477,7 +481,22 @@ function migrate(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_launch_work_launch
         ON launch_work (launch_id, status);
     `);
-    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+    if (!hasV7) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+  }
+
+  // Migration v8 — message-scoped skill directives. The stored event body
+  // stays canonical; recipients get directive prefixes at read/push time.
+  const hasV8 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 8")
+    .get();
+  const hasSkillDirectives = db
+    .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'skill_directives_json'")
+    .get();
+  if (!hasV8 || !hasSkillDirectives) {
+    if (!hasSkillDirectives) {
+      db.exec(`ALTER TABLE events ADD COLUMN skill_directives_json TEXT`);
+    }
+    if (!hasV8) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)`);
   }
 }
 

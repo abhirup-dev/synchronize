@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
-import { useAgents, useMe, useRooms, useSendMessage } from "../data/context.tsx";
-import type { Agent } from "../data/types.ts";
+import { useAgents, useMe, useRooms, useSendMessage, useSkillCatalog } from "../data/context.tsx";
+import type { Agent, AgentLaunchTool, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
 import { inkFor } from "./primitives.tsx";
 
@@ -16,9 +16,41 @@ interface ComposerProps {
 }
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
+type SkillRuntimeFilter = "all" | AgentLaunchTool;
 
 function normalizeMentionHandle(handle: string): string {
   return handle.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
+}
+
+function fuzzyNameScore(value: string, query: string): number | null {
+  let idx = 0;
+  const haystack = value.toLowerCase();
+  const needle = query.toLowerCase();
+  let gapPenalty = 0;
+  let lastMatch = -1;
+  for (const char of haystack) {
+    if (char === needle[idx]) {
+      if (lastMatch >= 0) gapPenalty += Math.max(0, idx - lastMatch - 1);
+      lastMatch = idx;
+      idx += 1;
+    }
+    if (idx === needle.length) return Math.max(10, 36 - gapPenalty);
+  }
+  if (idx !== needle.length) return null;
+  return Math.max(10, 36 - gapPenalty);
+}
+
+function skillMatchScore(skill: SkillCatalogEntry, query: string): number | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return 1;
+  const name = skill.name.toLowerCase();
+  const description = skill.description.toLowerCase();
+  if (name === q) return 100;
+  if (name.startsWith(q)) return 92;
+  if (name.includes(q)) return 84;
+  if (name.split(/[-_\s:]+/).some((token) => token.startsWith(q))) return 72;
+  if (description.includes(q)) return 48;
+  return q.length >= 3 ? fuzzyNameScore(name, q) : null;
 }
 
 export function Composer({
@@ -31,19 +63,27 @@ export function Composer({
   const agents = useAgents();
   const me = useMe();
   const rooms = useRooms();
+  const skillCatalog = useSkillCatalog();
   const room = rooms.find((candidate) => candidate.id === roomId);
   const mentionAgents = useMemo(() => room ? roomAgents(agents, room) : agents, [agents, room]);
   const sendMessage = useSendMessage();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const skillInputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const slashRestorePosRef = useRef<number | null>(null);
   const [value, setValue] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [skillIdx, setSkillIdx] = useState(0);
+  const [skillRuntime, setSkillRuntime] = useState<SkillRuntimeFilter>("all");
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [popRect, setPopRect] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [collapsed, setCollapsed] = useState(collapsedDefault);
 
   useLayoutEffect(() => {
-    if (mentionQuery === null) {
+    if (mentionQuery === null && !skillPickerOpen) {
       setPopRect(null);
       return;
     }
@@ -51,10 +91,10 @@ export function Composer({
     if (!el) return;
     const r = el.getBoundingClientRect();
     setPopRect({ left: r.left, bottom: window.innerHeight - r.top, width: r.width });
-  }, [mentionQuery, value]);
+  }, [mentionQuery, skillPickerOpen, value]);
 
   useEffect(() => {
-    if (mentionQuery === null) return;
+    if (mentionQuery === null && !skillPickerOpen) return;
     const onResize = () => {
       const el = wrapRef.current;
       if (!el) return;
@@ -63,7 +103,7 @@ export function Composer({
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [mentionQuery]);
+  }, [mentionQuery, skillPickerOpen]);
 
   const candidates = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -71,11 +111,65 @@ export function Composer({
     return mentionAgents.filter((a) => a.id !== me.id && (q === "" || a.handle.toLowerCase().startsWith(q))).slice(0, 6);
   }, [mentionQuery, mentionAgents, me.id]);
 
+  const skillCandidates = useMemo(() => {
+    return skillCatalog
+      .filter((skill) => !selectedSkills.includes(skill.name))
+      .filter((skill) => skillRuntime === "all" || (skill.runtimes.length === 1 && skill.runtimes.includes(skillRuntime)))
+      .map((skill) => ({ skill, score: skillMatchScore(skill, skillQuery) }))
+      .filter((item): item is { skill: SkillCatalogEntry; score: number } => item.score !== null)
+      .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))
+      .map((item) => item.skill)
+      .slice(0, 80);
+  }, [skillCatalog, selectedSkills, skillQuery, skillRuntime]);
+
+  const openSkillPicker = (restoreSlashAt: number | null = null) => {
+    slashRestorePosRef.current = restoreSlashAt;
+    setSkillPickerOpen(true);
+    setMentionQuery(null);
+    setSkillQuery("");
+    setSkillIdx(0);
+    queueMicrotask(() => skillInputRef.current?.focus());
+  };
+
+  const closeSkillPicker = () => {
+    slashRestorePosRef.current = null;
+    setSkillPickerOpen(false);
+    setSkillQuery("");
+    setSkillIdx(0);
+  };
+
+  const restoreLiteralSlashAndClose = () => {
+    const preferredPos = slashRestorePosRef.current;
+    closeSkillPicker();
+    setValue((prev) => {
+      const pos = Math.max(0, Math.min(preferredPos ?? prev.length, prev.length));
+      queueMicrotask(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(pos + 1, pos + 1);
+      });
+      return `${prev.slice(0, pos)}/${prev.slice(pos)}`;
+    });
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const v = e.target.value;
-    setValue(v);
     const caret = e.target.selectionStart;
     const upTo = v.slice(0, caret);
+    if (/(^|\s)\/$/.test(upTo)) {
+      const next = v.slice(0, caret - 1) + v.slice(caret);
+      setValue(next);
+      openSkillPicker(caret - 1);
+      queueMicrotask(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        const pos = caret - 1;
+        ta.setSelectionRange(pos, pos);
+      });
+      return;
+    }
+    setValue(v);
     const m = /@([a-zA-Z0-9._-]*)$/.exec(upTo);
     if (m) {
       setMentionQuery(m[1] ?? "");
@@ -101,6 +195,14 @@ export function Composer({
     });
   };
 
+  const commitSkill = (skill: SkillCatalogEntry) => {
+    slashRestorePosRef.current = null;
+    setSelectedSkills((prev) => prev.includes(skill.name) ? prev : [...prev, skill.name]);
+    setSkillQuery("");
+    setSkillIdx(0);
+    queueMicrotask(() => skillInputRef.current?.focus());
+  };
+
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionQuery !== null && candidates.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx((i) => (i + 1) % candidates.length); return; }
@@ -119,6 +221,35 @@ export function Composer({
     }
   };
 
+  const handleSkillKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "/") {
+      e.preventDefault();
+      restoreLiteralSlashAndClose();
+      return;
+    }
+    if (e.key === "ArrowDown" && skillCandidates.length > 0) {
+      e.preventDefault();
+      setSkillIdx((i) => (i + 1) % skillCandidates.length);
+      return;
+    }
+    if (e.key === "ArrowUp" && skillCandidates.length > 0) {
+      e.preventDefault();
+      setSkillIdx((i) => (i - 1 + skillCandidates.length) % skillCandidates.length);
+      return;
+    }
+    if ((e.key === "Enter" || e.key === "Tab") && skillCandidates.length > 0) {
+      e.preventDefault();
+      const picked = skillCandidates[skillIdx];
+      if (picked) commitSkill(picked);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeSkillPicker();
+      queueMicrotask(() => taRef.current?.focus());
+    }
+  };
+
   const submit = async () => {
     const body = value.trim();
     if (!body) return;
@@ -130,10 +261,14 @@ export function Composer({
       .filter((id): id is string => Boolean(id));
     setValue("");
     setMentionQuery(null);
+    closeSkillPicker();
+    const pickedSkills = selectedSkills;
+    setSelectedSkills([]);
     await sendMessage({
       roomId,
       body,
       mentions,
+      ...(pickedSkills.length > 0 && { skillDirectives: pickedSkills }),
       ...(parentMessageId !== undefined && { parentMessageId }),
     });
   };
@@ -177,8 +312,24 @@ export function Composer({
         <button className="ct-btn" title="code" disabled>{"</>"}</button>
         <button className="ct-btn" title="link" disabled>↗</button>
         <button className="ct-btn" title="mention">@</button>
+        <button className={`ct-btn${skillPickerOpen ? " active" : ""}`} title="use skills" onClick={() => openSkillPicker()}>/</button>
         <button className="ct-btn" title="attach (disabled in v0)" disabled>📎</button>
       </div>
+      {selectedSkills.length > 0 && (
+        <div className="composer-skill-chips" aria-label="selected skills">
+          {selectedSkills.map((skillName) => (
+            <button
+              key={skillName}
+              type="button"
+              className="composer-skill-chip"
+              onClick={() => setSelectedSkills((prev) => prev.filter((name) => name !== skillName))}
+              title={`remove ${skillName}`}
+            >
+              /{skillName} <span aria-hidden>×</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="composer-input-wrap" ref={wrapRef}>
         <textarea
           ref={taRef}
@@ -216,6 +367,65 @@ export function Composer({
               <span className="mention-note">{a.statusNote ?? a.role}</span>
             </button>
           ))}
+        </div>
+      )}
+      {skillPickerOpen && popRect && (
+        <div
+          className="skill-pop"
+          style={{
+            position: "fixed",
+            left: popRect.left,
+            bottom: popRect.bottom + 6,
+            width: Math.min(popRect.width, 520),
+          }}
+        >
+          <div className="skill-pop-head">
+            <input
+              ref={skillInputRef}
+              className="skill-search"
+              value={skillQuery}
+              onChange={(event) => {
+                setSkillQuery(event.target.value);
+                setSkillIdx(0);
+              }}
+              onKeyDown={handleSkillKey}
+              placeholder="filter skills"
+              aria-label="filter skills"
+            />
+            <div className="skill-runtime-filter" role="group" aria-label="skill runtime filter">
+              {(["all", "claude", "pi"] as const).map((runtime) => (
+                <button
+                  key={runtime}
+                  type="button"
+                  className={skillRuntime === runtime ? "active" : ""}
+                  onClick={() => {
+                    setSkillRuntime(runtime);
+                    setSkillIdx(0);
+                    queueMicrotask(() => skillInputRef.current?.focus());
+                  }}
+                >
+                  {runtime === "all" ? "All" : runtime === "claude" ? "Claude" : "Pi"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="skill-results">
+            {skillCandidates.length > 0 ? skillCandidates.map((skill, i) => (
+              <button
+                key={`${skill.name}:${skill.runtimes.join(",")}`}
+                type="button"
+                className={`skill-row${i === skillIdx ? " focused" : ""}`}
+                onClick={() => commitSkill(skill)}
+                onMouseEnter={() => setSkillIdx(i)}
+              >
+                <span className="skill-name">/{skill.name}</span>
+                <span className="skill-desc">{skill.description || "No description"}</span>
+                <span className="skill-runtimes">{skill.runtimes.join(" + ")}</span>
+              </button>
+            )) : (
+              <div className="skill-empty">No matching skills</div>
+            )}
+          </div>
         </div>
       )}
       <div className="composer-foot">

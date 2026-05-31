@@ -66,6 +66,7 @@
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
 | `docs/plans/aoe-agent-launch.md` | 161 | Daemon-managed AOE-backed launch of persistent Claude/Pi sessions with server-side group auto-join; REST+CLI+MCP, no UI (v0). Decisions: in-memory launch map (no table), pin peer_id at launch, swappable SessionBackend, rely on global install (epic sync-gsx; slices sync-lb1/62d/0g9/0at/32k/tm4/rh5/1c2/ewj/2xt/qkl/7u4). |
+| `docs/plans/global-skill-picker.md` | 188 | Global web composer skill picker. Supersedes the old per-peer `@Alice::` draft; daemon owns a startup-loaded Claude/Pi skill catalog, web sends selected `skill_directives`, and only mentioned recipients receive the directive prefix (epic sync-yamq; slices sync-tyne/p40h/wewu/3dmv/7kof). |
 | `docs/agentmemory-scope-repair.md` | 101 | Local AgentMemory project-scope repair and repeatable restore process for preserving sessions, observations, memories, lessons, crystals, and summaries while clearing polluted derived scopes (sync-815x). |
 
 ### Per-extension READMEs
