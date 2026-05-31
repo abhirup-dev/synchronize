@@ -3053,6 +3053,33 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     .all();
   const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId });
   const media = readWebRoomMedia(ctx, { room, limit });
+  // A soft-deleted (evicted / lease-lapsed) peer can still be the author of
+  // historical events. The active `peers` directory above excludes deleted peers
+  // (correct for the live roster), but the web client resolves an event's sender
+  // by looking it up in `peers` — so without the author present the message
+  // renders authorless/blank and effectively disappears. Re-include any
+  // sender/recipient referenced by the returned events that is not already in the
+  // active list (bounded to this room's referenced peers), so durable messages
+  // stay visible after their author is evicted. The roster/memberships queries are
+  // intentionally left filtered — this only feeds identity resolution.
+  const knownPeerIds = new Set(peers.map((peer) => peer.peer_id));
+  const referencedPeerIds = new Set<string>();
+  for (const event of events) {
+    if (event.sender_peer_id && !knownPeerIds.has(event.sender_peer_id)) referencedPeerIds.add(event.sender_peer_id);
+    if (event.recipient_peer_id && !knownPeerIds.has(event.recipient_peer_id)) referencedPeerIds.add(event.recipient_peer_id);
+  }
+  const extraPeers = [...referencedPeerIds].flatMap((peerId) => {
+    const row = ctx.db
+      .query<PeerRow & { online: number }, [string, string]>(
+        `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+                activity_state, last_activity_at, last_cursor, created_at, updated_at,
+                lease_expires_at > ? AS online
+         FROM peers WHERE peer_id = ?`,
+      )
+      .get(now, peerId);
+    if (!row) return [];
+    return [{ ...row, online: Boolean(row.online), presence: derivePresence(Boolean(row.online), row.activity_state) }];
+  });
   return {
     ok: true,
     generated_at: now,
@@ -3065,7 +3092,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     },
     launch_tools: launchToolStatus(),
     launch_lifecycle: launchLifecycle,
-    peers,
+    peers: [...peers, ...extraPeers],
     groups,
     group_paths: groupPaths,
     memberships,

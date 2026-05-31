@@ -1790,6 +1790,47 @@ test("web state endpoint returns summaries and room-scoped event history", async
   }
 });
 
+test("web state keeps an evicted author's messages resolvable (deleted sender stays in identity directory)", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-evict-history-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const author = await registerPeer(daemon.client, { sessionName: "author", tool: "cli" });
+    const groupName = "evict-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: author.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: author.peer.peer_id, alias: "author" });
+    const sent = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: author.peer.peer_id,
+      message: "durable message from soon-to-be-evicted author",
+    });
+    const groupId = sent.event.group_id;
+
+    // Evict the author (operator manual delete; same soft-delete path as lease lapse).
+    await deletePeer(daemon.client, author.peer.peer_id);
+
+    const room = await fetch(`${daemon.client.baseUrl}/web/state?room=group:${groupId}`);
+    const body = (await room.json()) as {
+      peers: Array<{ peer_id: string; session_name: string; online: boolean }>;
+      events: Array<{ event_id: number; sender_peer_id: string | null; body: string | null }>;
+    };
+
+    // Regression (sync-b41h): the durable message must still be present...
+    expect(body.events).toContainEqual(
+      expect.objectContaining({ event_id: sent.event.event_id, body: "durable message from soon-to-be-evicted author" }),
+    );
+    // ...and its now-deleted author must remain resolvable in the identity directory,
+    // so the web client can render the sender instead of dropping the message.
+    const authorEntry = body.peers.find((peer) => peer.peer_id === author.peer.peer_id);
+    expect(authorEntry).toBeTruthy();
+    expect(authorEntry?.session_name).toBe("author");
+    expect(authorEntry?.online).toBe(false);
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("web session endpoint returns a stable daemon-owned local web peer", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-web-session-"));
   homes.push(home);
