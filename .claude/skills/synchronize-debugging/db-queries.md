@@ -161,12 +161,27 @@ WITH thread AS (SELECT 60 AS root_id)
 SELECT event_id, type,
        substr(sender_peer_id, 1, 8) AS sender,
        parent_event_id,
+       reply_to_event_id,
+       substr(direct_body, 1, 60) AS direct_preview,
        substr(body, 1, 80) AS preview,
        datetime(created_at) AS at
-FROM events, thread
-WHERE event_id = thread.root_id OR parent_event_id = thread.root_id
+FROM thread_events, thread
+WHERE thread_root_event_id = thread.root_id
 ORDER BY event_id;
 ```
+
+### Reply target: exact event answered versus thread root
+```sql
+SELECT event_id, body, reply_to_event_id, direct_sender_session_name,
+       direct_body, thread_root_event_id, thread_root_sender_session_name,
+       thread_root_body
+FROM thread_events
+WHERE event_id = ?;
+```
+
+`reply_to_event_id` is the direct event the sender answered. `parent_event_id`
+is the normalized thread root. Older rows may have null direct context after
+migration.
 
 ### Events by type histogram
 ```sql

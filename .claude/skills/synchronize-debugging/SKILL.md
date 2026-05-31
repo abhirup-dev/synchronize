@@ -45,6 +45,7 @@ For dev runtime override: `SYNCHRONIZE_HOME=$(pwd)/.dev-synchronize make doctor`
 | Peer disappearance, "404 Peer not found", Pi/MCP cleanup misbehavior, alive-but-unreachable | `peer-lifecycle.md` |
 | Daemon won't run / running from wrong worktree / port collision / lock issues / restart cascades | `daemon-forensics.md` |
 | DM/group/thread/@mention/media routing problems, channel-push vs inbox confusion, alias-vs-session_name traps | `delivery-forensics.md` |
+| Confusing reply target, stale `in_reply_to`, or "which exact event did this answer?" | `reply-target-forensics.md` |
 | Running an isolated daemon for testing without touching production state | `dev-server-mode.md` |
 | Need raw forensic SQL (live roster, soft-delete forensics, thread walks, inbox depth, stale agent_sessions) | `db-queries.md` |
 | "Where in the code does X live?" — file/symbol/env-var navigation | `glossary.md` |
