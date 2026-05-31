@@ -52,7 +52,7 @@ export function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: st
         target = arg;
         continue;
       }
-      throw new Error("launch requires one of: claude, pi");
+      throw new Error("launch requires one of: claude, pi, letta");
     }
 
     if (passThrough) {
@@ -74,7 +74,7 @@ export function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: st
   }
 
   if (!target) {
-    throw new Error("launch requires one of: claude, pi");
+    throw new Error("launch requires one of: claude, pi, letta");
   }
   return name ? { target, name, rest } : { target, rest };
 }

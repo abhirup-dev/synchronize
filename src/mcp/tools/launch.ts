@@ -11,7 +11,7 @@ export function registerLaunchTools(ctx: ToolContext): void {
     "bridge_launch",
     {
       description:
-        "Spawn a new persistent agent session (claude or pi) via the local backend (AOE). " +
+        "Spawn a new persistent agent session (claude, pi, or letta) via the local backend (AOE). " +
         "Pass `group` to drop the teammate straight into a synchronize group — it auto-joins on " +
         "boot under alias = name (the group is created if absent); omit `group` for a standalone agent. " +
         "`repo` is the working directory the agent runs in. Put non-provider/non-model/non-thinking tool-specific flags in `args`; " +
@@ -20,7 +20,7 @@ export function registerLaunchTools(ctx: ToolContext): void {
         "registers itself a few seconds later; poll bridge_list_peers(group) to see it come online. " +
         "Idempotency: each call spawns a new session — names must be unique within a group.",
       inputSchema: {
-        tool: z.enum(["claude", "pi"]),
+        tool: z.enum(["claude", "pi", "letta"]),
         name: z.string().min(1),
         repo: z.string().min(1),
         group: z.string().optional(),

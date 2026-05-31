@@ -3,7 +3,7 @@ import { ensureDaemon } from "../../client.ts";
 import { isLaunchTool, type LaunchTool } from "../../launch/build.ts";
 
 /**
- * `synchronize spawn <claude|pi> --name N --repo PATH [--group G] [-- ...toolArgs]`
+ * `synchronize spawn <claude|pi|letta> --name N --repo PATH [--group G] [-- ...toolArgs]`
  *
  * Thin adapter over the daemon launch endpoint: spawns a persistent agent
  * session via the configured backend (AOE), optionally auto-joining a group.
@@ -35,7 +35,7 @@ function parseSpawnArgs(argv: string[]): {
 } {
   const [tool, ...rest] = argv;
   if (!tool || !isLaunchTool(tool)) {
-    throw new Error("spawn requires a tool: claude | pi");
+    throw new Error("spawn requires a tool: claude | pi | letta");
   }
   let name: string | undefined;
   let repo: string | undefined;
