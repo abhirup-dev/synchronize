@@ -69,11 +69,22 @@ export interface Event {
   media_id: string | null;
   parent_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;
   acked_at?: string | null;
   reactions?: ReactionSummary[];
+}
+
+export type SkillRuntime = "claude" | "pi";
+
+export interface SkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: SkillRuntime[];
+  source_path?: string;
 }
 
 export interface ReactionActor {

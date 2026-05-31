@@ -39,6 +39,7 @@ import {
 } from "./launch/store.ts";
 import { runEventQuery } from "./query/events.ts";
 import { resolveProviderConfig } from "./llm/index.ts";
+import { loadSkillCatalog } from "./skill-catalog.ts";
 import {
   defaultStrategyFromEnv,
   isEnabled as isSummarizeEnabled,
@@ -49,7 +50,7 @@ import {
   summarizeThread,
   type WorkerHandle,
 } from "./summarize/index.ts";
-import type { ReactionSummary } from "./api/types.ts";
+import type { ReactionSummary, SkillCatalogEntry } from "./api/types.ts";
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -64,6 +65,7 @@ export interface DaemonContext {
   launchService: LaunchService;
   launchWorker: WorkerHandle | null;
   summarizeWorker: WorkerHandle | null;
+  skillCatalog: SkillCatalogEntry[];
 }
 
 interface DiscoveryFile {
@@ -129,6 +131,7 @@ interface EventRow {
   media_id: string | null;
   parent_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   reactions?: ReactionSummary[];
 }
@@ -339,6 +342,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         "event_subscriptions",
         "media",
         "summary",
+        "skill_catalog",
       ],
       pid: process.pid,
       started_at: ctx.startedAt,
@@ -365,6 +369,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
             launch.failure_code ?? ""
           }:${launch.updated_at}`,
       ),
+      ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
           `${p.peer_id}:${presenceOf(p)}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
@@ -1134,6 +1139,8 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
     const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    const skillDirectives = optionalStringArray(body, "skill_directives") ?? [];
+    const skillDirectivesJson = skillDirectives.length > 0 ? JSON.stringify(skillDirectives) : null;
     // Self-mentions are filtered out: `mentions_json` should reflect peers
     // actually targeted by the mention semantics. Since the sender is always
     // excluded from both push and inbox fanout, advertising a self-mention
@@ -1146,9 +1153,9 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const eventId = ctx.db.transaction(() => {
       ctx.db
         .query(
-          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json, skill_directives_json) VALUES ('group_message', ?, ?, ?, ?, ?, ?)",
         )
-        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
+        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson, skillDirectivesJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
       // Durable inbox fanout: every active member except the sender, regardless
       // of mention status — durable visibility is the same as v0; only push
@@ -1502,7 +1509,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         .run(now, peerId, ...rows.map((row) => row.event_id));
       emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? after });
+    return jsonResponse({
+      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      next_cursor: rows.at(-1)?.event_id ?? after,
+    });
   }
 
   const inboxAck = url.pathname.match(/^\/peers\/([^/]+)\/inbox\/ack$/);
@@ -1562,7 +1572,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
       emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
     }
-    return jsonResponse({ events: attachReactions(ctx.db, rows), next_cursor: rows.at(-1)?.event_id ?? cursor });
+    return jsonResponse({
+      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      next_cursor: rows.at(-1)?.event_id ?? cursor,
+    });
   }
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
@@ -1649,6 +1662,15 @@ function optionalIntegerArray(body: Record<string, unknown>, key: string): numbe
     throw new HttpError(400, "invalid_request", `${key} must be an array of positive integers`);
   }
   return value as number[];
+}
+
+function optionalStringArray(body: Record<string, unknown>, key: string): string[] | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) {
+    throw new HttpError(400, "invalid_request", `${key} must be an array of non-empty strings`);
+  }
+  return [...new Set(value.map((item) => item.trim()))];
 }
 
 function requireLocalCallbackUrl(value: string): string {
@@ -2202,6 +2224,28 @@ function getVisibleEvent(db: Database, eventId: number, peerId: string): EventRo
   return event;
 }
 
+function eventForRecipient<T extends EventRow>(event: T, recipientPeerId: string): T {
+  const skillDirectives = parseJsonStringArray(event.skill_directives_json);
+  if (event.type !== "group_message" || skillDirectives.length === 0) return event;
+  const mentionedPeerIds = parseJsonStringArray(event.mentions_json);
+  if (!mentionedPeerIds.includes(recipientPeerId)) return event;
+  const prefix = `You must use the following skills for this message: ${skillDirectives.join(", ")}.`;
+  return {
+    ...event,
+    body: event.body ? `${prefix}\n\n${event.body}` : prefix,
+  };
+}
+
+function parseJsonStringArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function ensureReactableEvent(event: EventRow): void {
   if (event.type !== "group_message" && event.type !== "dm") {
     throw new HttpError(400, "reaction_target_not_message", `Cannot react to event ${event.event_id}: type is '${event.type}'`);
@@ -2506,6 +2550,7 @@ interface WebStateResponse {
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
   media: MediaRow[];
+  skill_catalog: SkillCatalogEntry[];
 }
 
 type WebLaunchLifecycleRow = Pick<
@@ -2664,6 +2709,7 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     room_summaries: roomSummaries,
     events,
     media,
+    skill_catalog: ctx.skillCatalog,
   };
 }
 
@@ -2858,7 +2904,7 @@ async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: E
             "content-type": "application/json",
             "x-synchronize-subscription-token": subscriber.token,
           },
-          body: JSON.stringify({ event }),
+          body: JSON.stringify({ event: eventForRecipient(event, peerId) }),
         });
         if (!response.ok) {
           ctx.subscribers.delete(peerId);
@@ -3328,6 +3374,8 @@ async function main(): Promise<void> {
   const token = process.env[ENV_TOKEN] ?? null;
   const { host, port } = resolveBind(process.env);
   assertLanModeIsProtected(host, token);
+  const skillCatalog = await loadSkillCatalog({ repoRoot: provenance.source_root, env: process.env });
+  log(`skill catalog loaded entries=${skillCatalog.length}`);
 
   let ctx: DaemonContext;
   const server = Bun.serve({
@@ -3366,6 +3414,7 @@ async function main(): Promise<void> {
     launchService,
     launchWorker: null,
     summarizeWorker,
+    skillCatalog,
   };
   ctx.launchWorker = startLaunchWorker(ctx);
   console.error(`[launch] worker started`);

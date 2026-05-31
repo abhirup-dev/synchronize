@@ -123,7 +123,7 @@ export interface SendGroupMessageResponse {
 
 export function sendGroupMessage(
   client: ClientConfig,
-  input: { name: string; senderPeerId: string; message: string; inReplyTo?: number },
+  input: { name: string; senderPeerId: string; message: string; inReplyTo?: number; skillDirectives?: string[] },
 ): Promise<SendGroupMessageResponse> {
   return requestJson<SendGroupMessageResponse>(
     client,
@@ -134,6 +134,7 @@ export function sendGroupMessage(
         sender_peer_id: input.senderPeerId,
         message: input.message,
         ...(input.inReplyTo !== undefined ? { in_reply_to: input.inReplyTo } : {}),
+        ...(input.skillDirectives !== undefined ? { skill_directives: input.skillDirectives } : {}),
       }),
     },
   );

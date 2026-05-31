@@ -123,6 +123,7 @@ function migrate(db: Database): void {
       media_id TEXT,
       parent_event_id INTEGER REFERENCES events(event_id) ON DELETE CASCADE,
       mentions_json TEXT,
+      skill_directives_json TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
@@ -477,6 +478,21 @@ function migrate(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_launch_work_launch
         ON launch_work (launch_id, status);
     `);
+    db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
+  }
+
+  // Migration v7 — message-scoped skill directives. The stored event body
+  // stays canonical; recipients get directive prefixes at read/push time.
+  const hasV7 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 7")
+    .get();
+  if (!hasV7) {
+    const hasSkillDirectives = db
+      .query<{ name: string }, []>("SELECT name FROM pragma_table_info('events') WHERE name = 'skill_directives_json'")
+      .get();
+    if (!hasSkillDirectives) {
+      db.exec(`ALTER TABLE events ADD COLUMN skill_directives_json TEXT`);
+    }
     db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)`);
   }
 }

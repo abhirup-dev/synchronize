@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listAgentSessions, registerAgentSession, renameAgentSession } from "../src/api/agent-sessions.ts";
@@ -13,7 +13,7 @@ import {
   renameInGroup,
   sendGroupMessage,
 } from "../src/api/groups.ts";
-import { subscribeToEvents } from "../src/api/events.ts";
+import { readEvents, subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { deletePeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import { queryEvents } from "../src/api/query.ts";
@@ -21,7 +21,7 @@ import { listEventReactions, reactToEvent } from "../src/api/reactions.ts";
 import { findReusablePeer } from "../src/api/status.ts";
 import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
-import type { Event } from "../src/api/types.ts";
+import type { Event, SkillCatalogEntry } from "../src/api/types.ts";
 import { aoeAttachCommand, aoeProfileName, aoeTitle } from "../src/launch/service.ts";
 
 const homes: string[] = [];
@@ -121,10 +121,10 @@ test("duplicate session names remain distinct when host session ids differ", asy
   }
 });
 
-async function startDaemon(home: string): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
+async function startDaemon(home: string, env: Record<string, string> = {}): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
+    env: { ...process.env, ...env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -151,6 +151,47 @@ async function startDaemon(home: string): Promise<{ client: ClientConfig; stop: 
   await proc.exited;
   throw new Error("daemon did not start");
 }
+
+test("web state exposes daemon startup skill catalog for Claude and Pi", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-skill-catalog-"));
+  homes.push(home);
+  const claudeRoot = join(home, "claude-skills");
+  const piRoot = join(home, "pi-skills");
+  await mkdir(join(claudeRoot, "diagnose"), { recursive: true });
+  await mkdir(join(piRoot, "diagnose"), { recursive: true });
+  await mkdir(join(piRoot, "spanner"), { recursive: true });
+  await writeFile(
+    join(claudeRoot, "diagnose", "SKILL.md"),
+    "---\nname: diagnose\ndescription: Claude diagnosis loop\n---\n",
+    "utf8",
+  );
+  await writeFile(
+    join(piRoot, "diagnose", "SKILL.md"),
+    "---\nname: diagnose\ndescription: Pi diagnosis loop\n---\n",
+    "utf8",
+  );
+  await writeFile(
+    join(piRoot, "spanner", "SKILL.md"),
+    "---\nname: query-sharechat-spanner\ndescription: Query Spanner\n---\n",
+    "utf8",
+  );
+  const daemon = await startDaemon(home, {
+    SYNCHRONIZE_CLAUDE_SKILL_DIRS: claudeRoot,
+    SYNCHRONIZE_PI_SKILL_DIRS: piRoot,
+  });
+
+  try {
+    const response = await fetch(`${daemon.client.baseUrl}/web/state`);
+    expect(response.status).toBe(200);
+    const state = (await response.json()) as { skill_catalog: SkillCatalogEntry[] };
+    const diagnose = state.skill_catalog.find((skill) => skill.name === "diagnose");
+    const spanner = state.skill_catalog.find((skill) => skill.name === "query-sharechat-spanner");
+    expect(diagnose).toMatchObject({ name: "diagnose", runtimes: ["claude", "pi"] });
+    expect(spanner).toMatchObject({ name: "query-sharechat-spanner", runtimes: ["pi"] });
+  } finally {
+    await daemon.stop();
+  }
+});
 
 test("shared API client registers reusable peers and drives DM inbox flow", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-api-"));
@@ -423,21 +464,28 @@ test("group member listings carry host_session_id when an agent_sessions binding
 async function startPushSink(): Promise<{
   url: (peerId: string) => string;
   hits: Map<string, number>;
+  payloads: Map<string, unknown[]>;
   stop: () => Promise<void>;
 }> {
   const hits = new Map<string, number>();
+  const payloads = new Map<string, unknown[]>();
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
     async fetch(request: Request) {
       const peerId = new URL(request.url).pathname.slice(1);
       hits.set(peerId, (hits.get(peerId) ?? 0) + 1);
+      const body = await request.json().catch(() => null);
+      const existing = payloads.get(peerId) ?? [];
+      existing.push(body);
+      payloads.set(peerId, existing);
       return new Response("ok");
     },
   });
   return {
     url: (peerId: string) => `http://127.0.0.1:${server.port}/${peerId}`,
     hits,
+    payloads,
     stop: async () => {
       server.stop(true);
     },
@@ -448,6 +496,12 @@ async function flushPushQueue(): Promise<void> {
   // notifySubscribers fires-and-forgets; give Bun's event loop a tick to drain
   // the fetch callbacks before asserting on the per-peer hit counters.
   await Bun.sleep(80);
+}
+
+function lastPushedEvent(sink: { payloads: Map<string, unknown[]> }, peerId: string): Event {
+  const payload = sink.payloads.get(peerId)?.at(-1) as { event?: Event } | undefined;
+  if (!payload?.event) throw new Error(`no pushed event for ${peerId}`);
+  return payload.event;
 }
 
 test("group message mentions resolve to peer_ids and main-channel push reaches only mentioned peers", async () => {
@@ -569,6 +623,90 @@ test("thread reply push reaches root author and prior thread posters along with 
     expect(sink.hits.get(bob.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(dave.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(carol.peer.peer_id) ?? 0).toBe(0);
+  } finally {
+    await sink.stop();
+    await daemon.stop();
+  }
+});
+
+test("skill directives are stored canonically and prefixed only for mentioned recipients", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-skill-directives-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  const sink = await startPushSink();
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "cli" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "claude" });
+    const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "pi" });
+    const groupName = "skill-directives-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    for (const peer of [alice, bob, carol]) {
+      await joinGroup(daemon.client, { name: groupName, peerId: peer.peer.peer_id, alias: peer.peer.session_name });
+      await subscribeToEvents(daemon.client, {
+        peerId: peer.peer.peer_id,
+        callbackUrl: sink.url(peer.peer.peer_id),
+        token: "test-token",
+      });
+    }
+
+    const invalid = await fetch(`${daemon.client.baseUrl}/groups/${groupName}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sender_peer_id: alice.peer.peer_id,
+        message: "invalid @bob",
+        skill_directives: "diagnose",
+      }),
+    });
+    expect(invalid.status).toBe(400);
+
+    const root = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "root thread",
+    });
+    await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: bob.peer.peer_id,
+      message: "prior thread participant",
+      inReplyTo: root.event.event_id,
+    });
+    await flushPushQueue();
+
+    const pushedToAliceBefore = sink.payloads.get(alice.peer.peer_id)?.length ?? 0;
+    const pushedToBobBefore = sink.payloads.get(bob.peer.peer_id)?.length ?? 0;
+    const directed = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: carol.peer.peer_id,
+      message: "please inspect @bob",
+      inReplyTo: root.event.event_id,
+      skillDirectives: ["diagnose", "code-review"],
+    });
+    await flushPushQueue();
+
+    const prefix = "You must use the following skills for this message: diagnose, code-review.";
+    expect(directed.event.body).toBe("please inspect @bob");
+    expect(directed.event.skill_directives_json).toBe(JSON.stringify(["diagnose", "code-review"]));
+    expect((sink.payloads.get(alice.peer.peer_id)?.length ?? 0) - pushedToAliceBefore).toBe(1);
+    expect((sink.payloads.get(bob.peer.peer_id)?.length ?? 0) - pushedToBobBefore).toBe(1);
+    expect(lastPushedEvent(sink, alice.peer.peer_id).body).toBe("please inspect @bob");
+    expect(lastPushedEvent(sink, bob.peer.peer_id).body).toBe(`${prefix}\n\nplease inspect @bob`);
+
+    const aliceEvents = await readEvents(daemon.client, alice.peer.peer_id, { cursor: 0, limit: 50 });
+    const bobEvents = await readEvents(daemon.client, bob.peer.peer_id, { cursor: 0, limit: 50 });
+    const aliceEvent = aliceEvents.events.find((event) => event.event_id === directed.event.event_id);
+    const bobEvent = bobEvents.events.find((event) => event.event_id === directed.event.event_id);
+    expect(aliceEvent?.body).toBe("please inspect @bob");
+    expect(bobEvent?.body).toBe(`${prefix}\n\nplease inspect @bob`);
+
+    const aliceInbox = await readInbox(daemon.client, alice.peer.peer_id);
+    const bobInbox = await readInbox(daemon.client, bob.peer.peer_id);
+    expect(aliceInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
+    expect(bobInbox.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe(`${prefix}\n\nplease inspect @bob`);
+
+    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id, threadOf: root.event.event_id });
+    expect(history.events.find((event) => event.event_id === directed.event.event_id)?.body).toBe("please inspect @bob");
   } finally {
     await sink.stop();
     await daemon.stop();
