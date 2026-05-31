@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +10,7 @@ import {
   aoeProfileName,
   aoeTitle,
   normalizeLaunchAlias,
+  provisionPiLaunchRuntime,
   resolveLaunchSpec,
   validateLaunchRequest,
 } from "../src/launch/service.ts";
@@ -21,6 +23,27 @@ const dirs: string[] = [];
 
 afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+});
+
+test("provisionPiLaunchRuntime clears a stale pi mcp-cache.json so MCP reconnects on relaunch", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-pi-cache-"));
+  dirs.push(home);
+  const piHome = join(home, "pi-agent");
+  await mkdir(piHome, { recursive: true });
+  const cachePath = join(piHome, "mcp-cache.json");
+  await writeFile(
+    cachePath,
+    JSON.stringify({ version: 1, servers: { synchronize: { configHash: "stale", tools: [], resources: [], cachedAt: 1 } } }),
+  );
+  expect(existsSync(cachePath)).toBe(true);
+
+  // Regression (sync-wgtp): on a cache HIT Pi serves cached tool schemas but does not
+  // eagerly establish the live MCP connection (boots "MCP: 0/1"). Provisioning must
+  // delete the cache so each (re)launch reconnects. The clear runs before auth setup,
+  // so catch the possible auth-unavailable throw in CI — the cache removal is the assertion.
+  await provisionPiLaunchRuntime({ home, repoRoot: process.cwd() }).catch(() => {});
+
+  expect(existsSync(cachePath)).toBe(false);
 });
 
 function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBackend; spawned: LaunchSpec[]; stopped: string[] } {

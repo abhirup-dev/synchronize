@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
-import { copyFile, cp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -667,6 +667,14 @@ export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: 
   await mkdir(join(piHome, "extensions"), { recursive: true });
   await mkdir(join(piHome, "skills"), { recursive: true });
   await mkdir(piSessions, { recursive: true });
+  // Force a fresh MCP connection on every launch. piHome is shared and reused, so
+  // Pi's mcp-cache.json persists across launches. On a cache HIT (configHash match)
+  // Pi serves cached tool schemas but does NOT eagerly establish the live stdio
+  // connection to the server — the session boots showing "MCP: 0/1 servers" and the
+  // agent can receive events but cannot CALL any bridge_* tool until something
+  // triggers a (re)connect. Only the very first launch (cache miss) connects eagerly.
+  // Deleting the cache each provision forces a miss → eager connect → MCP 1/1.
+  await rm(join(piHome, "mcp-cache.json"), { force: true });
   await provisionPiAuth(join(piHome, "auth.json"));
   await writeFile(
     join(piHome, "settings.json"),
