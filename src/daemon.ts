@@ -2905,7 +2905,7 @@ interface WebStateResponse {
     started_at: string;
     token_required: boolean;
   };
-  launch_tools: Record<"claude" | "pi", WebLaunchToolStatus>;
+  launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
   launch_lifecycle: WebLaunchLifecycleRow[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
@@ -2952,7 +2952,7 @@ interface WebAoeSession {
 }
 
 interface WebLaunchToolStatus {
-  tool: "claude" | "pi";
+  tool: "claude" | "pi" | "letta";
   available: boolean;
   path?: string;
 }
@@ -3104,10 +3104,11 @@ function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   };
 }
 
-function launchToolStatus(): Record<"claude" | "pi", WebLaunchToolStatus> {
+function launchToolStatus(): Record<"claude" | "pi" | "letta", WebLaunchToolStatus> {
   return {
     claude: launchToolStatusFor("claude"),
     pi: launchToolStatusFor("pi"),
+    letta: launchToolStatusFor("letta"),
   };
 }
 
@@ -3207,8 +3208,8 @@ function positiveEnvInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function launchToolStatusFor(tool: "claude" | "pi"): WebLaunchToolStatus {
-  const path = Bun.which(tool) ?? undefined;
+function launchToolStatusFor(tool: "claude" | "pi" | "letta"): WebLaunchToolStatus {
+  const path = tool === "letta" ? Bun.which("bun") ?? undefined : Bun.which(tool) ?? undefined;
   return {
     tool,
     available: Boolean(path),

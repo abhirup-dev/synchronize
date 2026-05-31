@@ -19,6 +19,7 @@ interface ModelOption {
 const TOOL_OPTIONS: ToolOption[] = [
   { value: "claude", label: "Claude" },
   { value: "pi", label: "Pi" },
+  { value: "letta", label: "Letta" },
 ];
 
 const MODEL_OPTIONS: Record<AgentLaunchTool, ModelOption[]> = {
@@ -33,11 +34,15 @@ const MODEL_OPTIONS: Record<AgentLaunchTool, ModelOption[]> = {
     { id: "pi-gpt-55-low", tool: "pi", label: "5.5 low", model: "gpt-5.5", thinking: "low" },
     { id: "pi-gpt-54-mini", tool: "pi", label: "5.4 mini", model: "gpt-5.4-mini", thinking: "high" },
   ],
+  letta: [
+    { id: "letta-glm-47", tool: "letta", label: "GLM 4.7", model: "zai/glm-4.7" },
+  ],
 };
 
 const DEFAULT_MODEL_ID: Record<AgentLaunchTool, string> = {
   claude: "claude-sonnet",
   pi: "pi-gpt-55-medium",
+  letta: "letta-glm-47",
 };
 
 interface SpawnAgentDialogProps {
@@ -284,7 +289,9 @@ function isAliasInUse(room: Room, alias: string): boolean {
 }
 
 function toolLabel(tool: AgentLaunchTool): string {
-  return tool === "claude" ? "Claude" : "Pi";
+  if (tool === "claude") return "Claude";
+  if (tool === "letta") return "Letta";
+  return "Pi";
 }
 
 function modelMeta(option: ModelOption): string {

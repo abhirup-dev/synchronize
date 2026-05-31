@@ -73,6 +73,10 @@ function shellJoin(tokens: string[]): string {
   return tokens.map(shellQuote).join(" ");
 }
 
+function aoeCommandTool(tool: LaunchTool): string {
+  return tool === "letta" ? "codex" : tool;
+}
+
 /**
  * Build the `--cmd-override` string AOE runs in the pane:
  * `env KEY=VAL … <agent argv>`. Exported for testing.
@@ -157,7 +161,7 @@ export class AoeBackend implements SessionBackend {
       await this.run(this.aoe(["group", "create", spec.group]));
     }
     const override = buildCmdOverride(spec.env, spec.command);
-    const addArgs = ["add", "--title", spec.title, "--cmd", spec.tool, "--cmd-override", override];
+    const addArgs = ["add", "--title", spec.title, "--cmd", aoeCommandTool(spec.tool), "--cmd-override", override];
     if (spec.group) addArgs.push("-g", spec.group);
     addArgs.push(spec.cwd);
     const added = await this.run(this.aoe(addArgs));

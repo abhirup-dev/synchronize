@@ -134,6 +134,8 @@ test("validateLaunchRequest rejects bad tool/name/repo/args", () => {
   expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", model: "haiku" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", model: "gpt-4o" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", thinking: "xhigh" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "letta", name: "a", repo: "/r", model: "glm-4.7-flash" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "letta", name: "a", repo: "/r", thinking: "low" })).toThrow(LaunchValidationError);
 });
 
 test("aoeProfileName is deterministic per home and varies across homes", () => {
@@ -262,6 +264,36 @@ test("resolveLaunchSpec strips caller-provided pi --provider and --thinking befo
   expect(spec.command).not.toContain("--provider=azure-openai-responses");
   expect(spec.command).not.toContain("--model=gpt-5.4");
   expect(spec.command).not.toContain("--thinking=low");
+});
+
+test("resolveLaunchSpec runs letta through the SDK harness with Z.ai key-file passthrough", async () => {
+  const prevKey = process.env.ZAI_CODING_API_KEY;
+  const prevKeyFile = process.env.ZAI_CODING_API_KEY_FILE;
+  const prevBaseUrl = process.env.ZAI_CODING_BASE_URL;
+  delete process.env.ZAI_CODING_API_KEY;
+  process.env.ZAI_CODING_API_KEY_FILE = "/tmp/zai.key";
+  process.env.ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+  try {
+    const spec = resolveLaunchSpec(
+      { tool: "letta", name: "lee", repo: "/r", args: ["--model", "expensive-model"] },
+      { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+    );
+    expect(spec.command[0]).toBe("bun");
+    expect(spec.command.some((arg) => arg.endsWith("extensions/letta-synchronize/src/index.ts"))).toBe(true);
+    expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+    expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("zai/glm-4.7");
+    expect(spec.command).not.toContain("expensive-model");
+    expect(spec.env.ZAI_CODING_API_KEY).toBeUndefined();
+    expect(spec.env.ZAI_CODING_API_KEY_FILE).toBe("/tmp/zai.key");
+    expect(spec.env.ZAI_CODING_BASE_URL).toBe("https://api.z.ai/api/coding/paas/v4");
+  } finally {
+    if (prevKey === undefined) delete process.env.ZAI_CODING_API_KEY;
+    else process.env.ZAI_CODING_API_KEY = prevKey;
+    if (prevKeyFile === undefined) delete process.env.ZAI_CODING_API_KEY_FILE;
+    else process.env.ZAI_CODING_API_KEY_FILE = prevKeyFile;
+    if (prevBaseUrl === undefined) delete process.env.ZAI_CODING_BASE_URL;
+    else process.env.ZAI_CODING_BASE_URL = prevBaseUrl;
+  }
 });
 
 test("launch records pending, spawns, and returns identity + count", async () => {

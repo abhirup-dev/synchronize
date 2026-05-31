@@ -130,14 +130,14 @@ interface DaemonSkillCatalogEntry {
   id: string;
   name: string;
   description: string;
-  runtimes: Array<"claude" | "pi">;
+  runtimes: Array<"claude" | "pi" | "letta">;
   source_path?: string;
 }
 
 interface WebStateResponse {
   ok: true;
   cursor: number;
-  launch_tools?: Partial<Record<"claude" | "pi", { tool: "claude" | "pi"; available: boolean; path?: string }>>;
+  launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
   launch_lifecycle?: DaemonLaunchLifecycle[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];

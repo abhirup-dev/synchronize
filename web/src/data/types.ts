@@ -176,7 +176,7 @@ export interface ReactToMessageInput {
   op?: "add" | "remove" | "toggle";
 }
 
-export type AgentLaunchTool = "claude" | "pi";
+export type AgentLaunchTool = "claude" | "pi" | "letta";
 
 export interface SkillCatalogEntry {
   id: string;

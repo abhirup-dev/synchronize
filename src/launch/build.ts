@@ -1,10 +1,14 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../constants.ts";
 
-export type LaunchTool = "claude" | "pi";
+export type LaunchTool = "claude" | "pi" | "letta";
 
 export function isLaunchTool(value: string): value is LaunchTool {
-  return value === "claude" || value === "pi";
+  return value === "claude" || value === "pi" || value === "letta";
 }
+
+const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /**
  * Build the bare agent command (binary + args) for a launch target.
@@ -33,6 +37,9 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
       args.unshift("--dangerously-load-development-channels", "server:synchronize");
     }
     return ["claude", ...args];
+  }
+  if (tool === "letta") {
+    return ["bun", "run", join(REPO_ROOT, "extensions/letta-synchronize/src/index.ts"), ...rest];
   }
   return ["pi", ...rest];
 }

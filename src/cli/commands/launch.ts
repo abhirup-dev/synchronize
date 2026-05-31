@@ -31,7 +31,7 @@ export async function run(argv: string[]): Promise<void> {
 function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: string; rest: string[] } {
   const [target, ...args] = argv;
   if (target === undefined || !isLaunchTool(target)) {
-    throw new Error("launch requires one of: claude, pi");
+    throw new Error("launch requires one of: claude, pi, letta");
   }
   let name: string | undefined;
   const rest: string[] = [];

@@ -75,6 +75,22 @@ test("standalone spawn (no group) skips group create and -g", async () => {
   expect(addCall).not.toContain("-g");
 });
 
+test("letta uses an AOE-supported command label while preserving the Letta override", async () => {
+  const { calls, run } = recorder();
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
+  await backend.spawn({
+    title: "letta-abcd1234",
+    tool: "letta",
+    command: ["bun", "run", "extensions/letta-synchronize/src/index.ts", "--model", "zai/glm-4.7"],
+    env: { ZAI_CODING_API_KEY_FILE: "/tmp/zai.key" },
+    cwd: "/r",
+  });
+  const addCall = calls.find((c) => c.includes("add"))!;
+  expect(addCall[addCall.indexOf("--cmd") + 1]).toBe("codex");
+  expect(addCall[addCall.indexOf("--cmd-override") + 1]).toContain("extensions/letta-synchronize/src/index.ts");
+  expect(addCall[addCall.indexOf("--cmd-override") + 1]).toContain("ZAI_CODING_API_KEY_FILE=/tmp/zai.key");
+});
+
 test("spawn throws with backend detail when add fails", async () => {
   const { run } = recorder({ " add ": { exitCode: 1, stdout: "", stderr: "boom" } });
   const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });

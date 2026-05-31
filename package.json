@@ -19,6 +19,8 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@letta-ai/letta-code": "^0.26.7",
+    "@letta-ai/letta-code-sdk": "^0.1.14",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openrouter/ai-sdk-provider": "^2.9.0",
     "ai": "^6.0.191"

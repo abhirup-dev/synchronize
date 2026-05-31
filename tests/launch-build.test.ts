@@ -2,9 +2,10 @@ import { expect, test } from "bun:test";
 import { buildAgentCommand, buildLaunchEnv, isLaunchTool } from "../src/launch/build.ts";
 import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../src/constants.ts";
 
-test("isLaunchTool accepts only claude and pi", () => {
+test("isLaunchTool accepts claude, pi, and letta", () => {
   expect(isLaunchTool("claude")).toBe(true);
   expect(isLaunchTool("pi")).toBe(true);
+  expect(isLaunchTool("letta")).toBe(true);
   expect(isLaunchTool("codex")).toBe(false);
   expect(isLaunchTool("")).toBe(false);
 });
@@ -28,6 +29,14 @@ test("buildAgentCommand for claude does not duplicate flags already present", ()
 test("buildAgentCommand for pi passes args through verbatim", () => {
   const cmd = buildAgentCommand("pi", ["--provider", "openai-codex", "--model", "gpt-5.4-mini"]);
   expect(cmd).toEqual(["pi", "--provider", "openai-codex", "--model", "gpt-5.4-mini"]);
+});
+
+test("buildAgentCommand for letta runs the synchronize Letta harness", () => {
+  const cmd = buildAgentCommand("letta", ["--model", "zai/glm-4.7"]);
+  expect(cmd[0]).toBe("bun");
+  expect(cmd).toContain("run");
+  expect(cmd.some((arg) => arg.endsWith("extensions/letta-synchronize/src/index.ts"))).toBe(true);
+  expect(cmd).toContain("zai/glm-4.7");
 });
 
 test("buildLaunchEnv always sets hook-enable + launch id, omits optional keys when absent", () => {
