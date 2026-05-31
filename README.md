@@ -220,9 +220,10 @@ synchronize group rename demo reviewer --as terminal
 
 Group names are matched case-insensitively for collision checks. Thread replies
 are hidden from the main-channel history by default; use `--thread-of` to read a
-thread. Mentions are resolved from active group aliases, ignore text inside
-single-backtick and triple-backtick code regions, and exclude the sender from
-live push notifications. Durable inbox rows remain the fallback visibility path.
+thread. Mentions are resolved from active group aliases, can include colon
+aliases such as `web:local-human`, ignore text inside single-, double-, and
+triple-backtick code regions, and exclude the sender from live push
+notifications. Durable inbox rows remain the fallback visibility path.
 
 ## Web UI
 

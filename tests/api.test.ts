@@ -524,14 +524,16 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "cli" });
     const carol = await registerPeer(daemon.client, { sessionName: "carol", tool: "cli" });
     const dave = await registerPeer(daemon.client, { sessionName: "dave", tool: "cli" });
+    const web = await registerPeer(daemon.client, { sessionName: "web-local-human", tool: "web" });
     const groupName = "mentions-room";
     await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
     await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
     await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
     await joinGroup(daemon.client, { name: groupName, peerId: carol.peer.peer_id, alias: "carol" });
     await joinGroup(daemon.client, { name: groupName, peerId: dave.peer.peer_id, alias: "ui-claude2" });
+    await joinGroup(daemon.client, { name: groupName, peerId: web.peer.peer_id, alias: "web:local-human" });
 
-    for (const peer of [alice, bob, carol, dave]) {
+    for (const peer of [alice, bob, carol, dave, web]) {
       await subscribeToEvents(daemon.client, {
         peerId: peer.peer.peer_id,
         callbackUrl: sink.url(peer.peer.peer_id),
@@ -570,6 +572,17 @@ test("group message mentions resolve to peer_ids and main-channel push reaches o
     expect(punctuated.warnings).toEqual([]);
     expect(sink.hits.get(dave.peer.peer_id) ?? 0).toBe(1);
     expect(sink.hits.get(alice.peer.peer_id) ?? 0).toBe(0);
+
+    const colonAlias = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "please check this @web:local-human:",
+    });
+    await flushPushQueue();
+
+    expect(colonAlias.event.mentions_json).toBe(JSON.stringify([web.peer.peer_id]));
+    expect(colonAlias.warnings).toEqual([]);
+    expect(sink.hits.get(web.peer.peer_id) ?? 0).toBe(1);
   } finally {
     await sink.stop();
     await daemon.stop();
@@ -1244,7 +1257,7 @@ test("main-channel history rows carry reply_count and last_reply_event_id for th
   }
 });
 
-test("@-mention parser ignores tokens inside single-backtick and triple-backtick fenced regions", async () => {
+test("@-mention parser ignores tokens inside single-, double-, and triple-backtick fenced regions", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-mention-backtick-"));
   homes.push(home);
   const daemon = await startDaemon(home);
@@ -1266,6 +1279,15 @@ test("@-mention parser ignores tokens inside single-backtick and triple-backtick
     });
     expect(single.warnings).toEqual([]);
     expect(single.event.mentions_json).toBe(JSON.stringify([bob.peer.peer_id]));
+
+    // Double-backtick spans are also code and must not expose literal @tokens.
+    const double = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "literal ``@phantom`` token; meanwhile @bob is real",
+    });
+    expect(double.warnings).toEqual([]);
+    expect(double.event.mentions_json).toBe(JSON.stringify([bob.peer.peer_id]));
 
     // Triple-backtick code fences are also carved out.
     const fenced = await sendGroupMessage(daemon.client, {

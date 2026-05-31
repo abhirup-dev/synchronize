@@ -1964,24 +1964,25 @@ function resolveThreadParent(db: Database, groupId: number, inReplyTo: number): 
   return target.parent_event_id ?? target.event_id;
 }
 
-const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._-]*)/g;
+const MENTION_TOKEN_RE = /@([a-zA-Z0-9][a-zA-Z0-9._:-]*)/g;
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
 
 function normalizeMentionToken(token: string): string {
   return token.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
 }
 
-// Strip backtick-fenced regions (`...` and ```...```) before mention parsing.
+// Strip backtick-fenced regions (`...`, ``...``, and ```...```) before mention parsing.
 // Alice flagged this during the sustained-thread test: discussing proposed
 // syntax like `@peer:<uuid>` in prose produced false-positive
 // alias_not_in_group warnings for `@peer` / `@id` / `@alias`. Treating
 // backticked spans as code-not-prose mirrors how a reader interprets them.
 function stripBacktickedRegions(message: string): string {
-  // Fenced (```...```) first, then single (`...`). Replace with spaces of
-  // matching length so character positions don't shift (cheap correctness
-  // hedge in case anything downstream cares about positions).
+  // Fenced (```...```) first, then double (``...``), then single (`...`).
+  // Replace with spaces of matching length so character positions don't shift
+  // (cheap correctness hedge in case anything downstream cares about positions).
   const withoutFenced = message.replace(/```[\s\S]*?```/g, (m) => " ".repeat(m.length));
-  return withoutFenced.replace(/`[^`]*`/g, (m) => " ".repeat(m.length));
+  const withoutDouble = withoutFenced.replace(/``[\s\S]*?``/g, (m) => " ".repeat(m.length));
+  return withoutDouble.replace(/`[^`]*`/g, (m) => " ".repeat(m.length));
 }
 
 // Resolve @-mentions in a message body against the active member roster of
@@ -2009,8 +2010,14 @@ function resolveMentions(
   const warnings: MentionWarning[] = [];
   for (const token of tokens) {
     const row = lookup.get(groupId, token);
-    if (row) peerIds.push(row.peer_id);
-    else warnings.push({ token: `@${token}`, reason: "alias_not_in_group" });
+    if (row) {
+      peerIds.push(row.peer_id);
+      continue;
+    }
+    const normalizedToken = normalizeMentionToken(token);
+    const normalizedRow = normalizedToken !== token && normalizedToken ? lookup.get(groupId, normalizedToken) : null;
+    if (normalizedRow) peerIds.push(normalizedRow.peer_id);
+    else warnings.push({ token: `@${normalizedToken || token}`, reason: "alias_not_in_group" });
   }
   return { peerIds, warnings };
 }

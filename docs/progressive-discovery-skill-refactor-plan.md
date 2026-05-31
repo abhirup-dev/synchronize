@@ -511,8 +511,7 @@ Deep dive:
 - thread push reaches root author, prior thread posters, and new mentions
 - inbox delivery remains broader than push delivery
 - sender self-mentions are filtered out
-- single and triple backtick regions suppress mention parsing
-- do not claim double-backtick behavior is fixed until the daemon bug is done
+- single, double, and triple backtick regions suppress mention parsing
 
 ### `reference/inbox.md`
 
