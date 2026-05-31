@@ -213,7 +213,7 @@ function base32(bytes: Buffer): string {
  * Foreground `synchronize launch` remains a direct passthrough.
  */
 export const CLAUDE_LAUNCH_MODELS = {
-  sonnet: "claude-sonnet-4-6-20251114",
+  sonnet: "claude-sonnet-4-6",
   haiku: "claude-haiku-4-5-20251001",
   opus: "claude-opus-4-8",
 } as const;

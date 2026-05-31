@@ -203,11 +203,11 @@ test("resolveLaunchSpec defaults claude to Haiku high when no model given", asyn
 
 test("resolveLaunchSpec strips caller-provided claude --model before applying selected model", async () => {
   const spec = resolveLaunchSpec(
-    { tool: "claude", name: "alice", repo: "/r", model: "claude-sonnet-4-6-20251114", args: ["--model", "claude-opus-4-8"] },
+    { tool: "claude", name: "alice", repo: "/r", model: "claude-sonnet-4-6", args: ["--model", "claude-opus-4-8"] },
     { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
-  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-sonnet-4-6-20251114");
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
   expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("medium");
   expect(spec.command).not.toContain("claude-opus-4-8");
 });
