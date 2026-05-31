@@ -19,6 +19,7 @@ import type { Agent, Message } from "../data/types.ts";
 import { useThreadSummary } from "../data/context.tsx";
 import { Avatar, Sticker } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
+import { computeThreadSummaryLayout, normalizeWheelDelta } from "./threadSummaryLayout.ts";
 
 interface ThreadSummaryPanelProps {
   messages: Message[];
@@ -95,28 +96,7 @@ export function ThreadSummaryPanel({
         placements.push({ rowEl, rowHalf, desiredTop, top: desiredTop });
       }
 
-      placements.sort((a, b) => a.desiredTop - b.desiredTop);
-      let previousBottom = scrollTop + 8;
-      for (const placement of placements) {
-        const viewportTop = scrollTop + placement.rowHalf + 8;
-        const viewportBottom = scrollTop + panel.clientHeight - placement.rowHalf - 8;
-        const visibleTop =
-          viewportBottom > viewportTop
-            ? Math.min(Math.max(placement.desiredTop, viewportTop), viewportBottom)
-            : placement.desiredTop;
-        placement.top = Math.max(visibleTop, previousBottom + placement.rowHalf + 8);
-        previousBottom = placement.top + placement.rowHalf;
-      }
-
-      const overflow = previousBottom - (scrollTop + panel.clientHeight - 8);
-      if (overflow > 0 && placements.length > 0) {
-        const first = placements[0]!;
-        const maxShift = Math.max(0, first.top - (scrollTop + first.rowHalf + 8));
-        const shift = Math.min(overflow, maxShift);
-        for (const placement of placements) placement.top -= shift;
-      }
-
-      for (const placement of placements) {
+      for (const placement of computeThreadSummaryLayout(placements)) {
         placement.rowEl.style.top = `${placement.top}px`;
       }
 
@@ -141,7 +121,9 @@ export function ThreadSummaryPanel({
   const onPanelWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     const list = chatListRef.current;
     if (!list) return;
-    list.scrollTop += e.deltaY;
+    e.preventDefault();
+    const delta = normalizeWheelDelta(e.deltaY, e.deltaMode, e.currentTarget.clientHeight);
+    list.scrollBy({ top: delta, left: 0, behavior: "auto" });
   };
 
   return (
