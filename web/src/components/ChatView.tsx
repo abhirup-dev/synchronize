@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Room } from "../data/types.ts";
-import { useAgents, useMe, useMessages } from "../data/context.tsx";
+import { useAgents, useMe, useMessages, useReactToMessage } from "../data/context.tsx";
 import { MessageRow } from "./MessageRow.tsx";
 import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
@@ -30,6 +30,7 @@ export function ChatView({
   const messages = useMessages(room.id);
   const agents = useAgents();
   const me = useMe();
+  const reactToMessage = useReactToMessage();
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const listRef = useAutoScrollbar<HTMLDivElement>();
   const lastSeenMessageId = useRef<string | null>(null);
@@ -153,6 +154,7 @@ export function ChatView({
                         author={row.author}
                         agents={displayAgents}
                         groupedWithPrev={row.grouped}
+                        onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
                         {...(onOpenThread ? { onOpenThread } : {})}
                       />
                     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useAgents, useMe, useMessages, useThreadReplies } from "../data/context.tsx";
+import { useAgents, useMe, useMessages, useReactToMessage, useThreadReplies } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
 import { MessageRow } from "./MessageRow.tsx";
 import { Composer } from "./Composer.tsx";
@@ -20,6 +20,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
   const replies = useThreadReplies(parentId);
   const agents = useAgents();
   const me = useMe();
+  const reactToMessage = useReactToMessage();
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const bodyRef = useAutoScrollbar<HTMLDivElement>();
   const lastSeenReplyId = useRef<string | null>(null);
@@ -80,7 +81,14 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
       <div className="thread-scroll-wrap">
       <div className="thread-pane-body autoscroll" ref={bodyRef}>
         <div className="thread-parent">
-          <MessageRow message={parent} author={parentAuthor} agents={displayAgents} groupedWithPrev={false} hideAvatar />
+          <MessageRow
+            message={parent}
+            author={parentAuthor}
+            agents={displayAgents}
+            groupedWithPrev={false}
+            onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
+            hideAvatar
+          />
         </div>
 
         <div className="thread-divider">
@@ -114,6 +122,7 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
                     author={author}
                     agents={displayAgents}
                     groupedWithPrev={false}
+                    onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
                     hideAvatar
                   />
                 </div>

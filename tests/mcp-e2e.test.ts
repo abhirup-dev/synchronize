@@ -60,6 +60,8 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_list_media",
         "bridge_get_media",
         "bridge_query_events",
+        "bridge_react",
+        "bridge_list_reactions",
         "bridge_list_threads",
         "bridge_get_thread_status",
         "bridge_get_thread",
@@ -97,6 +99,16 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+    const reacted = parseToolText(
+      await client.callTool({ name: "bridge_react", arguments: { event_id: root.event.event_id, emoji: "👍" } }),
+    ) as { reactions: Array<{ emoji: string; count: number; by: Array<{ session_name: string }> }> };
+    expect(reacted.reactions).toEqual([
+      expect.objectContaining({ emoji: "👍", count: 1, by: [expect.objectContaining({ session_name: "codex-e2e" })] }),
+    ]);
+    const listedReactions = parseToolText(
+      await client.callTool({ name: "bridge_list_reactions", arguments: { event_id: root.event.event_id } }),
+    ) as { reactions: Array<{ emoji: string; count: number }> };
+    expect(listedReactions.reactions).toEqual([expect.objectContaining({ emoji: "👍", count: 1 })]);
     const threads = parseToolText(
       await client.callTool({ name: "bridge_list_threads", arguments: { group: "mcp-room" } }),
     ) as { threads: Array<{ root_event_id: number; reply_count: number }> };

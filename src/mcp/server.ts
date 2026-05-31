@@ -15,6 +15,7 @@ import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
 import { registerQueryTools } from "./tools/query.ts";
+import { registerReactionTools } from "./tools/reactions.ts";
 import { registerRegisterTools } from "./tools/register.ts";
 import { registerSummaryTools } from "./tools/summary.ts";
 import { registerThreadTools } from "./tools/threads.ts";
@@ -47,6 +48,7 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerLaunchTools(ctx);
   registerMediaTools(ctx);
   registerQueryTools(ctx);
+  registerReactionTools(ctx);
   registerThreadTools(ctx);
   registerSummaryTools(ctx);
 

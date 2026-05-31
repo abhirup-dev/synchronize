@@ -17,6 +17,7 @@ import { subscribeToEvents } from "../src/api/events.ts";
 import { ackInbox, readInbox, sendDm } from "../src/api/inbox.ts";
 import { deletePeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import { queryEvents } from "../src/api/query.ts";
+import { listEventReactions, reactToEvent } from "../src/api/reactions.ts";
 import { findReusablePeer } from "../src/api/status.ts";
 import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
@@ -1665,6 +1666,107 @@ test("local web session does not reclaim non-web-held you alias", async () => {
 
     expect(response.status).toBe(409);
     expect(body.error?.code).toBe("alias_collision");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("emoji reactions are durable metadata on visible messages without adding chat events", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-reactions-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await registerPeer(daemon.client, { sessionName: "alice", tool: "claude" });
+    const bob = await registerPeer(daemon.client, { sessionName: "bob", tool: "codex" });
+    const groupName = "reaction-room";
+    await createGroup(daemon.client, { name: groupName, creatorPeerId: alice.peer.peer_id });
+    await joinGroup(daemon.client, { name: groupName, peerId: alice.peer.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: groupName, peerId: bob.peer.peer_id, alias: "bob" });
+
+    const before = await fetch(`${daemon.client.baseUrl}/status`).then((res) => res.json()) as {
+      counts: { events: number };
+    };
+    const sent = await sendGroupMessage(daemon.client, {
+      name: groupName,
+      senderPeerId: alice.peer.peer_id,
+      message: "react to this",
+    });
+
+    const reaction = await reactToEvent(daemon.client, {
+      eventId: sent.event.event_id,
+      peerId: bob.peer.peer_id,
+      emoji: "👍",
+    });
+    expect(reaction.changed).toBe(true);
+    expect(reaction.active).toBe(true);
+    expect(reaction.reactions).toEqual([
+      expect.objectContaining({
+        emoji: "👍",
+        count: 1,
+        by: [expect.objectContaining({ peer_id: bob.peer.peer_id, session_name: "bob", alias: "bob" })],
+      }),
+    ]);
+
+    const aliceJoined = await reactToEvent(daemon.client, {
+      eventId: sent.event.event_id,
+      peerId: alice.peer.peer_id,
+      emoji: "👍",
+      op: "toggle",
+    });
+    expect(aliceJoined.active).toBe(true);
+    expect(aliceJoined.reactions).toEqual([
+      expect.objectContaining({
+        emoji: "👍",
+        count: 2,
+        by: expect.arrayContaining([
+          expect.objectContaining({ peer_id: bob.peer.peer_id }),
+          expect.objectContaining({ peer_id: alice.peer.peer_id }),
+        ]),
+      }),
+    ]);
+
+    const aliceLeft = await reactToEvent(daemon.client, {
+      eventId: sent.event.event_id,
+      peerId: alice.peer.peer_id,
+      emoji: "👍",
+      op: "toggle",
+    });
+    expect(aliceLeft.active).toBe(false);
+    expect(aliceLeft.reactions).toEqual([
+      expect.objectContaining({
+        emoji: "👍",
+        count: 1,
+        by: [expect.objectContaining({ peer_id: bob.peer.peer_id })],
+      }),
+    ]);
+
+    const listed = await listEventReactions(daemon.client, { eventId: sent.event.event_id, peerId: alice.peer.peer_id });
+    expect(listed.reactions[0]?.by[0]?.peer_id).toBe(bob.peer.peer_id);
+
+    const history = await getGroupHistory(daemon.client, { name: groupName, peerId: alice.peer.peer_id });
+    const historyEvent = history.events.find((event) => event.event_id === sent.event.event_id);
+    expect(historyEvent?.reactions?.[0]?.emoji).toBe("👍");
+
+    const webState = await fetch(
+      `${daemon.client.baseUrl}/web/state?room=group:${sent.event.group_id}&peer_id=${encodeURIComponent(alice.peer.peer_id)}`,
+    ).then((res) => res.json()) as { events: Event[] };
+    expect(webState.events.find((event) => event.event_id === sent.event.event_id)?.reactions?.[0]?.count).toBe(1);
+
+    const after = await fetch(`${daemon.client.baseUrl}/status`).then((res) => res.json()) as {
+      counts: { events: number };
+    };
+    expect(after.counts.events).toBe(before.counts.events + 1);
+
+    const removed = await reactToEvent(daemon.client, {
+      eventId: sent.event.event_id,
+      peerId: bob.peer.peer_id,
+      emoji: "👍",
+      op: "remove",
+    });
+    expect(removed.changed).toBe(true);
+    expect(removed.active).toBe(false);
+    expect(removed.reactions).toEqual([]);
   } finally {
     await daemon.stop();
   }
