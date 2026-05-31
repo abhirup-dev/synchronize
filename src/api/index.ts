@@ -3,6 +3,7 @@ export * from "./status.ts";
 export * from "./peers.ts";
 export * from "./agent-sessions.ts";
 export * from "./inbox.ts";
+export * from "./replies.ts";
 export * from "./events.ts";
 export * from "./groups.ts";
 export * from "./media.ts";

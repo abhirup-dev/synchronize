@@ -47,6 +47,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_whoami",
         "bridge_list_peers",
         "bridge_dm",
+        "bridge_reply",
         "bridge_inbox",
         "bridge_create_group",
         "bridge_join_group",
@@ -91,14 +92,64 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     const root = parseToolText(
       await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
     ) as { event: { event_id: number } };
+    const threadReply = parseToolText(
+      await client.callTool({
+        name: "bridge_send_group",
+        arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
+      }),
+    ) as { event: { event_id: number } };
+    const mainReply = parseToolText(
+      await client.callTool({
+        name: "bridge_reply",
+        arguments: { in_reply_to: root.event.event_id, message: "main bridge reply" },
+      }),
+    ) as {
+      event: { event_id: number; parent_event_id: number | null };
+      posted_to: { surface: string; direct_event_id: number; direct_sender: string; direct_preview: string };
+    };
+    expect(mainReply.event.parent_event_id).toBeNull();
+    expect(mainReply.posted_to).toMatchObject({
+      surface: "group_main",
+      direct_event_id: root.event.event_id,
+      direct_sender: "codex",
+      direct_preview: "hello room",
+    });
+    const threadedBridgeReply = parseToolText(
+      await client.callTool({
+        name: "bridge_reply",
+        arguments: { in_reply_to: threadReply.event.event_id, message: "threaded bridge reply" },
+      }),
+    ) as {
+      event: { parent_event_id: number | null };
+      posted_to: {
+        surface: string;
+        direct_event_id: number;
+        direct_sender: string;
+        direct_preview: string;
+        thread_root_event_id: number;
+        thread_root_sender: string;
+        thread_root_preview: string;
+      };
+    };
+    expect(threadedBridgeReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(threadedBridgeReply.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: threadReply.event.event_id,
+      direct_sender: "codex",
+      direct_preview: "thread reply",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "codex",
+      thread_root_preview: "hello room",
+    });
     await client.callTool({
       name: "bridge_send_group",
-      arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
+      arguments: { name: "mcp-room", message: "second thread reply", in_reply_to: root.event.event_id },
     });
     const history = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+    expect(history.events.some((event) => event.body === "main bridge reply")).toBe(true);
     const reacted = parseToolText(
       await client.callTool({ name: "bridge_react", arguments: { event_id: root.event.event_id, emoji: "👍" } }),
     ) as { reactions: Array<{ emoji: string; count: number; by: Array<{ session_name: string }> }> };
@@ -112,16 +163,17 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     const threads = parseToolText(
       await client.callTool({ name: "bridge_list_threads", arguments: { group: "mcp-room" } }),
     ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
-    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 1 })]);
+    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 3 })]);
     const status = parseToolText(
       await client.callTool({ name: "bridge_get_thread_status", arguments: { root_event_id: root.event.event_id } }),
     ) as { status: { root_event_id: number; event_count: number } };
-    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 2 });
+    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 4 });
     const transcript = parseToolText(
       await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "transcript" } }),
     ) as { transcript: string };
     expect(transcript.transcript).toContain("hello room");
     expect(transcript.transcript).toContain("thread reply");
+    expect(transcript.transcript).toContain("threaded bridge reply");
     const queried = parseToolText(
       await client.callTool({
         name: "bridge_query_events",
@@ -131,7 +183,12 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         },
       }),
     ) as { rows: Array<{ body: string }> };
-    expect(queried.rows.map((row) => row.body)).toEqual(["hello room", "thread reply"]);
+    expect(queried.rows.map((row) => row.body)).toEqual([
+      "hello room",
+      "thread reply",
+      "threaded bridge reply",
+      "second thread reply",
+    ]);
   } finally {
     await client.close();
   }

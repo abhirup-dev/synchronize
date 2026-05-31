@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ackInbox, readInbox, sendDm } from "../../api/inbox.ts";
+import { replyToEvent } from "../../api/replies.ts";
 import { getClient, requirePeer } from "../state.ts";
 import { invalidArgument, text, wrap } from "../util.ts";
 import { formatEventForMcp } from "./event-format.ts";
@@ -25,6 +26,29 @@ export function registerMessagingTools(ctx: ToolContext): void {
       const response = await sendDm(client, {
         senderPeerId: peer.peer_id,
         recipientPeerId,
+        message: args.message,
+      });
+      return text({ ...response, event: formatEventForMcp(response.event) });
+    }),
+  );
+
+  mcp.registerTool(
+    "bridge_reply",
+    {
+      description:
+        "Reply to a visible DM or group message by event id. The daemon derives the destination surface: " +
+        "DM replies go back to the other DM participant; group main-channel targets post to the group main channel; " +
+        "thread-reply targets post into that thread. The response includes posted_to with direct_event_id, " +
+        "direct_sender, direct_preview, and thread-root context when threaded, so you can verify both the exact " +
+        "message answered and the surface where the reply landed. Idempotency: not idempotent — every call produces a new event.",
+      inputSchema: { in_reply_to: z.number().int().positive(), message: z.string().min(1) },
+    },
+    wrap(async (args) => {
+      const client = await getClient(state);
+      const peer = requirePeer(state);
+      const response = await replyToEvent(client, {
+        senderPeerId: peer.peer_id,
+        inReplyTo: args.in_reply_to,
         message: args.message,
       });
       return text({ ...response, event: formatEventForMcp(response.event) });

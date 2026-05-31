@@ -76,6 +76,27 @@ export interface Event {
   reactions?: ReactionSummary[];
 }
 
+export type ReplySurface = "dm" | "group_main" | "thread";
+
+export interface ReplyDestination {
+  surface: ReplySurface;
+  direct_event_id: number;
+  direct_sender_peer_id: string | null;
+  direct_sender: string | null;
+  direct_preview: string | null;
+  group_id?: number;
+  group_name?: string;
+  thread_root_event_id?: number;
+  thread_root_sender_peer_id?: string | null;
+  thread_root_sender?: string | null;
+  thread_root_preview?: string | null;
+}
+
+export interface ReplyResponse {
+  event: Event;
+  posted_to: ReplyDestination;
+}
+
 export interface ReactionActor {
   peer_id: string;
   session_name: string;

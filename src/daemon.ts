@@ -39,7 +39,9 @@ import {
   summarizeThread,
   type WorkerHandle,
 } from "./summarize/index.ts";
-import type { ReactionSummary } from "./api/types.ts";
+import type { ReactionSummary, ReplyDestination } from "./api/types.ts";
+
+const REPLY_CONTEXT_PREVIEW_WORDS = 30;
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -872,6 +874,108 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ event }, { status: 201 });
   }
 
+  if (request.method === "POST" && url.pathname === "/reply") {
+    const body = await readBody(request);
+    const senderPeerId = requireString(body, "sender_peer_id");
+    const inReplyTo = requirePositiveInteger(body, "in_reply_to");
+    const message = requireString(body, "message");
+    if (message.length > MAX_MESSAGE_CHARS) {
+      throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
+    }
+
+    const target = getVisibleEvent(ctx.db, inReplyTo, senderPeerId);
+    if (target.type !== "group_message" && target.type !== "dm") {
+      throw new HttpError(
+        400,
+        "reply_target_not_message",
+        `Cannot reply to event ${inReplyTo}: type is '${target.type}', not 'group_message' or 'dm'`,
+      );
+    }
+
+    if (target.type === "dm") {
+      const recipientPeerId = target.sender_peer_id === senderPeerId ? target.recipient_peer_id : target.sender_peer_id;
+      if (!recipientPeerId) {
+        throw new HttpError(400, "reply_target_not_message", `Cannot reply to event ${inReplyTo}: missing DM peer`);
+      }
+      ensurePeer(ctx.db, senderPeerId);
+      ensurePeer(ctx.db, recipientPeerId);
+
+      const eventId = ctx.db.transaction(() => {
+        ctx.db
+          .query(
+            `INSERT INTO events (type, sender_peer_id, recipient_peer_id, body)
+             VALUES ('dm', ?, ?, ?)`,
+          )
+          .run(senderPeerId, recipientPeerId, message);
+        const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+        ctx.db
+          .query("INSERT INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)")
+          .run(recipientPeerId, id);
+        return id;
+      })();
+      const event = getEvent(ctx.db, eventId);
+      const postedTo = buildReplyDestination(ctx.db, target, event);
+      log(`reply dm stored event_id=${eventId} target=${inReplyTo} sender=${senderPeerId} recipient=${recipientPeerId} body_chars=${message.length}`);
+      emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, peerId: recipientPeerId });
+      void notifySubscribers(ctx, [recipientPeerId], event);
+
+      return jsonResponse({ event, posted_to: postedTo }, { status: 201 });
+    }
+
+    if (target.group_id === null) {
+      throw new HttpError(400, "reply_target_not_message", `Cannot reply to event ${inReplyTo}: missing group`);
+    }
+    const group = getGroupById(ctx.db, target.group_id);
+    ensureActiveMember(ctx.db, group.group_id, senderPeerId);
+    const parentEventId = target.parent_event_id;
+    const { peerIds: rawMentionedPeerIds, warnings } = resolveMentions(ctx.db, group.group_id, message);
+    const mentionedPeerIds = rawMentionedPeerIds.filter((peerId) => peerId !== senderPeerId);
+    const mentionsJson = mentionedPeerIds.length > 0 ? JSON.stringify(mentionedPeerIds) : null;
+
+    let pushTargets: string[] = [];
+    let allRecipients: string[] = [];
+    const eventId = ctx.db.transaction(() => {
+      ctx.db
+        .query(
+          "INSERT INTO events (type, sender_peer_id, group_id, body, parent_event_id, mentions_json) VALUES ('group_message', ?, ?, ?, ?, ?)",
+        )
+        .run(senderPeerId, group.group_id, message, parentEventId, mentionsJson);
+      const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      allRecipients = ctx.db
+        .query<{ peer_id: string }, [number, string]>(
+          "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",
+        )
+        .all(group.group_id, senderPeerId)
+        .map((recipient) => recipient.peer_id);
+      const insertInbox = ctx.db.query("INSERT OR IGNORE INTO inbox (recipient_peer_id, event_id) VALUES (?, ?)");
+      for (const recipient of allRecipients) insertInbox.run(recipient, id);
+
+      const mentionedActive = mentionedPeerIds.filter((peerId) => peerId !== senderPeerId && allRecipients.includes(peerId));
+      let pushSet: Set<string>;
+      if (parentEventId === null) {
+        pushSet = new Set(mentionedActive);
+      } else {
+        const threadPosters = computeThreadParticipants(ctx.db, parentEventId, senderPeerId);
+        pushSet = new Set([...threadPosters, ...mentionedActive].filter((peerId) => allRecipients.includes(peerId)));
+      }
+      pushTargets = [...pushSet];
+      return id;
+    })();
+    const event = getEvent(ctx.db, eventId);
+    const postedTo = buildReplyDestination(ctx.db, target, event);
+    log(
+      `reply group stored event_id=${eventId} target=${inReplyTo} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} surface=${postedTo.surface} unresolved=${warnings.length}`,
+    );
+    emitWebStateChanged(ctx, { domains: ["events", "messages", "inbox"], eventId, groupId: group.group_id, peerId: senderPeerId });
+    void notifySubscribers(ctx, pushTargets, event);
+
+    const delivery = {
+      pushed_to: pushTargets,
+      inbox_only: allRecipients.filter((peerId) => !pushTargets.includes(peerId)),
+    };
+    return jsonResponse({ event, posted_to: postedTo, warnings, delivery }, { status: 201 });
+  }
+
   if (request.method === "POST" && url.pathname === "/groups") {
     const body = await readBody(request);
     const name = requireGroupName(requireString(body, "name"));
@@ -1588,6 +1692,14 @@ function optionalInteger(body: Record<string, unknown>, key: string): number | u
   return value as number;
 }
 
+function requirePositiveInteger(body: Record<string, unknown>, key: string): number {
+  const value = optionalInteger(body, key);
+  if (value === undefined || value < 1) {
+    throw new HttpError(400, "invalid_request", `${key} must be a positive integer`);
+  }
+  return value;
+}
+
 type ReactionOp = "add" | "remove" | "toggle";
 
 function optionalReactionOp(body: Record<string, unknown>): ReactionOp {
@@ -2133,6 +2245,71 @@ function getVisibleEvent(db: Database, eventId: number, peerId: string): EventRo
     }
   }
   return event;
+}
+
+function buildReplyDestination(db: Database, directEvent: EventRow, createdEvent: EventRow): ReplyDestination {
+  const directSender = describeEventSender(db, directEvent);
+  const base = {
+    direct_event_id: directEvent.event_id,
+    direct_sender_peer_id: directSender.peerId,
+    direct_sender: directSender.display,
+    direct_preview: previewEventBody(directEvent),
+  };
+
+  if (createdEvent.type === "dm") {
+    return { surface: "dm", ...base };
+  }
+
+  if (createdEvent.group_id === null) {
+    return { surface: "group_main", ...base };
+  }
+
+  const group = getGroupById(db, createdEvent.group_id);
+  if (createdEvent.parent_event_id === null) {
+    return {
+      surface: "group_main",
+      ...base,
+      group_id: group.group_id,
+      group_name: group.name,
+    };
+  }
+
+  const root = getEvent(db, createdEvent.parent_event_id);
+  const rootSender = describeEventSender(db, root);
+  return {
+    surface: "thread",
+    ...base,
+    group_id: group.group_id,
+    group_name: group.name,
+    thread_root_event_id: root.event_id,
+    thread_root_sender_peer_id: rootSender.peerId,
+    thread_root_sender: rootSender.display,
+    thread_root_preview: previewEventBody(root),
+  };
+}
+
+function describeEventSender(db: Database, event: EventRow): { peerId: string | null; display: string | null } {
+  if (!event.sender_peer_id) return { peerId: null, display: null };
+  const row = db
+    .query<{ session_name: string; alias: string | null }, [number | null, string]>(
+      `SELECT p.session_name, gm.alias
+       FROM peers p
+       LEFT JOIN group_members gm ON gm.peer_id = p.peer_id AND gm.group_id = ?
+       WHERE p.peer_id = ?`,
+    )
+    .get(event.group_id, event.sender_peer_id);
+  return {
+    peerId: event.sender_peer_id,
+    display: row?.alias ?? row?.session_name ?? event.sender_peer_id,
+  };
+}
+
+function previewEventBody(event: EventRow): string | null {
+  if (event.body === null) return null;
+  const words = event.body.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const preview = words.slice(0, REPLY_CONTEXT_PREVIEW_WORDS).join(" ");
+  return words.length > REPLY_CONTEXT_PREVIEW_WORDS ? `${preview}...` : preview;
 }
 
 function ensureReactableEvent(event: EventRow): void {
