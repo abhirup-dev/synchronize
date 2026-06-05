@@ -35,9 +35,12 @@ import {
   completeLaunchWork,
   failLaunchWork,
   getLaunchIntent,
+  getLaunchIntentByPeer,
   updateLaunchState,
   type LaunchIntentRow,
 } from "./launch/store.ts";
+import { transitionArchive } from "./lifecycle/archive.ts";
+import { LocalLivenessProbe, type Liveness } from "./lifecycle/probe.ts";
 import { runEventQuery } from "./query/events.ts";
 import { resolveProviderConfig } from "./llm/index.ts";
 import { loadSkillCatalog } from "./skill-catalog.ts";
@@ -701,6 +704,26 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
   }
 
+  if (request.method === "POST" && url.pathname === "/archive/session") {
+    const body = await readBody(request);
+    const peerId = resolveArchivePeerId(ctx.db, body);
+    const reason = optionalString(body, "reason") ?? null;
+    const dryRun = body.dry_run === true;
+    const result = await archiveSessionApply(ctx, peerId, { reason, dryRun, source: "manual" });
+    log(`archive session peer_id=${peerId} action=${result.action}${dryRun ? " (dry-run)" : ""}`);
+    return jsonResponse(result);
+  }
+
+  if (request.method === "POST" && url.pathname === "/archive/group") {
+    const body = await readBody(request);
+    const group = getGroup(ctx.db, requireString(body, "group"));
+    const reason = optionalString(body, "reason") ?? null;
+    const dryRun = body.dry_run === true;
+    const members = await archiveGroupApply(ctx, group.group_id, { reason, dryRun });
+    log(`archive group name=${group.name} members=${members.length}${dryRun ? " (dry-run)" : ""}`);
+    return jsonResponse({ group: group.name, dry_run: dryRun, members });
+  }
+
   if (request.method === "GET" && url.pathname === "/agent-sessions") {
     const hostTool = url.searchParams.get("tool");
     const peerId = url.searchParams.get("peer_id");
@@ -895,6 +918,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
     ensurePeer(ctx.db, senderPeerId);
+    ensureSenderNotArchived(ctx.db, senderPeerId);
     ensurePeer(ctx.db, recipientPeerId);
 
     const eventId = ctx.db.transaction(() => {
@@ -1170,6 +1194,18 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       if (oldAlias === newAlias) {
         throw new HttpError(400, "no_op_rename", `Alias is already '${newAlias}'`);
       }
+      const archivedHolder = ctx.db
+        .query<{ peer_id: string }, [number, string]>(
+          "SELECT peer_id FROM group_members WHERE group_id = ? AND alias = ? AND member_state = 'archived' LIMIT 1",
+        )
+        .get(group.group_id, newAlias);
+      if (archivedHolder && archivedHolder.peer_id !== peerId) {
+        throw new HttpError(
+          409,
+          "alias_reserved_by_archived",
+          `Alias '${newAlias}' is reserved by an archived session in group '${group.name}'. Resume or delete it to free the seat.`,
+        );
+      }
       try {
         ctx.db
           .query("UPDATE group_members SET alias = ? WHERE group_id = ? AND peer_id = ?")
@@ -1266,6 +1302,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     if (message.length > MAX_MESSAGE_CHARS) {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
+    ensureSenderNotArchived(ctx.db, senderPeerId);
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
     const directReplyTarget = inReplyTo !== undefined ? getEvent(ctx.db, inReplyTo) : null;
@@ -2235,6 +2272,282 @@ function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
     emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"] });
   }
   return deactivated;
+}
+
+// ───────────────────────────── Explicit archive ─────────────────────────────
+// Archive is PEER-SCOPED: it freezes one agent identity (its lifecycle_state)
+// and reserves its seat (member_state='archived') in every group it belongs to,
+// while reaping the backend runtime when we own it. The peer is NOT soft-deleted
+// (deleted_at stays NULL) — Epic 2's GC guards keep it resumable. See sync-8rc3.
+
+export interface ArchiveAliasReservation {
+  group: string;
+  alias: string;
+}
+
+export interface ArchivePlan {
+  peerId: string;
+  sessionName: string;
+  tool: string;
+  /** Launch/AOE-owned: we can reap the backend runtime on archive. */
+  isAoe: boolean;
+  backendTitle: string | null;
+  /** Captured pid for the non-AOE liveness probe (zombie detection). */
+  pid: number | null;
+  /** Seats this archive will reserve, one per active membership. */
+  aliases: ArchiveAliasReservation[];
+  alreadyArchived: boolean;
+}
+
+// db-only: compute everything the archive needs without performing it. Exported
+// so the AOE/non-AOE classification + alias enumeration is unit-testable and so
+// --dry-run can report the plan without mutating.
+export function planArchive(db: Database, peerId: string): ArchivePlan | null {
+  const peer = db
+    .query<{ session_name: string; tool: string; lifecycle_state: string }, [string]>(
+      "SELECT session_name, tool, lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId);
+  if (!peer) return null;
+
+  const launch = getLaunchIntentByPeer(db, peerId);
+  const backendTitle = launch?.backend_title ?? null;
+  const isAoe = Boolean(backendTitle);
+
+  const pid = db
+    .query<{ pid: number | null }, [string]>(
+      "SELECT pid FROM agent_sessions WHERE peer_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1",
+    )
+    .get(peerId)?.pid ?? null;
+
+  const aliases = db
+    .query<{ group: string; alias: string }, [string]>(
+      `SELECT g.name AS "group", gm.alias AS alias
+       FROM group_members gm
+       JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.active = 1
+       ORDER BY g.name ASC`,
+    )
+    .all(peerId);
+
+  return {
+    peerId,
+    sessionName: peer.session_name,
+    tool: peer.tool,
+    isAoe,
+    backendTitle,
+    pid,
+    aliases,
+    alreadyArchived: peer.lifecycle_state === "archived",
+  };
+}
+
+// db-only mutation: flip the peer to archived and convert every active
+// membership into a reserved archived seat. Keeps the active⇔member_state
+// invariant (active=0 ⇔ member_state='archived' here) and leaves left_at NULL
+// (an archived member did NOT leave). Returns the reserved seats.
+export function markPeerArchived(
+  db: Database,
+  peerId: string,
+  opts: { reason?: string | null; source: "manual" | "auto"; now?: string },
+): ArchiveAliasReservation[] {
+  const now = opts.now ?? new Date().toISOString();
+  const reserved = db
+    .query<{ group: string; alias: string }, [string]>(
+      `SELECT g.name AS "group", gm.alias AS alias
+       FROM group_members gm
+       JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.active = 1
+       ORDER BY g.name ASC`,
+    )
+    .all(peerId);
+  db.transaction(() => {
+    db.query(
+      `UPDATE peers
+       SET lifecycle_state = 'archived', archived_at = ?, archived_reason = ?, archive_source = ?, updated_at = ?
+       WHERE peer_id = ? AND deleted_at IS NULL`,
+    ).run(now, opts.reason ?? null, opts.source, now, peerId);
+    db.query(
+      "UPDATE group_members SET active = 0, member_state = 'archived' WHERE peer_id = ? AND active = 1",
+    ).run(peerId);
+  })();
+  return reserved;
+}
+
+// Send guard (C4 / Flow K): a live-but-archived identity must re-register before
+// it can send. Called on every send entry point (group + DM).
+function ensureSenderNotArchived(db: Database, peerId: string): void {
+  const peer = db
+    .query<{ lifecycle_state: string }, [string]>(
+      "SELECT lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId);
+  if (peer?.lifecycle_state === "archived") {
+    throw new HttpError(409, "must_reregister", "This identity is archived. Re-register before sending.");
+  }
+}
+
+export interface ArchiveSessionResult {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  action: "archived" | "already_archived" | "would_archive";
+  reaped: boolean;
+  zombie: boolean;
+  aliases: ArchiveAliasReservation[];
+  warning?: string;
+  dry_run?: boolean;
+  resume_hint?: string;
+}
+
+// Orchestrates one session archive: state-machine check → reap (AOE) or probe
+// (non-AOE) → persist → notify. Reused by both the single-session and the
+// group-archive routes.
+async function archiveSessionApply(
+  ctx: DaemonContext,
+  peerId: string,
+  opts: { reason?: string | null; dryRun?: boolean; source?: "manual" | "auto" },
+): Promise<ArchiveSessionResult> {
+  const plan = planArchive(ctx.db, peerId);
+  if (!plan) throw new HttpError(404, "peer_not_found", `Peer not found: ${peerId}`);
+
+  const base: ArchiveSessionResult = {
+    peer_id: plan.peerId,
+    session_name: plan.sessionName,
+    tool: plan.tool,
+    action: "archived",
+    reaped: false,
+    zombie: false,
+    aliases: plan.aliases,
+    resume_hint: `synchronize resume launch --peer-id ${plan.peerId}`,
+  };
+
+  if (plan.alreadyArchived) {
+    return { ...base, action: "already_archived" };
+  }
+
+  // Validate the transition through the pure state machine (active → archived).
+  const transition = transitionArchive("active", { type: "archive_requested", ...(opts.reason ? { reason: opts.reason } : {}) });
+  if (!transition.ok) {
+    throw new HttpError(409, "invalid_archive", `Cannot archive peer ${peerId} from its current state`);
+  }
+
+  if (opts.dryRun) {
+    return { ...base, action: "would_archive", dry_run: true };
+  }
+
+  let reaped = false;
+  let zombie = false;
+  let warning: string | undefined;
+
+  if (plan.isAoe && plan.backendTitle) {
+    // Free the runtime. Best-effort: if the backend session is already gone the
+    // reap throws — that's fine, the slot is reclaimed either way.
+    try {
+      await ctx.launchService.stop(plan.backendTitle);
+      reaped = true;
+    } catch {
+      reaped = false;
+      warning = "backend session was not reapable (already gone)";
+    }
+  } else {
+    // Non-AOE: we cannot reap a process we do not own. Probe to classify it.
+    const probe = new LocalLivenessProbe();
+    const liveness: Liveness = await probe.probe({ pid: plan.pid });
+    if (liveness === "alive") {
+      zombie = true;
+      warning = "process is still alive (zombie); it cannot send until it re-registers, and resume is blocked until it stops";
+    }
+  }
+
+  markPeerArchived(ctx.db, peerId, { reason: opts.reason ?? null, source: opts.source ?? "manual" });
+  ctx.subscribers.delete(peerId);
+  emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"], peerId });
+
+  return { ...base, reaped, zombie, ...(warning ? { warning } : {}) };
+}
+
+// Resolve the target identity for an archive from either an explicit peer_id or
+// a host session_id (host_session_id correlation). Validates existence.
+function resolveArchivePeerId(db: Database, body: Record<string, unknown>): string {
+  const peerId = optionalString(body, "peer_id");
+  if (peerId) {
+    getPeer(db, peerId); // throws peer_not_found if missing/deleted
+    return peerId;
+  }
+  const sessionId = optionalString(body, "session_id");
+  if (sessionId) {
+    const row = db
+      .query<{ peer_id: string }, [string]>(
+        "SELECT peer_id FROM agent_sessions WHERE host_session_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1",
+      )
+      .get(sessionId);
+    if (!row) throw new HttpError(404, "session_not_found", `No agent session for host_session_id: ${sessionId}`);
+    return row.peer_id;
+  }
+  throw new HttpError(400, "invalid_archive", "archive requires peer_id or session_id");
+}
+
+export interface GroupArchiveMemberResult {
+  alias: string;
+  tool: string;
+  peer_id: string;
+  action: "archived" | "already_archived" | "would_archive" | "skipped";
+  reaped: boolean;
+  zombie: boolean;
+  warning?: string;
+}
+
+// Archive a whole group as a unit. Each active member is archived via the same
+// single-session path (so AOE members are reaped, non-AOE members probed), and
+// EVERY member's outcome is reported — a partial result is never collapsed into
+// one success/fail bit (Flow I). A failure on one member is captured as a
+// 'skipped' row rather than aborting the batch.
+async function archiveGroupApply(
+  ctx: DaemonContext,
+  groupId: number,
+  opts: { reason?: string | null; dryRun?: boolean },
+): Promise<GroupArchiveMemberResult[]> {
+  const members = ctx.db
+    .query<{ peer_id: string; alias: string; tool: string }, [number]>(
+      `SELECT gm.peer_id AS peer_id, gm.alias AS alias, p.tool AS tool
+       FROM group_members gm
+       JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.group_id = ? AND gm.active = 1
+       ORDER BY gm.alias ASC`,
+    )
+    .all(groupId);
+
+  const results: GroupArchiveMemberResult[] = [];
+  for (const member of members) {
+    try {
+      const r = await archiveSessionApply(ctx, member.peer_id, {
+        reason: opts.reason ?? null,
+        dryRun: opts.dryRun ?? false,
+        source: "manual",
+      });
+      results.push({
+        alias: member.alias,
+        tool: member.tool,
+        peer_id: member.peer_id,
+        action: r.action,
+        reaped: r.reaped,
+        zombie: r.zombie,
+        ...(r.warning ? { warning: r.warning } : {}),
+      });
+    } catch (error) {
+      results.push({
+        alias: member.alias,
+        tool: member.tool,
+        peer_id: member.peer_id,
+        action: "skipped",
+        reaped: false,
+        zombie: false,
+        warning: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return results;
 }
 
 export function upsertPeer(
@@ -3392,14 +3705,31 @@ function joinGroupCore(
     if (peer.peer_id === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
       deactivateWebAliasHolders(ctx.db, group.group_id, alias, peer.peer_id);
     }
+    // An archived member's seat is RESERVED (not reclaimable). If a different
+    // peer tries to take the alias, fail with a clear, actionable error instead
+    // of a generic alias_collision from the unique index. The same peer resuming
+    // its own archived seat is handled by the resume path, not here.
+    const archivedHolder = ctx.db
+      .query<{ peer_id: string }, [number, string]>(
+        "SELECT peer_id FROM group_members WHERE group_id = ? AND alias = ? AND member_state = 'archived' LIMIT 1",
+      )
+      .get(group.group_id, alias);
+    if (archivedHolder && archivedHolder.peer_id !== peer.peer_id) {
+      throw new HttpError(
+        409,
+        "alias_reserved_by_archived",
+        `Alias '${alias}' is reserved by an archived session in group '${group.name}'. Resume or delete it to free the seat.`,
+      );
+    }
     // Detect alias reclaim: the most-recently-departed prior holder of this
     // alias belongs to a different peer_id. Respawn (same peer_id) is not a
-    // reclaim. v0 storage policy frees the alias on leave; the event leaves
-    // an audit trail so observers can distinguish respawn from a new peer.
+    // reclaim. Only a 'left' member frees its alias for reclaim — an archived
+    // seat is reserved (guarded above). The event leaves an audit trail so
+    // observers can distinguish respawn from a new peer.
     const previousHolder = ctx.db
       .query<{ peer_id: string }, [number, string]>(
         `SELECT peer_id FROM group_members
-         WHERE group_id = ? AND alias = ? AND active = 0
+         WHERE group_id = ? AND alias = ? AND member_state = 'left'
          ORDER BY COALESCE(left_at, joined_at) DESC
          LIMIT 1`,
       )
