@@ -48,13 +48,13 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
         ])
       }
     >
-      {!hideAvatar && (
+      {!hideAvatar && !isWebAuthor && (
         <div className="message-gutter">
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
       <div className="message-body">
-        {!groupedWithPrev && (
+        {!groupedWithPrev && !isWebAuthor && (
           <div className="author-chip">
             <span
               className="author-name"

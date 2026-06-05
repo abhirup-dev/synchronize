@@ -700,13 +700,24 @@
   height: 34px;
 }
 .message-row.is-grouped { margin-top: 0; }
-.message-row.is-you { justify-self: end; grid-template-columns: minmax(0, 880px) 34px; }
+.message-row.is-you,
+.message-row.is-web-author {
+  justify-self: end;
+  grid-template-columns: minmax(0, 880px);
+}
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
    colored author-name pill above the bubble carries the identity instead. */
 .message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
 .message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
 .message-row.is-you .message-gutter { order: 2; }
-.message-row.is-you .message-body { order: 1; align-items: flex-end; }
+.message-row.is-you .message-body,
+.message-row.is-web-author .message-body {
+  order: 1;
+  align-items: flex-end;
+}
+.message-row.is-web-author .message-body {
+  padding-right: 0;
+}
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
@@ -773,6 +784,7 @@
 .chat-view.is-group-room .message-row.is-web-author .bubble {
   background: #BDB9AA;
   color: var(--ink);
+  max-width: min(880px, 100%);
 }
 
 .message-status {
