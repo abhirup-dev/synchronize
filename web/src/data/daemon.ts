@@ -4,12 +4,14 @@ import type {
   Artifact,
   DataSource,
   Message,
+  MessageAttachment,
   ReactToMessageInput,
   Room,
   SendMessageInput,
   SkillCatalogEntry,
   SpawnAgentInput,
   SpawnAgentResult,
+  StageAttachmentInput,
   Snapshot,
   Task,
   ThreadSummary,
@@ -17,6 +19,7 @@ import type {
   TimelineEventType,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
+import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
 
 export interface DaemonDataSourceOptions {
   baseUrl?: string;
@@ -155,6 +158,18 @@ interface WebStateResponse {
   skill_catalog?: DaemonSkillCatalogEntry[];
 }
 
+interface WebAttachmentStageResponse {
+  attachment: {
+    id: string;
+    source: "staged";
+    name: string;
+    mimeType: string;
+    size: number;
+    extension: string;
+    path: string;
+  };
+}
+
 // Subset of the daemon's ThreadSummaryResponse (src/api/types.ts) that the web
 // UI consumes. Declared locally to avoid coupling the web bundle to server types.
 interface DaemonThreadSummary {
@@ -211,6 +226,7 @@ export class DaemonDataSource implements DataSource {
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
+  private readonly localMessages = new Map<string, { body: string; attachments: MessageAttachment[] }>();
   private groupNameByRoomId = new Map<string, string>();
   private roomCursor = new Map<string, number>();
   private pendingRooms = new Set<string>();
@@ -365,7 +381,9 @@ export class DaemonDataSource implements DataSource {
 
   async sendMessage(input: SendMessageInput): Promise<Message> {
     const body = input.body.trim();
-    if (!body) throw new Error("message body is required");
+    const attachments = input.attachments ?? [];
+    if (!body && attachments.length === 0) throw new Error("message body or attachment is required");
+    const outgoingBody = outgoingBodyWithAttachmentPaths(body, attachments);
     const inReplyTo = input.parentMessageId ? eventIdFromMessageId(input.parentMessageId) : undefined;
     const optimistic = this.addOptimisticMessage(input, body);
     if (input.roomId.startsWith("group:")) {
@@ -379,12 +397,13 @@ export class DaemonDataSource implements DataSource {
           method: "POST",
           body: JSON.stringify({
             sender_peer_id: this.peerId,
-            message: body,
+            message: outgoingBody,
             ...(inReplyTo !== undefined ? { in_reply_to: inReplyTo } : {}),
             ...(input.skillDirectives?.length ? { skill_directives: input.skillDirectives } : {}),
           }),
         });
-        const delivered = mapMessage(response.event, input.roomId, "delivered");
+        let delivered = mapMessage(response.event, input.roomId, "delivered");
+        delivered = this.rememberLocalMessage(delivered, body, attachments);
         this.replaceOptimistic(input, optimistic.id, delivered);
         await this.refreshRoom(input.roomId);
         return delivered;
@@ -405,10 +424,11 @@ export class DaemonDataSource implements DataSource {
         body: JSON.stringify({
           sender_peer_id: this.peerId,
           recipient_peer_id: recipientPeerId,
-          message: body,
+          message: outgoingBody,
         }),
       });
-      const delivered = mapMessage(response.event, input.roomId, "delivered");
+      let delivered = mapMessage(response.event, input.roomId, "delivered");
+      delivered = this.rememberLocalMessage(delivered, body, attachments);
       this.replaceOptimistic(input, optimistic.id, delivered);
       await this.refreshRoom(input.roomId);
       return delivered;
@@ -416,6 +436,40 @@ export class DaemonDataSource implements DataSource {
       this.removeOptimistic(input, optimistic.id);
       throw error;
     }
+  }
+
+  async stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment> {
+    const externalPath = input.sourceHint === "picker" ? nativeFilePath(input.file) : null;
+    if (externalPath) return makeExternalAttachment(input.file, externalPath, input.previewUrl);
+
+    const id = crypto.randomUUID();
+    const form = new FormData();
+    form.set("id", id);
+    form.set("file", input.file);
+    const response = await this.request<WebAttachmentStageResponse>("/web/attachments", {
+      method: "POST",
+      body: form,
+    });
+    const attachment = response.attachment;
+    return {
+      id: attachment.id,
+      kind: attachmentKindFor(attachment.mimeType, attachment.name),
+      source: attachment.source,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      extension: attachment.extension || extensionFor(attachment.name, attachment.mimeType),
+      path: attachment.path,
+      ...(input.previewUrl ? { previewUrl: input.previewUrl } : {}),
+    };
+  }
+
+  async removeDraftAttachment(attachment: MessageAttachment): Promise<void> {
+    if (attachment.source !== "staged") return;
+    await this.request<{ ok: true }>("/web/attachments", {
+      method: "DELETE",
+      body: JSON.stringify({ path: attachment.path }),
+    });
   }
 
   async reactToMessage(input: ReactToMessageInput): Promise<Message> {
@@ -488,6 +542,7 @@ export class DaemonDataSource implements DataSource {
       mentions: input.mentions,
       reactions: [],
       status: "queued",
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       ...(input.parentMessageId ? { parentId: input.parentMessageId } : {}),
     };
     const snap = input.parentMessageId ? this._threadReplies.get(input.parentMessageId) : this._messages.get(input.roomId);
@@ -503,6 +558,19 @@ export class DaemonDataSource implements DataSource {
   private removeOptimistic(input: SendMessageInput, optimisticId: string): void {
     const snap = input.parentMessageId ? this._threadReplies.get(input.parentMessageId) : this._messages.get(input.roomId);
     snap?.set(snap.get().filter((message) => message.id !== optimisticId));
+  }
+
+  private rememberLocalMessage(message: Message, body: string, attachments: MessageAttachment[]): Message {
+    if (attachments.length === 0) return message;
+    const local = { body, attachments };
+    this.localMessages.set(message.id, local);
+    return { ...message, body, attachments };
+  }
+
+  private hydrateLocalMessage(message: Message): Message {
+    const local = this.localMessages.get(message.id);
+    if (!local) return message;
+    return { ...message, body: local.body, attachments: local.attachments };
   }
 
   private findMessageSnapshot(messageId: string, roomId: string): Message | null {
@@ -682,12 +750,12 @@ export class DaemonDataSource implements DataSource {
     for (const event of state.events) {
       if (event.type === "group_message" && event.group_id !== null) {
         const roomId = groupRoomId(event.group_id);
-        const message = mapMessage(event, roomId, statusForEvent(event, this.peerId));
+        const message = this.hydrateLocalMessage(mapMessage(event, roomId, statusForEvent(event, this.peerId)));
         if (event.parent_event_id) pushMap(groupedReplies, messageId(event.parent_event_id), message);
         else pushMap(groupedMessages, roomId, message);
       } else if (event.type === "dm" && event.recipient_peer_id && event.sender_peer_id) {
         const other = event.sender_peer_id === this.peerId ? event.recipient_peer_id : event.sender_peer_id;
-        pushMap(groupedMessages, dmRoomId(other), mapMessage(event, dmRoomId(other), statusForEvent(event, this.peerId)));
+        pushMap(groupedMessages, dmRoomId(other), this.hydrateLocalMessage(mapMessage(event, dmRoomId(other), statusForEvent(event, this.peerId))));
       } else if (event.group_id !== null) {
         pushMap(timelines, groupRoomId(event.group_id), mapTimelineEvent(event, groupById, peerById));
       }
@@ -807,7 +875,7 @@ export class DaemonDataSource implements DataSource {
     const response = await this.request<{ event: DaemonEvent }>(`/events/${eventId}?peer_id=${encodeURIComponent(this.peerId)}`);
     const roomId = roomIdForEvent(response.event, this.peerId);
     if (!roomId) return;
-    this.updateMessageSnapshots(mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId)));
+    this.updateMessageSnapshots(this.hydrateLocalMessage(mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId))));
   }
 
   private request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -821,7 +889,7 @@ export class DaemonDataSource implements DataSource {
   private requestRaw(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("accept", path === "/web/events" ? "text/event-stream" : "application/json");
-    if (init.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
+    if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
     return fetch(`${this.baseUrl}${path}`, { ...init, headers });
   }

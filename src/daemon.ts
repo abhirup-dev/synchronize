@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import {
   ACTIVITY_STATES,
   type ActivityState,
@@ -417,6 +417,45 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     log(`local web session resolved peer_id=${peer.peer_id}`);
     emitWebStateChanged(ctx, { domains: ["peers"], peerId: peer.peer_id });
     return jsonResponse({ peer });
+  }
+
+  if (request.method === "POST" && url.pathname === "/web/attachments") {
+    requireAuth(request, ctx);
+    const form = await request.formData().catch(() => {
+      throw new HttpError(400, "invalid_form", "Request body must be multipart form data");
+    });
+    const id = optionalFormString(form, "id") ?? crypto.randomUUID();
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw new HttpError(400, "invalid_request", "file is required");
+    }
+    const safeDraftId = safePathSegment(id, "attachment");
+    const safeBase = safePathSegment(file.name || "attachment", "attachment");
+    const dir = join(webAttachmentRoot(ctx.paths), safeDraftId);
+    await ensureDir(dir);
+    const path = join(dir, safeBase);
+    await writeFile(path, new Uint8Array(await file.arrayBuffer()));
+    return jsonResponse({
+      attachment: {
+        id,
+        source: "staged",
+        name: file.name || safeBase,
+        mimeType: file.type || guessContentType(safeBase),
+        size: file.size,
+        extension: attachmentExtension(file.name || safeBase, file.type),
+        path,
+      },
+    }, { status: 201 });
+  }
+
+  if (request.method === "DELETE" && url.pathname === "/web/attachments") {
+    requireAuth(request, ctx);
+    const body = await readBody(request);
+    const stagedPath = requireString(body, "path");
+    const path = resolveStagedAttachmentPath(ctx.paths, stagedPath);
+    await rm(path, { force: true });
+    await rm(dirname(path), { force: true }).catch(() => undefined);
+    return jsonResponse({ ok: true });
   }
 
   if (request.method === "GET" && url.pathname === "/web/events") {
@@ -1733,6 +1772,16 @@ function requireString(body: Record<string, unknown>, key: string): string {
 function optionalString(body: Record<string, unknown>, key: string): string | undefined {
   const value = body[key];
   if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new HttpError(400, "invalid_request", `${key} must be a string`);
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+function optionalFormString(form: FormData, key: string): string | undefined {
+  const value = form.get(key);
+  if (value === null) return undefined;
   if (typeof value !== "string") {
     throw new HttpError(400, "invalid_request", `${key} must be a string`);
   }
@@ -3721,6 +3770,32 @@ function guessContentType(path: string): string {
   if (ext === ".gif") return "image/gif";
   if (ext === ".pdf") return "application/pdf";
   return "application/octet-stream";
+}
+
+function webAttachmentRoot(paths: RuntimePaths): string {
+  return join(paths.home, "tmp", "web-attachments");
+}
+
+function safePathSegment(value: string, fallback: string): string {
+  const safe = basename(value).replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^_+|_+$/g, "");
+  return safe || fallback;
+}
+
+function attachmentExtension(name: string, mimeType: string): string {
+  const ext = extname(name).replace(/^\./, "");
+  if (ext) return ext.toUpperCase();
+  const subtype = mimeType.split("/")[1]?.split(";")[0]?.trim();
+  return subtype ? subtype.replace(/[^a-zA-Z0-9]+/g, "-").toUpperCase() : "FILE";
+}
+
+function resolveStagedAttachmentPath(paths: RuntimePaths, inputPath: string): string {
+  const root = resolve(webAttachmentRoot(paths));
+  const candidate = resolve(inputPath);
+  const rel = relative(root, candidate);
+  if (rel === "" || rel.startsWith("..") || rel.startsWith("/")) {
+    throw new HttpError(400, "invalid_attachment_path", "path is not a staged web attachment");
+  }
+  return candidate;
 }
 
 async function appendMediaIndex(group: GroupRow, media: MediaRow): Promise<void> {

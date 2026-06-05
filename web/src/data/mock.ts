@@ -8,9 +8,11 @@ import type {
   Artifact,
   DataSource,
   Message,
+  MessageAttachment,
   ReactToMessageInput,
   Room,
   SendMessageInput,
+  StageAttachmentInput,
   SkillCatalogEntry,
   SpawnAgentInput,
   SpawnAgentResult,
@@ -20,6 +22,7 @@ import type {
   TimelineEvent,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
+import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath } from "../utils/attachments.ts";
 import {
   AGENTS,
   ARTIFACTS,
@@ -156,6 +159,28 @@ export class MockDataSource implements DataSource {
     return snap;
   }
 
+  async stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment> {
+    const externalPath = input.sourceHint === "picker" ? nativeFilePath(input.file) : null;
+    if (externalPath) return makeExternalAttachment(input.file, externalPath, input.previewUrl);
+    const id = crypto.randomUUID();
+    const name = input.file.name || "attachment";
+    return {
+      id,
+      kind: attachmentKindFor(input.file.type, name),
+      source: "staged",
+      name,
+      mimeType: input.file.type || "application/octet-stream",
+      size: input.file.size,
+      extension: extensionFor(name, input.file.type),
+      path: `/mock/synchronize/tmp/web-attachments/${id}/${name}`,
+      ...(input.previewUrl ? { previewUrl: input.previewUrl } : {}),
+    };
+  }
+
+  async removeDraftAttachment(_attachment: MessageAttachment): Promise<void> {
+    return;
+  }
+
   async sendMessage(input: SendMessageInput): Promise<Message> {
     const me = this._me.get();
     const msg: Message = {
@@ -166,6 +191,7 @@ export class MockDataSource implements DataSource {
       createdAt: new Date().toISOString(),
       mentions: input.mentions,
       reactions: [],
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       status: "queued",
       ...(input.parentMessageId !== undefined && { parentId: input.parentMessageId }),
     };

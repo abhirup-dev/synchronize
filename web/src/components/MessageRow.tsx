@@ -5,6 +5,7 @@ import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { PollWidget } from "./PollWidget.tsx";
 import { useMe } from "../data/context.tsx";
+import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 
 interface MessageRowProps {
   message: Message;
@@ -78,7 +79,10 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
           </div>
         )}
         <div className="bubble">
-          <BodyWithMentions body={message.body} agents={agents} />
+          {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
+          {message.attachments?.length ? (
+            <AttachmentPreviewList attachments={message.attachments} mode="message" />
+          ) : null}
           {message.poll && (
             <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
           )}

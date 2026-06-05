@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listAgentSessions, registerAgentSession, renameAgentSession } from "../src/api/agent-sessions.ts";
@@ -1859,6 +1859,52 @@ test("web session endpoint returns a stable daemon-owned local web peer", async 
     const state = await fetch(`${daemon.client.baseUrl}/web/state?peer_id=${encodeURIComponent(secondBody.peer.peer_id)}`);
     const stateBody = await state.json() as { peers: Array<{ peer_id: string }> };
     expect(stateBody.peers).toContainEqual(expect.objectContaining({ peer_id: "web:local-human" }));
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("web attachment staging copies into runtime temp folder and deletes only staged paths", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-web-attachments-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const form = new FormData();
+    form.set("id", "draft/clip 1");
+    form.set("file", new File(["clipboard-bytes"], "clip image.png", { type: "image/png" }));
+    const stagedResponse = await fetch(`${daemon.client.baseUrl}/web/attachments`, {
+      method: "POST",
+      body: form,
+    });
+    expect(stagedResponse.status).toBe(201);
+    const staged = await stagedResponse.json() as {
+      attachment: { id: string; source: string; name: string; mimeType: string; size: number; extension: string; path: string };
+    };
+    expect(staged.attachment).toMatchObject({
+      id: "draft/clip 1",
+      source: "staged",
+      name: "clip image.png",
+      mimeType: "image/png",
+      extension: "PNG",
+    });
+    expect(staged.attachment.path.startsWith(join(home, "tmp", "web-attachments"))).toBe(true);
+    expect(await readFile(staged.attachment.path, "utf8")).toBe("clipboard-bytes");
+
+    const rejected = await fetch(`${daemon.client.baseUrl}/web/attachments`, {
+      method: "DELETE",
+      body: JSON.stringify({ path: join(home, "synchronize.db") }),
+      headers: { "content-type": "application/json" },
+    });
+    expect(rejected.status).toBe(400);
+
+    const removed = await fetch(`${daemon.client.baseUrl}/web/attachments`, {
+      method: "DELETE",
+      body: JSON.stringify({ path: staged.attachment.path }),
+      headers: { "content-type": "application/json" },
+    });
+    expect(removed.status).toBe(200);
+    await expect(stat(staged.attachment.path)).rejects.toThrow();
   } finally {
     await daemon.stop();
   }
