@@ -669,6 +669,10 @@ export class DaemonDataSource implements DataSource {
   }
 
   private applyRoomState(roomId: string, state: WebStateResponse, opts: { append: boolean }): void {
+    const currentAgents = this._agents.get();
+    const roomAgents = agentsFromState(state, this.peerId);
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, roomAgents)));
+
     const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
     const groupById = new Map(state.groups.map((group) => [group.group_id, group] as const));
     const groupedMessages = new Map<string, Message[]>();
@@ -1114,6 +1118,13 @@ function mergeTimeline(prev: TimelineEvent[], next: TimelineEvent[]): TimelineEv
   const byId = new Map(prev.map((item) => [item.id, item] as const));
   for (const item of next) byId.set(item.id, item);
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function mergeAgents(prev: Agent[], next: Agent[]): Agent[] {
+  if (next.length === 0) return prev;
+  const byId = new Map(prev.map((item) => [item.id, item] as const));
+  for (const item of next) byId.set(item.id, item);
+  return [...byId.values()];
 }
 
 function hashString(value: string): number {

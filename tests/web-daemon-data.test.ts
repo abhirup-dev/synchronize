@@ -131,6 +131,97 @@ test("daemon data source maps skill catalog from web state", () => {
   ]);
 });
 
+test("daemon data source keeps room-scoped historical authors resolvable", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    generated_at: "2026-06-05T00:00:00.000Z",
+    cursor: 0,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [],
+    groups: [],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+    skill_catalog: [],
+  });
+  expect(ds.agents().get().map((agent) => agent.id)).not.toContain("peer:expired");
+
+  ds.messages("group:1");
+  (ds as unknown as { applyRoomState(roomId: string, state: unknown, opts: { append: boolean }): void }).applyRoomState("group:1", {
+    ok: true,
+    generated_at: "2026-06-05T00:00:01.000Z",
+    cursor: 42,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [
+      {
+        peer_id: "peer:expired",
+        tool: "claude",
+        session_name: "expired-agent",
+        purpose: "older session",
+        machine_id: null,
+        lease_expires_at: "2026-06-04T23:00:00.000Z",
+        activity_state: "idle",
+        last_activity_at: "2026-06-04T22:59:00.000Z",
+        last_cursor: 42,
+        created_at: "2026-06-04T22:00:00.000Z",
+        updated_at: "2026-06-04T23:00:00.000Z",
+        online: false,
+        presence: "offline",
+      },
+    ],
+    groups: [{ group_id: 1, name: "room", durable: true, description: null, creator_peer_id: null, created_at: "2026-06-04T22:00:00.000Z" }],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [
+      {
+        event_id: 42,
+        type: "group_message",
+        sender_peer_id: "peer:expired",
+        recipient_peer_id: null,
+        group_id: 1,
+        group_name: "room",
+        body: "still visible after the agent is gone",
+        media_id: null,
+        parent_event_id: null,
+        reply_to_event_id: null,
+        mentions_json: null,
+        skill_directives_json: null,
+        created_at: "2026-06-04T22:59:00.000Z",
+        reply_count: 0,
+        last_reply_event_id: null,
+        delivered_count: 0,
+        read_count: 0,
+        acked_count: 0,
+        reactions: [],
+      },
+    ],
+    media: [],
+    skill_catalog: [],
+  }, { append: false });
+
+  expect(ds.messages("group:1").get()).toContainEqual(expect.objectContaining({
+    id: "e:42",
+    authorId: "peer:expired",
+    body: "still visible after the agent is gone",
+  }));
+  expect(ds.agents().get()).toContainEqual(expect.objectContaining({
+    id: "peer:expired",
+    name: "expired-agent",
+    status: "offline",
+  }));
+});
+
 test("daemon data source sends selected skill directives with group messages", async () => {
   const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
   (ds as unknown as { peerId: string }).peerId = "web:local-human";
