@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
 import type { Room } from "../data/types.ts";
 import { useAgents, useMe, useMessages, useReactToMessage } from "../data/context.tsx";
 import { MessageRow } from "./MessageRow.tsx";
@@ -14,18 +14,30 @@ const THREAD_SUMMARY_DEFAULT_WIDTH = 340;
 const THREAD_SUMMARY_MIN_WIDTH = 240;
 const THREAD_SUMMARY_MAX_WIDTH = 620;
 
+type ResizeAdjustmentVirtualizer = Virtualizer<HTMLDivElement, Element> & {
+  shouldAdjustScrollPositionOnItemSizeChange?: (
+    item: VirtualItem,
+    delta: number,
+    instance: Virtualizer<HTMLDivElement, Element>,
+  ) => boolean;
+};
+
 export function ChatView({
   room,
   onOpenThread,
   isThreadOpen = false,
   threadSummaryOpen = false,
   onToggleThreadSummary,
+  onOpenCommunity,
+  showTimeline = true,
 }: {
   room: Room;
   onOpenThread?(parentId: string): void;
   isThreadOpen?: boolean;
   threadSummaryOpen?: boolean;
   onToggleThreadSummary?(): void;
+  onOpenCommunity?(): void;
+  showTimeline?: boolean;
 }) {
   const messages = useMessages(room.id);
   const agents = useAgents();
@@ -62,6 +74,12 @@ export function ChatView({
     estimateSize: (index) => rows[index]?.grouped ? 112 : 170,
     overscan: 8,
   });
+  // The chat list is full of variable-height markdown bubbles. TanStack
+  // Virtual's default measurement correction may write scrollTop when rows
+  // above the viewport resize, which can reverse a user's mouse/trackpad scroll.
+  // Keep measurement for accurate layout, but never let size changes drive the
+  // scroll position.
+  (virtualizer as ResizeAdjustmentVirtualizer).shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   // ── Thread Summary panel support ──────────────────────────────────────────
   // The panel aligns each thread's dot to its parent message and scroll-syncs
@@ -164,13 +182,14 @@ export function ChatView({
             </div>
             <ScrollControls targetRef={listRef} newItemsKey={messages.at(-1)?.id ?? null} />
           </div>
-          {!isThreadOpen && <TimelineRail roomId={room.id} />}
+          {showTimeline && !isThreadOpen && <TimelineRail roomId={room.id} />}
         </div>
         <Composer
           key={isThreadOpen ? "thread-open" : "thread-closed"}
           roomId={room.id}
           collapsedDefault={isThreadOpen}
           {...(onToggleThreadSummary ? { threadSummaryOpen, onToggleThreadSummary } : {})}
+          {...(onOpenCommunity ? { onOpenCommunity } : {})}
         />
       </div>
     </div>

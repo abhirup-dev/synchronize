@@ -65,6 +65,7 @@
 |---|---|---|
 | `web/DESIGN.md` | 427 | Web UI design — DataSource interface, ChatView/MessageRow/Sidebar component layout, theme tokens. |
 | `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
+| `docs/plans/web-responsive-compact-shell.md` | 321 | Responsive compact web shell plan for staged roster/sidebar collapse, community and agent takeovers, and compact composer navigation (sync-ogbk). |
 | `docs/plans/multi-machine-support.md` | 137 | Feasibility + phased plan for remote sessions joining one daemon over Tailscale, rendered together in the UI (sync-kp1 epic; sync-2bo, sync-stn, sync-xl3, sync-h9h, sync-jeb, sync-8ga). |
 | `docs/plans/launch-lifecycle-kernel.md` | 386 | Durable launch lifecycle kernel for local AOE launches and future remote executors — continues `docs/plans/aoe-agent-launch.md` and `sync-6wlv` (epic sync-txpj). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |

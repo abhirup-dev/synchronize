@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
@@ -20,6 +20,13 @@ const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
 const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 type ThemeName = (typeof ALL_THEMES)[number];
+type ShellMode = "desktop" | "medium" | "compact";
+
+function shellModeForWidth(width: number): ShellMode {
+  if (width < 780) return "compact";
+  if (width < 1180) return "medium";
+  return "desktop";
+}
 
 function isThemeName(value: string | null): value is ThemeName {
   return ALL_THEMES.includes(value as ThemeName);
@@ -102,6 +109,10 @@ function Shell() {
   const [tab, setTab] = useState<RoomTab>("chat");
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
+  const [shellMode, setShellMode] = useState<ShellMode>(() => shellModeForWidth(window.innerWidth));
+  const [communityOpen, setCommunityOpen] = useState(false);
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const overlayRestoreRef = useRef<HTMLElement | null>(null);
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const [threadWidth, setThreadWidth] = useState<number>(() => {
     const stored = Number(localStorage.getItem("synchronize.threadWidth"));
@@ -122,13 +133,37 @@ function Shell() {
     }
   }, [activeId, rooms]);
 
+  useEffect(() => {
+    const onResize = () => setShellMode(shellModeForWidth(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   // Reset secondary state when switching rooms.
   useEffect(() => {
     setTab("chat");
     setFocusedAgent(null);
     setThreadParentId(null);
     setThreadSummaryOpen(false);
+    setAgentPanelOpen(false);
   }, [activeId]);
+
+  useEffect(() => {
+    if (shellMode !== "compact") setCommunityOpen(false);
+    if (shellMode === "desktop") setAgentPanelOpen(false);
+  }, [shellMode]);
+
+  useEffect(() => {
+    if (!communityOpen && !agentPanelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setCommunityOpen(false);
+      setAgentPanelOpen(false);
+      queueMicrotask(() => overlayRestoreRef.current?.focus());
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [communityOpen, agentPanelOpen]);
 
   useEffect(() => {
     document.documentElement.dataset["theme"] = theme;
@@ -139,6 +174,22 @@ function Shell() {
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
   const toast = useToast();
+  const rosterPersistent = shellMode === "desktop" && !threadParentId;
+  const rosterPanelAvailable = shellMode !== "desktop" && !threadParentId;
+  const communityPanelAvailable = shellMode === "compact";
+
+  const rememberOverlayOpener = () => {
+    overlayRestoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const closeOverlays = () => {
+    setCommunityOpen(false);
+    setAgentPanelOpen(false);
+    queueMicrotask(() => overlayRestoreRef.current?.focus());
+  };
+  const selectRoom = (id: string) => {
+    setActiveId(id);
+    setCommunityOpen(false);
+  };
 
   // Jump-to-last-message-by-agent: scrolls to the latest message authored by
   // `agentId` in the active room, flashes it with the throbbing yellow ring.
@@ -210,12 +261,27 @@ function Shell() {
   }, [vim]);
 
   return (
-    <div className={`app-shell${threadParentId ? " thread-open" : ""}`} data-vim-mode={vim.mode}>
-      <Sidebar activeRoomId={room?.id ?? ""} onSelect={setActiveId} mode={vim.mode} />
+    <div
+      className={`app-shell shell-${shellMode}${threadParentId ? " thread-open" : ""}`}
+      data-vim-mode={vim.mode}
+      data-shell-mode={shellMode}
+    >
+      {shellMode !== "compact" && (
+        <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} mode={vim.mode} />
+      )}
       <main className="main">
         {room ? (
           <>
-            <RoomHeader room={room} tab={tab} onTab={setTab} />
+            <RoomHeader
+              room={room}
+              tab={tab}
+              onTab={setTab}
+              showAgentsButton={rosterPanelAvailable}
+              onOpenAgents={() => {
+                rememberOverlayOpener();
+                setAgentPanelOpen(true);
+              }}
+            />
             <div
               className="main-body"
               style={
@@ -232,6 +298,15 @@ function Shell() {
                     isThreadOpen={!!threadParentId}
                     threadSummaryOpen={threadSummaryOpen}
                     onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
+                    showTimeline={shellMode !== "compact"}
+                    {...(communityPanelAvailable
+                      ? {
+                          onOpenCommunity: () => {
+                            rememberOverlayOpener();
+                            setCommunityOpen(true);
+                          },
+                        }
+                      : {})}
                   />
                 ) : tab === "board" ? (
                   <BoardView roomId={room.id} />
@@ -244,14 +319,14 @@ function Shell() {
                   <ResizeHandle width={threadWidth} onChange={setThreadWidth} />
                   <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} />
                 </>
-              ) : (
+              ) : rosterPersistent ? (
                 <AgentRoster
                   room={room}
                   focusedAgent={focusedAgent}
                   onFocus={setFocusedAgent}
                   onAgentDoubleClick={jumpToAgentLast}
                 />
-              )}
+              ) : null}
             </div>
           </>
         ) : (
@@ -271,6 +346,34 @@ function Shell() {
       >
         {themeFamily(theme) === "light" ? "🌙" : "☀️"}
       </button>
+      {communityPanelAvailable && communityOpen && (
+        <div className="shell-overlay shell-overlay-community" role="dialog" aria-modal="true" aria-label="communities">
+          <div className="shell-overlay-head">
+            <span>Communities</span>
+            <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close communities">×</button>
+          </div>
+          <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} mode={vim.mode} />
+        </div>
+      )}
+      {rosterPanelAvailable && agentPanelOpen && room && (
+        <div
+          className={`shell-overlay shell-overlay-agents shell-overlay-${shellMode}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="agents"
+        >
+          <div className="shell-overlay-head">
+            <span>Agents</span>
+            <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close agents">×</button>
+          </div>
+          <AgentRoster
+            room={room}
+            focusedAgent={focusedAgent}
+            onFocus={setFocusedAgent}
+            onAgentDoubleClick={jumpToAgentLast}
+          />
+        </div>
+      )}
     </div>
   );
 }

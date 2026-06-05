@@ -13,6 +13,8 @@ interface ComposerProps {
   /** When provided, render the Thread Summary toggle in the footer. */
   threadSummaryOpen?: boolean;
   onToggleThreadSummary?(): void;
+  /** Compact shell hook for opening the room/community navigator. */
+  onOpenCommunity?(): void;
 }
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
@@ -59,6 +61,7 @@ export function Composer({
   collapsedDefault = false,
   threadSummaryOpen = false,
   onToggleThreadSummary,
+  onOpenCommunity,
 }: ComposerProps) {
   const agents = useAgents();
   const me = useMe();
@@ -429,6 +432,17 @@ export function Composer({
         </div>
       )}
       <div className="composer-foot">
+        {onOpenCommunity ? (
+          <button
+            type="button"
+            className="thread-scan-btn community-open-btn"
+            onClick={onOpenCommunity}
+            title="open communities"
+            aria-label="open communities"
+          >
+            <span className="community-icon" aria-hidden />
+          </button>
+        ) : null}
         {onToggleThreadSummary ? (
           <button
             type="button"
@@ -443,8 +457,9 @@ export function Composer({
         <span className="composer-hint">
           <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>@</kbd> tag
         </span>
-        <button className="composer-send" onClick={submit} disabled={!value.trim()}>
-          SEND →
+        <button className="composer-send" onClick={submit} disabled={!value.trim()} aria-label="send message">
+          <span className="composer-send-label">SEND</span>
+          <span className="composer-send-icon" aria-hidden />
         </button>
       </div>
     </div>
