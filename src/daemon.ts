@@ -1243,7 +1243,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ctx.db
         .query(
           `UPDATE group_members
-           SET active = 0, left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           SET active = 0, member_state = 'left', left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
            WHERE group_id = ? AND peer_id = ?`,
         )
         .run(group.group_id, peerId);
@@ -2082,6 +2082,7 @@ function deactivateWebAliasHolders(db: Database, groupId: number, alias: string,
   db.query(
     `UPDATE group_members
      SET active = 0,
+         member_state = 'left',
          left_at = COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
      WHERE group_id = ?
        AND alias = ?
@@ -2136,7 +2137,7 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
     for (const { peer_id } of rows) {
       ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
       ctx.db
-        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
         .run(now, peer_id);
       ctx.subscribers.delete(peer_id);
     }
@@ -2164,7 +2165,7 @@ function softDeletePeerIfPresent(
       .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ?, updated_at = ? WHERE peer_id = ? AND deleted_at IS NULL")
       .run(deletedAt, deletedAt, deletedAt, peerId);
     ctx.db
-      .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+      .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
       .run(deletedAt, peerId);
   })();
   ctx.subscribers.delete(peerId);
@@ -2264,13 +2265,13 @@ export function upsertPeer(
 function reactivateMembershipsOnResurrect(db: Database, peerId: string, deathTimestamp: string): void {
   db.query(
     `UPDATE group_members
-     SET active = 1, left_at = NULL
-     WHERE peer_id = ? AND active = 0 AND left_at = ?
+     SET active = 1, member_state = 'active', left_at = NULL
+     WHERE peer_id = ? AND active = 0 AND member_state = 'left' AND left_at = ?
        AND NOT EXISTS (
          SELECT 1 FROM group_members other
          WHERE other.group_id = group_members.group_id
            AND other.alias = group_members.alias
-           AND other.active = 1
+           AND other.member_state IN ('active','archived')
            AND other.peer_id != group_members.peer_id
        )`,
   ).run(peerId, deathTimestamp);
@@ -3389,13 +3390,14 @@ function joinGroupCore(
       ctx.db
         .query(
           `INSERT INTO group_members
-             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
+             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, member_state, purpose, left_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'active', ?, NULL)
            ON CONFLICT(group_id, peer_id) DO UPDATE SET
              alias = excluded.alias,
              join_event_id = excluded.join_event_id,
              history_from_event_id = excluded.history_from_event_id,
              active = 1,
+             member_state = 'active',
              purpose = excluded.purpose,
              joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
              left_at = NULL`,
