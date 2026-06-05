@@ -25,7 +25,7 @@ Usage:
   synchronize threads summary ROOT_EVENT_ID [--refresh] [--strategy all|first_k|last_k|first_last] [--k N] [--first-k N] [--last-k N] [--format text|json]
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
-  synchronize launch claude [--name NAME] [--] [CLAUDE_ARGS...]
+  synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize --help
 

@@ -21,6 +21,9 @@ function recorder(results: Record<string, CommandResult | CommandResult[]> = {})
 test("buildCmdOverride wraps env + command and quotes spaced values", () => {
   const s = buildCmdOverride({ SYNCHRONIZE_HOME: "/tmp/h", X: "a b" }, ["claude", "--model", "opus"]);
   expect(s.startsWith("env ")).toBe(true);
+  expect(s).toContain("-u SSL_CERT_FILE");
+  expect(s).toContain("-u SSL_CERT_DIR");
+  expect(s).toContain("-u GRPC_DEFAULT_SSL_ROOTS_FILE_PATH");
   expect(s).toContain("SYNCHRONIZE_HOME=/tmp/h");
   expect(s).toContain("'X=a b'");
   expect(s.endsWith("claude --model opus")).toBe(true);

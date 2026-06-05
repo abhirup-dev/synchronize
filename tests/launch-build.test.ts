@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildAgentCommand, buildLaunchEnv, isLaunchTool } from "../src/launch/build.ts";
+import { buildAgentCommand, buildLaunchEnv, isLaunchTool, sanitizeLaunchBaseEnv } from "../src/launch/build.ts";
 import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../src/constants.ts";
 
 test("isLaunchTool accepts only claude and pi", () => {
@@ -44,4 +44,19 @@ test("buildLaunchEnv includes session name, peer id, and home when provided", ()
   expect(env[ENV_SESSION_NAME]).toBe("alice");
   expect(env[ENV_PEER_ID]).toBe("peer-9");
   expect(env[ENV_HOME]).toBe("/tmp/sync-home");
+});
+
+test("sanitizeLaunchBaseEnv drops inherited TLS trust-store overrides", () => {
+  const env = sanitizeLaunchBaseEnv({
+    PATH: "/bin",
+    SSL_CERT_FILE: "/etc/ssl/cert.pem",
+    SSL_CERT_DIR: "/etc/ssl/certs",
+    GRPC_DEFAULT_SSL_ROOTS_FILE_PATH: "/tmp/roots.pem",
+    KEEP_ME: "1",
+  });
+  expect(env.PATH).toBe("/bin");
+  expect(env.KEEP_ME).toBe("1");
+  expect(env.SSL_CERT_FILE).toBeUndefined();
+  expect(env.SSL_CERT_DIR).toBeUndefined();
+  expect(env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH).toBeUndefined();
 });

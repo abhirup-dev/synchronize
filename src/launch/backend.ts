@@ -1,4 +1,4 @@
-import type { LaunchTool } from "./build.ts";
+import { LAUNCH_ENV_UNSET_KEYS, type LaunchTool } from "./build.ts";
 
 /**
  * Session backend seam.
@@ -78,7 +78,12 @@ function shellJoin(tokens: string[]): string {
  * `env KEY=VAL … <agent argv>`. Exported for testing.
  */
 export function buildCmdOverride(env: Record<string, string>, command: string[]): string {
-  return shellJoin(["env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), ...command]);
+  return shellJoin([
+    "env",
+    ...LAUNCH_ENV_UNSET_KEYS.flatMap((key) => ["-u", key]),
+    ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
+    ...command,
+  ]);
 }
 
 /** Tolerant parser for `aoe list --json` (top-level array of sessions). */

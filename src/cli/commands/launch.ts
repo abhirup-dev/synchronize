@@ -1,14 +1,14 @@
 import { spawn } from "node:child_process";
 import { ensureDaemon } from "../../client.ts";
 import { ENV_SESSION_NAME } from "../../constants.ts";
-import { buildAgentCommand, buildLaunchEnv, isLaunchTool, type LaunchTool } from "../../launch/build.ts";
+import { buildAgentCommand, buildLaunchEnv, isLaunchTool, sanitizeLaunchBaseEnv, type LaunchTool } from "../../launch/build.ts";
 
 export async function run(argv: string[]): Promise<void> {
   const { target, name, rest } = parseLaunchArgs(argv);
   await ensureDaemon();
   const launchId = crypto.randomUUID();
   const env = {
-    ...process.env,
+    ...sanitizeLaunchBaseEnv(process.env),
     ...buildLaunchEnv({ launchId, ...(name ? { sessionName: name } : {}) }),
   };
   const cmd = buildAgentCommand(target, rest);
@@ -28,16 +28,33 @@ export async function run(argv: string[]): Promise<void> {
   process.exit(code);
 }
 
-function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: string; rest: string[] } {
-  const [target, ...args] = argv;
-  if (target === undefined || !isLaunchTool(target)) {
-    throw new Error("launch requires one of: claude, pi");
-  }
+export function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: string; rest: string[] } {
+  let target: LaunchTool | undefined;
   let name: string | undefined;
   const rest: string[] = [];
   let passThrough = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+
+    if (!target) {
+      if (arg === "--") {
+        continue;
+      }
+      if (arg === "--name") {
+        const next = argv[index + 1];
+        if (!next) throw new Error("launch --name requires a value");
+        name = next;
+        index += 1;
+        continue;
+      }
+      if (isLaunchTool(arg)) {
+        target = arg;
+        continue;
+      }
+      throw new Error("launch requires one of: claude, pi");
+    }
+
     if (passThrough) {
       rest.push(arg);
       continue;
@@ -47,13 +64,17 @@ function parseLaunchArgs(argv: string[]): { target: LaunchTool; name?: string; r
       continue;
     }
     if (arg === "--name") {
-      const next = args[index + 1];
+      const next = argv[index + 1];
       if (!next) throw new Error("launch --name requires a value");
       name = next;
       index += 1;
       continue;
     }
     rest.push(arg);
+  }
+
+  if (!target) {
+    throw new Error("launch requires one of: claude, pi");
   }
   return name ? { target, name, rest } : { target, rest };
 }

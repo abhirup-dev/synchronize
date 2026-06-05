@@ -6,6 +6,12 @@ export function isLaunchTool(value: string): value is LaunchTool {
   return value === "claude" || value === "pi";
 }
 
+export const LAUNCH_ENV_UNSET_KEYS = [
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH",
+] as const;
+
 /**
  * Build the bare agent command (binary + args) for a launch target.
  *
@@ -63,5 +69,19 @@ export function buildLaunchEnv(input: LaunchEnvInput): Record<string, string> {
   if (input.sessionName) env[ENV_SESSION_NAME] = input.sessionName;
   if (input.peerId) env[ENV_PEER_ID] = input.peerId;
   if (input.home) env[ENV_HOME] = input.home;
+  return env;
+}
+
+/**
+ * Copy a caller environment for agent launch while dropping trust-store
+ * overrides that can force child MCP binaries onto the wrong CA bundle.
+ */
+export function sanitizeLaunchBaseEnv(base: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value === undefined) continue;
+    if ((LAUNCH_ENV_UNSET_KEYS as readonly string[]).includes(key)) continue;
+    env[key] = value;
+  }
   return env;
 }

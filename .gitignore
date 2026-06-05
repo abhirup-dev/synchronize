@@ -17,6 +17,9 @@ node_modules/
 # graphify knowledge-graph outputs (regeneratable via /graphify)
 graphify-out/
 
+# Understand Anything knowledge-graph outputs
+.understand-anything/
+
 # Local UI reference captures
 docs/ui-reference/claude-design-screenshots/
 
