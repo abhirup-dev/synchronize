@@ -715,9 +715,6 @@
   order: 1;
   align-items: flex-end;
 }
-.message-row.is-web-author .message-body {
-  padding-right: 0;
-}
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
@@ -784,7 +781,6 @@
 .chat-view.is-group-room .message-row.is-web-author .bubble {
   background: #BDB9AA;
   color: var(--ink);
-  max-width: min(880px, 100%);
 }
 
 .message-status {
