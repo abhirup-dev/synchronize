@@ -180,7 +180,6 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
             </div>
           </div>
         )}
-        {message.status && isYou && <MessageStatus status={message.status} />}
       </div>
     </div>
   );
@@ -201,11 +200,4 @@ function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function MessageStatus({ status }: { status: NonNullable<Message["status"]> }) {
-  const label =
-    status === "queued"    ? "◌ queued" :
-    status === "delivered" ? "✓✓ delivered" : "✓✓ read";
-  return <div className="message-status">{label}</div>;
 }
