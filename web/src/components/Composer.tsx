@@ -4,6 +4,7 @@ import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } fro
 import { roomAgents } from "../data/roomAgents.ts";
 import { inkFor } from "./primitives.tsx";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
+import { useToast } from "./Toast.tsx";
 
 interface ComposerProps {
   roomId: string;
@@ -20,6 +21,18 @@ interface ComposerProps {
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
 type SkillRuntimeFilter = "all" | AgentLaunchTool;
+
+function filesFromClipboard(data: DataTransfer): File[] {
+  const files = Array.from(data.files ?? []);
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    if (files.some((candidate) => candidate.name === file.name && candidate.size === file.size && candidate.type === file.type)) continue;
+    files.push(file);
+  }
+  return files;
+}
 
 function normalizeMentionHandle(handle: string): string {
   return handle.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
@@ -73,6 +86,7 @@ export function Composer({
   const sendMessage = useSendMessage();
   const stageAttachment = useStageAttachment();
   const removeDraftAttachment = useRemoveDraftAttachment();
+  const toast = useToast();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const skillInputRef = useRef<HTMLInputElement | null>(null);
@@ -218,6 +232,10 @@ export function Composer({
       setAttachments((prev) => [...prev, ...staged]);
     } catch (error) {
       console.error("failed to stage attachment", error);
+      toast.show(error instanceof Error ? `Could not attach file: ${error.message}` : "Could not attach file", {
+        kind: "error",
+        duration: 7000,
+      });
     } finally {
       setAddingAttachments(false);
     }
@@ -232,7 +250,7 @@ export function Composer({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(e.clipboardData.files ?? []);
+    const files = filesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
     void addFiles(files, "clipboard");
