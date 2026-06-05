@@ -37,6 +37,35 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
   return ["pi", ...rest];
 }
 
+export interface ResumeTarget {
+  /** The captured host session id (claude --resume / pi --session). */
+  hostSessionId: string;
+  /** Pi may resume by session file path; preferred over the id when present. */
+  hostSessionFile?: string | null;
+}
+
+/**
+ * Build the FAITHFUL-RESUME agent command — the same argv as a fresh launch, but
+ * reattaching the original conversation rather than starting a new one.
+ *
+ *   claude: claude --resume <host_session_id> …flags   (NEVER --fork-session —
+ *           forking would mint a new session id and break host_session_id
+ *           correlation, so the resumed agent would not re-bind to its identity)
+ *   pi:     pi --session <host_session_id|file> …rest   (NOT -r, which opens an
+ *           interactive picker rather than resuming a specific session)
+ *
+ * The archived peer_id is reused via ENV_PEER_ID (buildLaunchEnv), so the
+ * re-registration on boot matches the archived identity and resurrects it.
+ */
+export function buildAgentResumeCommand(tool: LaunchTool, target: ResumeTarget, rest: string[]): string[] {
+  const base = buildAgentCommand(tool, rest); // ["claude"|"pi", ...flags]
+  if (tool === "claude") {
+    return ["claude", "--resume", target.hostSessionId, ...base.slice(1)];
+  }
+  const session = target.hostSessionFile ?? target.hostSessionId;
+  return ["pi", "--session", session, ...base.slice(1)];
+}
+
 export interface LaunchEnvInput {
   /** Short-lived correlation key shared by launcher, hook, and MCP process. */
   launchId: string;

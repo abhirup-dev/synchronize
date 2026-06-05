@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildAgentCommand, buildLaunchEnv, isLaunchTool, type LaunchTool } from "./build.ts";
+import { buildAgentCommand, buildAgentResumeCommand, buildLaunchEnv, isLaunchTool, type LaunchTool, type ResumeTarget } from "./build.ts";
 import type { LaunchSpec, SessionBackend } from "./backend.ts";
 import { transitionLaunch, type LaunchLifecycleEvent } from "./lifecycle.ts";
 import {
@@ -37,6 +37,18 @@ export interface LaunchRequest {
   thinking?: string;
   /** Tool-specific passthrough args. Provider/model/thinking args are owned by the launch request. */
   args?: string[];
+  /**
+   * Pin the identity instead of minting a fresh one. Resume reuses the ARCHIVED
+   * peer_id so the re-registration on boot matches (and resurrects) the original
+   * identity via host_session_id correlation + ENV_PEER_ID.
+   */
+  peerId?: string;
+  /**
+   * When set, build the FAITHFUL-RESUME command (claude --resume / pi --session)
+   * instead of a fresh launch, so the spawned agent continues its prior
+   * conversation rather than starting over.
+   */
+  resume?: ResumeTarget;
 }
 
 /**
@@ -332,7 +344,9 @@ export function resolveLaunchSpec(
   return {
     title,
     tool: req.tool,
-    command: buildAgentCommand(req.tool, withLaunchDefaults(req)),
+    command: req.resume
+      ? buildAgentResumeCommand(req.tool, req.resume, withLaunchDefaults(req))
+      : buildAgentCommand(req.tool, withLaunchDefaults(req)),
     env: buildLaunchEnv({
       launchId: ids.launchId,
       sessionName: req.name,
@@ -390,7 +404,8 @@ export class LaunchService {
 
   async launch(req: LaunchRequest): Promise<LaunchResult> {
     const launchId = this.mintLaunchId();
-    const peerId = this.mintPeerId();
+    // Resume pins the archived peer_id; a fresh launch mints a new one.
+    const peerId = req.peerId ?? this.mintPeerId();
     const spec = resolveLaunchSpec(req, { launchId, peerId, home: this.home });
     if (this.db) {
       const now = this.nowIso();
@@ -468,6 +483,19 @@ export class LaunchService {
   /** Tear down a backend session by its (derivable) title. */
   async stop(title: string): Promise<void> {
     await this.backend.stop(title);
+  }
+
+  /**
+   * Real-time liveness of a backend session (resume gate, D8). Returns false on
+   * backend error so a flaky backend never blocks resume forever — the reap/kill
+   * arms are idempotent.
+   */
+  async hasBackendSession(title: string): Promise<boolean> {
+    try {
+      return (await this.backend.list()).some((session) => session.title === title);
+    } catch {
+      return false;
+    }
   }
 
   /**

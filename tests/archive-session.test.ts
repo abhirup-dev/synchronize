@@ -4,8 +4,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../src/db.ts";
-import { markPeerArchived, planArchive } from "../src/daemon.ts";
+import { markPeerArchived, planArchive, planResume } from "../src/daemon.ts";
 import { createLaunchIntent } from "../src/launch/store.ts";
+
+function codeOf(fn: () => unknown): string {
+  try {
+    fn();
+  } catch (error) {
+    return (error as { code?: string }).code ?? "no_code";
+  }
+  return "no_throw";
+}
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -138,4 +147,38 @@ test("planArchive reflects an already-archived peer", async () => {
   insertPeer(db, "p");
   markPeerArchived(db, "p", { source: "manual" });
   expect(planArchive(db, "p")!.alreadyArchived).toBe(true);
+});
+
+// ---------- planResume (resume gates) ----------
+
+test("planResume rejects a non-archived peer with peer_not_archived", async () => {
+  const { db } = await freshDb();
+  insertPeer(db, "p");
+  expect(codeOf(() => planResume(db, "p"))).toBe("peer_not_archived");
+});
+
+test("planResume rejects an archived peer with no captured host session as resume_not_launchable", async () => {
+  const { db } = await freshDb();
+  insertPeer(db, "p");
+  markPeerArchived(db, "p", { source: "manual" });
+  expect(codeOf(() => planResume(db, "p"))).toBe("resume_not_launchable");
+});
+
+test("planResume gathers the resume target for an archived session with a host session", async () => {
+  const { db } = await freshDb();
+  insertPeer(db, "p");
+  const gid = insertGroup(db, "g1");
+  joinMember(db, gid, "p", "critic");
+  db.query(
+    `INSERT INTO agent_sessions (binding_id, peer_id, host_tool, host_session_id, cwd, git_branch, pid)
+     VALUES ('b1', 'p', 'claude', 'hs-9', '/tmp/wt', 'feat-x', 777)`,
+  ).run();
+  markPeerArchived(db, "p", { source: "manual" });
+  const plan = planResume(db, "p");
+  expect(plan.hostSessionId).toBe("hs-9");
+  expect(plan.cwd).toBe("/tmp/wt");
+  expect(plan.gitBranch).toBe("feat-x");
+  expect(plan.pid).toBe(777);
+  expect(plan.alias).toBe("critic");
+  expect(plan.group).toBe("g1");
 });

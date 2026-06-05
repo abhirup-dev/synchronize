@@ -26,8 +26,8 @@ import { errorResponse, HttpError, jsonResponse } from "./http.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance, collectGitContext, type DaemonProvenance } from "./provenance.ts";
 import { AoeBackend } from "./launch/backend.ts";
-import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "./launch/service.ts";
-import { isLaunchTool } from "./launch/build.ts";
+import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, resolveLaunchSpec, validateLaunchRequest, type LaunchRequest } from "./launch/service.ts";
+import { isLaunchTool, type LaunchTool } from "./launch/build.ts";
 import { transitionLaunch, type LaunchLifecycleEvent } from "./launch/lifecycle.ts";
 import {
   appendLaunchEvent,
@@ -737,6 +737,32 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const members = await archiveGroupApply(ctx, group.group_id, { reason, dryRun });
     log(`archive group name=${group.name} members=${members.length}${dryRun ? " (dry-run)" : ""}`);
     return jsonResponse({ group: group.name, dry_run: dryRun, members });
+  }
+
+  if (request.method === "POST" && url.pathname === "/resume/session") {
+    const body = await readBody(request);
+    const peerId = resolveResumePeerId(ctx.db, body);
+    const mode = body.print === true ? "print" : "launch";
+    const force = body.force === true;
+    const result = await resumeSessionApply(ctx, peerId, { mode, force });
+    return jsonResponse(result);
+  }
+
+  if (request.method === "POST" && url.pathname === "/resume/group") {
+    const body = await readBody(request);
+    const group = getGroup(ctx.db, requireString(body, "group"));
+    const mode = body.print === true ? "print" : "launch";
+    const force = body.force === true;
+    const only = optionalStringArray(body, "only");
+    const exclude = optionalStringArray(body, "exclude");
+    const members = await resumeGroupApply(ctx, group.group_id, {
+      mode,
+      force,
+      ...(only ? { only } : {}),
+      ...(exclude ? { exclude } : {}),
+    });
+    log(`resume group name=${group.name} members=${members.length} mode=${mode}`);
+    return jsonResponse({ group: group.name, mode, members });
   }
 
   if (request.method === "GET" && url.pathname === "/agent-sessions") {
@@ -2593,6 +2619,284 @@ async function archiveGroupApply(
   return results;
 }
 
+// ───────────────────────────── Resume ─────────────────────────────
+// Resume = "cause a re-registration of the archived identity." The daemon builds
+// the faithful-resume command (claude --resume / pi --session) in the original
+// cwd with the archived peer_id pinned via ENV_PEER_ID; when the agent boots it
+// re-registers, and upsertPeer's archived→active resurrection (D4) reattaches
+// the identity, alias, and group history. See sync-jpxm.
+
+export interface ResumePlan {
+  peerId: string;
+  tool: LaunchTool;
+  sessionName: string;
+  hostSessionId: string;
+  hostSessionFile: string | null;
+  cwd: string | null;
+  gitBranch: string | null;
+  pid: number | null;
+  group: string | null;
+  alias: string | null;
+  isAoe: boolean;
+  backendTitle: string | null;
+  model: string | null;
+  args: string[] | null;
+}
+
+// db-only: validate the identity is resumable and gather everything needed to
+// rebuild its launch. Throws the typed failure codes for the gates that depend
+// only on stored state (cwd existence + liveness are real-time, checked by the
+// orchestration). Exported for unit testing.
+export function planResume(db: Database, peerId: string): ResumePlan {
+  const peer = db
+    .query<{ session_name: string; tool: string; lifecycle_state: string }, [string]>(
+      "SELECT session_name, tool, lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId);
+  if (!peer) throw new HttpError(404, "peer_not_found", `Peer not found: ${peerId}`);
+  if (peer.lifecycle_state !== "archived") {
+    throw new HttpError(409, "peer_not_archived", `Peer ${peerId} is not archived (state=${peer.lifecycle_state}); only archived identities are resumable.`);
+  }
+  if (!isLaunchTool(peer.tool)) {
+    throw new HttpError(409, "resume_not_launchable", `Peer ${peerId} tool '${peer.tool}' is not launchable; resume is inspect-only.`);
+  }
+
+  const session = db
+    .query<{ host_session_id: string; host_session_file: string | null; cwd: string | null; git_branch: string | null; pid: number | null }, [string]>(
+      `SELECT host_session_id, host_session_file, cwd, git_branch, pid
+       FROM agent_sessions WHERE peer_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1`,
+    )
+    .get(peerId);
+  if (!session?.host_session_id) {
+    throw new HttpError(409, "resume_not_launchable", `Peer ${peerId} has no captured host session to resume.`);
+  }
+
+  const launch = getLaunchIntentByPeer(db, peerId);
+  const membership = db
+    .query<{ group: string; alias: string }, [string]>(
+      `SELECT g.name AS "group", gm.alias AS alias
+       FROM group_members gm JOIN groups g ON g.group_id = gm.group_id
+       WHERE gm.peer_id = ? AND gm.member_state = 'archived' ORDER BY g.name ASC LIMIT 1`,
+    )
+    .get(peerId);
+
+  let args: string[] | null = null;
+  if (launch?.args_json) {
+    try {
+      const parsed = JSON.parse(launch.args_json);
+      if (Array.isArray(parsed)) args = parsed as string[];
+    } catch {
+      args = null;
+    }
+  }
+
+  return {
+    peerId,
+    tool: peer.tool,
+    sessionName: peer.session_name,
+    hostSessionId: session.host_session_id,
+    hostSessionFile: session.host_session_file,
+    cwd: session.cwd,
+    gitBranch: session.git_branch,
+    pid: session.pid,
+    group: membership?.group ?? launch?.target_group ?? null,
+    alias: membership?.alias ?? null,
+    isAoe: Boolean(launch?.backend_title),
+    backendTitle: launch?.backend_title ?? null,
+    model: launch?.model ?? null,
+    args,
+  };
+}
+
+export interface ResumeSessionResult {
+  mode: "launch" | "print";
+  peer_id: string;
+  tool: LaunchTool;
+  cwd: string;
+  host_session_id: string;
+  forced: boolean;
+  /** Plain-terminal path: the exact command + env + cwd to run. */
+  command?: string[];
+  env?: Record<string, string>;
+  /** AOE path: the enqueued launch result. */
+  launch?: unknown;
+}
+
+async function probeResumeLiveness(ctx: DaemonContext, plan: ResumePlan): Promise<Liveness> {
+  if (plan.isAoe && plan.backendTitle) {
+    return (await ctx.launchService.hasBackendSession(plan.backendTitle)) ? "alive" : "dead";
+  }
+  return new LocalLivenessProbe().probe({ pid: plan.pid });
+}
+
+function peerStillLiveMessage(plan: ResumePlan): string {
+  return [
+    `"${plan.alias ?? plan.sessionName}" (peer ${plan.peerId}) is still alive — resume is blocked.`,
+    `  pid ${plan.pid ?? "?"}   tool ${plan.tool}   cwd ${plan.cwd ?? "?"}`,
+    `  host_session ${plan.hostSessionId}`,
+    plan.pid != null ? `  stop it yourself:   kill ${plan.pid}   (or close its terminal)` : `  stop it yourself (close its terminal)`,
+    `  or let synchronize do it:   synchronize resume launch --peer-id ${plan.peerId} --force`,
+    `  or reboot — the lease lapses and resume unblocks.`,
+  ].join("\n");
+}
+
+// Orchestrates a single-session resume: validate (archived/cwd/liveness) →
+// optionally --force kill a live peer → build the faithful-resume launch and
+// either enqueue it via AOE (mode=launch) or emit the exact command for the user
+// to run in their own terminal (mode=print). The actual reattach happens on
+// re-registration (Flow G), which resurrects the archived identity.
+async function resumeSessionApply(
+  ctx: DaemonContext,
+  peerId: string,
+  opts: { mode: "launch" | "print"; force?: boolean },
+): Promise<ResumeSessionResult> {
+  const plan = planResume(ctx.db, peerId);
+
+  // cwd gate (C1): the workspace must exist; resume is meaningless without it.
+  if (!plan.cwd) {
+    throw new HttpError(409, "cwd_missing", `Peer ${peerId} has no recorded cwd; cannot resume.`);
+  }
+  try {
+    await stat(plan.cwd);
+  } catch {
+    throw new HttpError(
+      409,
+      "cwd_missing",
+      `cwd ${plan.cwd} is gone. Restore the worktree${plan.gitBranch ? ` for branch '${plan.gitBranch}'` : ""} at that path, then re-run resume. (Transcript is preserved.)`,
+    );
+  }
+
+  // liveness gate (D8/C3): a provably-live identity blocks resume unless --force.
+  const liveness = await probeResumeLiveness(ctx, plan);
+  let forced = false;
+  if (liveness === "alive") {
+    if (!opts.force) {
+      debug(`resume: BLOCKED peer_still_live peer=${peerId} pid=${plan.pid ?? "?"} isAoe=${plan.isAoe}`);
+      throw new HttpError(409, "peer_still_live", peerStillLiveMessage(plan));
+    }
+    // --force: re-verify alive on its host, then terminate. "--force terminates
+    // the running process."
+    if (plan.isAoe && plan.backendTitle) {
+      await ctx.launchService.stop(plan.backendTitle).catch(() => {});
+    } else if (plan.pid != null) {
+      try {
+        process.kill(plan.pid, "SIGKILL");
+      } catch {
+        // already gone between probe and kill — fine, proceed.
+      }
+    }
+    forced = true;
+    log(`resume: --force terminated live peer=${peerId} pid=${plan.pid ?? "?"} before resume`);
+  }
+
+  const transition = transitionArchive("archived", { type: "resume_requested" });
+  if (!transition.ok) throw new HttpError(409, "invalid_resume", `Cannot resume peer ${peerId} from its current state`);
+
+  const req: LaunchRequest = {
+    tool: plan.tool,
+    name: plan.alias ?? plan.sessionName,
+    repo: plan.cwd,
+    peerId: plan.peerId,
+    resume: { hostSessionId: plan.hostSessionId, hostSessionFile: plan.hostSessionFile },
+    ...(plan.group ? { group: plan.group } : {}),
+    ...(plan.model ? { model: plan.model } : {}),
+    ...(plan.args ? { args: plan.args } : {}),
+  };
+
+  const result: ResumeSessionResult = {
+    mode: opts.mode,
+    peer_id: plan.peerId,
+    tool: plan.tool,
+    cwd: plan.cwd,
+    host_session_id: plan.hostSessionId,
+    forced,
+  };
+
+  if (opts.mode === "print") {
+    // Build the exact command + env + cwd for the plain-terminal path without
+    // spawning. The user runs it; the hook re-registers by host_session_id
+    // correlation and resurrects the identity (Flow F).
+    const spec = resolveLaunchSpec(req, { launchId: createHash("sha1").update(`${peerId}:${plan.hostSessionId}`).digest("hex").slice(0, 32), peerId: plan.peerId, home: ctx.paths.home });
+    result.command = spec.command;
+    result.env = spec.env;
+    log(`resume print peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""}`);
+    debug(`resume: print command peer=${peerId} ${spec.command.join(" ")}`);
+    return result;
+  }
+
+  // AOE path: enqueue the spawn through the launch machinery (Flow E).
+  result.launch = await ctx.launchService.launch(req);
+  log(`resume launch peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""} (AOE spawn enqueued)`);
+  debug(`resume: AOE spawn enqueued peer=${peerId} host_session=${plan.hostSessionId}`);
+  return result;
+}
+
+function resolveResumePeerId(db: Database, body: Record<string, unknown>): string {
+  const peerId = optionalString(body, "peer_id");
+  if (peerId) {
+    getPeer(db, peerId);
+    return peerId;
+  }
+  const sessionId = optionalString(body, "session_id");
+  if (sessionId) {
+    const row = db
+      .query<{ peer_id: string }, [string]>(
+        "SELECT peer_id FROM agent_sessions WHERE host_session_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1",
+      )
+      .get(sessionId);
+    if (!row) throw new HttpError(404, "session_not_found", `No agent session for host_session_id: ${sessionId}`);
+    return row.peer_id;
+  }
+  throw new HttpError(400, "invalid_resume", "resume requires peer_id or session_id");
+}
+
+export interface GroupResumeMemberResult {
+  alias: string | null;
+  tool: string;
+  peer_id: string;
+  action: "launching" | "printed" | "skipped" | "blocked";
+  warning?: string;
+}
+
+// Resume a whole archived group. Each archived member is resumed via the same
+// single-session path; non-launchable (inspect-only) members are skipped and
+// live zombies are blocked — every member's outcome is reported (never collapsed).
+async function resumeGroupApply(
+  ctx: DaemonContext,
+  groupId: number,
+  opts: { mode: "launch" | "print"; force?: boolean; only?: string[]; exclude?: string[] },
+): Promise<GroupResumeMemberResult[]> {
+  const members = ctx.db
+    .query<{ peer_id: string; alias: string; tool: string }, [number]>(
+      `SELECT gm.peer_id AS peer_id, gm.alias AS alias, p.tool AS tool
+       FROM group_members gm JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.group_id = ? AND gm.member_state = 'archived' ORDER BY gm.alias ASC`,
+    )
+    .all(groupId);
+
+  const results: GroupResumeMemberResult[] = [];
+  for (const member of members) {
+    if (opts.only && opts.only.length > 0 && !opts.only.includes(member.alias)) continue;
+    if (opts.exclude && opts.exclude.includes(member.alias)) continue;
+    try {
+      await resumeSessionApply(ctx, member.peer_id, { mode: opts.mode, ...(opts.force ? { force: true } : {}) });
+      results.push({ alias: member.alias, tool: member.tool, peer_id: member.peer_id, action: opts.mode === "print" ? "printed" : "launching" });
+    } catch (error) {
+      const code = error instanceof HttpError ? error.code : "error";
+      const action: GroupResumeMemberResult["action"] =
+        code === "peer_still_live" ? "blocked" : "skipped";
+      results.push({
+        alias: member.alias,
+        tool: member.tool,
+        peer_id: member.peer_id,
+        action,
+        warning: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return results;
+}
+
 export function upsertPeer(
   db: Database,
   input: {
@@ -2613,10 +2917,14 @@ export function upsertPeer(
   // Capture any prior soft-delete timestamp BEFORE the upsert clears it, so we
   // can tell whether this register is a resurrection (and which group_members
   // rows that death deactivated — see reactivateMembershipsOnResurrect).
-  const priorDeletedAt =
+  const prior =
     db
-      .query<{ deleted_at: string | null }, [string]>("SELECT deleted_at FROM peers WHERE peer_id = ?")
-      .get(input.peerId)?.deleted_at ?? null;
+      .query<{ deleted_at: string | null; lifecycle_state: string | null }, [string]>(
+        "SELECT deleted_at, lifecycle_state FROM peers WHERE peer_id = ?",
+      )
+      .get(input.peerId) ?? null;
+  const priorDeletedAt = prior?.deleted_at ?? null;
+  const wasArchived = prior?.lifecycle_state === "archived";
 
   // activity_state is set only on first INSERT (initializing for agents, NULL
   // for uninstrumented tools). On re-register/resurrect we COALESCE so an
@@ -2645,6 +2953,45 @@ export function upsertPeer(
   );
 
   if (priorDeletedAt) reactivateMembershipsOnResurrect(db, input.peerId, priorDeletedAt);
+
+  // Archive resurrection (D4/D8): a register matching an ARCHIVED identity
+  // revives it. Lifecycle changes ONLY on register (never on heartbeat/activity,
+  // which is why this lives in upsertPeer and not the lease-touch paths). The
+  // pure state machine validates the transition; the lease is already reset by
+  // the upsert above (fresh TTL on resume).
+  if (wasArchived) {
+    const transition = transitionArchive("archived", { type: "registered" });
+    if (transition.ok) {
+      db.query(
+        `UPDATE peers
+         SET lifecycle_state = 'active', archived_at = NULL, archived_reason = NULL, archive_source = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE peer_id = ?`,
+      ).run(input.peerId);
+      reactivateArchivedMemberships(db, input.peerId);
+      log(`archive transition archived->active on registered peer=${input.peerId} (resume)`);
+    }
+  }
+}
+
+// Reactivate the seats an archive reserved (member_state='archived') when the
+// identity re-registers. The archived alias was held exclusively for this peer,
+// so reactivation is safe; the NOT EXISTS guard is belt-and-suspenders against a
+// concurrent active/archived holder of the same alias (which the reservation
+// index should already prevent).
+function reactivateArchivedMemberships(db: Database, peerId: string): void {
+  db.query(
+    `UPDATE group_members
+     SET active = 1, member_state = 'active', left_at = NULL
+     WHERE peer_id = ? AND member_state = 'archived'
+       AND NOT EXISTS (
+         SELECT 1 FROM group_members other
+         WHERE other.group_id = group_members.group_id
+           AND other.alias = group_members.alias
+           AND other.member_state IN ('active','archived')
+           AND other.peer_id != group_members.peer_id
+       )`,
+  ).run(peerId);
 }
 
 // Restore the group memberships that a soft-delete (operator evict or retention
