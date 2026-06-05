@@ -177,7 +177,8 @@ export interface ThreadSummary {
 // the client's `actMeta(type)` map — no structural change. `awaiting` is the
 // server-authoritative "awaiting you" signal (inbox.acked_at IS NULL); `react`,
 // `reply`, and "mark all handled" clear it. `isMention`/`threadParentId` are
-// derived flags driving the Mentions filter and thread dive-in.
+// derived flags driving the Mentions filter and whether the thread pane opens
+// on an existing parent or on the row's own single-message root.
 export interface ActivityItem {
   id: string; // stable row id (encodes the event id)
   eventId: number; // numeric cursor key (newest-first)
@@ -188,7 +189,7 @@ export interface ActivityItem {
   createdAt: string; // ISO
   awaiting: boolean; // inbox.acked_at IS NULL
   isMention: boolean; // mentions include me
-  threadParentId?: string; // set when this is a thread reply (enables dive-in)
+  threadParentId?: string; // set when this is a thread reply; otherwise msgId is the thread root
   replyCount?: number;
   msgId: string; // target for jump-to-message
   isNew?: boolean; // transient: just arrived via SSE (drives the flash)

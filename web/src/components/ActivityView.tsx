@@ -2,8 +2,9 @@
 // per-room, collapsible) and Timeline (flat, newest-first). Filters: All /
 // Awaiting you / Mentions, plus a multi-select room filter. Diving into a thread
 // opens the real ThreadPane in a resizable side panel without leaving Activity;
-// "jump" leaves for the room. Only the densities the user landed on are shipped
-// (Digest + Row + the Grouped/Timeline toggle).
+// root messages open as a single-message thread. "jump" leaves for the room.
+// Only the densities the user landed on are shipped (Digest + Row + the
+// Grouped/Timeline toggle).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -64,8 +65,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   };
 
   const onOpenThread = (item: ActivityItemModel) => {
-    if (!item.threadParentId) return;
-    setOpen({ roomId: item.roomId, parentId: item.threadParentId });
+    setOpen({ roomId: item.roomId, parentId: item.threadParentId ?? item.msgId });
   };
 
   const toggleRoom = (id: string) =>

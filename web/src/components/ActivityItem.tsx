@@ -84,8 +84,7 @@ function ActivityItemImpl({
   const verb = verbPhrase(item, room);
 
   const onRowClick = () => {
-    if (item.threadParentId) onOpenThread(item);
-    else onJumpToRoom(item.roomId, item.msgId);
+    onOpenThread(item);
   };
 
   return (
@@ -95,7 +94,7 @@ function ActivityItemImpl({
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Jump to message", onSelect: () => onJumpToRoom(item.roomId, item.msgId) },
-          ...(item.threadParentId ? [{ label: "Open thread here", onSelect: () => onOpenThread(item) }] : []),
+          { label: "Open thread here", onSelect: () => onOpenThread(item) },
           { label: reacted ? "Remove reaction" : "React 👍", onSelect: () => onReact(item) },
           { divider: true as const },
           { label: `Focus on ${actor.name}`, onSelect: () => onJumpToRoom(item.roomId, item.msgId) },
