@@ -18,9 +18,14 @@ async function startDaemon(): Promise<{ client: ClientConfig; stop: () => Promis
   homes.push(home);
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
+    // SYNCHRONIZE_DEBUG on: integration runs emit the full decision/transition
+    // trail (sweeps, reap/probe outcomes, guards) so a failing test is
+    // diagnosable from the daemon log alone.
+    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_DEBUG: "1" },
     stdout: "pipe",
-    stderr: "pipe",
+    // Forward the daemon's decision/transition trail to the test runner's stderr
+    // so a failing integration test is diagnosable from the log alone.
+    stderr: "inherit",
   });
   const discoveryPath = join(home, "daemon.json");
   const deadline = Date.now() + 5_000;

@@ -318,6 +318,21 @@ function log(message: string): void {
   console.error(`[synchronize-daemon] ${message}`);
 }
 
+// Verbose, decision-point tracing for the archive/resume verticals (and any
+// other path that wants it). Off by default; set SYNCHRONIZE_DEBUG=1 to surface
+// the silent moments — sweeps exempting archived peers, reap/probe outcomes,
+// seat guards firing, lifecycle transitions applied. Read per-call (cheap) so
+// tests and operators can toggle it without restarting reasoning about caching.
+// See sync-iglk. A durable lifecycle audit trail is a deferred follow-up.
+function debugEnabled(): boolean {
+  const flag = process.env.SYNCHRONIZE_DEBUG;
+  return Boolean(flag) && flag !== "0" && flag !== "false";
+}
+
+function debug(message: string): void {
+  if (debugEnabled()) console.error(`[synchronize-daemon:debug] ${message}`);
+}
+
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1200,6 +1215,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
         )
         .get(group.group_id, newAlias);
       if (archivedHolder && archivedHolder.peer_id !== peerId) {
+        debug(`guard: alias_reserved_by_archived alias=${newAlias} group=${group.name} held_by=${archivedHolder.peer_id} attempted_by=${peerId} (rename)`);
         throw new HttpError(
           409,
           "alias_reserved_by_archived",
@@ -2178,6 +2194,14 @@ export function selectExpiredPeerIds(db: Database, cutoff: string): string[] {
 
 function sweepExpiredPeers(ctx: DaemonContext): void {
   const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, [string]>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived' AND lease_expires_at < ?",
+      )
+      .get(cutoff)?.n ?? 0;
+    if (exempt > 0) debug(`sweep[retention]: exempting ${exempt} archived lease-expired peer(s) (reserved for resume)`);
+  }
   const swept = ctx.db.transaction(() => {
     const peerIds = selectExpiredPeerIds(ctx.db, cutoff);
     const now = new Date().toISOString();
@@ -2229,7 +2253,10 @@ export function deactivateStoppedLaunchPeer(ctx: DaemonContext, peerId: string):
   const archived = ctx.db
     .query<{ lifecycle_state: string }, [string]>("SELECT lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL")
     .get(peerId);
-  if (archived?.lifecycle_state === "archived") return false;
+  if (archived?.lifecycle_state === "archived") {
+    debug(`stop: refused soft-delete of archived peer=${peerId} (reap is not delete; identity preserved for resume)`);
+    return false;
+  }
   return softDeletePeerIfPresent(ctx, peerId);
 }
 
@@ -2261,6 +2288,14 @@ export function selectStoppedLaunchPeerIds(db: Database): string[] {
 
 function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
   const peerIds = selectStoppedLaunchPeerIds(ctx.db);
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived'",
+      )
+      .get()?.n ?? 0;
+    debug(`sweep[stopped-launch]: ${peerIds.length} candidate(s)${exempt > 0 ? `, ${exempt} archived peer(s) exempt` : ""}`);
+  }
   if (peerIds.length === 0) return 0;
   const deletedAt = new Date().toISOString();
   let deactivated = 0;
@@ -2383,6 +2418,7 @@ function ensureSenderNotArchived(db: Database, peerId: string): void {
     )
     .get(peerId);
   if (peer?.lifecycle_state === "archived") {
+    debug(`guard: must_reregister sender=${peerId} (archived)`);
     throw new HttpError(409, "must_reregister", "This identity is archived. Re-register before sending.");
   }
 }
@@ -2446,9 +2482,11 @@ async function archiveSessionApply(
     try {
       await ctx.launchService.stop(plan.backendTitle);
       reaped = true;
+      debug(`archive: reaped backend title=${plan.backendTitle} peer=${peerId}`);
     } catch {
       reaped = false;
       warning = "backend session was not reapable (already gone)";
+      debug(`archive: reap failed (already gone) title=${plan.backendTitle} peer=${peerId}`);
     }
   } else {
     // Non-AOE: we cannot reap a process we do not own. Probe to classify it.
@@ -2457,11 +2495,16 @@ async function archiveSessionApply(
     if (liveness === "alive") {
       zombie = true;
       warning = "process is still alive (zombie); it cannot send until it re-registers, and resume is blocked until it stops";
+      debug(`archive: ZOMBIE peer=${peerId} pid=${plan.pid} still alive (archived but unreaped)`);
+    } else {
+      debug(`archive: non-AOE peer=${peerId} pid=${plan.pid ?? "none"} confirmed dead`);
     }
   }
 
-  markPeerArchived(ctx.db, peerId, { reason: opts.reason ?? null, source: opts.source ?? "manual" });
+  const reserved = markPeerArchived(ctx.db, peerId, { reason: opts.reason ?? null, source: opts.source ?? "manual" });
   ctx.subscribers.delete(peerId);
+  log(`archive transition active->archived on archive_requested peer=${peerId} seats=${reserved.length} reaped=${reaped} zombie=${zombie}`);
+  debug(`archive: reserved seats peer=${peerId} ${reserved.map((r) => `${r.group}/${r.alias}`).join(",") || "(none)"}`);
   emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"], peerId });
 
   return { ...base, reaped, zombie, ...(warning ? { warning } : {}) };
@@ -3715,6 +3758,7 @@ function joinGroupCore(
       )
       .get(group.group_id, alias);
     if (archivedHolder && archivedHolder.peer_id !== peer.peer_id) {
+      debug(`guard: alias_reserved_by_archived alias=${alias} group=${group.name} held_by=${archivedHolder.peer_id} attempted_by=${peer.peer_id} (join)`);
       throw new HttpError(
         409,
         "alias_reserved_by_archived",
