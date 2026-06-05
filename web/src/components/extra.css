@@ -68,8 +68,9 @@
 /* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────── */
 .scroll-controls {
   position: absolute;
-  right: 14px;
+  left: 50%;
   bottom: 12px;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -336,6 +337,9 @@
   padding: 10px 14px;
   border-top: var(--line-rule-dashed-sm);
 }
+.community-open-btn {
+  flex-shrink: 0;
+}
 .composer-hint { font-size: var(--text-10-5); color: var(--ink-soft); }
 .composer-send {
   background: var(--paper-3);
@@ -528,6 +532,13 @@
   align-items: center;
   gap: var(--space-18);
   line-height: 1;
+  min-width: 0;
+}
+.room-title-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .room-meta {
   font-family: var(--font-mono);

@@ -7,8 +7,12 @@ interface ScrollControlsProps {
 
 type Dir = "up" | "down" | null;
 
+function maxScrollTop(el: HTMLElement): number {
+  return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
 /**
- * Floating direction-aware accelerator pinned to the bottom-right of a
+ * Floating direction-aware accelerator pinned to the bottom-center of a
  * scrollable surface. Visibility is **tied to the scrollbar's visibility** so
  * the two always appear and disappear together — we observe the `.is-scrolling`
  * class that `useAutoScrollbar` adds to the same target. As long as that class
@@ -92,8 +96,12 @@ export function ScrollControls({ targetRef, newItemsKey = null }: ScrollControls
   const jump = () => {
     const el = targetRef.current;
     if (!el) return;
-    if (visible === "down") setHasNewBelow(false);
-    el.scrollTo({ top: visible === "up" ? 0 : el.scrollHeight, behavior: "smooth" });
+    if (visible === "up") {
+      el.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+    setHasNewBelow(false);
+    el.scrollTo({ top: maxScrollTop(el), behavior: "auto" });
   };
 
   return (

@@ -9,9 +9,11 @@ interface RoomHeaderProps {
   room: Room;
   tab: RoomTab;
   onTab(t: RoomTab): void;
+  showAgentsButton?: boolean;
+  onOpenAgents?(): void;
 }
 
-export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
+export function RoomHeader({ room, tab, onTab, showAgentsButton = false, onOpenAgents }: RoomHeaderProps) {
   const agents = useAgents();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
@@ -26,7 +28,7 @@ export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
           </div>
           <div className="room-id-text">
             <div className="room-title">
-              {room.kind === "group" ? `#${room.name}` : room.name}{" "}
+              <span className="room-title-name">{room.kind === "group" ? `#${room.name}` : room.name}</span>{" "}
               <Sticker label={room.kind.toUpperCase()} color="var(--yellow)" tilt={-2} />
             </div>
             <div className="room-meta">
@@ -51,6 +53,12 @@ export function RoomHeader({ room, tab, onTab }: RoomHeaderProps) {
         </div>
 
         <div className="room-header-actions">
+          {showAgentsButton && (
+            <button className="icon-btn room-agents-btn" aria-label="open agents" onClick={onOpenAgents}>
+              <span className="room-agents-label">AGENTS</span>
+              <span className="room-agents-count">{members.length}</span>
+            </button>
+          )}
           <button className="icon-btn" aria-label="pin">📌</button>
           <button className="icon-btn" aria-label="search">🔍</button>
           <button className="icon-btn" aria-label="more">⋯</button>
