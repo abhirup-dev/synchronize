@@ -194,6 +194,19 @@ interface InboxRow extends EventRow {
   acked_at: string | null;
 }
 
+// Row for the read-only web Activity feed: the standard event columns plus a
+// thread reply count and an explicit `awaiting` flag (1 when the event is in the
+// observer's inbox and un-acked). The endpoint never mutates delivery/read state.
+// `awaiting` is computed in SQL — under the LEFT JOIN, a null acked_at is
+// ambiguous (no inbox row vs. unacked row), so we never derive awaiting from
+// acked_at on the client.
+interface ActivityRow extends EventRow {
+  group_name: string | null;
+  reply_count: number;
+  acked_at: string | null;
+  awaiting: number;
+}
+
 interface GroupRow {
   group_id: number;
   name: string;
@@ -1355,6 +1368,11 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       return id;
     })();
     const event = getEvent(ctx.db, eventId);
+    // Replying in a thread counts as engaging with the parent (and the directly
+    // replied-to event), so clear them from the sender's awaiting set.
+    if (parentEventId !== null) {
+      ackInboxEvents(ctx.db, senderPeerId, [parentEventId, directReplyTarget?.event_id ?? NaN]);
+    }
     log(
       `group message stored event_id=${eventId} group=${group.name} sender=${senderPeerId} push=${pushTargets.length} mentions=${mentionedPeerIds.length} thread=${parentEventId ?? "main"} unresolved=${warnings.length}`,
     );
@@ -1452,6 +1470,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       ensureReactableEvent(event);
       if (event.group_id !== null) ensureActiveMember(ctx.db, event.group_id, peerId);
       const result = applyReaction(ctx.db, { eventId, peerId, emoji, op });
+      if (result.active) ackInboxEvents(ctx.db, peerId, [eventId]);
       const updated = getEvent(ctx.db, eventId);
       emitWebStateChanged(ctx, {
         domains: ["reactions"],
@@ -1711,6 +1730,61 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     if (changed > 0) emitWebStateChanged(ctx, { domains: ["inbox"], peerId });
     return jsonResponse({ ok: true, acked: changed });
+  }
+
+  // Read-only global Activity feed for the web UI. The web user is an OBSERVER:
+  // it sees every group's events (mirroring readWebRoomEvents' group visibility)
+  // but only its OWN DMs — private agent↔agent DMs must not leak. The durable
+  // per-peer inbox is layered on as an LEFT JOIN "awaiting" overlay rather than
+  // the feed's spine, because the observer is a member only of rooms it has
+  // posted in (its inbox would otherwise be near-empty). `awaiting` is computed
+  // in SQL (inbox row present AND un-acked) — never inferred from a null
+  // acked_at, which the LEFT JOIN makes ambiguous. Own sends are excluded.
+  //
+  // Unlike GET /peers/:id/inbox and GET /events/:id, this endpoint has NO side
+  // effects: it never advances delivery/read state or the peer's last_cursor.
+  // That keeps the shared single web peer (all of a human's browsers resolve to
+  // web:local-human) free of cross-device cursor contention. Newest-first with a
+  // `before` cursor for load-older; `filter=awaiting` keeps only un-acked items.
+  const activityMatch = url.pathname.match(/^\/activity\/([^/]+)$/);
+  if (request.method === "GET" && activityMatch) {
+    const peerId = decodeURIComponent(activityMatch[1] ?? "");
+    ensurePeer(ctx.db, peerId);
+    const limit = parseLimit(url.searchParams.get("limit"));
+    const beforeRaw = url.searchParams.get("before");
+    const before = beforeRaw === null || beforeRaw === "" ? Number.MAX_SAFE_INTEGER : Number(beforeRaw);
+    if (!Number.isFinite(before)) throw new HttpError(400, "invalid_cursor", "before must be a number");
+    const awaitingOnly = url.searchParams.get("filter") === "awaiting";
+    const awaitingClause = awaitingOnly ? "AND i.event_id IS NOT NULL AND i.acked_at IS NULL" : "";
+    const rows = ctx.db
+      .query<ActivityRow, [string, number, string, string, string, number]>(
+        `SELECT e.*, g.name AS group_name, i.acked_at AS acked_at,
+                (i.event_id IS NOT NULL AND i.acked_at IS NULL) AS awaiting,
+                (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count
+         FROM events e
+         LEFT JOIN groups g ON g.group_id = e.group_id
+         LEFT JOIN inbox i ON i.event_id = e.event_id AND i.recipient_peer_id = ?
+         WHERE e.event_id < ?
+           AND e.type IN ('group_message', 'dm')
+           AND e.sender_peer_id != ?
+           AND (e.group_id IS NOT NULL
+                OR (e.type = 'dm' AND (e.sender_peer_id = ? OR e.recipient_peer_id = ?)))
+           ${awaitingClause}
+         ORDER BY e.event_id DESC
+         LIMIT ?`,
+      )
+      .all(peerId, before, peerId, peerId, peerId, limit);
+    const awaitingCount =
+      ctx.db
+        .query<{ n: number }, [string]>(
+          "SELECT COUNT(*) AS n FROM inbox WHERE recipient_peer_id = ? AND acked_at IS NULL",
+        )
+        .get(peerId)?.n ?? 0;
+    return jsonResponse({
+      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      next_cursor: rows.at(-1)?.event_id ?? null,
+      awaiting_count: awaitingCount,
+    });
   }
 
   const eventsMatch = url.pathname.match(/^\/events\/([^/]+)$/);
@@ -2616,6 +2690,21 @@ function applyReaction(
 function reactionDmPeerId(event: EventRow, actorPeerId: string): string | null {
   if (event.recipient_peer_id === null) return actorPeerId;
   return event.sender_peer_id === actorPeerId ? event.recipient_peer_id : event.sender_peer_id;
+}
+
+// Engaging with an event — reacting to it, or replying in its thread — clears it
+// from the actor's "awaiting you" set (the web Activity view's awaiting signal is
+// inbox.acked_at IS NULL). Acking here, server-side, keeps the signal correct no
+// matter which surface the engagement came from (Activity, chat, thread pane).
+function ackInboxEvents(db: Database, peerId: string, eventIds: number[]): number {
+  const ids = [...new Set(eventIds.filter((id): id is number => Number.isFinite(id)))];
+  if (ids.length === 0) return 0;
+  return db
+    .query(
+      `UPDATE inbox SET acked_at = COALESCE(acked_at, ?)
+       WHERE recipient_peer_id = ? AND acked_at IS NULL AND event_id IN (${ids.map(() => "?").join(",")})`,
+    )
+    .run(new Date().toISOString(), peerId, ...ids).changes;
 }
 
 function attachReactions<T extends EventRow>(db: Database, events: T[]): T[] {

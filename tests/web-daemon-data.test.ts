@@ -480,3 +480,64 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
   throw new Error("condition was not met");
 }
+
+test("activity feed maps observer rows using the explicit server awaiting flag", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  const event = (over: Record<string, unknown>) => ({
+    event_id: 0, type: "group_message", sender_peer_id: "agent:one", recipient_peer_id: null,
+    group_id: 1, body: "hi", media_id: null, parent_event_id: null, mentions_json: null,
+    skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, ...over,
+  });
+
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    if (!url.pathname.startsWith("/activity/")) throw new Error(`unexpected fetch: ${url.pathname}`);
+    return new Response(JSON.stringify({
+      awaiting_count: 1,
+      next_cursor: 9,
+      events: [
+        event({ event_id: 10, awaiting: 1, mentions_json: JSON.stringify(["web:local-human"]), created_at: "2026-06-05T00:02:00.000Z" }),
+        event({ event_id: 9, awaiting: 0, created_at: "2026-06-05T00:01:00.000Z" }),
+      ],
+    }));
+  });
+
+  await (ds as unknown as { refreshActivity(o: object): Promise<void> }).refreshActivity({ reset: true });
+  const feed = ds.activity().get();
+  expect(feed.map((i) => i.eventId)).toEqual([10, 9]); // newest-first
+  expect(feed[0]!.awaiting).toBe(true);   // from server flag, not acked_at
+  expect(feed[0]!.isMention).toBe(true);
+  expect(feed[1]!.awaiting).toBe(false);
+  expect(ds.activityAwaitingCount().get()).toBe(1);
+});
+
+test("ackActivity clears awaiting optimistically and posts to inbox/ack", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.startsWith("/activity/")) {
+      return new Response(JSON.stringify({
+        awaiting_count: 1, next_cursor: null,
+        events: [{
+          event_id: 5, type: "group_message", sender_peer_id: "agent:one", recipient_peer_id: null,
+          group_id: 1, body: "needs you", media_id: null, parent_event_id: null, mentions_json: null,
+          skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, awaiting: 1,
+        }],
+      }));
+    }
+    if (url.pathname.endsWith("/inbox/ack")) return new Response(JSON.stringify({ ok: true, acked: 1 }));
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await (ds as unknown as { refreshActivity(o: object): Promise<void> }).refreshActivity({ reset: true });
+  expect(ds.activity().get()[0]!.awaiting).toBe(true);
+  await ds.ackActivity(5);
+  expect(ds.activity().get()[0]!.awaiting).toBe(false);
+  expect(ds.activityAwaitingCount().get()).toBe(0);
+});

@@ -168,6 +168,32 @@ export interface ThreadSummary {
   status: ThreadSummaryStatus;
 }
 
+// ─── Activity feed ─────────────────────────────────────────────────────────
+
+// One row in the global, cross-room Activity feed. Derived from real events
+// (the daemon's per-peer inbox ⋈ events; the mock aggregates the seed the same
+// way). `type` is a single generic kind for now but is kept as a free string so
+// future work-event categories (claim/deliver/ship/…) slot in as pure data via
+// the client's `actMeta(type)` map — no structural change. `awaiting` is the
+// server-authoritative "awaiting you" signal (inbox.acked_at IS NULL); `react`,
+// `reply`, and "mark all handled" clear it. `isMention`/`threadParentId` are
+// derived flags driving the Mentions filter and thread dive-in.
+export interface ActivityItem {
+  id: string; // stable row id (encodes the event id)
+  eventId: number; // numeric cursor key (newest-first)
+  roomId: string; // group or dm room id
+  actorId: string; // sender agent id
+  type: string; // forward-compat kind; one generic value today
+  text: string; // markdown body / preview
+  createdAt: string; // ISO
+  awaiting: boolean; // inbox.acked_at IS NULL
+  isMention: boolean; // mentions include me
+  threadParentId?: string; // set when this is a thread reply (enables dive-in)
+  replyCount?: number;
+  msgId: string; // target for jump-to-message
+  isNew?: boolean; // transient: just arrived via SSE (drives the flash)
+}
+
 // ─── Snapshot contract ─────────────────────────────────────────────────────
 
 export interface Snapshot<T> {
@@ -245,12 +271,22 @@ export interface DataSource {
   threadSummary(parentMessageId: string): Snapshot<ThreadSummary>;
   skillCatalog(): Snapshot<SkillCatalogEntry[]>;
   me(): Snapshot<Agent>;
+  /** Global cross-room Activity feed, newest-first. */
+  activity(): Snapshot<ActivityItem[]>;
+  /** Count of items awaiting the local user (server-authoritative). */
+  activityAwaitingCount(): Snapshot<number>;
 
   // commands
   stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment>;
   removeDraftAttachment(attachment: MessageAttachment): Promise<void>;
   sendMessage(input: SendMessageInput): Promise<Message>;
   reactToMessage(input: ReactToMessageInput): Promise<Message>;
+  /** Clear one item from "awaiting you" (e.g. on an explicit react in the feed). */
+  ackActivity(eventId: number): Promise<void>;
+  /** Clear every awaiting item ("mark all handled"). */
+  ackAllActivity(): Promise<void>;
+  /** Page in older activity rows (cursor "load older"). */
+  loadMoreActivity(): Promise<void>;
   spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult>;
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */

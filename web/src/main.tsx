@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import "./styles.css";
 import "./components/extra.css";
+import "./components/activity.css";
 import "highlight.js/styles/github-dark.css";
 
 const root = document.getElementById("root");

@@ -1,4 +1,5 @@
 import type {
+  ActivityItem,
   Agent,
   AgentStatus,
   Artifact,
@@ -91,7 +92,18 @@ interface DaemonEvent {
   delivered_count?: number;
   read_count?: number;
   acked_count?: number;
+  // Present on /activity rows: explicit server-computed awaiting flag (1 when the
+  // event is in the observer's inbox and un-acked). Never inferred from acked_at:
+  // under the feed's LEFT JOIN a null acked_at is ambiguous (no inbox row vs.
+  // unacked), so observer-only rows would falsely read as awaiting.
+  awaiting?: number | boolean;
   reactions?: DaemonReaction[];
+}
+
+interface ActivityResponse {
+  events: DaemonEvent[];
+  next_cursor: number | null;
+  awaiting_count: number;
 }
 
 interface DaemonReactionActor {
@@ -197,6 +209,10 @@ interface DaemonLaunchResponse {
 
 const PEER_KEY = "synchronize.web.peerId";
 const PENDING_WEB_PEER_ID = "web:pending";
+// Activity feed: fetch this many rows per page; keep at most this many in memory
+// (older rows are trimmed and re-fetchable via load-older).
+const ACTIVITY_WINDOW = 80;
+const ACTIVITY_CAP = 500;
 const COLORS = ["#FFD23F", "#FF5DA2", "#4D7CFE", "#7BE389", "#FF8A3D", "#B49BFF", "#F45B69", "#2EC4B6"];
 const EMPTY_AGENT: Agent = {
   id: "web:pending",
@@ -224,6 +240,12 @@ export class DaemonDataSource implements DataSource {
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
+  private readonly _activity = createSnapshot<ActivityItem[]>([]);
+  private readonly _activityAwaiting = createSnapshot<number>(0);
+  private activityRequested = false;
+  private activityRefresh: Promise<void> | null = null;
+  private activityOldestCursor: number | null = null;
+  private activitySeen = new Set<number>();
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
   private readonly localMessages = new Map<string, { body: string; attachments: MessageAttachment[] }>();
@@ -251,6 +273,16 @@ export class DaemonDataSource implements DataSource {
   rooms(): Snapshot<Room[]> { return this._rooms; }
   me(): Snapshot<Agent> { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+
+  activity(): Snapshot<ActivityItem[]> {
+    if (!this.activityRequested) {
+      this.activityRequested = true;
+      if (this.connected) void this.refreshActivity({ reset: true });
+    }
+    return this._activity;
+  }
+
+  activityAwaitingCount(): Snapshot<number> { return this._activityAwaiting; }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);
@@ -366,6 +398,7 @@ export class DaemonDataSource implements DataSource {
     this.connected = true;
     await this.registerWebPeer();
     await this.refresh();
+    void this.refreshActivity({ reset: true });
     this.openStream();
     this.pollTimer = window.setInterval(() => {
       void this.refresh();
@@ -491,6 +524,112 @@ export class DaemonDataSource implements DataSource {
     const updated = mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId));
     this.updateMessageSnapshots(updated);
     return updated;
+  }
+
+  async ackActivity(eventId: number): Promise<void> {
+    // Optimistic: clear the row locally, then persist. The server also acks on
+    // react/reply, so this is the explicit-ack path (e.g. the feed react button).
+    this.setActivityAwaiting(eventId, false);
+    await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
+      method: "POST",
+      body: JSON.stringify({ event_ids: [eventId] }),
+    }).catch(() => undefined);
+  }
+
+  async ackAllActivity(): Promise<void> {
+    const items = this._activity.get();
+    if (items.some((item) => item.awaiting)) {
+      this._activity.set(items.map((item) => (item.awaiting ? { ...item, awaiting: false } : item)));
+    }
+    this._activityAwaiting.set(0);
+    await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).catch(() => undefined);
+  }
+
+  async loadMoreActivity(): Promise<void> {
+    if (this.activityOldestCursor === null) return;
+    await this.refreshActivity({ before: this.activityOldestCursor });
+  }
+
+  private setActivityAwaiting(eventId: number, awaiting: boolean): void {
+    const items = this._activity.get();
+    let changed = false;
+    const next = items.map((item) => {
+      if (item.eventId !== eventId || item.awaiting === awaiting) return item;
+      changed = true;
+      return { ...item, awaiting };
+    });
+    if (!changed) return;
+    this._activity.set(next);
+    this._activityAwaiting.set(next.filter((item) => item.awaiting).length);
+  }
+
+  // Fetch a page of the global feed. reset/head → newest window (merged, with
+  // freshly-arrived rows flashed); before → older page appended. The in-memory
+  // list is capped at ACTIVITY_CAP (older rows trimmed, re-fetchable).
+  private async refreshActivity(opts: { reset?: boolean; before?: number } = {}): Promise<void> {
+    if (this.peerId === PENDING_WEB_PEER_ID) return;
+    if (opts.before === undefined && this.activityRefresh) return this.activityRefresh;
+    const params = new URLSearchParams({ limit: String(ACTIVITY_WINDOW) });
+    if (opts.before !== undefined) params.set("before", String(opts.before));
+    const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)
+      .then((res) => {
+        const incoming = res.events.map((event) => this.mapActivityItem(event));
+        this._activityAwaiting.set(res.awaiting_count);
+        const merged = new Map<number, ActivityItem>();
+        if (opts.before === undefined) {
+          // Head/reset: incoming is the newest window. Flag rows we haven't seen
+          // before as "new" so the UI can flash them — but never on the FIRST
+          // population (activitySeen empty), or the whole feed would flash on
+          // open. The flash is reserved for genuine SSE arrivals.
+          const firstLoad = this.activitySeen.size === 0;
+          for (const item of incoming) {
+            merged.set(item.eventId, { ...item, isNew: !firstLoad && !this.activitySeen.has(item.eventId) });
+          }
+          // Keep any older rows already loaded below the new window.
+          const newestIncoming = incoming.at(-1)?.eventId ?? Number.MAX_SAFE_INTEGER;
+          for (const item of this._activity.get()) {
+            if (!merged.has(item.eventId) && item.eventId < newestIncoming) merged.set(item.eventId, { ...item, isNew: false });
+          }
+        } else {
+          // Load-older: keep current rows, append the older page.
+          for (const item of this._activity.get()) merged.set(item.eventId, item);
+          for (const item of incoming) if (!merged.has(item.eventId)) merged.set(item.eventId, item);
+        }
+        const sorted = [...merged.values()].sort((a, b) => b.eventId - a.eventId).slice(0, ACTIVITY_CAP);
+        for (const item of sorted) this.activitySeen.add(item.eventId);
+        this.activityOldestCursor = sorted.at(-1)?.eventId ?? this.activityOldestCursor;
+        this._activity.set(sorted);
+      })
+      .catch(() => undefined);
+    if (opts.before === undefined) {
+      this.activityRefresh = run.finally(() => {
+        this.activityRefresh = null;
+      });
+      return this.activityRefresh;
+    }
+    return run;
+  }
+
+  private mapActivityItem(event: DaemonEvent): ActivityItem {
+    const roomId = roomIdForEvent(event, this.peerId) ?? "";
+    const mentions = parseMentions(event.mentions_json);
+    return {
+      id: messageId(event.event_id),
+      eventId: event.event_id,
+      roomId,
+      actorId: event.sender_peer_id ?? "system",
+      type: "activity", // single generic kind today; forward-compatible seam
+      text: event.body ?? "",
+      createdAt: event.created_at,
+      awaiting: event.awaiting === 1 || event.awaiting === true,
+      isMention: mentions.includes(this.peerId),
+      ...(event.parent_event_id ? { threadParentId: messageId(event.parent_event_id) } : {}),
+      ...(event.reply_count !== undefined ? { replyCount: event.reply_count } : {}),
+      msgId: messageId(event.event_id),
+    };
   }
 
   async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
@@ -862,6 +1001,11 @@ export class DaemonDataSource implements DataSource {
     this.coalesceTimer = window.setTimeout(() => {
       this.coalesceTimer = undefined;
       void this.refresh();
+      // Incremental Activity refresh: re-fetch the newest window and prepend new
+      // rows (flashed). Coalesced to one call per burst; cheap (single indexed
+      // read). Reaction-only changes returned early above, so they don't land
+      // here — the feed react button clears awaiting optimistically instead.
+      void this.refreshActivity({});
       for (const roomId of this.pendingRooms) {
         if (this._messages.has(roomId) || this._timeline.has(roomId)) {
           void this.refreshRoom(roomId, { reset: change.domains.includes("reactions") });
