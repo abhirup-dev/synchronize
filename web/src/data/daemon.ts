@@ -647,7 +647,8 @@ export class DaemonDataSource implements DataSource {
         } satisfies Room;
       });
 
-    this._agents.set(reuseEqualAgents(this._agents.get(), agents));
+    const currentAgents = this._agents.get();
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, agents)));
     this._me.set(me);
     this._rooms.set(reuseEqualRooms(this._rooms.get(), [...groupRooms, ...dmRooms]));
     this._skillCatalog.set(reuseEqualSkillCatalog(this._skillCatalog.get(), mapSkillCatalog(state.skill_catalog ?? [])));

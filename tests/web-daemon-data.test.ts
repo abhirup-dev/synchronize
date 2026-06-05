@@ -220,6 +220,28 @@ test("daemon data source keeps room-scoped historical authors resolvable", () =>
     name: "expired-agent",
     status: "offline",
   }));
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    generated_at: "2026-06-05T00:00:02.000Z",
+    cursor: 42,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [],
+    groups: [],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+    skill_catalog: [],
+  });
+  expect(ds.agents().get()).toContainEqual(expect.objectContaining({
+    id: "peer:expired",
+    name: "expired-agent",
+    status: "offline",
+  }));
 });
 
 test("daemon data source sends selected skill directives with group messages", async () => {
