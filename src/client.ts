@@ -6,6 +6,7 @@ import { loadDaemonEnvFiles } from "./env-files.ts";
 import {
   API_VERSION,
   ENV_STARTED_BY_CLIENT,
+  ENV_REMOTE_URL,
   ENV_TOKEN,
   HEALTH_TIMEOUT_MS,
   STALE_LOCK_MS,
@@ -42,9 +43,15 @@ export interface ClientConfig {
 
 export async function ensureDaemon(): Promise<ClientConfig> {
   const paths = getRuntimePaths();
-  await ensureDir(paths.home);
   const token = process.env[ENV_TOKEN] ?? null;
+  const remoteUrl = normalizeRemoteUrl(process.env[ENV_REMOTE_URL]);
+  if (remoteUrl) {
+    await validateRemoteDaemon(remoteUrl, token);
+    log(`using remote daemon base_url=${remoteUrl}`);
+    return { baseUrl: remoteUrl, token, paths, started: false };
+  }
 
+  await ensureDir(paths.home);
   const existing = await readJson<Discovery>(paths.discoveryPath);
   if (existing && (await isHealthy(existing.baseUrl))) {
     log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
@@ -100,6 +107,40 @@ export async function requestJson<T>(config: ClientConfig, path: string, init: R
     throw new ApiError(response.status, code, message);
   }
   return body as T;
+}
+
+function normalizeRemoteUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${ENV_REMOTE_URL} must be a valid http(s) URL`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${ENV_REMOTE_URL} must use http or https`);
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+async function validateRemoteDaemon(baseUrl: string, token: string | null): Promise<void> {
+  if (!(await isHealthy(baseUrl))) {
+    throw new Error(`${ENV_REMOTE_URL} points to an unreachable or incompatible synchronize daemon: ${baseUrl}`);
+  }
+
+  const headers = new Headers({ accept: "application/json" });
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(`${baseUrl}/status`, { headers }).catch((error: unknown) => {
+    throw new Error(`${ENV_REMOTE_URL} health passed but /status failed for ${baseUrl}: ${String(error)}`);
+  });
+  if (response.ok) return;
+
+  if (response.status === 401) {
+    const suffix = token ? "check SYNCHRONIZE_TOKEN" : "set SYNCHRONIZE_TOKEN";
+    throw new Error(`${ENV_REMOTE_URL} requires bearer auth; ${suffix}`);
+  }
+  throw new Error(`${ENV_REMOTE_URL} /status failed: ${response.status} ${response.statusText}`);
 }
 
 async function isHealthy(baseUrl: string): Promise<boolean> {

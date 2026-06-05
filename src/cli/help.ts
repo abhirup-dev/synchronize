@@ -50,5 +50,6 @@ Environment:
   SYNCHRONIZE_BIND    Daemon bind host (default: 127.0.0.1)
   SYNCHRONIZE_PORT    Daemon port (default: 0, random free port)
   SYNCHRONIZE_TOKEN   Bearer token; required for non-localhost bind
+  SYNCHRONIZE_REMOTE_URL  Use an existing daemon URL; disables local autostart
 `);
 }

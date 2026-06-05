@@ -196,6 +196,61 @@ test("protected REST routes require bearer token when LAN bind is enabled", asyn
   }
 });
 
+test("CLI uses SYNCHRONIZE_REMOTE_URL without creating local discovery", async () => {
+  const daemonHome = await mkdtemp(join(tmpdir(), "synchronize-remote-daemon-"));
+  const clientHome = await mkdtemp(join(tmpdir(), "synchronize-remote-client-"));
+  homes.push(daemonHome, clientHome);
+  const proc = Bun.spawn({
+    cmd: [process.execPath, "run", "src/daemon.ts"],
+    env: {
+      ...process.env,
+      SYNCHRONIZE_HOME: daemonHome,
+      SYNCHRONIZE_PORT: "0",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  try {
+    const discovery = await waitForDiscovery(daemonHome);
+    const status = Bun.spawnSync({
+      cmd: [process.execPath, "run", "src/cli.ts", "status"],
+      env: {
+        ...process.env,
+        SYNCHRONIZE_HOME: clientHome,
+        SYNCHRONIZE_REMOTE_URL: `${discovery.baseUrl}/`,
+      },
+    });
+
+    expect(status.exitCode).toBe(0);
+    const body = JSON.parse(status.stdout.toString()) as { home: string; daemon_started_by_cli: boolean };
+    expect(body.home).toBe(daemonHome);
+    expect(body.daemon_started_by_cli).toBe(false);
+    expect(await Bun.file(join(clientHome, "daemon.json")).exists()).toBe(false);
+  } finally {
+    proc.kill();
+    await proc.exited;
+  }
+});
+
+test("unreachable SYNCHRONIZE_REMOTE_URL fails without local daemon autostart", async () => {
+  const clientHome = await mkdtemp(join(tmpdir(), "synchronize-remote-unreachable-"));
+  homes.push(clientHome);
+
+  const status = Bun.spawnSync({
+    cmd: [process.execPath, "run", "src/cli.ts", "status"],
+    env: {
+      ...process.env,
+      SYNCHRONIZE_HOME: clientHome,
+      SYNCHRONIZE_REMOTE_URL: "http://127.0.0.1:9",
+    },
+  });
+
+  expect(status.exitCode).not.toBe(0);
+  expect(status.stderr.toString()).toContain("SYNCHRONIZE_REMOTE_URL");
+  expect(await Bun.file(join(clientHome, "daemon.json")).exists()).toBe(false);
+});
+
 test("CLI-launched daemon stays alive across separate CLI processes", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-cli-daemon-"));
   homes.push(home);
