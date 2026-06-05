@@ -102,6 +102,7 @@ interface DaemonEvent {
 
 interface ActivityResponse {
   events: DaemonEvent[];
+  peers?: DaemonPeer[];
   next_cursor: number | null;
   awaiting_count: number;
 }
@@ -576,6 +577,10 @@ export class DaemonDataSource implements DataSource {
     if (opts.before !== undefined) params.set("before", String(opts.before));
     const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)
       .then((res) => {
+        if (res.peers?.length) {
+          const nextAgents = res.peers.map((peer) => mapAgent(peer, this.peerId));
+          this._agents.set(reuseEqualAgents(this._agents.get(), mergeAgents(this._agents.get(), nextAgents)));
+        }
         const incoming = res.events.map((event) => this.mapActivityItem(event));
         this._activityAwaiting.set(res.awaiting_count);
         const merged = new Map<number, ActivityItem>();

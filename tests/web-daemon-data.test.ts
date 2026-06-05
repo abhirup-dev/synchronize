@@ -498,6 +498,17 @@ test("activity feed maps observer rows using the explicit server awaiting flag",
     return new Response(JSON.stringify({
       awaiting_count: 1,
       next_cursor: 9,
+      peers: [
+        {
+          peer_id: "agent:one",
+          tool: "claude",
+          session_name: "historical-agent",
+          purpose: null,
+          lease_expires_at: "2026-06-04T00:00:00.000Z",
+          online: false,
+          presence: "offline",
+        },
+      ],
       events: [
         event({ event_id: 10, awaiting: 1, mentions_json: JSON.stringify(["web:local-human"]), created_at: "2026-06-05T00:02:00.000Z" }),
         event({ event_id: 9, awaiting: 0, created_at: "2026-06-05T00:01:00.000Z" }),
@@ -512,6 +523,7 @@ test("activity feed maps observer rows using the explicit server awaiting flag",
   expect(feed[0]!.isMention).toBe(true);
   expect(feed[1]!.awaiting).toBe(false);
   expect(ds.activityAwaitingCount().get()).toBe(1);
+  expect(ds.agents().get().find((agent) => agent.id === "agent:one")?.name).toBe("historical-agent");
 });
 
 test("ackActivity clears awaiting optimistically and posts to inbox/ack", async () => {

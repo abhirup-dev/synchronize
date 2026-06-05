@@ -107,7 +107,7 @@ test("GET /activity is an observer feed: group events + awaiting, no private DM 
       body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, recipient_peer_id: bob.peer.peer_id, message: "private alice->bob" }),
     });
 
-    const feed = await json<{ events: ActivityEvent[]; awaiting_count: number }>(
+    const feed = await json<{ events: ActivityEvent[]; awaiting_count: number; peers: Array<{ peer_id: string }> }>(
       daemon.baseUrl,
       `/activity/${encodeURIComponent(me)}`,
     );
@@ -119,6 +119,7 @@ test("GET /activity is an observer feed: group events + awaiting, no private DM 
     // …and awaiting (web is a member → inbox rows, unacked).
     expect(feed.events.every((e) => e.group_id !== null && e.awaiting === 1)).toBe(true);
     expect(feed.awaiting_count).toBeGreaterThanOrEqual(2);
+    expect(feed.peers.map((p) => p.peer_id)).toContain(alice.peer.peer_id);
     // The private A↔B DM is ABSENT (the discriminator).
     expect(feed.events.some((e) => e.event_id === secret.event.event_id)).toBe(false);
     expect(bodies.some((b) => b?.includes("private alice->bob"))).toBe(false);

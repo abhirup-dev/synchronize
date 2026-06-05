@@ -1780,8 +1780,32 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
           "SELECT COUNT(*) AS n FROM inbox WHERE recipient_peer_id = ? AND acked_at IS NULL",
         )
         .get(peerId)?.n ?? 0;
+    const peerIds = new Set<string>();
+    for (const row of rows) {
+      if (row.sender_peer_id) peerIds.add(row.sender_peer_id);
+      if (row.recipient_peer_id) peerIds.add(row.recipient_peer_id);
+    }
+    const now = new Date().toISOString();
+    const ids = [...peerIds];
+    const peers = ids.length === 0
+      ? []
+      : ctx.db
+        .query<PeerRow & { online: number }, [string, ...string[]]>(
+          `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+                  activity_state, last_activity_at, last_cursor, created_at, updated_at,
+                  lease_expires_at > ? AS online
+           FROM peers
+           WHERE peer_id IN (${ids.map(() => "?").join(",")})`,
+        )
+        .all(now, ...ids)
+        .map((peer) => ({
+          ...peer,
+          online: Boolean(peer.online),
+          presence: derivePresence(Boolean(peer.online), peer.activity_state),
+        }));
     return jsonResponse({
       events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
+      peers,
       next_cursor: rows.at(-1)?.event_id ?? null,
       awaiting_count: awaitingCount,
     });
