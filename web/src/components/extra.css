@@ -281,6 +281,13 @@
   box-shadow: var(--shadow-hover-sm);
 }
 .ct-btn:disabled { opacity: 0.4; cursor: default; }
+.composer-file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 
 .composer-skill-chips {
   display: flex;
@@ -305,6 +312,126 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.attachment-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.attachment-preview-list.is-draft {
+  padding: 8px 10px 0;
+}
+.attachment-preview-list.is-message {
+  margin-top: 10px;
+}
+.attachment-preview {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 148px;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--paper-2);
+  border: var(--line-2);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.attachment-preview.is-draft {
+  height: 132px;
+}
+.attachment-preview.is-message {
+  width: min(280px, 100%);
+  height: 196px;
+  background: var(--paper);
+}
+.attachment-preview.is-file {
+  height: 118px;
+}
+.attachment-preview.is-message.is-file {
+  height: 128px;
+}
+.attachment-image {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+  background: var(--paper-3);
+}
+.attachment-preview.is-message .attachment-image {
+  object-fit: contain;
+  padding: 4px;
+}
+.attachment-file-face {
+  display: grid;
+  place-items: center;
+  min-height: 68px;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--paper-3) 86%, white 14%) 0 12px,
+      color-mix(in srgb, var(--yellow) 28%, transparent 72%) 12px 24px
+    );
+}
+.attachment-file-type {
+  max-width: calc(100% - 18px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-18);
+  font-weight: 950;
+  line-height: 1;
+}
+.attachment-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: var(--pink);
+  color: var(--ink);
+  border: var(--line-sm);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+  font-weight: 950;
+  line-height: 1;
+}
+.attachment-remove:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hover-sm);
+}
+.attachment-meta {
+  min-width: 0;
+  padding: 6px 8px;
+  border-top: var(--line-sm);
+  background: var(--paper);
+}
+.attachment-name,
+.attachment-detail {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-name {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 800;
+}
+.attachment-detail {
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: var(--text-10);
 }
 
 .composer-input-wrap {

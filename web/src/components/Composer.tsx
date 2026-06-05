@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
-import { useAgents, useMe, useRooms, useSendMessage, useSkillCatalog } from "../data/context.tsx";
-import type { Agent, AgentLaunchTool, SkillCatalogEntry } from "../data/types.ts";
+import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
+import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
 import { inkFor } from "./primitives.tsx";
+import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
+import { useToast } from "./Toast.tsx";
 
 interface ComposerProps {
   roomId: string;
@@ -19,6 +21,18 @@ interface ComposerProps {
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
 type SkillRuntimeFilter = "all" | AgentLaunchTool;
+
+function filesFromClipboard(data: DataTransfer): File[] {
+  const files = Array.from(data.files ?? []);
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    if (files.some((candidate) => candidate.name === file.name && candidate.size === file.size && candidate.type === file.type)) continue;
+    files.push(file);
+  }
+  return files;
+}
 
 function normalizeMentionHandle(handle: string): string {
   return handle.replace(MENTION_TRAILING_PUNCTUATION_RE, "");
@@ -70,10 +84,15 @@ export function Composer({
   const room = rooms.find((candidate) => candidate.id === roomId);
   const mentionAgents = useMemo(() => room ? roomAgents(agents, room) : agents, [agents, room]);
   const sendMessage = useSendMessage();
+  const stageAttachment = useStageAttachment();
+  const removeDraftAttachment = useRemoveDraftAttachment();
+  const toast = useToast();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const skillInputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const slashRestorePosRef = useRef<number | null>(null);
+  const attachmentsRef = useRef<MessageAttachment[]>([]);
   const [value, setValue] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
@@ -82,8 +101,22 @@ export function Composer({
   const [skillIdx, setSkillIdx] = useState(0);
   const [skillRuntime, setSkillRuntime] = useState<SkillRuntimeFilter>("all");
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [addingAttachments, setAddingAttachments] = useState(false);
   const [popRect, setPopRect] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [collapsed, setCollapsed] = useState(collapsedDefault);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    return () => {
+      for (const attachment of attachmentsRef.current) {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (mentionQuery === null && !skillPickerOpen) {
@@ -182,6 +215,53 @@ export function Composer({
     }
   };
 
+  const addFiles = async (files: File[], sourceHint: "clipboard" | "picker") => {
+    if (files.length === 0) return;
+    setAddingAttachments(true);
+    const staged: MessageAttachment[] = [];
+    try {
+      for (const file of files) {
+        const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+        try {
+          staged.push(await stageAttachment({ file, sourceHint, ...(previewUrl ? { previewUrl } : {}) }));
+        } catch (error) {
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          throw error;
+        }
+      }
+      setAttachments((prev) => [...prev, ...staged]);
+    } catch (error) {
+      console.error("failed to stage attachment", error);
+      toast.show(error instanceof Error ? `Could not attach file: ${error.message}` : "Could not attach file", {
+        kind: "error",
+        duration: 7000,
+      });
+    } finally {
+      setAddingAttachments(false);
+    }
+  };
+
+  const removeAttachment = (attachment: MessageAttachment) => {
+    setAttachments((prev) => prev.filter((candidate) => candidate.id !== attachment.id));
+    if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    void removeDraftAttachment(attachment).catch((error) => {
+      console.error("failed to remove draft attachment", error);
+    });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = filesFromClipboard(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void addFiles(files, "clipboard");
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    void addFiles(files, "picker");
+  };
+
   const commitMention = (a: Agent) => {
     const ta = taRef.current;
     if (!ta) return;
@@ -255,7 +335,7 @@ export function Composer({
 
   const submit = async () => {
     const body = value.trim();
-    if (!body) return;
+    if (!body && attachments.length === 0) return;
     const mentions = Array.from(body.matchAll(/@([a-zA-Z0-9._-]+)/g))
       .map((m) => m[1])
       .filter((h): h is string => Boolean(h))
@@ -266,11 +346,14 @@ export function Composer({
     setMentionQuery(null);
     closeSkillPicker();
     const pickedSkills = selectedSkills;
+    const pickedAttachments = attachments;
     setSelectedSkills([]);
+    setAttachments([]);
     await sendMessage({
       roomId,
       body,
       mentions,
+      ...(pickedAttachments.length > 0 && { attachments: pickedAttachments }),
       ...(pickedSkills.length > 0 && { skillDirectives: pickedSkills }),
       ...(parentMessageId !== undefined && { parentMessageId }),
     });
@@ -316,7 +399,8 @@ export function Composer({
         <button className="ct-btn" title="link" disabled>↗</button>
         <button className="ct-btn" title="mention">@</button>
         <button className={`ct-btn${skillPickerOpen ? " active" : ""}`} title="use skills" onClick={() => openSkillPicker()}>/</button>
-        <button className="ct-btn" title="attach (disabled in v0)" disabled>📎</button>
+        <button type="button" className="ct-btn" title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
+        <input ref={fileInputRef} className="composer-file-input" type="file" multiple onChange={handleFileInput} />
       </div>
       {selectedSkills.length > 0 && (
         <div className="composer-skill-chips" aria-label="selected skills">
@@ -333,6 +417,9 @@ export function Composer({
           ))}
         </div>
       )}
+      {attachments.length > 0 && (
+        <AttachmentPreviewList attachments={attachments} mode="draft" onRemove={removeAttachment} />
+      )}
       <div className="composer-input-wrap" ref={wrapRef}>
         <textarea
           ref={taRef}
@@ -341,6 +428,7 @@ export function Composer({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKey}
+          onPaste={handlePaste}
           rows={3}
         />
       </div>
@@ -456,8 +544,9 @@ export function Composer({
         ) : null}
         <span className="composer-hint">
           <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>@</kbd> tag
+          {addingAttachments ? " · attaching..." : ""}
         </span>
-        <button className="composer-send" onClick={submit} disabled={!value.trim()} aria-label="send message">
+        <button className="composer-send" onClick={submit} disabled={addingAttachments || (!value.trim() && attachments.length === 0)} aria-label="send message">
           <span className="composer-send-label">SEND</span>
           <span className="composer-send-icon" aria-hidden />
         </button>

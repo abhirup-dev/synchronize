@@ -64,6 +64,7 @@ export interface Message {
   createdAt: string; // ISO
   mentions: string[];
   reactions: Reaction[];
+  attachments?: MessageAttachment[];
   threadReplyCount?: number;
   threadLastReplyAt?: string;
   threadParticipantIds?: string[];
@@ -88,6 +89,21 @@ export interface Poll {
 export interface Reaction {
   emoji: string;
   by: string[]; // agent ids
+}
+
+export type MessageAttachmentKind = "image" | "file";
+export type MessageAttachmentSource = "external" | "staged";
+
+export interface MessageAttachment {
+  id: string;
+  kind: MessageAttachmentKind;
+  source: MessageAttachmentSource;
+  name: string;
+  mimeType: string;
+  size: number;
+  extension: string;
+  path: string;
+  previewUrl?: string;
 }
 
 export type TimelineEventType =
@@ -165,8 +181,15 @@ export interface SendMessageInput {
   roomId: string;
   body: string;
   mentions: string[];
+  attachments?: MessageAttachment[];
   parentMessageId?: string;
   skillDirectives?: string[];
+}
+
+export interface StageAttachmentInput {
+  file: File;
+  previewUrl?: string;
+  sourceHint: "clipboard" | "picker";
 }
 
 export interface ReactToMessageInput {
@@ -224,6 +247,8 @@ export interface DataSource {
   me(): Snapshot<Agent>;
 
   // commands
+  stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment>;
+  removeDraftAttachment(attachment: MessageAttachment): Promise<void>;
   sendMessage(input: SendMessageInput): Promise<Message>;
   reactToMessage(input: ReactToMessageInput): Promise<Message>;
   spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult>;

@@ -37,6 +37,16 @@ export function useSendMessage() {
   return ds.sendMessage.bind(ds);
 }
 
+export function useStageAttachment() {
+  const ds = useDataSource();
+  return ds.stageAttachment.bind(ds);
+}
+
+export function useRemoveDraftAttachment() {
+  const ds = useDataSource();
+  return ds.removeDraftAttachment.bind(ds);
+}
+
 export function useReactToMessage() {
   const ds = useDataSource();
   return ds.reactToMessage.bind(ds);

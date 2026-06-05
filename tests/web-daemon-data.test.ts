@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { DaemonDataSource } from "../web/src/data/daemon.ts";
-import type { Message, ThreadSummary } from "../web/src/data/types.ts";
+import type { Message, MessageAttachment, ThreadSummary } from "../web/src/data/types.ts";
 import type { MutableSnapshot } from "../web/src/data/store.ts";
 
 const originalFetch = globalThis.fetch;
@@ -304,6 +304,98 @@ test("daemon data source sends selected skill directives with group messages", a
       skill_directives: ["diagnose"],
     },
   });
+});
+
+test("daemon data source sends attachment paths while preserving local previews", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+  (ds as unknown as { groupNameByRoomId: Map<string, string> }).groupNameByRoomId = new Map([["group:1", "room"]]);
+  const messages = ds.messages("group:1") as MutableSnapshot<Message[]>;
+  const attachment: MessageAttachment = {
+    id: "att-1",
+    kind: "image",
+    source: "staged",
+    name: "clip.png",
+    mimeType: "image/png",
+    size: 12,
+    extension: "PNG",
+    path: "/tmp/synchronize/tmp/web-attachments/att-1/clip.png",
+    previewUrl: "blob:clip",
+  };
+
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname === "/groups/room/messages") {
+      return new Response(JSON.stringify({
+        event: {
+          event_id: 88,
+          type: "group_message",
+          sender_peer_id: "web:local-human",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: `see this\n\n${attachment.path}`,
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: null,
+          skill_directives_json: null,
+          created_at: "2026-05-31T00:00:00.000Z",
+        },
+      }));
+    }
+    if (url.pathname === "/web/state") {
+      return new Response(JSON.stringify({
+        ok: true,
+        cursor: 88,
+        launch_tools: {},
+        peers: [],
+        groups: [],
+        group_paths: [],
+        memberships: [],
+        room_summaries: [],
+        events: [{
+          event_id: 88,
+          type: "group_message",
+          sender_peer_id: "web:local-human",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: `see this\n\n${attachment.path}`,
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: null,
+          skill_directives_json: null,
+          created_at: "2026-05-31T00:00:00.000Z",
+        }],
+        media: [],
+        skill_catalog: [],
+      }));
+    }
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await ds.sendMessage({
+    roomId: "group:1",
+    body: "see this",
+    mentions: [],
+    attachments: [attachment],
+  });
+
+  expect(calls[0]).toEqual({
+    path: "/groups/room/messages",
+    method: "POST",
+    body: {
+      sender_peer_id: "web:local-human",
+      message: `see this\n\n${attachment.path}`,
+    },
+  });
+  expect(messages.get()).toEqual([
+    expect.objectContaining({
+      id: "e:88",
+      body: "see this",
+      attachments: [attachment],
+    }),
+  ]);
 });
 
 test("daemon data source force-generates pending thread summaries for visible panel rows", async () => {
