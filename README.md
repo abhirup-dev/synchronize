@@ -548,13 +548,19 @@ SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
 Localhost mode needs no token. Non-localhost bind requires a token:
 
 ```bash
-export SYNCHRONIZE_BIND=0.0.0.0
-export SYNCHRONIZE_PORT=8787
-export SYNCHRONIZE_TOKEN='replace-with-a-secret'
-bun run src/daemon.ts
+bun run src/cli.ts host \
+  --bind 100.126.163.80 \
+  --port 8787 \
+  --token 'replace-with-a-secret'
 ```
 
-Clients must use the same token:
+Use the Mac's Tailscale IP for `--bind` when the Mac is the central v0 daemon.
+The command starts or verifies a token-protected daemon and prints the remote
+client environment. If a daemon is already running with incompatible host/token
+settings, it exits without changing it; pass `--restart` to relaunch that daemon
+while preserving `SYNCHRONIZE_HOME` state.
+
+Remote clients must use the printed daemon URL and the same token:
 
 ```bash
 export SYNCHRONIZE_REMOTE_URL='http://100.x.y.z:8787'

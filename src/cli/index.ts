@@ -1,5 +1,6 @@
 import * as dm from "./commands/dm.ts";
 import * as group from "./commands/group.ts";
+import * as host from "./commands/host.ts";
 import * as hook from "./commands/hook.ts";
 import * as inbox from "./commands/inbox.ts";
 import * as launch from "./commands/launch.ts";
@@ -46,6 +47,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "group":
       await group.run(rest);
+      return;
+    case "host":
+      await host.run(rest);
       return;
     case "hook":
       await hook.run(rest);

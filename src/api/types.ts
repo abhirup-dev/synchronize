@@ -1,6 +1,8 @@
 export interface StatusResponse {
   ok: boolean;
   pid: number;
+  host: string;
+  port: number;
   base_url: string;
   started_at: string;
   token_required: boolean;

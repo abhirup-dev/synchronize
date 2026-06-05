@@ -42,6 +42,7 @@ Commands:
   threads   Discover, summarize, and render deeper group conversations
   query     Run guarded read-only SQL against daemon event state
   hook      Internal host-agent hook ingestion commands
+  host      Start or verify a token-protected daemon bound to a tailnet/LAN host
   launch    Start an agent in the foreground with synchronize daemon/env setup
   spawn     Launch a persistent agent session via the backend (AOE), optionally into a group
 

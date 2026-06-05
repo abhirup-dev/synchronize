@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
 export interface Event {
@@ -110,7 +110,7 @@ async function requestJson<T>(client: PiSyncClient, path: string, init: RequestI
 
 export function registerPeer(
   client: PiSyncClient,
-  input: { peerId?: string; sessionName: string; purpose?: string; tool: string },
+  input: { peerId?: string; sessionName: string; purpose?: string; tool: string; machineId?: string },
 ): Promise<{ peer: Peer }> {
   return requestJson<{ peer: Peer }>(client, "/peers/register", {
     method: "POST",
@@ -119,6 +119,7 @@ export function registerPeer(
       session_name: input.sessionName,
       tool: input.tool,
       purpose: input.purpose,
+      machine_id: input.machineId ?? hostname(),
     }),
   });
 }
