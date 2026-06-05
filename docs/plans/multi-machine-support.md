@@ -48,10 +48,18 @@ A short glossary so the rest of the plan reads clearly:
 ## Topology decision (drives everything else)
 
 One daemon is **central**; all other machines are **clients** that point at it
-over the tailnet. The natural host for the central daemon is the **always-on
-VPS** (`vps`, tailnet `100.96.245.110`), because the Mac (`mtpl-7638`) sleeps,
-roams between networks, and changes IPs. Clients open *outbound* connections to
-the daemon — which is what makes the design NAT/sleep-friendly.
+over the tailnet.
+
+**v0 decision: the Mac hosts the daemon.** The Mac is the active workstation and
+the current goal is cross-machine support while the operator is actively using
+it, not an always-on deployment. The Mac daemon's `SYNCHRONIZE_HOME` remains the
+single runtime state owner; remote sessions register into that state over the
+tailnet. The VPS is a remote client/executor target for v0, not the central
+daemon host.
+
+Clients open *outbound* connections to the daemon — which is what makes the
+design NAT/sleep-friendly. A future always-on mode can move the same daemon
+contract to the VPS, but that is not required for the first cross-machine cut.
 
 We are **not** federating multiple daemons in v0 (no gossip/replication between
 daemons). Single durable owner, many thin clients — the existing model, stretched
@@ -62,14 +70,15 @@ across the tailnet.
 **Feasible now for the core goal.** The LAN-bind plumbing already exists and the
 data model already records which machine each peer is on. Split into two tiers:
 
-- **MVP-now** — bind the daemon to its tailnet IP + token, add a remote-URL
-  override for clients, surface `machine_id` in the UI. Remote **codex** sessions
-  work fully (their notifier already polls outbound). Remote **claude** sessions
-  *degrade gracefully*: live push fails, but polled delivery + the durable inbox
-  fallback (already the documented contract in CLAUDE.md) keep them functional.
-- **Push parity (follow-up)** — restore live push notifications for remote
-  claude-mode sessions. This is an enhancement, **not** a blocker for "render
-  sessions from both machines."
+- **MVP-now** — bind the Mac daemon to its tailnet IP + shared token, use
+  `SYNCHRONIZE_REMOTE_URL` on remote clients, and verify remote peer/session
+  registration into the Mac-owned runtime state. Remote **codex** sessions work
+  fully (their notifier already polls outbound). Remote **claude** sessions
+  *degrade gracefully* until Phase 2: durable inbox fallback remains available.
+- **Push parity (follow-up, chosen design)** — restore live push notifications
+  for remote claude-mode sessions by using a client-initiated SSE/long-poll pipe
+  to the daemon. This is more work than daemon-to-client callbacks, but it
+  unlocks the cleaner remote/session model.
 
 ## Empirical evidence (gathered this session)
 
@@ -81,7 +90,8 @@ Groundwork completed:
 - VPS and Mac are on the **same tailnet** (`sunnydas.das460@`): `vps` =
   `100.96.245.110`, `mtpl-7638` = `100.126.163.80`.
 - `synchronize` rsynced to `vps:~/synchronize`, `bun install` clean (bun 1.3.10).
-- **Daemon bound to the tailnet IP works:** started with
+- **Daemon bound to a tailnet IP works:** prior proof used the VPS as the host,
+  started with
   `SYNCHRONIZE_BIND=100.96.245.110 SYNCHRONIZE_PORT=58410 SYNCHRONIZE_TOKEN=…`
   - `GET /health` → 200 (reachable on the tailnet IP, not just localhost)
   - `GET /status` → `host: 100.96.245.110`, `machine: "vps"`, `token_required: true`
@@ -95,8 +105,10 @@ Groundwork completed:
   appears in the VPS daemon's `/peers` list tagged `machine_id: mtpl-7638`.
 
 That last step is the core goal in miniature: a session on one machine joined the
-daemon on another and is distinguishable by machine — exactly what the UI grouping
-needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down after.
+daemon on another and is distinguishable by machine. The throwaway VPS test
+daemon and `/tmp/sync-test` home were torn down after. For v0, repeat the same
+gate in the opposite direction: Mac hosts the daemon, VPS registers as the remote
+client/session.
 
 ## Current architecture — the constraints that matter
 
@@ -110,7 +122,8 @@ needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down af
 3. **`machine_id` is already in the data model.** `peers.machine_id` is
    `NOT NULL` (`db.ts:41`), set on every registration, defaulting to
    `os.hostname()` (`daemon.ts:439,570`). It flows into peer rows and `/web/state`.
-   The web UI does **not** yet group by it.
+   The web UI does **not** need to group by it for v0; a small machine indicator
+   can come later.
 4. **Claude push notifications are localhost-bound.** `EventSubscription`
    (`mcp/claude-subscription.ts`) starts a callback server on `127.0.0.1` on the
    *client*, and the daemon POSTs events to it. `requireLocalCallbackUrl`
@@ -136,12 +149,13 @@ needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down af
      fall back to spawning a local daemon. Silent local spawn = two isolated
      daemons that each look healthy but never see each other (failure that
      masquerades as success).
-2. **Central daemon deployment on the VPS.** Run the daemon as a service bound to
-   the tailnet IP with a token (`SYNCHRONIZE_BIND`, `SYNCHRONIZE_PORT` stable,
-   `SYNCHRONIZE_TOKEN`). Document the env contract for clients.
-3. **Web UI: group sessions/peers by machine.** Use `machine_id` (prefer the
-   Tailscale device name as the stable key — `os.hostname()` is not guaranteed
-   stable/unique) to render "this machine" vs other machines.
+2. **Mac-hosted central daemon.** Run the daemon on the Mac bound to the Mac
+   tailnet IP with a stable port and a simple shared `SYNCHRONIZE_TOKEN`.
+   Document the client env contract:
+   `SYNCHRONIZE_REMOTE_URL=http://<mac-tailnet-ip>:<port>` plus the shared token.
+3. **Remote session registration/lifecycle.** Verify a remote VPS session
+   registers into the Mac daemon and shows up as a normal peer/session in the
+   existing UI. Do not make machine grouping a v0 requirement.
 4. **Web UI: token entry.** Capture a `?token=` query param into storage (or a
    small prompt) so a remote browser can authenticate without hand-editing
    localStorage.
@@ -162,34 +176,19 @@ Restore live push to remote claude-mode sessions. Two options:
   notifier already do) and the daemon streams events down it. NAT/sleep-friendly,
   unifies the notification model. **Recommended.**
 
-## Open questions / decisions for the user
+## Decisions
 
-> These are the calls I'd like your input on. Annotate inline with answers.
-
-1. **Which machine hosts the one daemon?** Everything else connects to it.
-   - *Recommendation:* the **VPS** — it's always on, so sessions can join any
-     time; the Mac sleeps and changes networks, which would knock everyone off.
-   - Trade-off: if the VPS is down, *nobody* can chat (even two local sessions).
-     Acceptable?
-2. **One shared password, or one per machine?** The daemon needs the bearer token
-   (the shared secret) to let clients in.
-   - *Recommendation:* one shared token for v0 — simple, and Tailscale already
-     ensures only your devices can even reach the daemon. Per-machine tokens are
-     more work for little gain on a personal tailnet. OK to start shared?
-3. **How do remote claude sessions get live updates (Phase 2)?** Two ways to fix
-   the push problem (finding 4):
-   - **(A) Quick patch:** let the daemon call the client on its Tailscale address.
-     Less code, but breaks whenever the client's address changes (laptop sleeps /
-     switches wifi).
-   - **(B) Client-opens-the-pipe (SSE), recommended:** the client holds open a
-     connection *to* the daemon and receives events down it. More work now, but
-     it just keeps working as machines sleep/roam — same approach the web UI
-     already uses.
-   - Or **defer Phase 2** entirely and rely on polling/inbox for remote claude
-     sessions for now. Which do you want?
-4. **What name do we group sessions by in the UI?** I'd use the **Tailscale device
-   name** (`vps`, `mtpl-7638`) because it's stable and unique. The current default
-   (`os.hostname()`) can change or collide. Agree?
+1. **Daemon host for v0:** Mac hosts the daemon. The goal is active
+   cross-machine work while the Mac is in use, not an always-on server.
+2. **Auth for v0:** one simple shared bearer token. Tailscale is the network
+   boundary; per-machine credentials are deferred.
+3. **Remote Claude push:** use option B, client-initiated SSE/long-poll from the
+   remote session to the daemon. Do not relax daemon-to-client callback rules as
+   the long-term answer.
+4. **UI machine treatment:** no v0 machine grouping requirement. Remote sessions
+   should mostly be indistinguishable once registered into the Mac daemon's
+   runtime state. Later UI polish can add a small icon or identifier for VPS vs
+   Mac agents.
 
 ## Groundwork artifacts
 
