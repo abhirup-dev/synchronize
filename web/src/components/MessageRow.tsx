@@ -21,9 +21,10 @@ interface MessageRowProps {
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
 
 export const MessageRow = memo(function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, onReact, hideAvatar }: MessageRowProps) {
-  const isYou = author.id === "you";
   const openMenu = useContextMenu();
   const me = useMe();
+  const isYou = author.id === me.id || author.id === "you";
+  const isWebAuthor = author.role === "web";
   const [pickerOpen, setPickerOpen] = useState(false);
   const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent] as const)), [agents]);
@@ -33,7 +34,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
     <div
       id={`msg-${message.id}`}
       data-vim-item={`msg-${message.id}`}
-      className={`message-row${isYou ? " is-you" : ""}${groupedWithPrev ? " is-grouped" : ""}${hideAvatar ? " no-avatar" : ""}`}
+      className={`message-row${isYou ? " is-you" : ""}${isWebAuthor ? " is-web-author" : ""}${groupedWithPrev ? " is-grouped" : ""}${hideAvatar ? " no-avatar" : ""}`}
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },

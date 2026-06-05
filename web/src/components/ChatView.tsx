@@ -117,7 +117,7 @@ export function ChatView({
   }, [messages, me.id, virtualizer]);
 
   return (
-    <div className={`chat-view${threadSummaryOpen ? " has-thread-summary" : ""}`} data-vim-panel="chat">
+    <div className={`chat-view${room.kind === "group" ? " is-group-room" : ""}${threadSummaryOpen ? " has-thread-summary" : ""}`} data-vim-panel="chat">
       {threadSummaryOpen && (
         <ThreadSummaryPanel
           messages={messages}
