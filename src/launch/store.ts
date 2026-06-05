@@ -163,6 +163,14 @@ export function getLaunchIntent(db: Database, launchId: string): LaunchIntentRow
   return db.query<LaunchIntentRow, [string]>("SELECT * FROM launch_intents WHERE launch_id = ?").get(launchId) ?? null;
 }
 
+/**
+ * Returns the peer's LATEST launch intent (most recent updated_at, then
+ * created_at). This is the intended contract for all callers: after a resume a
+ * peer owns multiple launch_intents (the stopped original + the running resume),
+ * and every consumer wants the current/active one — never the stale original.
+ * The stopped-launch sweeper relies on the same "latest launch" notion to avoid
+ * reaping a freshly-resumed peer. See sync-l2lt.2.
+ */
 export function getLaunchIntentByPeer(db: Database, peerId: string): LaunchIntentRow | null {
   return db
     .query<LaunchIntentRow, [string]>(

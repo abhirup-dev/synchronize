@@ -2125,23 +2125,33 @@ function initialActivityState(tool: string): ActivityState | null {
 // trail. web peers (lease year-9999) never match the cutoff. Resume after a
 // sweep resurrects the same peer via findPeerByHostSession + upsertPeer's
 // `deleted_at = NULL` path.
+// Retention-sweep candidates: live (deleted_at IS NULL), lease-expired beyond
+// the cutoff, and NOT archived. Archived peers are lifecycle-exempt — their
+// lease is intentionally lapsed (offline) but the identity + alias must survive
+// every sweep so they stay resumable. Exported as a pure, db-only seam so the
+// exemption is unit-testable without a full DaemonContext.
+export function selectExpiredPeerIds(db: Database, cutoff: string): string[] {
+  return db
+    .query<{ peer_id: string }, [string]>(
+      "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lifecycle_state != 'archived' AND lease_expires_at < ?",
+    )
+    .all(cutoff)
+    .map((row) => row.peer_id);
+}
+
 function sweepExpiredPeers(ctx: DaemonContext): void {
   const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
   const swept = ctx.db.transaction(() => {
-    const rows = ctx.db
-      .query<{ peer_id: string }, [string]>(
-        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
-      )
-      .all(cutoff);
+    const peerIds = selectExpiredPeerIds(ctx.db, cutoff);
     const now = new Date().toISOString();
-    for (const { peer_id } of rows) {
+    for (const peer_id of peerIds) {
       ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
       ctx.db
         .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
         .run(now, peer_id);
       ctx.subscribers.delete(peer_id);
     }
-    return rows.map((row) => row.peer_id);
+    return peerIds;
   })();
   if (swept.length > 0) {
     log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${PEER_RETENTION_MS}ms`);
@@ -2173,24 +2183,52 @@ function softDeletePeerIfPresent(
 }
 
 export function deactivateStoppedLaunchPeer(ctx: DaemonContext, peerId: string): boolean {
+  // When a stop is part of an archive, the backend reap goes through this path.
+  // An archived peer must NOT be soft-deleted: its identity, alias, and
+  // transcript are deliberately preserved for resume. The lifecycle_state was
+  // already flipped to 'archived' by the archive flow before the reap; here we
+  // simply refuse to soft-delete it. (Explicit operator DELETE still releases
+  // an archived seat — that path calls softDeletePeerIfPresent directly.)
+  const archived = ctx.db
+    .query<{ lifecycle_state: string }, [string]>("SELECT lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL")
+    .get(peerId);
+  if (archived?.lifecycle_state === "archived") return false;
   return softDeletePeerIfPresent(ctx, peerId);
 }
 
-function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
-  const rows = ctx.db
+// Stopped-launch-sweep candidates: peers whose LATEST launch is itself
+// 'stopped', not merely peers that have A stopped launch somewhere in history.
+// After a resume a peer owns two launch_intents — the stopped original AND the
+// running resume — so gating on the latest launch (max updated_at) protects the
+// freshly-resumed agent while still cleaning up a genuinely-stopped peer with no
+// newer launch. Archived peers are exempt regardless. Exported as a db-only seam
+// so the gate is unit-testable without a full DaemonContext. See sync-l2lt.2.
+export function selectStoppedLaunchPeerIds(db: Database): string[] {
+  return db
     .query<{ peer_id: string }, []>(
-      `SELECT DISTINCT li.peer_id
-       FROM launch_intents li
-       JOIN peers p ON p.peer_id = li.peer_id
-       WHERE li.state = 'stopped'
-         AND p.deleted_at IS NULL`,
+      `SELECT p.peer_id
+       FROM peers p
+       WHERE p.deleted_at IS NULL
+         AND p.lifecycle_state != 'archived'
+         AND (
+           SELECT li.state
+           FROM launch_intents li
+           WHERE li.peer_id = p.peer_id
+           ORDER BY li.updated_at DESC, li.created_at DESC
+           LIMIT 1
+         ) = 'stopped'`,
     )
-    .all();
-  if (rows.length === 0) return 0;
+    .all()
+    .map((row) => row.peer_id);
+}
+
+function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
+  const peerIds = selectStoppedLaunchPeerIds(ctx.db);
+  if (peerIds.length === 0) return 0;
   const deletedAt = new Date().toISOString();
   let deactivated = 0;
-  for (const row of rows) {
-    if (softDeletePeerIfPresent(ctx, row.peer_id, deletedAt)) deactivated += 1;
+  for (const peerId of peerIds) {
+    if (softDeletePeerIfPresent(ctx, peerId, deletedAt)) deactivated += 1;
   }
   if (deactivated > 0) {
     log(`launch cleanup soft-deleted ${deactivated} stopped launch peer(s)`);
