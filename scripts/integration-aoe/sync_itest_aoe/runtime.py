@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -27,6 +29,61 @@ def require_tools(tools: tuple[str, ...] | list[str]) -> None:
     missing = [tool for tool in tools if shutil.which(tool) is None]
     if missing:
         raise HarnessError(f"Missing required tool(s): {', '.join(missing)}")
+
+
+@dataclass(frozen=True)
+class RemoteDaemonConfig:
+    url: str | None = None
+    token: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.url is not None and self.url != ""
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "remote_mode": self.enabled,
+            "remote_url": self.url,
+            "remote_token": "<set>" if self.token else None,
+        }
+
+
+def add_remote_daemon_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--remote-url",
+        default=os.environ.get("SYNCHRONIZE_REMOTE_URL"),
+        help="Use an already-running synchronize daemon at this base URL instead of starting a local test daemon.",
+    )
+    parser.add_argument(
+        "--remote-token",
+        default=os.environ.get("SYNCHRONIZE_TOKEN"),
+        help="Bearer token for --remote-url. Defaults to SYNCHRONIZE_TOKEN.",
+    )
+
+
+def remote_daemon_from_args(args: argparse.Namespace) -> RemoteDaemonConfig:
+    raw_url = str(getattr(args, "remote_url", "") or "").strip().rstrip("/")
+    raw_token = str(getattr(args, "remote_token", "") or "").strip()
+    return RemoteDaemonConfig(url=raw_url or None, token=raw_token or None)
+
+
+def synchronize_shell_env(remote: RemoteDaemonConfig, sync_home: Path, extra: dict[str, str] | None = None) -> str:
+    env = {
+        "SYNCHRONIZE_HOME": str(sync_home),
+        **(remote_env(remote) if remote.enabled else {"SYNCHRONIZE_PORT": "0"}),
+        **(extra or {}),
+    }
+    return " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
+
+
+def remote_env(remote: RemoteDaemonConfig) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if remote.enabled and remote.url:
+        env["SYNCHRONIZE_REMOTE_URL"] = remote.url
+        env["SYNCHRONIZE_HEALTH_TIMEOUT_MS"] = "5000"
+        if remote.token:
+            env["SYNCHRONIZE_TOKEN"] = remote.token
+    return env
 
 
 class ArtifactWriter:
@@ -79,13 +136,26 @@ class CommandRunner:
         return result
 
 
-def synchronize_env(sync_home: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
-    return {
+def synchronize_env(
+    sync_home: Path,
+    extra: dict[str, str] | None = None,
+    *,
+    remote: RemoteDaemonConfig | None = None,
+) -> dict[str, str]:
+    remote = remote or RemoteDaemonConfig()
+    env = {
         **os.environ,
         "SYNCHRONIZE_HOME": str(sync_home),
-        "SYNCHRONIZE_PORT": "0",
         **(extra or {}),
     }
+    env.pop("SYNCHRONIZE_REMOTE_URL", None)
+    env.pop("SYNCHRONIZE_TOKEN", None)
+    if remote.enabled:
+        env.update(remote_env(remote))
+        env.pop("SYNCHRONIZE_PORT", None)
+    else:
+        env["SYNCHRONIZE_PORT"] = "0"
+    return env
 
 
 def slice_marker_output(output: str, token: str) -> str:

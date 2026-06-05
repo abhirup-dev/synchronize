@@ -46,6 +46,7 @@ export interface AgentSessionBinding {
 export interface PiSyncClient {
   baseUrl: string;
   token: string | null;
+  remote?: boolean;
 }
 
 interface Discovery {
@@ -53,6 +54,10 @@ interface Discovery {
 }
 
 export async function discoverDaemon(): Promise<PiSyncClient> {
+  const remoteUrl = normalizeRemoteUrl(process.env.SYNCHRONIZE_REMOTE_URL);
+  if (remoteUrl) {
+    return { baseUrl: remoteUrl, token: process.env.SYNCHRONIZE_TOKEN ?? null, remote: true };
+  }
   const home = process.env.SYNCHRONIZE_HOME ?? join(homedir(), ".synchronize");
   const discoveryPath = join(home, "daemon.json");
   const raw = await readFile(discoveryPath, "utf8").catch(() => null);
@@ -62,6 +67,21 @@ export async function discoverDaemon(): Promise<PiSyncClient> {
   const discovery = JSON.parse(raw) as Discovery;
   if (!discovery.baseUrl) throw new Error(`invalid ${discoveryPath}: missing baseUrl`);
   return { baseUrl: discovery.baseUrl, token: process.env.SYNCHRONIZE_TOKEN ?? null };
+}
+
+function normalizeRemoteUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("SYNCHRONIZE_REMOTE_URL must be a valid http(s) URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("SYNCHRONIZE_REMOTE_URL must use http or https");
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 // Network errors at the fetch layer surface as TypeError from undici with
@@ -147,6 +167,18 @@ export function registerAgentSession(
 
 export function heartbeatPeer(client: PiSyncClient, peerId: string): Promise<unknown> {
   return requestJson(client, `/peers/${encodeURIComponent(peerId)}/heartbeat`, { method: "PATCH" });
+}
+
+export function readEvents(
+  client: PiSyncClient,
+  peerId: string,
+  input: { cursor?: number; limit?: number } = {},
+): Promise<{ events: Event[]; next_cursor: number }> {
+  const params = new URLSearchParams();
+  if (input.cursor !== undefined) params.set("cursor", String(input.cursor));
+  if (input.limit !== undefined) params.set("limit", String(input.limit));
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return requestJson<{ events: Event[]; next_cursor: number }>(client, `/events/${encodeURIComponent(peerId)}${query}`);
 }
 
 export function deletePeer(client: PiSyncClient, peerId: string): Promise<unknown> {

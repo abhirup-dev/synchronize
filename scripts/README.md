@@ -82,6 +82,20 @@ It covers group creation, descriptions, alias join/rename/leave/reclaim,
 threaded history, mention resolution, inbox routing, and roster events without
 depending on LLM behavior.
 
+To run the same AoE/tmux sessions on another machine while using a daemon hosted
+elsewhere, pass the daemon coordinates through the remote flags:
+
+```bash
+uv run scripts/integration_group_policy_tmux.py \
+  --remote-url http://<daemon-host>:<port> \
+  --remote-token <shared-token> \
+  --command-timeout 45 \
+  --start-timeout 90
+```
+
+Remote mode still creates an isolated local `SYNCHRONIZE_HOME` for CLI/Pi
+identity files, but it does not start or stop a daemon on the session machine.
+
 Use the real Pi MCP workflow for production-like agent behavior:
 
 ```bash

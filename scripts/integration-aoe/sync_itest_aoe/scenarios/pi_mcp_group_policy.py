@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .pi_mcp_dm import DEFAULT_AGENTS, DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario
-from ..runtime import HarnessError
+from ..runtime import HarnessError, add_remote_daemon_args
 
 
 class PiMcpGroupPolicyScenario(PiMcpDmScenario):
@@ -132,7 +132,7 @@ class PiMcpGroupPolicyScenario(PiMcpDmScenario):
         if aliases.get(creator_peer_id) != "alpha" or aliases.get(replier_peer_id) != "beta":
             raise HarnessError(f"Pi group roster aliases were not alpha/beta: {aliases}")
 
-        thread = self.rest.group_history(group_name, peer_id=creator_peer_id, thread_of=root_id, limit=200)
+        thread = self.rest.get_thread(root_id, peer_id=creator_peer_id)
         thread_ids = [event.get("event_id") for event in thread.get("events", []) if event.get("type") == "group_message"]
         if thread_ids != [root_event.get("event_id"), reply_event.get("event_id")]:
             raise HarnessError(f"Pi thread history mismatch: {thread_ids}")
@@ -161,6 +161,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
     parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
+    add_remote_daemon_args(parser)
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=90, help="Seconds to wait for Pi extension auto-registration.")

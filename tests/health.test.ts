@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ensureDaemon } from "../src/client.ts";
 
 const homes: string[] = [];
 
@@ -251,6 +252,47 @@ test("unreachable SYNCHRONIZE_REMOTE_URL fails without local daemon autostart", 
   expect(await Bun.file(join(clientHome, "daemon.json")).exists()).toBe(false);
 });
 
+test("SYNCHRONIZE_HEALTH_TIMEOUT_MS controls remote daemon health validation", async () => {
+  const clientHome = await mkdtemp(join(tmpdir(), "synchronize-remote-timeout-"));
+  homes.push(clientHome);
+  const originalHome = process.env.SYNCHRONIZE_HOME;
+  const originalRemoteUrl = process.env.SYNCHRONIZE_REMOTE_URL;
+  const originalHealthTimeout = process.env.SYNCHRONIZE_HEALTH_TIMEOUT_MS;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === "/health") {
+        await Bun.sleep(200);
+        return Response.json({ ok: true, service: "synchronize", api_version: 1 });
+      }
+      if (url.pathname === "/status") {
+        return Response.json({ ok: true, home: "remote-home" });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+
+  try {
+    process.env.SYNCHRONIZE_HOME = clientHome;
+    process.env.SYNCHRONIZE_REMOTE_URL = server.url.toString();
+    process.env.SYNCHRONIZE_HEALTH_TIMEOUT_MS = "50";
+    await expect(ensureDaemon()).rejects.toThrow("SYNCHRONIZE_REMOTE_URL");
+
+    process.env.SYNCHRONIZE_HEALTH_TIMEOUT_MS = "1000";
+    const client = await ensureDaemon();
+    expect(client.baseUrl).toBe(server.url.toString().replace(/\/$/, ""));
+    expect(client.started).toBe(false);
+    expect(await Bun.file(join(clientHome, "daemon.json")).exists()).toBe(false);
+  } finally {
+    restoreEnv("SYNCHRONIZE_HOME", originalHome);
+    restoreEnv("SYNCHRONIZE_REMOTE_URL", originalRemoteUrl);
+    restoreEnv("SYNCHRONIZE_HEALTH_TIMEOUT_MS", originalHealthTimeout);
+    server.stop(true);
+  }
+});
+
 test("CLI-launched daemon stays alive across separate CLI processes", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-cli-daemon-"));
   homes.push(home);
@@ -338,4 +380,12 @@ async function readDaemonLog(home: string): Promise<Record<string, unknown>> {
     }
   }
   throw new Error(`daemon did not append startup log for ${home}`);
+}
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
 }

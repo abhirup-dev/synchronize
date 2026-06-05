@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from sync_itest_aoe.pi_env import PiEnvironment, PiPaths
-from sync_itest_aoe.runtime import ArtifactWriter
+from sync_itest_aoe.runtime import ArtifactWriter, RemoteDaemonConfig
 
 
 REPO = Path(__file__).resolve().parents[3]
@@ -62,6 +62,7 @@ class PiEnvironmentTest(unittest.TestCase):
             self.assertIn(f"SYNCHRONIZE_MCP={REPO / 'bin' / 'synchronize-mcp'}", command)
             self.assertIn(f"PI_CODING_AGENT_DIR={paths.pi_home}", command)
             self.assertIn(f"PI_CODING_AGENT_SESSION_DIR={paths.pi_sessions}", command)
+            self.assertIn("SYNCHRONIZE_PORT=0", command)
 
             fake_cli = root / "fake-synchronize"
             fake_mcp = root / "fake-synchronize-mcp"
@@ -101,6 +102,45 @@ class PiEnvironmentTest(unittest.TestCase):
                 calls.read_text(encoding="utf-8"),
                 f"cli:{paths.sync_home}:status\nmcp:{paths.sync_home}:codex\n",
             )
+
+    def test_provision_threads_remote_daemon_env_into_mcp_and_pi_session(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="synchronize-pi-env-remote-") as tmp:
+            root = Path(tmp)
+            auth = root / "auth.json"
+            auth.write_text("{}", encoding="utf-8")
+            paths = PiPaths(
+                pi_home=root / "pi-agent",
+                pi_sessions=root / "pi-sessions",
+                sync_home=root / "synchronize-home",
+            )
+            env = PiEnvironment(
+                repo=REPO,
+                paths=paths,
+                provider="openai-codex",
+                model="gpt-test",
+                thinking="low",
+                auth_source=str(auth),
+                writer=ArtifactWriter(root / "artifacts"),
+                remote=RemoteDaemonConfig(url="http://100.126.163.80:58412", token="secret"),
+            )
+
+            env.validate()
+            env.provision()
+
+            mcp_config = json.loads((paths.pi_home / "mcp.json").read_text(encoding="utf-8"))
+            mcp_env = mcp_config["mcpServers"]["synchronize"]["env"]
+            self.assertEqual(mcp_env["SYNCHRONIZE_REMOTE_URL"], "http://100.126.163.80:58412")
+            self.assertEqual(mcp_env["SYNCHRONIZE_TOKEN"], "secret")
+            self.assertEqual(mcp_env["SYNCHRONIZE_HOME"], str(paths.sync_home))
+
+            artifact = json.loads((root / "artifacts" / "pi-environment.json").read_text(encoding="utf-8"))
+            artifact_env = artifact["mcp_config"]["mcpServers"]["synchronize"]["env"]
+            self.assertEqual(artifact_env["SYNCHRONIZE_TOKEN"], "<set>")
+
+            command = env.command_for_session("pi-remote")
+            self.assertIn("SYNCHRONIZE_REMOTE_URL=http://100.126.163.80:58412", command)
+            self.assertIn("SYNCHRONIZE_TOKEN=secret", command)
+            self.assertNotIn("SYNCHRONIZE_PORT=0", command)
 
     def test_provision_converts_codex_auth_json_to_pi_openai_codex_auth(self) -> None:
         with tempfile.TemporaryDirectory(prefix="synchronize-pi-env-") as tmp:

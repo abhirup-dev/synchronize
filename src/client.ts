@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { loadDaemonEnvFiles } from "./env-files.ts";
 import {
   API_VERSION,
+  ENV_HEALTH_TIMEOUT_MS,
   ENV_STARTED_BY_CLIENT,
   ENV_REMOTE_URL,
   ENV_TOKEN,
@@ -145,7 +146,7 @@ async function validateRemoteDaemon(baseUrl: string, token: string | null): Prom
 
 async function isHealthy(baseUrl: string): Promise<boolean> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), healthTimeoutMs());
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
     if (!response.ok) return false;
@@ -156,6 +157,14 @@ async function isHealthy(baseUrl: string): Promise<boolean> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function healthTimeoutMs(): number {
+  const raw = process.env[ENV_HEALTH_TIMEOUT_MS];
+  if (!raw) return HEALTH_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return HEALTH_TIMEOUT_MS;
+  return Math.trunc(parsed);
 }
 
 async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): Promise<void> {

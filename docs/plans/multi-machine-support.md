@@ -195,3 +195,45 @@ Restore live push to remote claude-mode sessions. Two options:
 - VPS test daemon: `SYNCHRONIZE_HOME=/tmp/sync-test` on `vps`, port `58410`,
   token `lan-test-token` (throwaway — tear down after the cross-machine curl).
 - Repo synced at `vps:~/synchronize`.
+
+## Follow-up notes: seamless VPS install and sync
+
+Live cross-machine harness work exposed a separate product gap: the Mac can host
+the daemon, but the remote session machine still needs the right client/runtime
+bits installed and refreshed.
+
+Observations from the VPS setup:
+
+- Non-interactive SSH did not include `~/.local/bin` in `PATH`; the harness must
+  either inject a deterministic PATH or install wrappers into a known location.
+- `uv` and `claude` already existed under `~/.local/bin`, while `aoe` and `pi`
+  were absent.
+- `aoe` was installed from the upstream Linux release tarball into
+  `~/.local/bin/aoe`.
+- `pi` was installed from npm with `npm config set prefix ~/.local` and
+  `npm install -g @earendil-works/pi-coding-agent@0.75.3`.
+- The repo copy for the run used `rsync` into `/tmp/synchronize-mm-client`,
+  followed by `bun install`.
+- The remote harness needs the same environment contract as normal remote
+  clients: `SYNCHRONIZE_REMOTE_URL`, `SYNCHRONIZE_TOKEN`, and a larger
+  `SYNCHRONIZE_HEALTH_TIMEOUT_MS` for tailnet health checks.
+
+Candidate command shape for later discussion:
+
+```bash
+synchronize remote sync vpsme \
+  --path /opt/synchronize \
+  --install-tools aoe,pi,uv \
+  --daemon-url http://<mac-tailnet-ip>:58412 \
+  --token-env SYNCHRONIZE_TOKEN
+```
+
+Expected behavior:
+
+- run from the Mac, over SSH, with no interactive prompts;
+- install or update remote prerequisites into a user-owned prefix;
+- rsync the current worktree or a built release bundle to the remote path;
+- run `bun install` or copy prebuilt dependencies as appropriate;
+- write a small remote env/profile file that points CLI/MCP/Pi at the Mac daemon;
+- verify `synchronize status`, `synchronize-mcp`, and optional `pi --version`;
+- print the exact remote command/env used by AoE/Pi harnesses.

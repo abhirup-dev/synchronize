@@ -99,6 +99,62 @@ test("PiEventSubscription receives a DM pushed by the daemon and invokes onEvent
   }
 });
 
+test("PiEventSubscription polls events when using a remote daemon client", async () => {
+  const received: Event[] = [];
+  let pollCount = 0;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname !== "/events/pi-peer") return new Response("not found", { status: 404 });
+      pollCount += 1;
+      const cursor = Number(url.searchParams.get("cursor") ?? "0");
+      if (cursor < 42) {
+        return Response.json({
+          events: [
+            {
+              event_id: 42,
+              type: "dm",
+              sender_peer_id: "sender",
+              recipient_peer_id: "pi-peer",
+              group_id: null,
+              body: "remote poll delivery",
+              media_id: null,
+              created_at: new Date().toISOString(),
+            },
+          ],
+          next_cursor: 42,
+        });
+      }
+      return Response.json({ events: [], next_cursor: cursor });
+    },
+  });
+  const previousPollMs = process.env.SYNCHRONIZE_PI_POLL_MS;
+  process.env.SYNCHRONIZE_PI_POLL_MS = "25";
+
+  try {
+    const sub = new PiEventSubscription({
+      peerId: "pi-peer",
+      client: { baseUrl: server.url.toString().replace(/\/$/, ""), token: null, remote: true },
+      onEvent: async (event) => {
+        received.push(event);
+      },
+    });
+    await sub.start();
+    const deadline = Date.now() + 1_000;
+    while (received.length < 1 && Date.now() < deadline) await Bun.sleep(10);
+    sub.stop();
+
+    expect(received.map((event) => event.body)).toEqual(["remote poll delivery"]);
+    expect(pollCount).toBeGreaterThan(0);
+  } finally {
+    if (previousPollMs === undefined) delete process.env.SYNCHRONIZE_PI_POLL_MS;
+    else process.env.SYNCHRONIZE_PI_POLL_MS = previousPollMs;
+    server.stop(true);
+  }
+});
+
 test("registerAgentSession forwards launchId for daemon launch reconciliation", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-pi-launch-"));
   homes.push(home);

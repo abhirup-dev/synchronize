@@ -11,8 +11,10 @@ from .runtime import HarnessError
 
 
 class SyncRestClient:
-    def __init__(self, sync_home: Path) -> None:
+    def __init__(self, sync_home: Path, *, base_url: str | None = None, token: str | None = None) -> None:
         self.sync_home = sync_home
+        self.remote_base_url = base_url.rstrip("/") if base_url else None
+        self.token = token
 
     def read_discovery(self) -> dict[str, Any]:
         path = self.sync_home / "daemon.json"
@@ -21,11 +23,15 @@ class SyncRestClient:
         return json.loads(path.read_text())
 
     def base_url(self) -> str:
+        if self.remote_base_url is not None:
+            return self.remote_base_url
         return str(self.read_discovery()["baseUrl"])
 
     def http_json(self, path: str, *, method: str = "GET", body: dict[str, Any] | None = None) -> dict[str, Any]:
         data = None
         headers: dict[str, str] = {}
+        if self.token:
+            headers["authorization"] = f"Bearer {self.token}"
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["content-type"] = "application/json"
@@ -112,14 +118,19 @@ class SyncRestClient:
         name: str,
         *,
         peer_id: str,
-        thread_of: int | None = None,
         cursor: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
         params = {"peer_id": peer_id, "cursor": str(cursor), "limit": str(limit)}
-        if thread_of is not None:
-            params["thread_of"] = str(thread_of)
         return self.http_json(f"/groups/{url_quote(name)}/history?{urllib.parse.urlencode(params)}")
+
+    def get_thread(self, root_event_id: int, *, peer_id: str, format: str = "events") -> dict[str, Any]:
+        params = {
+            "peer_id": peer_id,
+            "format": format,
+            "selector_strategy": "all",
+        }
+        return self.http_json(f"/threads/{root_event_id}?{urllib.parse.urlencode(params)}")
 
 
 def url_quote(value: str) -> str:
