@@ -87,6 +87,28 @@ If you do not want to link it, run the CLI from the repo:
 bun run src/cli.ts --help
 ```
 
+## Shell Completion
+
+V0 completion support is Carapace-first. The CLI can generate and install a
+Carapace spec from its typed command schema:
+
+```bash
+synchronize completion carapace
+synchronize completion install --shell carapace
+```
+
+On macOS, the install command writes:
+
+```text
+~/Library/Application Support/carapace/specs/synchronize.yaml
+```
+
+Completion is safe to use at the shell prompt. Static command and flag
+completion works from the generated spec. Dynamic completions such as group
+names, peer ids, session names, media ids, and thread root event ids query the
+daemon only when an existing daemon is already healthy; tab completion does not
+auto-start the daemon.
+
 ## Merge Policy
 
 Merge feature branches into `master` with a squash merge. Keep the resulting
