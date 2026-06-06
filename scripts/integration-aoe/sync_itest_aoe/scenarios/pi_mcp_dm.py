@@ -36,8 +36,16 @@ class PiMcpDmScenario:
         self.state_root = Path(args.state_dir).expanduser().resolve() if args.state_dir else self.repo / ".synchronize-itest"
         self.run_dir = Path(args.run_dir).expanduser().resolve() if args.run_dir else self.state_root / "runs" / self.run_id
         self.pi_home = self.run_dir / "pi-agent"
-        self.pi_sessions = self.run_dir / "pi-sessions"
         self.sync_home = self.run_dir / "synchronize-home"
+        # Pi session transcripts MUST live where the daemon's resume launch will
+        # look for them. The daemon's provisionPiLaunchRuntime always points
+        # PI_CODING_AGENT_SESSION_DIR at <sync_home>/pi-sessions (not keyed by
+        # peer), so a faithful `pi --session <id>` resume only resolves if the
+        # original agent wrote its transcript there too. (In a global install
+        # this is a non-issue — one PI home — but the harness runs each agent in
+        # a simulated PI home, so we must align the session dir with the daemon's
+        # deterministic convention.)
+        self.pi_sessions = self.sync_home / "pi-sessions"
         self.profile = args.profile or f"sync-pi-itest-{self.repo.name}-{self.run_id.lower()}"
         self.profile_cleanup_prefix = args.profile or f"sync-pi-itest-{self.repo.name}-"
         self.agent_names = [f"{args.agent_prefix}-{index}" for index in range(1, args.agents + 1)]

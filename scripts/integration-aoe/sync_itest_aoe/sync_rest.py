@@ -57,6 +57,24 @@ class SyncRestClient:
     def agent_sessions(self, tool: str) -> dict[str, Any]:
         return self.http_json(f"/agent-sessions?tool={url_quote(tool)}")
 
+    def agent_sessions_for_peer(self, peer_id: str) -> dict[str, Any]:
+        return self.http_json(f"/agent-sessions?peer_id={url_quote(peer_id)}")
+
+    def archive_session(self, *, peer_id: str, reason: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if reason is not None:
+            body["reason"] = reason
+        return self.http_json("/archive/session", method="POST", body=body)
+
+    def resume_session(self, *, peer_id: str, force: bool = False) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if force:
+            body["force"] = True
+        return self.http_json("/resume/session", method="POST", body=body)
+
+    def list_archived(self) -> dict[str, Any]:
+        return self.http_json("/archive/sessions")
+
     def list_groups(self) -> dict[str, Any]:
         return self.http_json("/groups")
 
