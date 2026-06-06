@@ -211,8 +211,10 @@ interface DaemonLaunchResponse {
 const PEER_KEY = "synchronize.web.peerId";
 const PENDING_WEB_PEER_ID = "web:pending";
 // Activity feed: fetch this many rows per page; keep at most this many in memory
-// (older rows are trimmed and re-fetchable via load-older).
-const ACTIVITY_WINDOW = 80;
+// (older rows are trimmed and re-fetchable via load-older). Use the daemon's
+// bounded page max so the grouped digest does not hide older durable rooms on
+// first load when their latest non-own author is expired/offline.
+const ACTIVITY_WINDOW = 200;
 const ACTIVITY_CAP = 500;
 const COLORS = ["#FFD23F", "#FF5DA2", "#4D7CFE", "#7BE389", "#FF8A3D", "#B49BFF", "#F45B69", "#2EC4B6"];
 const EMPTY_AGENT: Agent = {
