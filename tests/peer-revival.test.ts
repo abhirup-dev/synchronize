@@ -1,11 +1,9 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createGroup, joinGroup, leaveGroup } from "../src/api/groups.ts";
 import { deletePeer, listPeers, registerPeer } from "../src/api/peers.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { GroupMember } from "../src/api/types.ts";
+import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
 // Reproduction harness for the peer-revival gap (sync-3nu). When a peer is
 // soft-deleted (retention sweep after >24h offline, or operator evict) its
@@ -16,56 +14,7 @@ import type { GroupMember } from "../src/api/types.ts";
 // DELETE here stands in for the sweeper's soft-delete (identical DB effect),
 // kept deterministic so the test needs no timing.
 
-const homes: string[] = [];
-afterAll(async () => {
-  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
-});
-
-interface DaemonEnv {
-  leaseMs?: number;
-  retentionMs?: number;
-  sweepIntervalMs?: number;
-}
-
-async function startDaemon(env: DaemonEnv = {}): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-revival-"));
-  homes.push(home);
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: {
-      ...process.env,
-      SYNCHRONIZE_HOME: home,
-      SYNCHRONIZE_PORT: "0",
-      ...(env.leaseMs !== undefined ? { SYNCHRONIZE_LEASE_MS: String(env.leaseMs) } : {}),
-      ...(env.retentionMs !== undefined ? { SYNCHRONIZE_PEER_RETENTION_MS: String(env.retentionMs) } : {}),
-      ...(env.sweepIntervalMs !== undefined ? { SYNCHRONIZE_SWEEP_INTERVAL_MS: String(env.sweepIntervalMs) } : {}),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
+afterAll(cleanupDaemonHomes);
 
 async function activeMembers(client: ClientConfig, group: string): Promise<GroupMember[]> {
   const response = (await listPeers(client, { group })) as { peers: GroupMember[] };

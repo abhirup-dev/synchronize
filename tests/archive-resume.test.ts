@@ -8,44 +8,15 @@ import { createGroup, joinGroup, sendGroupMessage } from "../src/api/groups.ts";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
 import { archiveGroup, archiveSession } from "../src/api/archive.ts";
 import { resumeGroup, resumeSession } from "../src/api/resume.ts";
+import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
+// `homes` tracks the extra per-test CWD temp dirs (resume requires the original
+// CWD to be present); daemon homes are reaped by cleanupDaemonHomes.
 const homes: string[] = [];
 afterAll(async () => {
   await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
+  await cleanupDaemonHomes();
 });
-
-async function startDaemon(): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-resume-"));
-  homes.push(home);
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_DEBUG: "1" },
-    stdout: "pipe",
-    stderr: "inherit",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
 
 async function errorCode(fn: () => Promise<unknown>): Promise<string> {
   return (await errorOf(fn)).code;
@@ -62,7 +33,7 @@ async function errorOf(fn: () => Promise<unknown>): Promise<ApiError> {
 }
 
 test("re-registering an archived identity resurrects it: active again, membership restored, can send", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer } = await registerPeer(daemon.client, { sessionName: "critic", tool: "claude" });
     await createGroup(daemon.client, { name: "room", creatorPeerId: peer.peer_id });
@@ -87,7 +58,7 @@ test("re-registering an archived identity resurrects it: active again, membershi
 });
 
 test("a heartbeat from an archived peer does NOT un-archive it (presence ⊥ lifecycle)", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer } = await registerPeer(daemon.client, { sessionName: "critic", tool: "claude" });
     await createGroup(daemon.client, { name: "room", creatorPeerId: peer.peer_id });
@@ -131,7 +102,7 @@ async function archivedSession(
 }
 
 test("resume of a non-archived peer fails with peer_not_archived", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer } = await registerPeer(daemon.client, { sessionName: "live", tool: "claude" });
     expect(await errorCode(() => resumeSession(daemon.client, { peerId: peer.peer_id, print: true }))).toBe("peer_not_archived");
@@ -141,7 +112,7 @@ test("resume of a non-archived peer fails with peer_not_archived", async () => {
 });
 
 test("resume show emits a faithful --resume command with the captured host_session_id + cwd", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   const cwd = await mkdtemp(join(tmpdir(), "resume-cwd-"));
   homes.push(cwd);
   try {
@@ -161,7 +132,7 @@ test("resume show emits a faithful --resume command with the captured host_sessi
 });
 
 test("resume fails with cwd_missing when the worktree is gone (hint names the branch path)", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const peerId = await archivedSession(daemon.client, { hostSessionId: "host-sess-2", cwd: "/nonexistent/worktree/path-xyz" });
     const err = await errorOf(() => resumeSession(daemon.client, { peerId, print: true }));
@@ -173,7 +144,7 @@ test("resume fails with cwd_missing when the worktree is gone (hint names the br
 });
 
 test("resume is blocked by a live peer with a helpful payload, and --force terminates it", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   const cwd = await mkdtemp(join(tmpdir(), "resume-live-"));
   homes.push(cwd);
   // A real, killable process stands in for the live (non-AOE) zombie.
@@ -200,7 +171,7 @@ test("resume is blocked by a live peer with a helpful payload, and --force termi
 // --- jpxm.3: group resume with per-member outcomes (never collapsed) ---
 
 test("resume group reports per-member outcomes: launchable printed, missing-cwd skipped", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   const goodCwd = await mkdtemp(join(tmpdir(), "resume-grp-"));
   homes.push(goodCwd);
   try {

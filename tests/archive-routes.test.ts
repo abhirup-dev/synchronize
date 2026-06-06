@@ -1,55 +1,12 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ApiError, type ClientConfig } from "../src/client.ts";
+import { ApiError } from "../src/client.ts";
 import { registerPeer } from "../src/api/peers.ts";
 import { createGroup, joinGroup, renameInGroup, sendGroupMessage } from "../src/api/groups.ts";
 import { readInbox, sendDm } from "../src/api/inbox.ts";
 import { archiveGroup, archiveSession } from "../src/api/archive.ts";
+import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
-const homes: string[] = [];
-afterAll(async () => {
-  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
-});
-
-async function startDaemon(): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-archive-"));
-  homes.push(home);
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    // SYNCHRONIZE_DEBUG on: integration runs emit the full decision/transition
-    // trail (sweeps, reap/probe outcomes, guards) so a failing test is
-    // diagnosable from the daemon log alone.
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", SYNCHRONIZE_DEBUG: "1" },
-    stdout: "pipe",
-    // Forward the daemon's decision/transition trail to the test runner's stderr
-    // so a failing integration test is diagnosable from the log alone.
-    stderr: "inherit",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
+afterAll(cleanupDaemonHomes);
 
 async function errorCode(fn: () => Promise<unknown>): Promise<string> {
   try {
@@ -62,7 +19,7 @@ async function errorCode(fn: () => Promise<unknown>): Promise<string> {
 }
 
 test("archive session: non-AOE peer archives cleanly, reserves alias, is not deleted", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer } = await registerPeer(daemon.client, { sessionName: "critic", tool: "claude" });
     await createGroup(daemon.client, { name: "room", creatorPeerId: peer.peer_id });
@@ -89,7 +46,7 @@ test("archive session: non-AOE peer archives cleanly, reserves alias, is not del
 });
 
 test("archive session --dry-run reports the plan without mutating", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer } = await registerPeer(daemon.client, { sessionName: "critic", tool: "claude" });
     await createGroup(daemon.client, { name: "room", creatorPeerId: peer.peer_id });
@@ -109,7 +66,7 @@ test("archive session --dry-run reports the plan without mutating", async () => 
 });
 
 test("archived sender is blocked from group send and DM with must_reregister", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
     const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "claude" });
@@ -131,7 +88,7 @@ test("archived sender is blocked from group send and DM with must_reregister", a
 });
 
 test("rename onto an archived alias fails with alias_reserved_by_archived", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
     const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "claude" });
@@ -149,7 +106,7 @@ test("rename onto an archived alias fails with alias_reserved_by_archived", asyn
 });
 
 test("an archived member is excluded from group inbox fanout", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
     const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "claude" });
@@ -169,7 +126,7 @@ test("an archived member is excluded from group inbox fanout", async () => {
 });
 
 test("archive group reports per-member status and reserves every alias", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
     const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "pi" });
@@ -195,7 +152,7 @@ test("archive group reports per-member status and reserves every alias", async (
 });
 
 test("a live archived (zombie) peer cannot send, re-subscribe, or be pushed until it re-registers", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   // A local callback server stands in for the agent's live push channel; it
   // records every notification the daemon delivers.
   const received: Array<{ event?: { body?: string } }> = [];
@@ -262,7 +219,7 @@ test("a live archived (zombie) peer cannot send, re-subscribe, or be pushed unti
 });
 
 test("mentioning an archived alias yields an alias_archived warning (web guardrail signal)", async () => {
-  const daemon = await startDaemon();
+  const daemon = await startDaemon({ debug: true });
   try {
     const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
     const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "claude" });

@@ -1,13 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
 import { createGroup, joinGroup } from "../src/api/groups.ts";
 import { deletePeer, heartbeatPeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import type { GroupMember } from "../src/api/types.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Peer } from "../src/api/types.ts";
+import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
 // Agent-presence harness. Each daemon is spawned with custom lease / retention
 // / sweep-interval env so a test can synthetically emulate a real session
@@ -16,56 +14,7 @@ import type { Peer } from "../src/api/types.ts";
 // processes — the activity pushes and lease lapses ARE the emulation.
 // See session-tracker/plan-agent-ttl-presence-v0.md.
 
-const homes: string[] = [];
-afterAll(async () => {
-  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
-});
-
-interface DaemonEnv {
-  leaseMs?: number;
-  retentionMs?: number;
-  sweepIntervalMs?: number;
-}
-
-async function startDaemon(env: DaemonEnv = {}): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-presence-"));
-  homes.push(home);
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: {
-      ...process.env,
-      SYNCHRONIZE_HOME: home,
-      SYNCHRONIZE_PORT: "0",
-      ...(env.leaseMs !== undefined ? { SYNCHRONIZE_LEASE_MS: String(env.leaseMs) } : {}),
-      ...(env.retentionMs !== undefined ? { SYNCHRONIZE_PEER_RETENTION_MS: String(env.retentionMs) } : {}),
-      ...(env.sweepIntervalMs !== undefined ? { SYNCHRONIZE_SWEEP_INTERVAL_MS: String(env.sweepIntervalMs) } : {}),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
+afterAll(cleanupDaemonHomes);
 
 async function rosterPeer(client: ClientConfig, peerId: string): Promise<Peer | undefined> {
   const response = (await listPeers(client)) as { peers: Peer[] };
