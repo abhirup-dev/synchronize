@@ -176,6 +176,176 @@ Restore live push to remote claude-mode sessions. Two options:
   notifier already do) and the daemon streams events down it. NAT/sleep-friendly,
   unifies the notification model. **Recommended.**
 
+#### Revised plan: unified `/events/:peer_id` stream
+
+Use the existing peer event route instead of adding a separate conceptual
+endpoint. Today:
+
+```text
+GET /events/:peer_id?cursor=N&limit=M
+Accept: application/json
+```
+
+returns a finite JSON batch and closes. Extend the same route with content
+negotiation:
+
+```text
+GET /events/:peer_id?cursor=N
+Accept: text/event-stream
+Authorization: Bearer <token>
+```
+
+The JSON mode remains the current finite read. The SSE mode replays inbox events
+after `cursor`, keeps the response open, and streams future recipient-visible
+events. The domain concept remains one thing: "events for this peer after this
+cursor".
+
+Current broken cross-machine Claude push:
+
+```text
+VPS Claude MCP
+  starts callback server
+  http://127.0.0.1:43123/events
+        |
+        | POST /subscriptions { callback_url }
+        v
+Mac daemon
+  stores callback_url
+        |
+        | later DM arrives
+        v
+Mac daemon fetch("http://127.0.0.1:43123/events")
+        |
+        v
+Mac localhost, not VPS localhost -> connection fails
+```
+
+Target architecture:
+
+```text
+VPS Claude MCP
+  opens outbound stream
+  GET /events/<peer_id>?cursor=<last_seen>
+  Accept: text/event-stream
+        |
+        | Tailscale outbound connection
+        v
+Mac daemon
+  keeps stream open
+        |
+        | DM arrives
+        v
+Mac daemon writes SSE frame
+        |
+        v
+VPS Claude MCP receives event
+        |
+        v
+MCP emits notifications/claude/channel
+        |
+        v
+Claude sees the DM live
+```
+
+Unified local/remote shape:
+
+```text
+Local Claude MCP
+  base_url from daemon.json
+  GET /events/<peer_id>?cursor=N
+  Accept: text/event-stream
+        |
+        v
+Local daemon
+
+Remote Claude MCP
+  base_url from SYNCHRONIZE_REMOTE_URL
+  GET /events/<peer_id>?cursor=N
+  Accept: text/event-stream
+        |
+        v
+Mac daemon over Tailscale
+```
+
+Only daemon discovery changes between local and remote. The delivery route,
+cursor semantics, MCP event emission, and durable fallback are the same.
+
+Write, live delivery, and recovery:
+
+```text
+Sender agent
+  bridge_dm
+      |
+      v
+Mac daemon
+  INSERT events
+  INSERT inbox
+      |
+      +--> active SSE stream?
+      |       |
+      |       v
+      |   write event frame
+      |   mark delivered_at
+      |
+      +--> no stream / disconnected
+              |
+              v
+          durable inbox row remains
+
+Recipient reconnects
+  GET /events/<peer_id>?cursor=<last_seen>
+      |
+      v
+Daemon replays missed inbox rows, then streams future events
+```
+
+Implementation shape:
+
+```text
+daemon.ts
+  GET /events/:peer_id
+    if Accept includes text/event-stream:
+      handleEventStream(peer_id, cursor)
+    else:
+      existing JSON readEvents behavior
+
+mcp/
+  EventStreamSubscription
+    open /events/:peer_id as SSE
+    parse event frames
+    call emitMcpNotification("claude", event)
+
+  EventSubscription callback
+    keep temporarily as fallback / legacy
+```
+
+Rollout:
+
+```text
+Phase A: add SSE mode to existing /events/:peer_id
+Phase B: add Claude MCP stream subscriber behind env flag
+Phase C: run local + remote E2E against stream mode
+Phase D: make stream default when SYNCHRONIZE_REMOTE_URL is set
+Phase E: make stream default for all Claude sessions after burn-in
+Phase F: remove callback path only after the stream path is stable
+```
+
+Risk controls:
+
+- keep the existing callback path until stream mode passes local and remote E2E;
+- keep durable inbox as the source of truth;
+- use `event_id` as cursor so reconnect can replay missed messages;
+- mark `delivered_at` only when a stream frame is accepted by the connection;
+- keep `read_at` tied to explicit inbox reads;
+- heartbeat SSE streams to detect dead connections;
+- close streams on disconnect to avoid leaked subscribers;
+- test duplicate delivery, reconnect, auth failures, slow clients, and daemon
+  restarts before flipping defaults.
+
+This changes the notification transport direction for Claude, not the core
+collaboration architecture. The central daemon, `bridge_dm`, durable `events`,
+durable `inbox`, and MCP `notifications/claude/channel` emission all remain.
+
 ## Decisions
 
 1. **Daemon host for v0:** Mac hosts the daemon. The goal is active
@@ -183,8 +353,9 @@ Restore live push to remote claude-mode sessions. Two options:
 2. **Auth for v0:** one simple shared bearer token. Tailscale is the network
    boundary; per-machine credentials are deferred.
 3. **Remote Claude push:** use option B, client-initiated SSE/long-poll from the
-   remote session to the daemon. Do not relax daemon-to-client callback rules as
-   the long-term answer.
+   remote session to the daemon, implemented as SSE content negotiation on the
+   existing `/events/:peer_id` route. Do not relax daemon-to-client callback
+   rules as the long-term answer.
 4. **UI machine treatment:** no v0 machine grouping requirement. Remote sessions
    should mostly be indistinguishable once registered into the Mac daemon's
    runtime state. Later UI polish can add a small icon or identifier for VPS vs
@@ -311,6 +482,14 @@ Claude AOE sessions:
   synchronize harnesses against this Mac daemon?"
 - There is no single command that syncs the current worktree and prints the
   exact remote command/env the harness will use.
+
+The future CLI/Makefile surface for this is tracked by Beads issue `sync-nxyp`
+("Remote sync command for VPS client runtime"). The unified Claude stream
+delivery implementation is tracked by `sync-ba7h` ("Claude cross-machine push
+via unified event stream"). Keep both work items connected to this document: the
+stream-delivery plan above makes remote Claude collaboration feel local, while
+the install/sync surface below makes the remote machine easy to prepare and
+verify.
 
 Candidate command shape for later discussion:
 
