@@ -112,6 +112,41 @@ Each phase keeps env override working, so the suite stays green throughout and
 no behavior changes — this is a refactor toward injectability, not a semantics
 change.
 
+### Phase 4 status (delivered)
+
+The shared harness lives in `tests/helpers/daemon.ts`:
+
+- `startTestDaemon({ config, env, home, port })` — consolidates the ~10
+  duplicated `Bun.spawn` + discovery-poll loops. Tunables go through `config`
+  (written to `config.toml` in the per-test home), NOT env.
+- `writeTestConfig(home, overrides)` / `configToml(overrides)` — emit the
+  `[daemon]`/`[mcp]`/`[remote.*]` TOML the resolver reads.
+- `testRuntimeConfig(overrides)` — a resolved `RuntimeConfig` for in-process
+  unit tests, no file or env.
+
+Converted off env-mutation onto config.toml: `presence`, `peer-revival`,
+`daemon-config-toml`; consolidated onto the harness: `messaging`, `launch-route`.
+Remaining `startDaemon` duplicators (`api`, `summary`, `mcp`, `list-my-groups`,
+`launch-reconcile`, `health`) can migrate opportunistically — several legitimately
+pass Category-B/API-key env and already use the `env` escape hatch.
+
+### The bounded env surface that remains (Category B only)
+
+After unification, the ONLY `SYNCHRONIZE_*` env a caller (or test) sets is:
+
+| Var | Role |
+|---|---|
+| `SYNCHRONIZE_HOME` | bootstrap — locates the runtime dir + config.toml |
+| `SYNCHRONIZE_PORT=0` | tests only — random free port so parallel daemons don't collide |
+| `SYNCHRONIZE_PEER_ID` / `LAUNCH_ID` / `SESSION_NAME` | per-process identity correlation (launcher → MCP) |
+| `SYNCHRONIZE_MCP_MODE` | per-process adapter role (claude vs codex) |
+| `SYNCHRONIZE_STARTED_BY_CLIENT` / `CONFIGURED_CLI` / `CONFIGURED_MCP` / `CLI` / `MCP` | launch wiring markers |
+| `SYNCHRONIZE_SUMMARY_LIVE_TEST`, `OPENROUTER_API_KEY` | test/live-smoke markers (via the harness `env` escape hatch) |
+
+Everything else (lease/retention/sweep, bind/port/token, mcp heartbeat, and —
+as Phases 2/3 complete — summary/llm/skills/launch-worker tunables) is operator
+*config*, resolved from defaults < config.toml < env and read off a typed object.
+
 ## Non-goals
 
 - Changing any default value or runtime behavior (pure structural unification).
