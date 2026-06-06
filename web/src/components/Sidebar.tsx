@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState, type CSSProperties } from "react";
-import { useMe, useRooms, useAgents } from "../data/context.tsx";
+import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/context.tsx";
 import { StatusDot, inkFor } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
@@ -36,6 +36,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const openMenu = useContextMenu();
   const [spawnRoom, setSpawnRoom] = useState<Room | null>(null);
+  const awaitingCount = useActivityAwaitingCount();
 
   return (
     <aside className="sidebar" data-vim-panel="sidebar">
@@ -56,6 +57,22 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         />
         <span className="search-key">⌘K</span>
       </div>
+
+      <button
+        type="button"
+        className={`activity-nav${activeRoomId === "activity" ? " active" : ""}`}
+        data-vim-item="room-activity"
+        onClick={() => onSelect("activity")}
+        title="Activity — global cross-room feed"
+      >
+        <span className="activity-nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 13 8 13 10.5 19 14 6 16 13 21 13" />
+          </svg>
+        </span>
+        <span className="activity-nav-label">ACTIVITY</span>
+        {awaitingCount > 0 && <span className="activity-nav-badge">{awaitingCount}</span>}
+      </button>
 
       <section className="sidebar-section">
         <div className="section-head">

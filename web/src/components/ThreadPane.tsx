@@ -12,10 +12,11 @@ import { inkFor } from "./primitives.tsx";
 interface ThreadPaneProps {
   room: Room;
   parentId: string;
+  focusMessageId?: string;
   onClose(): void;
 }
 
-export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
+export function ThreadPane({ room, parentId, focusMessageId, onClose }: ThreadPaneProps) {
   const messages = useMessages(room.id);
   const replies = useThreadReplies(parentId);
   const agents = useAgents();
@@ -49,6 +50,18 @@ export function ThreadPane({ room, parentId, onClose }: ThreadPaneProps) {
       virtualizer.scrollToIndex(replies.length - 1, { align: "end" });
     });
   }, [replies, me.id, virtualizer]);
+
+  useEffect(() => {
+    // Activity opens the pane from an arbitrary row, not always from the thread
+    // root. When the clicked row is a reply, center that reply after the
+    // virtualized list materializes so the user lands on the message they chose.
+    if (!focusMessageId || focusMessageId === parentId) return;
+    const index = replies.findIndex((reply) => reply.id === focusMessageId);
+    if (index < 0) return;
+    requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(index, { align: "center" });
+    });
+  }, [focusMessageId, parentId, replies, virtualizer]);
 
   if (!parent || !parentAuthor) return null;
 
