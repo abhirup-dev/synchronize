@@ -4,7 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NotificationBridge } from "../src/mcp/codex-notifier.ts";
 import { emitMcpNotification, formatClaudeChannelMeta } from "../src/mcp/notifications.ts";
+import { useCallbackPush } from "../src/mcp/state.ts";
 import type { ClientConfig } from "../src/client.ts";
+
+// Transport selection is by location, not channel. Local Claude gets the
+// instant localhost callback; remote Claude (and all codex) poll, because a
+// remote daemon cannot reach a loopback callback on this client.
+test("useCallbackPush: only local claude uses the localhost callback push", () => {
+  expect(useCallbackPush("claude", { remote: false })).toBe(true);
+  expect(useCallbackPush("claude", {})).toBe(true); // absent remote => local
+  expect(useCallbackPush("claude", { remote: true })).toBe(false); // remote claude polls
+  expect(useCallbackPush("codex", { remote: false })).toBe(false); // codex always polls
+  expect(useCallbackPush("codex", { remote: true })).toBe(false);
+});
 
 const homes: string[] = [];
 
@@ -176,8 +188,8 @@ test("NotificationBridge in claude mode delivers on notifications/claude/channel
     });
     const notifications: Array<{ method: string }> = [];
     const sink = {
-      notification: async (notification: { method: string }) => {
-        notifications.push(notification);
+      notification: async (notification: unknown) => {
+        notifications.push(notification as { method: string });
       },
       sendLoggingMessage: async (params: unknown) => {
         notifications.push({ method: "notifications/message", params } as { method: string });

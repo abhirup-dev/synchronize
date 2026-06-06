@@ -40,6 +40,12 @@ export interface ClientConfig {
   token: string | null;
   paths: RuntimePaths;
   started: boolean;
+  // True iff this client is pointed at a daemon on another machine (via
+  // SYNCHRONIZE_REMOTE_URL). It is the single ground-truth signal for "the
+  // daemon cannot reach a localhost callback on this client", computed once at
+  // resolution so transport selection (callback vs poll) never re-parses env.
+  // Absent/false means a same-machine daemon (local discovery or auto-spawned).
+  remote?: boolean;
 }
 
 export async function ensureDaemon(): Promise<ClientConfig> {
@@ -49,14 +55,14 @@ export async function ensureDaemon(): Promise<ClientConfig> {
   if (remoteUrl) {
     await validateRemoteDaemon(remoteUrl, token);
     log(`using remote daemon base_url=${remoteUrl}`);
-    return { baseUrl: remoteUrl, token, paths, started: false };
+    return { baseUrl: remoteUrl, token, paths, started: false, remote: true };
   }
 
   await ensureDir(paths.home);
   const existing = await readJson<Discovery>(paths.discoveryPath);
   if (existing && (await isHealthy(existing.baseUrl))) {
     log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
-    return { baseUrl: existing.baseUrl, token, paths, started: false };
+    return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
   }
 
   let started = false;
@@ -75,7 +81,7 @@ export async function ensureDaemon(): Promise<ClientConfig> {
   const discovery = await readJson<Discovery>(paths.discoveryPath);
   if (!discovery) throw new Error("Daemon did not write discovery file");
   log(`${started ? "started" : "using"} daemon base_url=${discovery.baseUrl} pid=${discovery.pid}`);
-  return { baseUrl: discovery.baseUrl, token, paths, started };
+  return { baseUrl: discovery.baseUrl, token, paths, started, remote: false };
 }
 
 // Carries the daemon's structured error envelope across the client boundary so
