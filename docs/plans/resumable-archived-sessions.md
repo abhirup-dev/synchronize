@@ -549,6 +549,33 @@ proof that the next layer can be built on solid ground.
 - **MCP managing agent:** a non-member agent archives + resumes a group via the
   MCP tools; assert it succeeds and returns the same per-member status as the CLI.
 
+### 9.4 Comprehensive AOE integration harness (epic `sync-ocdt`) — added 2026-06-06
+
+**Why this epic exists.** The unit/integration suite already proves each piece of
+archive/resume *in isolation and deterministically* (transition table, GC
+selectors, cwd/liveness gates, alias reservation, send/subscribe guards, zombie
+no-push). What none of them prove is that those pieces hold together against
+**real agents** — the actual `pi` launch → backend reap → respawn with
+`--session` → re-registration → `archived→active` resurrection → group rejoin,
+run repeatedly across many agents and cycles, with real delivery. That
+integration is exactly where subtle breakage hides (orphaned `launch_intents`
+re-triggering GC across cycles, a real sweeper deleting an archived peer, a DM
+queued during archive never surfacing on resume). So rather than a hundred small
+cases, this epic adds **one solid, long, gated Pi scenario** that walks the whole
+lifecycle end to end and asserts the edge cases as sequential phases.
+
+**Pi-first** (Pi has no dev-channel prompt, so it is deterministic in the
+harness); Claude parity is a deferred child once the `--dangerously-load-
+development-channels` auto-confirm is hardened. The two highest-value phases are
+**durable catch-up on resume** (a DM sent while archived is delivered after
+resume) and **real-sweeper GC-exemption** (an archived peer survives the live
+retention sweeper while an idle non-archived peer is swept) — neither is
+expressible in a unit test. Children: `sync-ocdt.1` (backbone scenario),
+`sync-ocdt.2` (catch-up), `sync-ocdt.3` (sweeper exemption), `sync-ocdt.4`
+(Claude parity, deferred). The harness stays gated off by default
+(`SYNCHRONIZE_AOE_HARNESS=1`), runs in isolated temp daemons with unique group
+names, and reaps every agent it spawns.
+
 ---
 
 ## 10. Out of scope for v0 (future work)
