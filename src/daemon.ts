@@ -6,8 +6,6 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import {
   ACTIVITY_STATES,
   type ActivityState,
-  DEFAULT_BIND_HOST,
-  DEFAULT_LEASE_MS,
   DEFAULT_PAGE_LIMIT,
   DEFAULT_PORT,
   ENV_BIND,
@@ -15,10 +13,9 @@ import {
   ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
-  PEER_RETENTION_MS,
-  SWEEP_INTERVAL_MS,
   API_VERSION,
 } from "./constants.ts";
+import { loadRuntimeConfig, type DaemonConfig, type RuntimeConfig } from "./config.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { applyDaemonEnvFiles } from "./env-files.ts";
 import { ensureDir, writeJson } from "./fs.ts";
@@ -73,6 +70,9 @@ export interface DaemonContext {
   launchWorker: WorkerHandle | null;
   summarizeWorker: WorkerHandle | null;
   skillCatalog: SkillCatalogEntry[];
+  // Resolved once at startup (defaults < config.toml < env). Daemon tunables
+  // (lease/retention/sweep) read from here instead of import-time constants.
+  config: RuntimeConfig;
 }
 
 interface DiscoveryFile {
@@ -319,10 +319,15 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function resolveBind(env: NodeJS.ProcessEnv): { host: string; port: number } {
-  const host = env[ENV_BIND] ?? DEFAULT_BIND_HOST;
+// Bind host/port come from the resolved daemon config (env > config.toml >
+// default), but the strict SYNCHRONIZE_PORT parse is preserved here: a malformed
+// env port must still throw rather than silently fall back. `daemon.bind`/
+// `daemon.port` already fold in env+toml; the explicit env[ENV_PORT] check only
+// exists to keep that hard validation error.
+function resolveBind(env: NodeJS.ProcessEnv, daemon: DaemonConfig): { host: string; port: number } {
+  const host = daemon.bind;
   const rawPort = env[ENV_PORT];
-  const port = rawPort ? Number.parseInt(rawPort, 10) : DEFAULT_PORT;
+  const port = rawPort ? Number.parseInt(rawPort, 10) : daemon.port ?? DEFAULT_PORT;
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error(`${ENV_PORT} must be an integer from 0 to 65535`);
   }
@@ -630,7 +635,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = leaseExpiresAtForTool(tool);
+    const leaseExpiresAt = leaseExpiresAtForTool(tool, ctx.config.daemon.leaseMs);
     const metadata = optionalObjectJson(body, "metadata");
     const bindingId = `${hostTool}:${hostSessionId}`;
     const cwd = optionalString(body, "cwd") ?? null;
@@ -776,7 +781,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const purpose = optionalString(body, "purpose");
     const peerId = optionalString(body, "peer_id") ?? crypto.randomUUID();
     const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = leaseExpiresAtForTool(tool);
+    const leaseExpiresAt = leaseExpiresAtForTool(tool, ctx.config.daemon.leaseMs);
 
     upsertPeer(ctx.db, {
       peerId,
@@ -796,7 +801,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   if (request.method === "PATCH" && peerHeartbeat) {
     const peerId = decodeURIComponent(peerHeartbeat[1] ?? "");
     const peer = getPeer(ctx.db, peerId);
-    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool, ctx.config.daemon.leaseMs);
     ctx.db
       .query(
         `UPDATE peers
@@ -830,7 +835,7 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
       }
     }
     const peer = getPeer(ctx.db, peerId);
-    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool);
+    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool, ctx.config.daemon.leaseMs);
     ctx.db
       .query(
         `UPDATE peers
@@ -2140,8 +2145,8 @@ function deactivateWebAliasHolders(db: Database, groupId: number, alias: string,
   ).run(groupId, alias, peerId);
 }
 
-function leaseExpiresAtForTool(tool: string): string {
-  return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + DEFAULT_LEASE_MS).toISOString();
+function leaseExpiresAtForTool(tool: string, leaseMs: number): string {
+  return tool === "web" ? WEB_PEER_LEASE_EXPIRES_AT : new Date(Date.now() + leaseMs).toISOString();
 }
 
 // Presence derivation — the single rule applied wherever a peer is serialized.
@@ -2174,7 +2179,8 @@ function initialActivityState(tool: string): ActivityState | null {
 // sweep resurrects the same peer via findPeerByHostSession + upsertPeer's
 // `deleted_at = NULL` path.
 function sweepExpiredPeers(ctx: DaemonContext): void {
-  const cutoff = new Date(Date.now() - PEER_RETENTION_MS).toISOString();
+  const retentionMs = ctx.config.daemon.peerRetentionMs;
+  const cutoff = new Date(Date.now() - retentionMs).toISOString();
   const swept = ctx.db.transaction(() => {
     const rows = ctx.db
       .query<{ peer_id: string }, [string]>(
@@ -2192,7 +2198,7 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
     return rows.map((row) => row.peer_id);
   })();
   if (swept.length > 0) {
-    log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${PEER_RETENTION_MS}ms`);
+    log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${retentionMs}ms`);
     emitWebStateChanged(ctx, { domains: ["peers", "groups"] });
   }
 }
@@ -3843,8 +3849,9 @@ async function main(): Promise<void> {
     }
   });
   const startedAt = new Date().toISOString();
-  const token = process.env[ENV_TOKEN] ?? null;
-  const { host, port } = resolveBind(process.env);
+  const runtimeConfig = await loadRuntimeConfig(paths.configPath, process.env);
+  const token = runtimeConfig.daemon.token;
+  const { host, port } = resolveBind(process.env, runtimeConfig.daemon);
   assertLanModeIsProtected(host, token);
   const skillCatalog = await loadSkillCatalog({ repoRoot: provenance.source_root, env: process.env });
   log(`skill catalog loaded entries=${skillCatalog.length}`);
@@ -3887,6 +3894,7 @@ async function main(): Promise<void> {
     launchWorker: null,
     summarizeWorker,
     skillCatalog,
+    config: runtimeConfig,
   };
   ctx.launchWorker = startLaunchWorker(ctx);
   console.error(`[launch] worker started`);
@@ -3896,7 +3904,7 @@ async function main(): Promise<void> {
   // Retention sweeper: run once at startup (cleans up peers that died while the
   // daemon was down) then on an interval. unref so it never blocks shutdown.
   sweepExpiredPeers(ctx);
-  const sweepTimer = setInterval(() => sweepExpiredPeers(ctx), SWEEP_INTERVAL_MS);
+  const sweepTimer = setInterval(() => sweepExpiredPeers(ctx), runtimeConfig.daemon.sweepIntervalMs);
   sweepTimer.unref?.();
 
   const discovery: DiscoveryFile = {
