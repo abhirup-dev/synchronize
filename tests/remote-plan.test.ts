@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildProvisionPlan, buildSyncPlan, renderRemoteConfig } from "../src/remote/plan.ts";
+import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, renderRemoteConfig } from "../src/remote/plan.ts";
 import { parseConfig } from "../src/config.ts";
 
 // Pure unit tests for the remote command plans — they assert the exact ssh/rsync
@@ -75,6 +75,42 @@ test("remote config.toml can use token_env instead of a literal", () => {
   const toml = renderRemoteConfig({ hubUrl: "http://h:1", tokenEnv: "SYNCHRONIZE_TOKEN" });
   const config = parseConfig(toml);
   expect(config.remotes.hub).toEqual({ url: "http://h:1", tokenEnv: "SYNCHRONIZE_TOKEN" });
+});
+
+test("harness plan: one ssh step per scenario, pointed at the hub with timeouts", () => {
+  const plan = buildHarnessPlan({
+    sshHost: "vpsme",
+    remotePath: "~/synchronize-runtime",
+    hubUrl: "http://100.126.163.80:58412",
+    token: "tok",
+    scenarios: ["cli-dm", "pi-thread-baton"],
+  });
+  expect(plan).toHaveLength(2);
+  const cli = plan[0]!.argv[2]!;
+  expect(plan[0]!.argv[0]).toBe("ssh");
+  expect(cli).toContain("uv run scripts/integration_tmux.py");
+  expect(cli).toContain("'--remote-url' 'http://100.126.163.80:58412'");
+  expect(cli).toContain("'--remote-token' 'tok'");
+  expect(cli).toContain("cd ~/'synchronize-runtime'");
+  // Pi thread-baton gets its longer command timeout.
+  expect(plan[1]!.argv[2]).toContain("scripts/integration_thread_baton_pi.py");
+  expect(plan[1]!.argv[2]).toContain("'--command-timeout' '240'");
+});
+
+test("harness plan: --all covers every known scenario; extraArgs appended", () => {
+  const plan = buildHarnessPlan({
+    sshHost: "h",
+    remotePath: "/r",
+    hubUrl: "http://h:1",
+    scenarios: ALL_HARNESS_SCENARIOS,
+    extraArgs: ["--keep"],
+  });
+  expect(plan).toHaveLength(6);
+  expect(plan.every((s) => s.argv[2]!.includes("--keep"))).toBe(true);
+});
+
+test("harness plan: unknown scenario throws with the known list", () => {
+  expect(() => buildHarnessPlan({ sshHost: "h", remotePath: "/r", hubUrl: "http://h:1", scenarios: ["nope"] })).toThrow(/unknown harness scenario/);
 });
 
 test("write-config step carries the toml as stdin (no fragile heredoc quoting)", () => {

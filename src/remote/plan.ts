@@ -120,6 +120,56 @@ export function buildSyncPlan(input: SyncPlanInput): RemoteStep[] {
   return steps;
 }
 
+// ---------------------------------------------------------------------------
+// Run the Python AOE integration harness on a remote, pointed at the hub.
+// Each scenario is a `uv run --script` entrypoint; per-scenario default
+// timeouts mirror scripts/README.md (Pi scenarios need generous warmup).
+// ---------------------------------------------------------------------------
+
+export interface HarnessScenario {
+  script: string;
+  defaultArgs: string[];
+}
+
+export const HARNESS_SCENARIOS: Record<string, HarnessScenario> = {
+  "cli-dm": { script: "scripts/integration_tmux.py", defaultArgs: ["--start-timeout", "90", "--command-timeout", "45"] },
+  "cli-group-policy": { script: "scripts/integration_group_policy_tmux.py", defaultArgs: ["--start-timeout", "90", "--command-timeout", "45"] },
+  "pi-dm": { script: "scripts/integration_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "180", "--registration-timeout", "120", "--warmup-timeout", "120"] },
+  "pi-group-policy": { script: "scripts/integration_group_policy_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "180", "--registration-timeout", "120", "--warmup-timeout", "120"] },
+  "pi-thread-baton": { script: "scripts/integration_thread_baton_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "240", "--registration-timeout", "120", "--warmup-timeout", "120"] },
+  "pi-revival": { script: "scripts/integration_pi_revival.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "180", "--registration-timeout", "120", "--warmup-timeout", "120"] },
+};
+
+export const ALL_HARNESS_SCENARIOS = Object.keys(HARNESS_SCENARIOS);
+
+export interface HarnessPlanInput {
+  sshHost: string;
+  remotePath: string;
+  hubUrl: string;
+  token?: string;
+  scenarios: string[];
+  localBin?: string;
+  /** Extra flags appended to every scenario (e.g. --keep, --provider). */
+  extraArgs?: string[];
+}
+
+export function buildHarnessPlan(input: HarnessPlanInput): RemoteStep[] {
+  const localBin = input.localBin ?? "$HOME/.local/bin";
+  return input.scenarios.map((key) => {
+    const scenario = HARNESS_SCENARIOS[key];
+    if (!scenario) throw new Error(`unknown harness scenario: ${key} (known: ${ALL_HARNESS_SCENARIOS.join(", ")})`);
+    const args = [
+      "--remote-url",
+      input.hubUrl,
+      ...(input.token ? ["--remote-token", input.token] : []),
+      ...scenario.defaultArgs,
+      ...(input.extraArgs ?? []),
+    ];
+    const remoteCmd = `cd ${shq(input.remotePath)} && export PATH="${localBin}:$PATH" && uv run ${scenario.script} ${args.map(shq).join(" ")}`;
+    return { name: `harness: ${key}`, argv: ["ssh", input.sshHost, remoteCmd] };
+  });
+}
+
 function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, "");
 }

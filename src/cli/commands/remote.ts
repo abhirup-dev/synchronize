@@ -12,7 +12,7 @@ import {
   type SynchronizeConfig,
 } from "../../config.ts";
 import { getRuntimePaths } from "../../paths.ts";
-import { buildProvisionPlan, buildSyncPlan, type RemoteStep } from "../../remote/plan.ts";
+import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, type RemoteStep } from "../../remote/plan.ts";
 import { resolve } from "node:path";
 
 // `synchronize remote` — the multi-machine control plane. v0 (sync-7mcv) covers
@@ -28,7 +28,11 @@ const USAGE = `synchronize remote <subcommand>
   remove <name>              delete a profile
   provision <ssh-host>       verify remote tools + non-interactive PATH [--dry-run]
   sync <ssh-host> --hub-url <url> [--path <remote-dir>] [--token <t> | --token-env <ENV>]
-             [--skip-install] [--dry-run]   rsync runtime + write remote config + verify`;
+             [--skip-install] [--dry-run]   rsync runtime + write remote config + verify
+  harness <ssh-host> --hub-url <url> [--scenario <name> | --all] [--token <t>]
+             [--path <remote-dir>] [--dry-run] [-- <extra scenario args>]
+             run the Python AOE harness on the remote against the hub
+             scenarios: cli-dm cli-group-policy pi-dm pi-group-policy pi-thread-baton pi-revival`;
 
 export async function run(argv: string[]): Promise<void> {
   const [sub, ...rest] = argv;
@@ -55,6 +59,9 @@ export async function run(argv: string[]): Promise<void> {
       return;
     case "sync":
       await syncRemote(rest);
+      return;
+    case "harness":
+      await harnessRemote(rest);
       return;
     default:
       console.log(USAGE);
@@ -172,9 +179,39 @@ async function syncRemote(argv: string[]): Promise<void> {
   await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
 }
 
+async function harnessRemote(argv: string[]): Promise<void> {
+  // Split off pass-through scenario args after `--`.
+  const dashdash = argv.indexOf("--");
+  const head = dashdash >= 0 ? argv.slice(0, dashdash) : argv;
+  const extraArgs = dashdash >= 0 ? argv.slice(dashdash + 1) : [];
+  const flags = parseFlags(head);
+  const sshHost = flags.positional[0];
+  if (!sshHost) fail("remote harness requires an <ssh-host>");
+  const hubUrl = flags.opts["hub-url"];
+  if (!hubUrl) fail("remote harness requires --hub-url <url>");
+  const remotePath = flags.opts.path ?? "~/synchronize-runtime";
+  const scenarios = flags.bools.has("all")
+    ? ALL_HARNESS_SCENARIOS
+    : flags.opts.scenario
+      ? [flags.opts.scenario]
+      : fail("remote harness requires --scenario <name> or --all");
+  const plan = buildHarnessPlan({
+    sshHost,
+    remotePath,
+    hubUrl,
+    ...(flags.opts.token ? { token: flags.opts.token } : {}),
+    scenarios,
+    extraArgs,
+  });
+  await runPlan(plan, { dryRun: flags.bools.has("dry-run"), continueOnError: true });
+}
+
 // Execute a remote plan step-by-step, streaming output. --dry-run prints the
 // exact argv (and a note for any piped stdin) without touching the remote.
-async function runPlan(plan: RemoteStep[], opts: { dryRun: boolean }): Promise<void> {
+// continueOnError keeps going after a failed step and prints a pass/fail summary
+// (used for the harness suite — one failing scenario shouldn't hide the rest).
+async function runPlan(plan: RemoteStep[], opts: { dryRun: boolean; continueOnError?: boolean }): Promise<void> {
+  const results: Array<{ name: string; code: number }> = [];
   for (const step of plan) {
     const rendered = step.argv.map(shellPreview).join(" ");
     if (opts.dryRun) {
@@ -191,15 +228,27 @@ async function runPlan(plan: RemoteStep[], opts: { dryRun: boolean }): Promise<v
       stderr: "inherit",
     });
     const code = await proc.exited;
+    results.push({ name: step.name, code });
     if (code !== 0) {
       if (step.optional) {
         console.error(`  ⚠ ${step.name} failed (exit ${code}); continuing (optional)`);
         continue;
       }
+      if (opts.continueOnError) {
+        console.error(`  ✗ ${step.name} failed (exit ${code}); continuing`);
+        continue;
+      }
       fail(`✗ ${step.name} failed (exit ${code})`);
     }
   }
-  if (!opts.dryRun) console.log("\n✓ remote plan complete");
+  if (opts.dryRun) return;
+  const failed = results.filter((r) => r.code !== 0);
+  if (opts.continueOnError && results.length > 1) {
+    console.log(`\n=== summary: ${results.length - failed.length}/${results.length} passed ===`);
+    for (const r of results) console.log(`  ${r.code === 0 ? "✓" : "✗"} ${r.name}`);
+  }
+  if (failed.length > 0) fail(`\n✗ ${failed.length} step(s) failed`);
+  console.log("\n✓ remote plan complete");
 }
 
 function shellPreview(arg: string): string {
