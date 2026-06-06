@@ -162,7 +162,10 @@ interface ReactionRow {
 
 interface MentionWarning {
   token: string;
-  reason: "alias_not_in_group";
+  // alias_archived: the alias exists but its holder is archived (resumable, not
+  // deliverable) — a distinct, actionable signal vs. a truly-unknown alias, so
+  // the web can surface a "resume to reach them" guardrail toast.
+  reason: "alias_not_in_group" | "alias_archived";
 }
 
 interface EventSubscriber {
@@ -737,6 +740,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const members = await archiveGroupApply(ctx, group.group_id, { reason, dryRun });
     log(`archive group name=${group.name} members=${members.length}${dryRun ? " (dry-run)" : ""}`);
     return jsonResponse({ group: group.name, dry_run: dryRun, members });
+  }
+
+  if (request.method === "GET" && url.pathname === "/archive/sessions") {
+    return jsonResponse({ sessions: listArchivedSessions(ctx.db) });
   }
 
   if (request.method === "POST" && url.pathname === "/resume/session") {
@@ -2090,6 +2097,9 @@ function resolveMentions(
   const lookup = db.query<{ peer_id: string }, [number, string]>(
     "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND alias = ?",
   );
+  const archivedAliasLookup = db.query<{ peer_id: string }, [number, string]>(
+    "SELECT peer_id FROM group_members WHERE group_id = ? AND member_state = 'archived' AND alias = ?",
+  );
   const peerIds: string[] = [];
   const warnings: MentionWarning[] = [];
   for (const token of tokens) {
@@ -2100,8 +2110,16 @@ function resolveMentions(
     }
     const normalizedToken = normalizeMentionToken(token);
     const normalizedRow = normalizedToken !== token && normalizedToken ? lookup.get(groupId, normalizedToken) : null;
-    if (normalizedRow) peerIds.push(normalizedRow.peer_id);
-    else warnings.push({ token: `@${normalizedToken || token}`, reason: "alias_not_in_group" });
+    if (normalizedRow) {
+      peerIds.push(normalizedRow.peer_id);
+      continue;
+    }
+    // Distinguish "archived" from "unknown": an archived seat keeps its alias
+    // reserved (member_state='archived', active=0), so it won't match the
+    // active-only lookup above. Surfacing alias_archived lets the web warn
+    // "they're archived — resume to reach them" instead of "no such alias".
+    const archived = archivedAliasLookup.get(groupId, token) ?? (normalizedToken && normalizedToken !== token ? archivedAliasLookup.get(groupId, normalizedToken) : null);
+    warnings.push({ token: `@${normalizedToken || token}`, reason: archived ? "alias_archived" : "alias_not_in_group" });
   }
   return { peerIds, warnings };
 }
@@ -2534,6 +2552,42 @@ async function archiveSessionApply(
   emitWebStateChanged(ctx, { domains: ["peers", "groups", "agent_sessions"], peerId });
 
   return { ...base, reaped, zombie, ...(warning ? { warning } : {}) };
+}
+
+export interface ArchivedSessionSummary {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  archived_at: string | null;
+  archived_reason: string | null;
+  archive_source: string | null;
+  aliases: ArchiveAliasReservation[];
+}
+
+// List every archived (resumable) identity with its reserved seats. Powers
+// `bridge_list_archived` / a future `resume --list`. Archived counts are small,
+// so the per-peer seat lookup is fine.
+export function listArchivedSessions(db: Database): ArchivedSessionSummary[] {
+  const peers = db
+    .query<
+      { peer_id: string; session_name: string; tool: string; archived_at: string | null; archived_reason: string | null; archive_source: string | null },
+      []
+    >(
+      `SELECT peer_id, session_name, tool, archived_at, archived_reason, archive_source
+       FROM peers WHERE lifecycle_state = 'archived' AND deleted_at IS NULL
+       ORDER BY archived_at DESC, session_name ASC`,
+    )
+    .all();
+  return peers.map((peer) => ({
+    ...peer,
+    aliases: db
+      .query<{ group: string; alias: string }, [string]>(
+        `SELECT g.name AS "group", gm.alias AS alias
+         FROM group_members gm JOIN groups g ON g.group_id = gm.group_id
+         WHERE gm.peer_id = ? AND gm.member_state = 'archived' ORDER BY g.name ASC`,
+      )
+      .all(peer.peer_id),
+  }));
 }
 
 // Resolve the target identity for an archive from either an explicit peer_id or

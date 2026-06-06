@@ -237,4 +237,9 @@ export interface DataSource {
 
   // debug — what adapter is this
   readonly kind: "mock" | "daemon";
+
+  /** Optional UI-notice seam. The data layer fires this for non-fatal guardrail
+   *  signals (e.g. mentioning an archived alias) so the shell can surface a
+   *  toast. Set by the toast-scoped shell after mount. */
+  onNotice?: (message: string, kind: "info" | "warn" | "error" | "success") => void;
 }

@@ -193,3 +193,23 @@ test("archive group reports per-member status and reserves every alias", async (
     await daemon.stop();
   }
 });
+
+test("mentioning an archived alias yields an alias_archived warning (web guardrail signal)", async () => {
+  const daemon = await startDaemon();
+  try {
+    const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
+    const { peer: b } = await registerPeer(daemon.client, { sessionName: "b", tool: "claude" });
+    await createGroup(daemon.client, { name: "room", creatorPeerId: a.peer_id });
+    await joinGroup(daemon.client, { name: "room", peerId: a.peer_id, alias: "alice" });
+    await joinGroup(daemon.client, { name: "room", peerId: b.peer_id, alias: "bob" });
+    await archiveSession(daemon.client, { peerId: b.peer_id });
+
+    // a mentions the archived bob and a truly-unknown alias.
+    const res = await sendGroupMessage(daemon.client, { name: "room", senderPeerId: a.peer_id, message: "ping @bob and @ghost" });
+    const byToken = Object.fromEntries(res.warnings.map((w) => [w.token, w.reason]));
+    expect(byToken["@bob"]).toBe("alias_archived"); // distinct, actionable signal
+    expect(byToken["@ghost"]).toBe("alias_not_in_group"); // truly unknown
+  } finally {
+    await daemon.stop();
+  }
+});

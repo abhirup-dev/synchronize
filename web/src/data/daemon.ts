@@ -195,6 +195,7 @@ const EMPTY_AGENT: Agent = {
 
 export class DaemonDataSource implements DataSource {
   readonly kind = "daemon" as const;
+  onNotice?: (message: string, kind: "info" | "warn" | "error" | "success") => void;
 
   private readonly baseUrl: string;
   private readonly pollMs: number;
@@ -375,7 +376,7 @@ export class DaemonDataSource implements DataSource {
         throw new Error(`Unknown group room: ${input.roomId}`);
       }
       try {
-        const response = await this.request<{ event: DaemonEvent }>(`/groups/${encodeURIComponent(name)}/messages`, {
+        const response = await this.request<{ event: DaemonEvent; warnings?: Array<{ token: string; reason: string }> }>(`/groups/${encodeURIComponent(name)}/messages`, {
           method: "POST",
           body: JSON.stringify({
             sender_peer_id: this.peerId,
@@ -384,6 +385,16 @@ export class DaemonDataSource implements DataSource {
             ...(input.skillDirectives?.length ? { skill_directives: input.skillDirectives } : {}),
           }),
         });
+        // Guardrail (sync-cmw2.3): warn when a mention targeted an ARCHIVED alias
+        // — the message posted, but that teammate is archived and won't receive
+        // it until resumed. A distinct signal from a truly-unknown alias.
+        const archived = (response.warnings ?? []).filter((w) => w.reason === "alias_archived");
+        if (archived.length > 0) {
+          this.onNotice?.(
+            `${archived.map((w) => w.token).join(", ")} ${archived.length === 1 ? "is" : "are"} archived — resume to reach ${archived.length === 1 ? "them" : "those agents"}.`,
+            "warn",
+          );
+        }
         const delivered = mapMessage(response.event, input.roomId, "delivered");
         this.replaceOptimistic(input, optimistic.id, delivered);
         await this.refreshRoom(input.roomId);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DataSource } from "./data/types.ts";
-import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
+import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
@@ -139,6 +139,17 @@ function Shell() {
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
   const toast = useToast();
+  const dataSource = useDataSource();
+
+  // Bridge the data layer's non-fatal guardrail notices (e.g. mentioning an
+  // archived alias) into toasts. Attached here because the toast context only
+  // exists inside ToastProvider, below where the data source is created.
+  useEffect(() => {
+    dataSource.onNotice = (message, kind) => toast.show(message, { kind });
+    return () => {
+      delete dataSource.onNotice;
+    };
+  }, [dataSource, toast]);
 
   // Jump-to-last-message-by-agent: scrolls to the latest message authored by
   // `agentId` in the active room, flashes it with the throbbing yellow ring.

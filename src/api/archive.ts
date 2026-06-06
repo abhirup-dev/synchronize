@@ -49,6 +49,20 @@ export function archiveSession(
   });
 }
 
+export interface ArchivedSessionSummary {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  archived_at: string | null;
+  archived_reason: string | null;
+  archive_source: string | null;
+  aliases: ArchiveAliasReservation[];
+}
+
+export function listArchived(client: ClientConfig): Promise<{ sessions: ArchivedSessionSummary[] }> {
+  return requestJson<{ sessions: ArchivedSessionSummary[] }>(client, "/archive/sessions");
+}
+
 export function archiveGroup(
   client: ClientConfig,
   input: { group: string; reason?: string; dryRun?: boolean },
