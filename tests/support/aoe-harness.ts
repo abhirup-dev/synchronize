@@ -11,6 +11,7 @@ import { launchAgent, listAgentSessions } from "../../src/api/agent-sessions.ts"
 import { archiveSession, listArchived } from "../../src/api/archive.ts";
 import { readInbox, sendDm } from "../../src/api/inbox.ts";
 import { sendGroupMessage } from "../../src/api/groups.ts";
+import { aoeProfileName } from "../../src/launch/service.ts";
 import { startDaemon, type TestDaemon } from "./daemon.ts";
 
 export const HARNESS = process.env.SYNCHRONIZE_AOE_HARNESS === "1";
@@ -34,10 +35,17 @@ export interface LaunchedAgent {
 export function createHarness() {
   const spawnedTitles = new Set<string>();
   const spawnedRepos: string[] = [];
+  const startedHomes: string[] = [];
 
   // Start a debug daemon (full decision trail to stderr) for the harness.
+  // Track its home so cleanup can delete the AOE profile it owns — each daemon
+  // home maps to a distinct `synchronize-<hash>` AOE profile, and the AOE tool
+  // keeps its own per-profile session/group registry that outlives both the
+  // tmux panes and the (deleted) daemon home unless we tear it down explicitly.
   async function startHarnessDaemon(): Promise<TestDaemon> {
-    return startDaemon({ debug: true });
+    const daemon = await startDaemon({ debug: true });
+    startedHomes.push(daemon.home);
+    return daemon;
   }
 
   // Launch one real Pi agent through the daemon's launch lifecycle and wait
@@ -51,13 +59,29 @@ export function createHarness() {
     return { peerId: result.peerId, title: result.title, name };
   }
 
-  // Reap spawned tmux backends and remove the per-agent temp repo dirs.
+  // Reap spawned tmux backends, remove per-agent temp repo dirs, and delete the
+  // AOE profile each harness daemon created (which drops its AOE sessions +
+  // groups — otherwise they accumulate as dead `synchronize-<hash>` profiles).
   async function cleanup(): Promise<void> {
     for (const title of spawnedTitles) await killAoeByTitle(title);
     await Promise.all(spawnedRepos.map((repo) => rm(repo, { recursive: true, force: true })));
+    for (const home of startedHomes) await deleteAoeProfile(home);
   }
 
   return { spawnedTitles, startHarnessDaemon, launchPi, cleanup };
+}
+
+// Delete the AOE profile a daemon home owns (removes its AOE sessions + groups).
+// `aoe profile delete` prompts for confirmation, so pipe 'y'. No-op when aoe is
+// absent or the profile never materialized.
+export async function deleteAoeProfile(home: string): Promise<void> {
+  const profile = aoeProfileName(home);
+  const proc = Bun.spawn({
+    cmd: ["sh", "-c", `printf 'y\\n' | aoe profile delete ${profile}`],
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  await proc.exited;
 }
 
 // Best-effort: kill the tmux session(s) AOE created for a backend title.
@@ -152,6 +176,38 @@ export async function groupSendWhenActive(
     try {
       const { delivery } = await sendGroupMessage(client, { name, senderPeerId, message });
       return delivery;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "must_reregister") {
+        await Bun.sleep(1500);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`group sender ${senderPeerId} did not resurrect in time`);
+}
+
+// Send a group message — optionally threaded via `inReplyTo` — retrying through
+// `must_reregister` until the (possibly just-resumed) sender can post. Returns
+// the new event id (for chaining thread replies) plus the delivery summary.
+export async function groupPostWhenActive(
+  client: ClientConfig,
+  name: string,
+  senderPeerId: string,
+  message: string,
+  inReplyTo?: number,
+  timeoutMs = 120_000,
+): Promise<{ eventId: number; delivery: Delivery }> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await sendGroupMessage(client, {
+        name,
+        senderPeerId,
+        message,
+        ...(inReplyTo !== undefined ? { inReplyTo } : {}),
+      });
+      return { eventId: res.event.event_id, delivery: res.delivery };
     } catch (error) {
       if (error instanceof ApiError && error.code === "must_reregister") {
         await Bun.sleep(1500);
