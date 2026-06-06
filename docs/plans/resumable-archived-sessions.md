@@ -61,6 +61,16 @@ live ones.
   `claude --resume <id>` keeps the same session id unless `--fork-session`
   (we never fork). Pi `--session <id|path>` reuses the session. So
   `UNIQUE(host_tool, host_session_id)` correlation survives resume.
+  > **⚠ VERIFIED FALSE (2026-06-06, AOE harness).** Empirically, both
+  > `claude --resume <id>` and `pi --session <id>` LOAD the prior conversation
+  > but the resumed instance registers under a **new** `host_session_id` (Claude:
+  > `ebe0…`→`cee8…`; Pi: `…785a`→`…8126`). Faithful resume does **not** depend on
+  > A3: identity reattaches via the pinned **`ENV_PEER_ID`** (the archived
+  > peer_id), not host_session_id correlation, so resurrection
+  > (archived→active) still fires correctly. `planResume` reads the *latest*
+  > `agent_session` (ORDER BY updated_at DESC), so the resume chain self-heals to
+  > the newest session id. The host_session_id correlation remains a best-effort
+  > *fallback* for the rare case where ENV_PEER_ID is absent.
 - **A4 — The transcript outlives the process.** Claude transcripts live in
   `~/.claude/projects/<cwd-hash>/<id>.jsonl`; Pi sessions in the daemon-owned
   `PI_CODING_AGENT_SESSION_DIR`. Both survive a crash / worktree deletion.
