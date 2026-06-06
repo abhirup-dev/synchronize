@@ -6,16 +6,11 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import {
   ACTIVITY_STATES,
   type ActivityState,
-  DEFAULT_PAGE_LIMIT,
-  DEFAULT_PORT,
-  ENV_BIND,
-  ENV_PORT,
-  ENV_TOKEN,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
   API_VERSION,
 } from "./constants.ts";
-import { loadRuntimeConfig, type DaemonConfig, type RuntimeConfig } from "./config.ts";
+import { loadRuntimeConfig, type RuntimeConfig } from "./config.ts";
 import { openDatabase, pruneEphemeralGroups } from "./db.ts";
 import { applyDaemonEnvFiles } from "./env-files.ts";
 import { ensureDir, writeJson } from "./fs.ts";
@@ -47,14 +42,43 @@ import {
   startSummarizeWorker,
   strategyFromInput,
   summarizeThread,
-  type ResolvedStrategy,
   type WorkerHandle,
 } from "./summarize/index.ts";
-import type { ReactionSummary, ReplyDestination, SelectorStrategy, SkillCatalogEntry, ThreadFormat } from "./api/types.ts";
+import type { ReactionSummary, ReplyDestination, SkillCatalogEntry } from "./api/types.ts";
+import { assertLanModeIsProtected, requireAuth, resolveBind } from "./daemon/auth.ts";
+import { mapSqliteConstraint } from "./daemon/errors.ts";
+import {
+  parseSelectorsFromUrl,
+  selectThreadEvents,
+  selectorLimit,
+  selectorToSummaryStrategy,
+  type NormalizedSelectors,
+} from "./daemon/selectors.ts";
+import {
+  optionalFormString,
+  optionalInteger,
+  optionalIntegerArray,
+  optionalObjectJson,
+  optionalReactionOp,
+  optionalSqlParams,
+  optionalString,
+  optionalStringArray,
+  parseCursor,
+  parseEventIdsParam,
+  parseGroupHistoryView,
+  parseLimit,
+  parseThreadFormat,
+  readBody,
+  requireEmoji,
+  requireGroupName,
+  requireLaunchPath,
+  requireLocalCallbackUrl,
+  requirePositiveInteger,
+  requireString,
+  type ReactionOp,
+} from "./daemon/validation.ts";
 
 const REPLY_CONTEXT_PREVIEW_WORDS = 30;
-const DEFAULT_SELECTOR_STRATEGY: SelectorStrategy = "last";
-const DEFAULT_SELECTOR_K = 5;
 
 export interface DaemonContext {
   paths: RuntimePaths;
@@ -317,49 +341,12 @@ interface ThreadStatusRow {
   participant_count: number;
 }
 
-interface NormalizedSelectors {
-  strategy: SelectorStrategy;
-  k?: number;
-}
-
-type GroupHistoryView = "flat" | "threads" | "events";
-
 function log(message: string): void {
   console.error(`[synchronize-daemon] ${message}`);
 }
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-// Bind host/port come from the resolved daemon config (env > config.toml >
-// default), but the strict SYNCHRONIZE_PORT parse is preserved here: a malformed
-// env port must still throw rather than silently fall back. `daemon.bind`/
-// `daemon.port` already fold in env+toml; the explicit env[ENV_PORT] check only
-// exists to keep that hard validation error.
-function resolveBind(env: NodeJS.ProcessEnv, daemon: DaemonConfig): { host: string; port: number } {
-  const host = daemon.bind;
-  const rawPort = env[ENV_PORT];
-  const port = rawPort ? Number.parseInt(rawPort, 10) : daemon.port ?? DEFAULT_PORT;
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error(`${ENV_PORT} must be an integer from 0 to 65535`);
-  }
-  return { host, port };
-}
-
-function assertLanModeIsProtected(host: string, token: string | null): void {
-  const localhost = host === "127.0.0.1" || host === "localhost" || host === "::1";
-  if (!localhost && !token) {
-    throw new Error(`${ENV_TOKEN} is required when ${ENV_BIND} is not localhost`);
-  }
-}
-
-function requireAuth(request: Request, ctx: DaemonContext): void {
-  if (!ctx.token) return;
-  const header = request.headers.get("authorization");
-  if (header !== `Bearer ${ctx.token}`) {
-    throw new HttpError(401, "unauthorized", "A valid bearer token is required");
-  }
 }
 
 async function route(request: Request, ctx: DaemonContext): Promise<Response> {
@@ -1856,244 +1843,6 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   }
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
-}
-
-async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const value = await request.json().catch(() => {
-    throw new HttpError(400, "invalid_json", "Request body must be valid JSON");
-  });
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new HttpError(400, "invalid_json", "Request body must be a JSON object");
-  }
-  return value as Record<string, unknown>;
-}
-
-function requireString(body: Record<string, unknown>, key: string): string {
-  const value = body[key];
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError(400, "invalid_request", `${key} is required`);
-  }
-  return value.trim();
-}
-
-function optionalString(body: Record<string, unknown>, key: string): string | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") {
-    throw new HttpError(400, "invalid_request", `${key} must be a string`);
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
-
-function optionalFormString(form: FormData, key: string): string | undefined {
-  const value = form.get(key);
-  if (value === null) return undefined;
-  if (typeof value !== "string") {
-    throw new HttpError(400, "invalid_request", `${key} must be a string`);
-  }
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
-
-function optionalInteger(body: Record<string, unknown>, key: string): number | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return undefined;
-  if (!Number.isInteger(value)) {
-    throw new HttpError(400, "invalid_request", `${key} must be an integer`);
-  }
-  return value as number;
-}
-
-function requirePositiveInteger(body: Record<string, unknown>, key: string): number {
-  const value = optionalInteger(body, key);
-  if (value === undefined || value < 1) {
-    throw new HttpError(400, "invalid_request", `${key} must be a positive integer`);
-  }
-  return value;
-}
-
-type ReactionOp = "add" | "remove" | "toggle";
-
-function optionalReactionOp(body: Record<string, unknown>): ReactionOp {
-  const value = body["op"];
-  if (value === undefined || value === null) return "add";
-  if (value === "add" || value === "remove" || value === "toggle") return value;
-  throw new HttpError(400, "invalid_request", "op must be add, remove, or toggle");
-}
-
-function requireEmoji(value: string): string {
-  if (value.length > 32 || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) {
-    throw new HttpError(400, "invalid_emoji", "emoji must be a short emoji or emoji alias");
-  }
-  return value;
-}
-
-function optionalSqlParams(body: Record<string, unknown>, key: string): Array<string | number | boolean | null> | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return undefined;
-  if (
-    !Array.isArray(value) ||
-    value.some((item) => item !== null && typeof item !== "string" && typeof item !== "number" && typeof item !== "boolean")
-  ) {
-    throw new HttpError(400, "invalid_request", `${key} must be an array of strings, numbers, booleans, or nulls`);
-  }
-  return value as Array<string | number | boolean | null>;
-}
-
-function optionalObjectJson(body: Record<string, unknown>, key: string): string | null {
-  const value = body[key];
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "object" || Array.isArray(value)) {
-    throw new HttpError(400, "invalid_request", `${key} must be an object`);
-  }
-  return JSON.stringify(value);
-}
-
-function optionalIntegerArray(body: Record<string, unknown>, key: string): number[] | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some((item) => !Number.isInteger(item) || item < 1)) {
-    throw new HttpError(400, "invalid_request", `${key} must be an array of positive integers`);
-  }
-  return value as number[];
-}
-
-function optionalStringArray(body: Record<string, unknown>, key: string): string[] | undefined {
-  const value = body[key];
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) {
-    throw new HttpError(400, "invalid_request", `${key} must be an array of non-empty strings`);
-  }
-  return [...new Set(value.map((item) => item.trim()))];
-}
-
-function requireLocalCallbackUrl(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new HttpError(400, "invalid_callback_url", "callback_url must be a valid URL");
-  }
-  const localHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-  if (url.protocol !== "http:" || !localHosts.has(url.hostname)) {
-    throw new HttpError(400, "invalid_callback_url", "callback_url must be an http localhost URL");
-  }
-  return url.toString();
-}
-
-function requireGroupName(name: string): string {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(name)) {
-    throw new HttpError(
-      400,
-      "invalid_group_name",
-      "Group name must start with a letter or number and contain only letters, numbers, dots, underscores, or hyphens",
-    );
-  }
-  return name;
-}
-
-function requireLaunchPath(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed.startsWith("/")) {
-    throw new HttpError(400, "invalid_group_path", "Group path must be an absolute path");
-  }
-  return trimmed.replace(/\/+$/, "") || "/";
-}
-
-function parseLimit(raw: string | null): number {
-  if (!raw) return DEFAULT_PAGE_LIMIT;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new HttpError(400, "invalid_request", "limit must be a positive integer");
-  }
-  return Math.min(value, MAX_PAGE_LIMIT);
-}
-
-function parseSelectorsFromUrl(url: URL): NormalizedSelectors {
-  const rawStrategy = url.searchParams.get("selector_strategy");
-  const rawK = url.searchParams.get("selector_k") ?? url.searchParams.get("limit");
-  return normalizeSelectors(rawStrategy, rawK === null ? undefined : Number.parseInt(rawK, 10));
-}
-
-function parseThreadFormat(raw: string | null): ThreadFormat {
-  if (raw === null || raw === "") return "summary";
-  if (raw === "summary" || raw === "status" || raw === "events" || raw === "transcript") return raw;
-  if (raw === "json") {
-    throw new HttpError(400, "invalid_request", "format=json was removed; use format=events");
-  }
-  throw new HttpError(400, "invalid_request", "format must be summary, status, events, or transcript");
-}
-
-function parseGroupHistoryView(raw: string | null, hasEventIds: boolean): GroupHistoryView {
-  if ((raw === null || raw === "") && hasEventIds) return "events";
-  if (raw === null || raw === "") return "flat";
-  if (raw === "flat" || raw === "threads" || raw === "events") return raw;
-  throw new HttpError(400, "invalid_request", "view must be flat, threads, or events");
-}
-
-function parseEventIdsParam(raw: string | null): number[] {
-  if (raw === null || raw.trim() === "") {
-    throw new HttpError(400, "invalid_request", "event_ids is required when view=events");
-  }
-  return raw.split(",").map((part) => {
-    const value = Number.parseInt(part.trim(), 10);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new HttpError(400, "invalid_request", "event_ids must contain positive integer event ids");
-    }
-    return value;
-  });
-}
-
-function normalizeSelectors(rawStrategy: string | null | undefined, rawK?: number): NormalizedSelectors {
-  const strategy = (rawStrategy ?? DEFAULT_SELECTOR_STRATEGY).trim();
-  if (strategy !== "first" && strategy !== "last" && strategy !== "all") {
-    throw new HttpError(400, "invalid_selectors", "selectors.strategy must be first, last, or all");
-  }
-  if (strategy === "all") {
-    if (rawK !== undefined) {
-      throw new HttpError(400, "invalid_selectors", "selectors.k is not allowed when strategy is all");
-    }
-    return { strategy };
-  }
-  if (rawK !== undefined && (!Number.isInteger(rawK) || rawK < 1)) {
-    throw new HttpError(400, "invalid_selectors", "selectors.k must be a positive integer");
-  }
-  if (strategy === "first" && rawK === undefined) {
-    throw new HttpError(400, "invalid_selectors", "selectors.k is required when strategy is first");
-  }
-  return { strategy, k: Math.min(rawK ?? DEFAULT_SELECTOR_K, MAX_PAGE_LIMIT) };
-}
-
-function selectorLimit(selectors: NormalizedSelectors): number {
-  return selectors.strategy === "all" ? MAX_PAGE_LIMIT : selectors.k ?? DEFAULT_SELECTOR_K;
-}
-
-function selectorToSummaryStrategy(selectors: NormalizedSelectors): ResolvedStrategy {
-  if (selectors.strategy === "all") return { strategy: "all", params: {} };
-  if (selectors.strategy === "first") return { strategy: "first_k", params: { k: selectors.k! } };
-  return { strategy: "last_k", params: { k: selectors.k ?? DEFAULT_SELECTOR_K } };
-}
-
-function selectThreadEvents(events: EventRow[], selectors: NormalizedSelectors): { events: EventRow[]; truncated: boolean } {
-  if (events.length === 0) return { events: [], truncated: false };
-  if (selectors.strategy === "all") {
-    return { events: events.slice(0, MAX_PAGE_LIMIT), truncated: events.length > MAX_PAGE_LIMIT };
-  }
-  const root = events[0]!;
-  const replies = events.slice(1);
-  const k = selectors.k ?? DEFAULT_SELECTOR_K;
-  const selectedReplies = selectors.strategy === "first" ? replies.slice(0, k) : replies.slice(Math.max(0, replies.length - k));
-  return { events: [root, ...selectedReplies], truncated: replies.length > selectedReplies.length };
-}
-
-function parseCursor(raw: string | null): number {
-  if (!raw) return 0;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new HttpError(400, "invalid_request", "cursor must be a non-negative integer");
-  }
-  return value;
 }
 
 // Normalize Slack-style thread parents to a single level: a reply to a reply
@@ -3937,14 +3686,6 @@ async function writeMediaReadme(group: GroupRow, db: Database): Promise<void> {
     "",
   ].join("\n");
   await writeFile(join(group.media_dir, "README.md"), body, "utf8");
-}
-
-function mapSqliteConstraint(error: unknown, code: string, message: string): Error {
-  const text = error instanceof Error ? error.message : String(error);
-  if (text.includes("UNIQUE constraint failed") || text.includes("constraint failed")) {
-    return new HttpError(409, code, message);
-  }
-  return error instanceof Error ? error : new Error(text);
 }
 
 async function main(): Promise<void> {
