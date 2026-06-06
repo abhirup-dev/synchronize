@@ -1,10 +1,8 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import {
-  ACTIVITY_STATES,
   type ActivityState,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
@@ -15,9 +13,9 @@ import { applyDaemonEnvFiles } from "../env-files.ts";
 import { ensureDir, writeJson } from "../fs.ts";
 import { errorResponse, HttpError, jsonResponse } from "../http.ts";
 import { getRuntimePaths, type RuntimePaths } from "../paths.ts";
-import { collectDaemonProvenance, collectGitContext, type DaemonProvenance } from "../provenance.ts";
+import { collectDaemonProvenance, type DaemonProvenance } from "../provenance.ts";
 import { AoeBackend } from "../launch/backend.ts";
-import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "../launch/service.ts";
+import { LaunchService, aoeAttachCommand, aoeProfileName, aoeTitle } from "../launch/service.ts";
 import { isLaunchTool } from "../launch/build.ts";
 import { transitionLaunch, type LaunchLifecycleEvent } from "../launch/lifecycle.ts";
 import {
@@ -27,7 +25,6 @@ import {
   failLaunchWork,
   getLaunchIntent,
   updateLaunchState,
-  type LaunchIntentRow,
 } from "../launch/store.ts";
 import { resolveProviderConfig } from "../llm/index.ts";
 import { loadSkillCatalog } from "../skill-catalog.ts";
@@ -55,8 +52,6 @@ import {
 import {
   optionalFormString,
   optionalInteger,
-  optionalIntegerArray,
-  optionalObjectJson,
   optionalReactionOp,
   optionalString,
   optionalStringArray,
@@ -75,32 +70,22 @@ import {
 } from "./validation.ts";
 
 import {
-  MEMBER_SELECT_SQL,
   ackInboxEvents,
   appendMediaIndex,
-  applyLaunchTransition,
   applyReaction,
   attachReactions,
   attachmentExtension,
   buildReplyDestination,
   buildWebState,
   computeThreadParticipants,
-  deactivateStoppedLaunchPeer,
   defaultGroupPath,
-  deriveBackendTitleForPeer,
-  derivePresence,
   emitWebStateChanged,
   ensureActiveMember,
   ensureLocalWebPeer,
   ensurePeer,
   ensureReactableEvent,
-  eventForRecipient,
   fanoutRosterEventToInbox,
-  findPeerByHostSession,
-  findPeerByRequiredHostSession,
   formatGroup,
-  getAgentSessionByHost,
-  getAgentSessionByPeer,
   getEvent,
   getGroup,
   getGroupById,
@@ -115,8 +100,6 @@ import {
   hashFile,
   insertGroupPath,
   joinGroupCore,
-  leaseExpiresAtForTool,
-  listAgentSessions,
   listGroupHistoryFlat,
   listGroupHistoryThreads,
   listThreadDiscoveries,
@@ -126,15 +109,12 @@ import {
   openWebEvents,
   reactionDmPeerId,
   readWebRoomEvents,
-  reconcileLaunch,
   renderThreadTranscript,
   resolveMentions,
   resolveStagedAttachmentPath,
   resolveThreadParent,
   safePathSegment,
   serveWebAsset,
-  softDeletePeerIfPresent,
-  upsertPeer,
   webAttachmentRoot,
   writeMediaReadme
 } from "./server.ts";
@@ -142,13 +122,14 @@ import type {
   DaemonContext,
   EventRow,
   GroupRow,
-  InboxRow,
   MediaRow,
-  MemberRow,
-  PeerRow
 } from "./server.ts";
 import { tryHandleActivityRoute } from "./routes/activity.ts";
+import { tryHandleAgentSessionsRoute } from "./routes/agent-sessions.ts";
+import { tryHandleEventLookupRoute, tryHandleEventPullRoute } from "./routes/events.ts";
 import { tryHandleHealthRoute } from "./routes/health.ts";
+import { tryHandleInboxRoute } from "./routes/inbox.ts";
+import { tryHandlePeersRoute } from "./routes/peers.ts";
 import { tryHandleQueryRoute } from "./routes/query.ts";
 import { tryHandleStatusRoute } from "./routes/status.ts";
 import { tryHandleSubscriptionsRoute } from "./routes/subscriptions.ts";
@@ -262,285 +243,11 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
   const statusResponse = tryHandleStatusRoute(request, ctx, url);
   if (statusResponse) return statusResponse;
 
-  if (request.method === "POST" && url.pathname === "/agent-sessions/register") {
-    const body = await readBody(request);
-    const hostTool = requireString(body, "host_tool");
-    const hostSessionId = requireString(body, "host_session_id");
-    const requestedPeerId = optionalString(body, "peer_id");
-    const sessionName = optionalString(body, "session_name") ?? `${hostTool}-${hostSessionId.slice(0, 8)}`;
-    const tool = optionalString(body, "tool") ?? hostTool;
-    const purpose = optionalString(body, "purpose");
-    const peerId = requestedPeerId ?? findPeerByHostSession(ctx.db, hostTool, hostSessionId) ?? crypto.randomUUID();
-    const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = leaseExpiresAtForTool(tool, ctx.config.daemon.leaseMs);
-    const metadata = optionalObjectJson(body, "metadata");
-    const bindingId = `${hostTool}:${hostSessionId}`;
-    const cwd = optionalString(body, "cwd") ?? null;
-    const gitContext = collectGitContext(cwd);
+  const agentSessionsResponse = await tryHandleAgentSessionsRoute(request, ctx, url);
+  if (agentSessionsResponse) return agentSessionsResponse;
 
-    ctx.db.transaction(() => {
-      upsertPeer(ctx.db, {
-        peerId,
-        tool,
-        sessionName,
-        purpose: purpose ?? null,
-        machineId,
-        leaseExpiresAt,
-      });
-      ctx.db
-        .query(
-          `INSERT INTO agent_sessions (
-             binding_id, peer_id, host_tool, host_session_id, host_session_file, cwd, git_branch, git_dirty, pid,
-             source, model, agent_type, metadata_json, launch_id, last_seen_at
-           )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-           ON CONFLICT(host_tool, host_session_id) DO UPDATE SET
-             peer_id = excluded.peer_id,
-             host_session_file = excluded.host_session_file,
-             cwd = excluded.cwd,
-             git_branch = excluded.git_branch,
-             git_dirty = excluded.git_dirty,
-             pid = excluded.pid,
-             source = excluded.source,
-             model = excluded.model,
-             agent_type = excluded.agent_type,
-             metadata_json = excluded.metadata_json,
-             launch_id = excluded.launch_id,
-             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-             last_seen_at = excluded.last_seen_at`,
-        )
-        .run(
-          bindingId,
-          peerId,
-          hostTool,
-          hostSessionId,
-          optionalString(body, "host_session_file") ?? null,
-          cwd,
-          gitContext.git_branch,
-          gitContext.git_dirty === null ? null : Number(gitContext.git_dirty),
-          optionalInteger(body, "pid") ?? null,
-          optionalString(body, "source") ?? null,
-          optionalString(body, "model") ?? null,
-          optionalString(body, "agent_type") ?? null,
-          metadata,
-          optionalString(body, "launch_id") ?? null,
-        );
-    })();
-
-    log(`agent session registered host_tool=${hostTool} host_session_id=${hostSessionId} peer_id=${peerId}`);
-    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
-    // Server-side launch reconcile: if this register carries a launch_id with a
-    // pending group, auto-join the peer to that group (best-effort).
-    reconcileLaunch(ctx, optionalString(body, "launch_id") ?? null, peerId);
-    return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) }, { status: 201 });
-  }
-
-  if (request.method === "POST" && url.pathname === "/agent-sessions/launch") {
-    const body = await readBody(request);
-    let launchRequest;
-    try {
-      launchRequest = validateLaunchRequest(body);
-    } catch (error) {
-      if (error instanceof LaunchValidationError) throw new HttpError(400, "invalid_launch", error.message);
-      throw error;
-    }
-    const result = await ctx.launchService.launch(launchRequest);
-    log(`agent launch title=${result.title} launch_id=${result.launchId} peer_id=${result.peerId} group=${result.group ?? "<none>"}`);
-    return jsonResponse(result, { status: 201 });
-  }
-
-  if (request.method === "POST" && url.pathname === "/agent-sessions/stop") {
-    const body = await readBody(request);
-    // Prefer the explicit title (always known from the launch response, works
-    // even before the agent has registered). Otherwise derive the deterministic
-    // backend title from the launch binding and current peer/group metadata.
-    const explicitTitle = optionalString(body, "title");
-    const peerId = optionalString(body, "peer_id");
-    let title: string;
-    if (explicitTitle) {
-      title = explicitTitle;
-    } else if (peerId) {
-      title = deriveBackendTitleForPeer(ctx.db, peerId);
-    } else {
-      throw new HttpError(400, "invalid_stop", "stop requires title or peer_id");
-    }
-    await ctx.launchService.stop(title);
-    const stoppedLaunch = ctx.db
-      .query<LaunchIntentRow, [string]>("SELECT * FROM launch_intents WHERE backend_title = ? ORDER BY created_at DESC LIMIT 1")
-      .get(title);
-    if (stoppedLaunch) {
-      applyLaunchTransition(ctx, stoppedLaunch, { type: "stopped", reason: "operator_stop" });
-      const deactivated = deactivateStoppedLaunchPeer(ctx, stoppedLaunch.peer_id);
-      emitWebStateChanged(ctx, {
-        domains: deactivated ? ["peers", "groups", "agent_sessions"] : ["agent_sessions"],
-        peerId: stoppedLaunch.peer_id,
-      });
-    }
-    // Drop any pending launch intent for this title (stopped before it registered).
-    ctx.launchService.forgetByTitle(title);
-    log(`agent stop title=${title}${peerId ? ` peer_id=${peerId}` : ""}`);
-    return jsonResponse({ stopped: true, title, ...(peerId ? { peer_id: peerId } : {}) });
-  }
-
-  if (request.method === "GET" && url.pathname === "/agent-sessions") {
-    const hostTool = url.searchParams.get("tool");
-    const peerId = url.searchParams.get("peer_id");
-    const launchId = url.searchParams.get("launch_id");
-    return jsonResponse({ bindings: listAgentSessions(ctx.db, { hostTool, peerId, launchId }) });
-  }
-
-  const agentSessionGet = url.pathname.match(/^\/agent-sessions\/([^/]+)\/([^/]+)$/);
-  if (request.method === "GET" && agentSessionGet) {
-    const hostTool = decodeURIComponent(agentSessionGet[1] ?? "");
-    const hostSessionId = decodeURIComponent(agentSessionGet[2] ?? "");
-    return jsonResponse({ binding: getAgentSessionByHost(ctx.db, hostTool, hostSessionId) });
-  }
-
-  if (request.method === "POST" && url.pathname === "/agent-sessions/rename") {
-    const body = await readBody(request);
-    const sessionName = requireString(body, "session_name");
-    const peerId =
-      optionalString(body, "peer_id") ??
-      findPeerByRequiredHostSession(ctx.db, requireString(body, "host_tool"), requireString(body, "host_session_id"));
-    ensurePeer(ctx.db, peerId);
-    ctx.db
-      .query("UPDATE peers SET session_name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE peer_id = ?")
-      .run(sessionName, peerId);
-    log(`agent session renamed peer_id=${peerId} session_name=${sessionName}`);
-    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
-    return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
-  }
-
-  if (request.method === "POST" && url.pathname === "/peers/register") {
-    const body = await readBody(request);
-    const sessionName = requireString(body, "session_name");
-    const tool = optionalString(body, "tool") ?? "cli";
-    const purpose = optionalString(body, "purpose");
-    const peerId = optionalString(body, "peer_id") ?? crypto.randomUUID();
-    const machineId = optionalString(body, "machine_id") ?? hostname();
-    const leaseExpiresAt = leaseExpiresAtForTool(tool, ctx.config.daemon.leaseMs);
-
-    upsertPeer(ctx.db, {
-      peerId,
-      tool,
-      sessionName,
-      purpose: purpose ?? null,
-      machineId,
-      leaseExpiresAt,
-    });
-
-    log(`peer registered peer_id=${peerId} session_name=${sessionName} tool=${tool} lease_expires_at=${leaseExpiresAt}`);
-    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
-    return jsonResponse({ peer: getPeer(ctx.db, peerId) }, { status: 201 });
-  }
-
-  const peerHeartbeat = url.pathname.match(/^\/peers\/([^/]+)\/heartbeat$/);
-  if (request.method === "PATCH" && peerHeartbeat) {
-    const peerId = decodeURIComponent(peerHeartbeat[1] ?? "");
-    const peer = getPeer(ctx.db, peerId);
-    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool, ctx.config.daemon.leaseMs);
-    ctx.db
-      .query(
-        `UPDATE peers
-         SET lease_expires_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-         WHERE peer_id = ?`,
-      )
-      .run(leaseExpiresAt, peerId);
-    log(`peer heartbeat peer_id=${peerId} lease_expires_at=${leaseExpiresAt}`);
-    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
-    return jsonResponse({ peer: getPeer(ctx.db, peerId) });
-  }
-
-  // Activity push — the in-online sub-state signal. Accepts either an explicit
-  // peer_id (Pi, in-process) or a host-session pair (stateless Claude hook) and
-  // resolves the peer server-side. Sets activity_state + last_activity_at AND
-  // refreshes the lease: activity is proof-of-life, so a busy agent never
-  // false-offlines even if a heartbeat is dropped. Idempotent; last-write-wins.
-  if (request.method === "POST" && url.pathname === "/peers/activity") {
-    const body = await readBody(request);
-    const state = requireString(body, "state");
-    if (!(ACTIVITY_STATES as readonly string[]).includes(state)) {
-      throw new HttpError(400, "invalid_activity_state", `Unknown activity state: ${state}`);
-    }
-    let peerId = optionalString(body, "peer_id");
-    if (!peerId) {
-      const hostTool = requireString(body, "host_tool");
-      const hostSessionId = requireString(body, "host_session_id");
-      peerId = findPeerByHostSession(ctx.db, hostTool, hostSessionId);
-      if (!peerId) {
-        throw new HttpError(404, "peer_not_found", `No peer for ${hostTool} session ${hostSessionId}`);
-      }
-    }
-    const peer = getPeer(ctx.db, peerId);
-    const leaseExpiresAt = leaseExpiresAtForTool(peer.tool, ctx.config.daemon.leaseMs);
-    ctx.db
-      .query(
-        `UPDATE peers
-         SET activity_state = ?, lease_expires_at = ?,
-             last_activity_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-         WHERE peer_id = ?`,
-      )
-      .run(state, leaseExpiresAt, peerId);
-    log(`peer activity peer_id=${peerId} state=${state}`);
-    emitWebStateChanged(ctx, { domains: ["peers"], peerId });
-    return jsonResponse({ peer: getPeer(ctx.db, peerId) });
-  }
-
-  if (request.method === "GET" && url.pathname === "/peers") {
-    const now = new Date().toISOString();
-    const groupName = url.searchParams.get("group");
-    if (groupName) {
-      const group = getGroup(ctx.db, groupName);
-      const rows = ctx.db
-        .query<MemberRow & { online: number }, [string, number]>(
-          `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
-           FROM group_members gm
-           JOIN peers p ON p.peer_id = gm.peer_id
-           WHERE gm.group_id = ? AND gm.active = 1
-           ORDER BY gm.alias ASC`,
-        )
-        .all(now, group.group_id);
-      return jsonResponse({
-        peers: rows.map((row) => ({
-          ...row,
-          active: Boolean(row.active),
-          online: Boolean(row.online),
-          presence: derivePresence(Boolean(row.online), row.activity_state),
-        })),
-      });
-    }
-    const rows = ctx.db
-      .query<PeerRow & { online: number }, [string]>(
-        `SELECT *, lease_expires_at > ? AS online
-         FROM peers
-         WHERE deleted_at IS NULL
-         ORDER BY updated_at DESC, session_name ASC`,
-      )
-      .all(now);
-    return jsonResponse({
-      peers: rows.map((row) => ({
-        ...row,
-        online: Boolean(row.online),
-        presence: derivePresence(Boolean(row.online), row.activity_state),
-      })),
-    });
-  }
-
-  const peerDelete = url.pathname.match(/^\/peers\/([^/]+)$/);
-  if (request.method === "DELETE" && peerDelete) {
-    const peerId = decodeURIComponent(peerDelete[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    // Soft-delete: mark the peer as deleted but keep the row so
-    // group_members.peer_id remains resolvable and the reclaim audit trail
-    // survives. Flip every active group_member row to inactive so rosters
-    // and alias-collision checks don't trip over a peer that is no longer
-    // online. left_at uses the same timestamp the peer was deleted at.
-    softDeletePeerIfPresent(ctx, peerId);
-    log(`peer soft-deleted peer_id=${peerId}; removed any in-memory subscriber`);
-    emitWebStateChanged(ctx, { domains: ["peers", "groups"], peerId });
-    return jsonResponse({ ok: true, peer_id: peerId });
-  }
+  const peersResponse = await tryHandlePeersRoute(request, ctx, url);
+  if (peersResponse) return peersResponse;
 
   const subscriptionsResponse = await tryHandleSubscriptionsRoute(request, ctx, url);
   if (subscriptionsResponse) return subscriptionsResponse;
@@ -1049,18 +756,8 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
     });
   }
 
-  // GET /events/:event_id — single-event lookup with visibility enforcement.
-  // Asked for by bob and alice in the 2026-05-23 customer review: when a
-  // channel notification carries `event_id=22`, agents have no way to re-read
-  // that row to verify parent/mention/body fields without scrolling history.
-  const eventGet = url.pathname.match(/^\/events\/(\d+)$/);
-  if (request.method === "GET" && eventGet) {
-    const eventId = Number(eventGet[1]);
-    const peerId = url.searchParams.get("peer_id");
-    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
-    const event = getVisibleEvent(ctx.db, eventId, peerId);
-    return jsonResponse({ event });
-  }
+  const eventLookupResponse = tryHandleEventLookupRoute(request, ctx, url);
+  if (eventLookupResponse) return eventLookupResponse;
 
   const eventReactions = url.pathname.match(/^\/events\/(\d+)\/reactions$/);
   if (eventReactions) {
@@ -1277,70 +974,8 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
     return jsonResponse({ media: getMedia(ctx.db, decodeURIComponent(mediaGet[1] ?? "")) });
   }
 
-  const inboxMatch = url.pathname.match(/^\/peers\/([^/]+)\/inbox$/);
-  if (request.method === "GET" && inboxMatch) {
-    const peerId = decodeURIComponent(inboxMatch[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const limit = parseLimit(url.searchParams.get("limit"));
-    const after = parseCursor(url.searchParams.get("cursor"));
-    const includeAcked = url.searchParams.get("include_acked") === "true";
-    const ackClause = includeAcked ? "" : "AND i.acked_at IS NULL";
-    const rows = ctx.db
-      .query<InboxRow, [string, number, number]>(
-        `SELECT e.*, g.name AS group_name, i.delivered_at, i.read_at, i.acked_at
-         FROM inbox i
-         JOIN events e ON e.event_id = i.event_id
-         LEFT JOIN groups g ON g.group_id = e.group_id
-         WHERE i.recipient_peer_id = ? AND e.event_id > ? ${ackClause}
-         ORDER BY e.event_id ASC
-         LIMIT ?`,
-      )
-      .all(peerId, after, limit);
-    if (rows.length > 0) {
-      const now = new Date().toISOString();
-      ctx.db
-        .query(
-          `UPDATE inbox
-           SET read_at = COALESCE(read_at, ?)
-           WHERE recipient_peer_id = ? AND event_id IN (${rows.map(() => "?").join(",")})`,
-        )
-        .run(now, peerId, ...rows.map((row) => row.event_id));
-      emitWebStateChanged(ctx, { domains: ["inbox"], eventId: rows[rows.length - 1]!.event_id, peerId });
-    }
-    return jsonResponse({
-      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
-      next_cursor: rows.at(-1)?.event_id ?? after,
-    });
-  }
-
-  const inboxAck = url.pathname.match(/^\/peers\/([^/]+)\/inbox\/ack$/);
-  if (request.method === "POST" && inboxAck) {
-    const peerId = decodeURIComponent(inboxAck[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const body = await readBody(request);
-    const ids = optionalIntegerArray(body, "event_ids");
-    const now = new Date().toISOString();
-    let changed = 0;
-    if (ids && ids.length > 0) {
-      changed = ctx.db
-        .query(
-          `UPDATE inbox
-           SET acked_at = COALESCE(acked_at, ?)
-           WHERE recipient_peer_id = ? AND event_id IN (${ids.map(() => "?").join(",")})`,
-        )
-        .run(now, peerId, ...ids).changes;
-    } else {
-      changed = ctx.db
-        .query(
-          `UPDATE inbox
-           SET acked_at = COALESCE(acked_at, ?)
-           WHERE recipient_peer_id = ? AND acked_at IS NULL`,
-        )
-        .run(now, peerId).changes;
-    }
-    if (changed > 0) emitWebStateChanged(ctx, { domains: ["inbox"], peerId });
-    return jsonResponse({ ok: true, acked: changed });
-  }
+  const inboxResponse = await tryHandleInboxRoute(request, ctx, url);
+  if (inboxResponse) return inboxResponse;
 
   // Read-only global Activity feed for the web UI. The web user is an OBSERVER:
   // it sees every group's events (mirroring readWebRoomEvents' group visibility)
@@ -1359,40 +994,8 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
   const activityResponse = tryHandleActivityRoute(request, ctx, url);
   if (activityResponse) return activityResponse;
 
-  const eventsMatch = url.pathname.match(/^\/events\/([^/]+)$/);
-  if (request.method === "GET" && eventsMatch) {
-    const peerId = decodeURIComponent(eventsMatch[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const limit = parseLimit(url.searchParams.get("limit"));
-    const cursor = parseCursor(url.searchParams.get("cursor"));
-    const rows = ctx.db
-      .query<InboxRow, [string, number, number]>(
-        `SELECT e.*, g.name AS group_name, i.delivered_at, i.read_at, i.acked_at
-         FROM inbox i
-         JOIN events e ON e.event_id = i.event_id
-         LEFT JOIN groups g ON g.group_id = e.group_id
-         WHERE i.recipient_peer_id = ? AND e.event_id > ?
-         ORDER BY e.event_id ASC
-         LIMIT ?`,
-      )
-      .all(peerId, cursor, limit);
-    if (rows.length > 0) {
-      const now = new Date().toISOString();
-      ctx.db
-        .query(
-          `UPDATE inbox
-           SET delivered_at = COALESCE(delivered_at, ?)
-           WHERE recipient_peer_id = ? AND event_id IN (${rows.map(() => "?").join(",")})`,
-        )
-        .run(now, peerId, ...rows.map((row) => row.event_id));
-      ctx.db.query("UPDATE peers SET last_cursor = ? WHERE peer_id = ?").run(rows.at(-1)!.event_id, peerId);
-      emitWebStateChanged(ctx, { domains: ["inbox", "peers"], eventId: rows[rows.length - 1]!.event_id, peerId });
-    }
-    return jsonResponse({
-      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
-      next_cursor: rows.at(-1)?.event_id ?? cursor,
-    });
-  }
+  const eventPullResponse = tryHandleEventPullRoute(request, ctx, url);
+  if (eventPullResponse) return eventPullResponse;
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
 }
