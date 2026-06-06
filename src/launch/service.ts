@@ -301,9 +301,10 @@ function stripOption(args: string[], option: string): string[] {
   return filtered;
 }
 
-function forceClaudeLaunchDefaults(args: string[], model: string, thinking: string): string[] {
+function forceClaudeLaunchDefaults(args: string[], model: string, _thinking: string): string[] {
+  // Pin the model; do NOT set --effort (left to Claude's default).
   const filtered = stripOption(stripOption(args, "--model"), "--effort");
-  return ["--model", model, "--effort", thinking, ...filtered];
+  return ["--model", model, ...filtered];
 }
 
 function forcePiLaunchDefaults(args: string[], model: string, thinking: string): string[] {
@@ -347,12 +348,20 @@ export function resolveLaunchSpec(
     command: req.resume
       ? buildAgentResumeCommand(req.tool, req.resume, withLaunchDefaults(req))
       : buildAgentCommand(req.tool, withLaunchDefaults(req)),
-    env: buildLaunchEnv({
-      launchId: ids.launchId,
-      sessionName: req.name,
-      peerId: ids.peerId,
-      home: ids.home,
-    }),
+    env: {
+      ...buildLaunchEnv({
+        launchId: ids.launchId,
+        sessionName: req.name,
+        peerId: ids.peerId,
+        home: ids.home,
+      }),
+      // Headless Claude under AOE/tmux: disable the alternate-screen (fullscreen)
+      // renderer so the dev-channel confirm prompt renders inline where the AOE
+      // backend's auto-confirm (capture-pane + Enter) can see and dismiss it.
+      // Without this the prompt is hidden in the alt buffer → auto-confirm
+      // exhausts its attempts and the (resumed) session dies. Pi has no such prompt.
+      ...(req.tool === "claude" ? { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1" } : {}),
+    },
     cwd: req.repo,
     ...(req.group ? { group: req.group } : {}),
   };
