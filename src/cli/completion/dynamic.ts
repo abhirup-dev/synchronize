@@ -1,6 +1,7 @@
 import { listGroups } from "../../api/groups.ts";
 import { listMedia } from "../../api/media.ts";
 import { listPeers } from "../../api/peers.ts";
+import { queryEvents } from "../../api/query.ts";
 import { listThreads } from "../../api/threads.ts";
 import type { GroupMemberListed } from "../../api/peers.ts";
 import type { MediaItem, Peer, ThreadDiscoveryRow } from "../../api/types.ts";
@@ -31,12 +32,30 @@ export async function completeDynamicProvider(
       case "thread-root-event-ids":
         return threadCandidates((await withTimeout(listThreads(client, { limit: 100 }), COMPLETION_QUERY_TIMEOUT_MS)).threads);
       case "media-ids":
-        if (!options.context?.group) return [];
+        if (!options.context?.group) return allMediaCandidates(await withTimeout(queryEvents(client, {
+          sql: "select media_id, original_path, description from media_items order by created_at desc limit 100",
+        }), COMPLETION_QUERY_TIMEOUT_MS));
         return mediaCandidates((await withTimeout(listMedia(client, { group: options.context.group }), COMPLETION_QUERY_TIMEOUT_MS)).media);
     }
   } catch {
     return [];
   }
+}
+
+function allMediaCandidates(response: { rows: Record<string, unknown>[] }): CompletionCandidate[] {
+  return response.rows.flatMap((row) => {
+    if (typeof row.media_id !== "string") return [];
+    const description =
+      typeof row.description === "string" && row.description
+        ? row.description
+        : typeof row.original_path === "string"
+          ? row.original_path
+          : undefined;
+    return [{
+      value: row.media_id,
+      ...(description ? { description } : {}),
+    }];
+  });
 }
 
 async function completionClient(env: NodeJS.ProcessEnv): Promise<ClientConfig | null> {

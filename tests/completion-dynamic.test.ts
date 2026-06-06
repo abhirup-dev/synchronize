@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { completeDynamicProvider } from "../src/cli/completion/dynamic.ts";
 import { API_VERSION } from "../src/constants.ts";
 import { writeJson } from "../src/fs.ts";
+import { run as runCompletion } from "../src/cli/commands/completion.ts";
 
 const tempHomes: string[] = [];
 const servers: Bun.Server<unknown>[] = [];
@@ -49,6 +50,9 @@ describe("dynamic completion providers", () => {
         if (url.pathname === "/threads") {
           return Response.json({ threads: [{ root_event_id: 42, group_name: "general" }] });
         }
+        if (url.pathname === "/query/events") {
+          return Response.json({ columns: ["media_id", "original_path", "description"], rows: [{ media_id: "media-1", original_path: "/tmp/a.png", description: "screenshot" }] });
+        }
         if (url.pathname === "/groups/general/media") {
           return Response.json({ media: [{ media_id: "media-1", original_path: "/tmp/a.png", description: "screenshot" }] });
         }
@@ -71,9 +75,43 @@ describe("dynamic completion providers", () => {
       { value: "bob", description: "peer-3" },
     ]);
     await expect(completeDynamicProvider("thread-root-event-ids", { env })).resolves.toEqual([{ value: "42", description: "general" }]);
+    await expect(completeDynamicProvider("media-ids", { env })).resolves.toEqual([
+      { value: "media-1", description: "screenshot" },
+    ]);
     await expect(completeDynamicProvider("media-ids", { env, context: { group: "general" } })).resolves.toEqual([
       { value: "media-1", description: "screenshot" },
     ]);
+  });
+
+  test("completion bridge can render Carapace candidate lines", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/health") return Response.json({ service: "synchronize", api_version: API_VERSION });
+        if (url.pathname === "/groups") return Response.json({ groups: [{ name: "general", description: "main room" }] });
+        return new Response("not found", { status: 404 });
+      },
+    });
+    servers.push(server);
+    const home = await tempHome();
+    await writeJson(join(home, "daemon.json"), { baseUrl: `http://127.0.0.1:${server.port}` });
+    const originalEnv = process.env.SYNCHRONIZE_HOME;
+    const writes: string[] = [];
+    const originalWrite = process.stdout.write;
+    process.env.SYNCHRONIZE_HOME = home;
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await runCompletion(["complete", "group-names", "--format", "carapace"]);
+    } finally {
+      process.stdout.write = originalWrite;
+      if (originalEnv === undefined) delete process.env.SYNCHRONIZE_HOME;
+      else process.env.SYNCHRONIZE_HOME = originalEnv;
+    }
+    expect(writes.join("")).toBe("general\tmain room\n");
   });
 });
 

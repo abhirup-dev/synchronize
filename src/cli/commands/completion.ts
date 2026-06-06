@@ -15,7 +15,16 @@ export async function run(argv: string[]): Promise<void> {
     const provider = parseProvider(providerRaw);
     const args = parseFlags(flagArgs);
     const context = args.flags.context ? parseContext(args.flags.context) : undefined;
-    process.stdout.write(`${JSON.stringify(await completeDynamicProvider(provider, { ...(context ? { context } : {}) }))}\n`);
+    const candidates = await completeDynamicProvider(provider, { ...(context ? { context } : {}) });
+    if (args.flags.format === "carapace") {
+      process.stdout.write(candidates.map(formatCarapaceCandidate).join("\n"));
+      if (candidates.length > 0) process.stdout.write("\n");
+      return;
+    }
+    if (args.flags.format && args.flags.format !== "json") {
+      throw new Error("--format must be json or carapace");
+    }
+    process.stdout.write(`${JSON.stringify(candidates)}\n`);
     return;
   }
   if (subcommand === "install") {
@@ -28,6 +37,10 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
   throw new Error("completion requires a subcommand: carapace | complete | install");
+}
+
+function formatCarapaceCandidate(candidate: { value: string; description?: string }): string {
+  return candidate.description ? `${candidate.value}\t${candidate.description}` : candidate.value;
 }
 
 function parseProvider(raw: string | undefined): DynamicCompletionProvider {

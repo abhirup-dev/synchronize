@@ -33,11 +33,13 @@ describe("Carapace renderer", () => {
     const mediaShare = spec.commands
       .find((command) => command.name === "media")
       ?.commands?.find((command) => command.name === "share");
+    expect(mediaShare?.completion?.positional?.[0]).toEqual(["$(synchronize completion complete group-names --format carapace)"]);
     expect(mediaShare?.completion?.positional?.[1]).toEqual(["$files"]);
 
     const spawn = spec.commands.find((command) => command.name === "spawn");
     expect(spawn?.flags?.["--repo="]).toBe("Repository path");
     expect(spawn?.completion?.flag?.repo).toEqual(["$directories"]);
+    expect(spawn?.completion?.flag?.group).toEqual(["$(synchronize completion complete group-names --format carapace)"]);
     expect(spawn?.completion?.dashany).toEqual(["$files"]);
   });
 });

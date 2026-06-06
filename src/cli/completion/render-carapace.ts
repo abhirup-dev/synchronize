@@ -74,7 +74,7 @@ function renderValue(value: CliValueSpec | undefined): string[] {
   if (value.kind === "enum") return value.values;
   if (value.kind === "file") return ["$files"];
   if (value.kind === "directory") return ["$directories"];
-  return [];
+  return [`$(synchronize completion complete ${value.provider} --format carapace)`];
 }
 
 function compactCommand(command: CarapaceCommand): CarapaceCommand {
