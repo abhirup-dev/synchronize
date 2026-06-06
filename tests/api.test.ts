@@ -23,6 +23,7 @@ import { getThread, getThreadStatus, listThreads } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
 import type { Event, SkillCatalogEntry } from "../src/api/types.ts";
 import { aoeAttachCommand, aoeProfileName, aoeTitle } from "../src/launch/service.ts";
+import { startDaemon } from "./support/daemon.ts";
 
 const homes: string[] = [];
 
@@ -130,36 +131,6 @@ test("duplicate session names remain distinct when host session ids differ", asy
   }
 });
 
-async function startDaemon(home: string, env: Record<string, string> = {}): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, ...env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
 
 test("web state exposes daemon startup skill catalog for Claude and Pi", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-skill-catalog-"));

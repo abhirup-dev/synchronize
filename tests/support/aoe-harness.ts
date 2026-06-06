@@ -3,7 +3,7 @@
 // gated off by default (SYNCHRONIZE_AOE_HARNESS=1) and live here so the backbone
 // scenario (sync-ocdt.1) and its siblings (sync-ocdt.2/.3/.4) share one copy.
 import { test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiError, type ClientConfig } from "../../src/client.ts";
@@ -33,6 +33,7 @@ export interface LaunchedAgent {
 // handled by the shared daemon registry (cleanupDaemonHomes).
 export function createHarness() {
   const spawnedTitles = new Set<string>();
+  const spawnedRepos: string[] = [];
 
   // Start a debug daemon (full decision trail to stderr) for the harness.
   async function startHarnessDaemon(): Promise<TestDaemon> {
@@ -43,14 +44,17 @@ export function createHarness() {
   // until it has registered its host session (so it has a resumable transcript).
   async function launchPi(client: ClientConfig, name: string): Promise<LaunchedAgent> {
     const repo = await mkdtemp(join(tmpdir(), `harness-${name}-`));
+    spawnedRepos.push(repo);
     const result = await launchAgent(client, { tool: "pi", name, repo });
     spawnedTitles.add(result.title);
     await waitForBinding(client, result.peerId);
     return { peerId: result.peerId, title: result.title, name };
   }
 
+  // Reap spawned tmux backends and remove the per-agent temp repo dirs.
   async function cleanup(): Promise<void> {
     for (const title of spawnedTitles) await killAoeByTitle(title);
+    await Promise.all(spawnedRepos.map((repo) => rm(repo, { recursive: true, force: true })));
   }
 
   return { spawnedTitles, startHarnessDaemon, launchPi, cleanup };

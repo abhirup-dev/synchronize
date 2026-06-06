@@ -1,47 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { NotificationBridge } from "../src/mcp/codex-notifier.ts";
 import { emitMcpNotification, formatClaudeChannelMeta } from "../src/mcp/notifications.ts";
 import type { ClientConfig } from "../src/client.ts";
+import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
-const homes: string[] = [];
-
-afterAll(async () => {
-  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
-});
-
-async function startDaemon(home: string): Promise<{ baseUrl: string; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = await Bun.file(discoveryPath).json();
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          baseUrl: discovery.baseUrl,
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
+afterAll(cleanupDaemonHomes);
 
 async function json<T>(baseUrl: string, path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -106,9 +69,7 @@ test("MCP notification emitter uses Codex standard notifications/message and Cla
 });
 
 test("Codex NotificationBridge polls one peer event stream and keeps a bounded buffer", async () => {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-"));
-  homes.push(home);
-  const daemon = await startDaemon(home);
+  const daemon = await startDaemon();
 
   try {
     const alice = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {

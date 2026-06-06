@@ -18,6 +18,7 @@ import { createGroup, joinGroup, sendGroupMessage } from "../src/api/groups.ts";
 import { registerPeer } from "../src/api/peers.ts";
 import { getThreadSummary, postThreadSummary } from "../src/api/threads.ts";
 import type { ClientConfig } from "../src/client.ts";
+import { startDaemon } from "./support/daemon.ts";
 
 const homes: string[] = [];
 
@@ -277,40 +278,6 @@ describe("summarizeThread + loadSummaryResponse", () => {
 // paths over real HTTP through a spawned daemon. The actual LLM-calling paths
 // are covered by the unit tests above (with the stub caller) and by the live
 // smoke test gated behind SYNCHRONIZE_SUMMARY_LIVE_TEST.
-
-async function startDaemon(
-  home: string,
-  env: Record<string, string> = {},
-): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0", ...env },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
-}
 
 async function seedThread(client: ClientConfig): Promise<number> {
   const alice = await registerPeer(client, { sessionName: "alice", tool: "codex" });
