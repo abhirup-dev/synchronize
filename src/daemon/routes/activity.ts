@@ -1,11 +1,8 @@
 import { HttpError, jsonResponse } from "../../http.ts";
-import {
-  attachReactions,
-  ensurePeer,
-  eventForRecipient,
-  listActivityPage,
-  type DaemonContext,
-} from "../server.ts";
+import { listActivityPage } from "../repo/activity.ts";
+import { attachReactions, eventForRecipient } from "../repo/events.ts";
+import { ensurePeer } from "../repo/peers.ts";
+import type { DaemonContext } from "../server.ts";
 import { parseLimit } from "../validation.ts";
 
 export function tryHandleActivityRoute(request: Request, ctx: DaemonContext, url: URL): Response | null {

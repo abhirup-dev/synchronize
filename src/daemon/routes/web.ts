@@ -6,16 +6,17 @@ import { HttpError, jsonResponse } from "../../http.ts";
 import { requireAuth } from "../auth.ts";
 import {
   attachmentExtension,
-  buildWebState,
-  emitWebStateChanged,
-  ensureLocalWebPeer,
   guessContentType,
-  log,
-  openWebEvents,
   resolveStagedAttachmentPath,
   safePathSegment,
-  serveWebAsset,
   webAttachmentRoot,
+} from "../repo/media.ts";
+import { ensureLocalWebPeer } from "../repo/peers.ts";
+import { emitWebStateChanged, openWebEvents } from "../services/web-events.ts";
+import {
+  buildWebState,
+  log,
+  serveWebAsset,
   type DaemonContext,
 } from "../server.ts";
 import { optionalFormString, readBody, requireString } from "../validation.ts";

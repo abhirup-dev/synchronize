@@ -9,15 +9,15 @@ import {
   summarizeThread,
 } from "../../summarize/index.ts";
 import { parseSelectorsFromUrl, selectThreadEvents } from "../selectors.ts";
+import { attachReactions, getEvent, type EventRow } from "../repo/events.ts";
 import {
-  attachReactions,
-  getEvent,
   getThreadStatus,
   listThreadDiscoveries,
-  loadThreadSummaryProjection,
   renderThreadTranscript,
+} from "../repo/threads.ts";
+import {
+  loadThreadSummaryProjection,
   type DaemonContext,
-  type EventRow,
 } from "../server.ts";
 import { optionalInteger, optionalString, parseThreadFormat, readBody } from "../validation.ts";
 

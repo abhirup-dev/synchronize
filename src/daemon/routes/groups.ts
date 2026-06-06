@@ -5,32 +5,34 @@ import { parseSelectorsFromUrl } from "../selectors.ts";
 import {
   ackInboxEvents,
   attachReactions,
-  buildReplyDestination,
-  computeThreadParticipants,
-  defaultGroupPath,
-  emitWebStateChanged,
-  ensureActiveMember,
-  ensurePeer,
-  fanoutRosterEventToInbox,
-  formatGroup,
   getEvent,
+  getVisibleEvent,
+} from "../repo/events.ts";
+import {
+  defaultGroupPath,
+  ensureActiveMember,
+  formatGroup,
   getGroup,
   getGroupById,
   getGroupMember,
   getGroupMembers,
   getGroupPaths,
-  getPeer,
-  getVisibleEvent,
   insertGroupPath,
+  type GroupRow,
+} from "../repo/groups.ts";
+import { ensurePeer, getPeer } from "../repo/peers.ts";
+import { listGroupHistoryFlat, listGroupHistoryThreads } from "../repo/threads.ts";
+import { notifySubscribers } from "../services/subscriptions.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import {
+  buildReplyDestination,
+  computeThreadParticipants,
+  fanoutRosterEventToInbox,
   joinGroupCore,
-  listGroupHistoryFlat,
-  listGroupHistoryThreads,
   log,
-  notifySubscribers,
   resolveMentions,
   resolveThreadParent,
   type DaemonContext,
-  type GroupRow,
 } from "../server.ts";
 import {
   optionalInteger,

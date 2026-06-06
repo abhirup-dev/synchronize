@@ -1,5 +1,6 @@
 import { jsonResponse } from "../../http.ts";
-import { ensurePeer, log, type DaemonContext } from "../server.ts";
+import { ensurePeer } from "../repo/peers.ts";
+import { log, type DaemonContext } from "../server.ts";
 import { readBody, requireLocalCallbackUrl, requireString } from "../validation.ts";
 
 export async function tryHandleSubscriptionsRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {

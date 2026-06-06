@@ -2,22 +2,19 @@ import { hostname } from "node:os";
 
 import { ACTIVITY_STATES } from "../../constants.ts";
 import { HttpError, jsonResponse } from "../../http.ts";
+import { getGroup, MEMBER_SELECT_SQL, type MemberRow } from "../repo/groups.ts";
 import {
-  MEMBER_SELECT_SQL,
   derivePresence,
-  emitWebStateChanged,
   ensurePeer,
   findPeerByHostSession,
-  getGroup,
   getPeer,
   leaseExpiresAtForTool,
-  log,
   softDeletePeerIfPresent,
   upsertPeer,
-  type DaemonContext,
-  type MemberRow,
   type PeerRow,
-} from "../server.ts";
+} from "../repo/peers.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import { log, type DaemonContext } from "../server.ts";
 import { optionalString, readBody, requireString } from "../validation.ts";
 
 export async function tryHandlePeersRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {

@@ -1,7 +1,8 @@
 import { hostname } from "node:os";
 
 import { jsonResponse } from "../../http.ts";
-import { derivePresence, type DaemonContext, type SummaryGroupRow, type SummaryPeerRow } from "../server.ts";
+import { derivePresence } from "../repo/peers.ts";
+import type { DaemonContext, SummaryGroupRow, SummaryPeerRow } from "../server.ts";
 
 export function tryHandleStatusRoute(request: Request, ctx: DaemonContext, url: URL): Response | null {
   if (request.method === "GET" && url.pathname === "/status") {

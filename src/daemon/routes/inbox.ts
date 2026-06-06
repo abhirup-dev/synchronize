@@ -1,12 +1,8 @@
 import { jsonResponse } from "../../http.ts";
-import {
-  attachReactions,
-  emitWebStateChanged,
-  ensurePeer,
-  eventForRecipient,
-  type DaemonContext,
-  type InboxRow,
-} from "../server.ts";
+import { attachReactions, eventForRecipient } from "../repo/events.ts";
+import { ensurePeer } from "../repo/peers.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import type { DaemonContext, InboxRow } from "../server.ts";
 import { optionalIntegerArray, parseCursor, parseLimit, readBody } from "../validation.ts";
 
 export async function tryHandleInboxRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {

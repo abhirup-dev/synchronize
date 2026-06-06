@@ -1,81 +1,46 @@
 import { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
-import { appendFile, copyFile, rm, stat, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
-import { MAX_MESSAGE_CHARS, MAX_PAGE_LIMIT, API_VERSION } from "../constants.ts";
+import { appendFile, rm } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config.ts";
 import { openDatabase, pruneEphemeralGroups } from "../db.ts";
 import { applyDaemonEnvFiles } from "../env-files.ts";
 import { ensureDir, writeJson } from "../fs.ts";
-import { errorResponse, HttpError, jsonResponse } from "../http.ts";
+import { errorResponse, HttpError } from "../http.ts";
 import { getRuntimePaths, type RuntimePaths } from "../paths.ts";
-import { collectDaemonProvenance, collectGitContext, type DaemonProvenance } from "../provenance.ts";
+import { collectDaemonProvenance, type DaemonProvenance } from "../provenance.ts";
 import { AoeBackend } from "../launch/backend.ts";
-import { LaunchService, LaunchValidationError, aoeAttachCommand, aoeProfileName, aoeTitle, validateLaunchRequest } from "../launch/service.ts";
-import { isLaunchTool } from "../launch/build.ts";
-import { type LaunchLifecycleEvent } from "../launch/lifecycle.ts";
+import { LaunchService, aoeAttachCommand, aoeProfileName } from "../launch/service.ts";
 import {
   appendLaunchEvent,
   claimNextLaunchWork,
   completeLaunchWork,
   failLaunchWork,
   getLaunchIntent,
-  updateLaunchState,
   type LaunchIntentRow,
 } from "../launch/store.ts";
-import { runEventQuery } from "../query/events.ts";
 import { resolveProviderConfig } from "../llm/index.ts";
 import { loadSkillCatalog } from "../skill-catalog.ts";
 import {
-  defaultStrategyFromEnv,
   getCachedSummary,
   isEnabled as isSummarizeEnabled,
   loadSummaryResponse,
   makeProviderCaller,
   startSummarizeWorker,
-  strategyFromInput,
   summarizeThread,
   type WorkerHandle,
 } from "../summarize/index.ts";
-import type { ReactionSummary, ReplyDestination, SkillCatalogEntry } from "../api/types.ts";
-import {
-  getAgentSessionByHost,
-  getAgentSessionByPeer,
-  listAgentSessions,
-} from "./repo/agent-sessions.ts";
-export { listActivityPage, type ActivityRow } from "./repo/activity.ts";
-export {
-  getAgentSessionByHost,
-  getAgentSessionByPeer,
-  listAgentSessions,
-} from "./repo/agent-sessions.ts";
+import type { ReplyDestination, SkillCatalogEntry } from "../api/types.ts";
 import {
   attachReactions,
-  eventForRecipient,
   getEvent,
-  type EventRow,
-} from "./repo/events.ts";
-export {
-  ackInboxEvents,
-  applyReaction,
-  attachReactions,
-  ensureReactableEvent,
-  eventForRecipient,
-  getEvent,
-  getVisibleEvent,
-  reactionDmPeerId,
   type EventRow,
 } from "./repo/events.ts";
 import {
   defaultGroupPath,
   deriveBackendTitleForPeer,
-  ensureActiveMember,
   formatGroup,
   formatGroupPath,
-  getGroup,
   getGroupById,
-  getGroupMembers,
   insertGroupPath,
   MEMBER_SELECT_SQL,
   type FormattedGroup,
@@ -85,48 +50,10 @@ import {
   type GroupRow,
   type MemberRow,
 } from "./repo/groups.ts";
-export {
-  defaultGroupPath,
-  deriveBackendTitleForPeer,
-  ensureActiveMember,
-  formatGroup,
-  formatGroupPath,
-  getGroup,
-  getGroupById,
-  getGroupMember,
-  getGroupMembers,
-  getGroupPaths,
-  insertGroupPath,
-  MEMBER_SELECT_SQL,
-  type GroupRow,
-  type MemberRow,
-} from "./repo/groups.ts";
 import type { MediaRow } from "./repo/media.ts";
-export {
-  appendMediaIndex,
-  attachmentExtension,
-  getMedia,
-  guessContentType,
-  hashFile,
-  resolveStagedAttachmentPath,
-  safePathSegment,
-  webAttachmentRoot,
-  writeMediaReadme,
-  type MediaRow,
-} from "./repo/media.ts";
 import { applyLaunchTransition } from "./repo/launch.ts";
-export { applyLaunchTransition } from "./repo/launch.ts";
-export { notifySubscribers, type EventSubscriber } from "./services/subscriptions.ts";
 import type { EventSubscriber } from "./services/subscriptions.ts";
 import { emitWebStateChanged, type WebStateClient } from "./services/web-events.ts";
-export { emitWebStateChanged, openWebEvents, type WebStateClient } from "./services/web-events.ts";
-export {
-  getThreadStatus,
-  listGroupHistoryFlat,
-  listGroupHistoryThreads,
-  listThreadDiscoveries,
-  renderThreadTranscript,
-} from "./repo/threads.ts";
 import {
   derivePresence,
   ensurePeer,
@@ -134,53 +61,17 @@ import {
   LOCAL_WEB_PEER_ID,
   softDeletePeerIfPresent,
   type PeerRow,
-  type Presence,
 } from "./repo/peers.ts";
-export {
-  deactivateStoppedLaunchPeer,
-  derivePresence,
-  ensureLocalWebPeer,
-  ensurePeer,
-  findPeerByHostSession,
-  findPeerByRequiredHostSession,
-  getPeer,
-  leaseExpiresAtForTool,
-  LOCAL_WEB_PEER_ID,
-  softDeletePeerIfPresent,
-  upsertPeer,
-  type PeerRow,
-} from "./repo/peers.ts";
-import { assertLanModeIsProtected, requireAuth, resolveBind } from "./auth.ts";
+import { assertLanModeIsProtected, resolveBind } from "./auth.ts";
 import { mapSqliteConstraint } from "./errors.ts";
 import {
-  parseSelectorsFromUrl,
-  selectThreadEvents,
-  selectorLimit,
   selectorToSummaryStrategy,
   type NormalizedSelectors,
 } from "./selectors.ts";
 import {
-  optionalFormString,
-  optionalInteger,
-  optionalIntegerArray,
-  optionalObjectJson,
-  optionalReactionOp,
-  optionalSqlParams,
-  optionalString,
-  optionalStringArray,
   parseCursor,
-  parseEventIdsParam,
-  parseGroupHistoryView,
   parseLimit,
-  parseThreadFormat,
-  readBody,
-  requireEmoji,
   requireGroupName,
-  requireLaunchPath,
-  requireLocalCallbackUrl,
-  requirePositiveInteger,
-  requireString,
-  type ReactionOp,
 } from "./validation.ts";
 import { route } from "./routing.ts";
 

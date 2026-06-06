@@ -5,20 +5,24 @@ import { HttpError, jsonResponse } from "../../http.ts";
 import { LaunchValidationError, validateLaunchRequest } from "../../launch/service.ts";
 import type { LaunchIntentRow } from "../../launch/store.ts";
 import {
-  applyLaunchTransition,
+  getAgentSessionByHost,
+  getAgentSessionByPeer,
+  listAgentSessions,
+} from "../repo/agent-sessions.ts";
+import { deriveBackendTitleForPeer } from "../repo/groups.ts";
+import { applyLaunchTransition } from "../repo/launch.ts";
+import {
   deactivateStoppedLaunchPeer,
-  deriveBackendTitleForPeer,
-  emitWebStateChanged,
   ensurePeer,
   findPeerByHostSession,
   findPeerByRequiredHostSession,
-  getAgentSessionByHost,
-  getAgentSessionByPeer,
   leaseExpiresAtForTool,
-  listAgentSessions,
+  upsertPeer,
+} from "../repo/peers.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import {
   log,
   reconcileLaunch,
-  upsertPeer,
   type DaemonContext,
 } from "../server.ts";
 import { optionalInteger, optionalObjectJson, optionalString, readBody, requireString } from "../validation.ts";

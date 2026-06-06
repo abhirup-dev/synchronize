@@ -1,16 +1,14 @@
 import { MAX_MESSAGE_CHARS } from "../../constants.ts";
 import { HttpError, jsonResponse } from "../../http.ts";
+import { getEvent, getVisibleEvent } from "../repo/events.ts";
+import { ensureActiveMember, getGroupById } from "../repo/groups.ts";
+import { ensurePeer } from "../repo/peers.ts";
+import { notifySubscribers } from "../services/subscriptions.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
 import {
   buildReplyDestination,
   computeThreadParticipants,
-  emitWebStateChanged,
-  ensureActiveMember,
-  ensurePeer,
-  getEvent,
-  getGroupById,
-  getVisibleEvent,
   log,
-  notifySubscribers,
   resolveMentions,
   type DaemonContext,
 } from "../server.ts";

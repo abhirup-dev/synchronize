@@ -1,15 +1,15 @@
 import { HttpError, jsonResponse } from "../../http.ts";
+import { ensureActiveMember } from "../repo/groups.ts";
 import {
   ackInboxEvents,
   applyReaction,
-  emitWebStateChanged,
-  ensureActiveMember,
   ensureReactableEvent,
   getEvent,
   getVisibleEvent,
   reactionDmPeerId,
-  type DaemonContext,
-} from "../server.ts";
+} from "../repo/events.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import type { DaemonContext } from "../server.ts";
 import { optionalReactionOp, readBody, requireEmoji, requireString } from "../validation.ts";
 
 export async function tryHandleReactionsRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {

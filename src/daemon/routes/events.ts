@@ -1,13 +1,8 @@
 import { HttpError, jsonResponse } from "../../http.ts";
-import {
-  attachReactions,
-  emitWebStateChanged,
-  ensurePeer,
-  eventForRecipient,
-  getVisibleEvent,
-  type DaemonContext,
-  type InboxRow,
-} from "../server.ts";
+import { attachReactions, eventForRecipient, getVisibleEvent } from "../repo/events.ts";
+import { ensurePeer } from "../repo/peers.ts";
+import { emitWebStateChanged } from "../services/web-events.ts";
+import type { DaemonContext, InboxRow } from "../server.ts";
 import { parseCursor, parseLimit } from "../validation.ts";
 
 export function tryHandleEventLookupRoute(request: Request, ctx: DaemonContext, url: URL): Response | null {
