@@ -30,6 +30,26 @@ type TimelineEntry =
   | { kind: "bucket"; id: string; label: string; count: number }
   | { kind: "item"; id: string; item: ActivityItemModel };
 
+const ACTIVITY_VIEW_MODE_KEY = "synchronize.activity.viewMode";
+const ACTIVITY_LIVE_ONLY_KEY = "synchronize.activity.liveOnly";
+
+function readActivityPreference(key: string): string | null {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeActivityPreference(key: string, value: string) {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Private/restricted browser contexts can deny storage; Activity still works
+    // with in-memory React state for the current route in that case.
+  }
+}
+
 interface ActivityViewProps {
   onJumpToRoom(roomId: string, msgId?: string): void;
   threadWidth: number;
@@ -48,7 +68,12 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
 
   const [filter, setFilter] = useState<Filter>("all");
   const [roomSel, setRoomSel] = useState<Set<string>>(() => new Set());
-  const [cluster, setCluster] = useState(true);
+  const [cluster, setCluster] = useState(() => {
+    return readActivityPreference(ACTIVITY_VIEW_MODE_KEY) !== "timeline";
+  });
+  const [aliveOnly, setAliveOnly] = useState(() => {
+    return readActivityPreference(ACTIVITY_LIVE_ONLY_KEY) === "1";
+  });
   const [reacted, setReacted] = useState<Set<number>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState<{ roomId: string; parentId: string; focusMessageId: string } | null>(null);
@@ -56,6 +81,16 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a] as const)), [agents]);
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r] as const)), [rooms]);
   const busyCount = useMemo(() => agents.filter((a) => a.status === "busy").length, [agents]);
+
+  useEffect(() => {
+    // Keep the user's Activity controls stable across reloads and route changes;
+    // these are local view preferences, not daemon state.
+    writeActivityPreference(ACTIVITY_VIEW_MODE_KEY, cluster ? "grouped" : "timeline");
+  }, [cluster]);
+
+  useEffect(() => {
+    writeActivityPreference(ACTIVITY_LIVE_ONLY_KEY, aliveOnly ? "1" : "0");
+  }, [aliveOnly]);
 
   const onReact = (item: ActivityItemModel) => {
     setReacted((prev) => {
@@ -88,24 +123,39 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
       return next;
     });
 
+  const baseItems = useMemo(() => {
+    // "Live only" is a sender-presence filter: keep currently known active or
+    // idle agents, drop deleted/expired/offline historical authors while
+    // preserving all other Activity semantics.
+    if (!aliveOnly) return items;
+    return items.filter((it) => {
+      const status = agentsById.get(it.actorId)?.status;
+      return status === "online" || status === "busy" || status === "idle";
+    });
+  }, [items, agentsById, aliveOnly]);
+
   const visible = useMemo(() => {
-    let xs = items;
+    let xs = baseItems;
     if (filter === "awaits") xs = xs.filter((it) => it.awaiting);
     else if (filter === "mentions") xs = xs.filter((it) => it.isMention);
     if (roomSel.size) xs = xs.filter((it) => roomSel.has(it.roomId));
     return xs;
-  }, [items, filter, roomSel]);
+  }, [baseItems, filter, roomSel]);
 
   const counts = useMemo(
-    () => ({ all: items.length, awaits: awaitingCount, mentions: items.filter((it) => it.isMention).length }),
-    [items, awaitingCount],
+    () => ({
+      all: baseItems.length,
+      awaits: aliveOnly ? baseItems.filter((it) => it.awaiting).length : awaitingCount,
+      mentions: baseItems.filter((it) => it.isMention).length,
+    }),
+    [baseItems, awaitingCount, aliveOnly],
   );
 
   const allRoomIds = useMemo(() => {
     const seen: string[] = [];
-    for (const it of items) if (!seen.includes(it.roomId)) seen.push(it.roomId);
+    for (const it of baseItems) if (!seen.includes(it.roomId)) seen.push(it.roomId);
     return seen;
-  }, [items]);
+  }, [baseItems]);
 
   const grouped = useMemo(() => {
     const byRoom = new Map<string, ActivityItemModel[]>();
@@ -200,6 +250,16 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
               ))}
             </div>
             <span className="act-spacer" />
+            <button
+              className={`act-liveonly${aliveOnly ? " active" : ""}`}
+              onClick={() => setAliveOnly((value) => !value)}
+              type="button"
+              title="Show only activity from non-offline agents"
+              aria-pressed={aliveOnly}
+            >
+              <span className="act-liveonly-dot" />
+              LIVE
+            </button>
             <div className="act-viewtoggle" role="radiogroup" aria-label="View mode">
               <button className={`avt-btn${cluster ? " active" : ""}`} onClick={() => setCluster(true)} type="button" title="Group by room">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">

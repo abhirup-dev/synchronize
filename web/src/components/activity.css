@@ -781,6 +781,30 @@
   box-shadow: var(--shadow-sm);
   align-self: center;
 }
+.act-liveonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: center;
+  padding: 7px 10px;
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+  font-family: "Archivo Black", sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+.act-liveonly.active { background: var(--ink); color: var(--paper); }
+.act-liveonly-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--lime);
+  border: 1.5px solid currentColor;
+}
 .avt-btn {
   display: inline-flex;
   align-items: center;
