@@ -29,6 +29,8 @@ Usage:
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--health-timeout-ms N] [--ssh-host HOST] [--use]
   synchronize remote use NAME | ls | show [NAME] | remove NAME
+  synchronize remote provision HOST | sync HOST --hub-url URL | harness HOST --hub-url URL [--all]
+  synchronize remote status | doctor
   synchronize --help
 
 Commands:

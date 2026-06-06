@@ -13,6 +13,12 @@ import {
 } from "../../config.ts";
 import { getRuntimePaths } from "../../paths.ts";
 import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, type RemoteStep } from "../../remote/plan.ts";
+import { evaluateDoctor, renderDoctor, renderStatusReport, type DoctorInput } from "../../remote/status.ts";
+import { ensureDaemon } from "../../client.ts";
+import { getStatus } from "../../api/status.ts";
+import { listPeers } from "../../api/peers.ts";
+import { API_VERSION } from "../../constants.ts";
+import type { Peer } from "../../api/types.ts";
 import { resolve } from "node:path";
 
 // `synchronize remote` — the multi-machine control plane. v0 (sync-7mcv) covers
@@ -32,7 +38,9 @@ const USAGE = `synchronize remote <subcommand>
   harness <ssh-host> --hub-url <url> [--scenario <name> | --all] [--token <t>]
              [--path <remote-dir>] [--dry-run] [-- <extra scenario args>]
              run the Python AOE harness on the remote against the hub
-             scenarios: cli-dm cli-group-policy pi-dm pi-group-policy pi-thread-baton pi-revival`;
+             scenarios: cli-dm cli-group-policy pi-dm pi-group-policy pi-thread-baton pi-revival
+  status                     hub health + agent roster grouped by machine
+  doctor                     readiness checklist for the active connection`;
 
 export async function run(argv: string[]): Promise<void> {
   const [sub, ...rest] = argv;
@@ -62,6 +70,12 @@ export async function run(argv: string[]): Promise<void> {
       return;
     case "harness":
       await harnessRemote(rest);
+      return;
+    case "status":
+      await statusRemote();
+      return;
+    case "doctor":
+      await doctorRemote();
       return;
     default:
       console.log(USAGE);
@@ -204,6 +218,65 @@ async function harnessRemote(argv: string[]): Promise<void> {
     extraArgs,
   });
   await runPlan(plan, { dryRun: flags.bools.has("dry-run"), continueOnError: true });
+}
+
+async function statusRemote(): Promise<void> {
+  const client = await ensureDaemon();
+  const [status, peersResponse, config] = await Promise.all([
+    getStatus(client),
+    listPeers(client),
+    loadConfig(getRuntimePaths().configPath),
+  ]);
+  const peers = ("peers" in peersResponse ? peersResponse.peers : []) as Peer[];
+  const lines = renderStatusReport({
+    source: {
+      remoteUrl: client.remote ? client.baseUrl : null,
+      profileName: client.remote ? config.active ?? null : null,
+    },
+    status,
+    peers,
+    localApiVersion: API_VERSION,
+  });
+  console.log(lines.join("\n"));
+}
+
+async function doctorRemote(): Promise<void> {
+  const config = await loadConfig(getRuntimePaths().configPath);
+  const conn = resolveConnection(config);
+  const input: DoctorInput = {
+    profileName: config.active ?? null,
+    remoteUrl: conn.remoteUrl,
+    reachable: null,
+    authOk: null,
+    hubApiVersion: null,
+    localApiVersion: API_VERSION,
+  };
+  if (conn.remoteUrl) {
+    const health = await probe(`${conn.remoteUrl}/health`, null);
+    input.reachable = health.ok;
+    input.hubApiVersion = health.apiVersion;
+    if (health.ok) {
+      const statusProbe = await probe(`${conn.remoteUrl}/status`, conn.token);
+      input.authOk = statusProbe.status === 401 ? false : statusProbe.ok ? true : null;
+      if (statusProbe.apiVersion !== null) input.hubApiVersion = statusProbe.apiVersion;
+    }
+  }
+  console.log(renderDoctor(evaluateDoctor(input)).join("\n"));
+  if (evaluateDoctor(input).some((c) => c.status === "fail")) process.exit(1);
+}
+
+// Gentle HTTP probe for doctor — never throws; returns reachability + api_version.
+async function probe(url: string, token: string | null): Promise<{ ok: boolean; status: number; apiVersion: number | null }> {
+  try {
+    const headers = new Headers({ accept: "application/json" });
+    if (token) headers.set("authorization", `Bearer ${token}`);
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
+    const body = (await response.json().catch(() => null)) as { api_version?: number; provenance?: { api_version?: number } } | null;
+    const apiVersion = body?.api_version ?? body?.provenance?.api_version ?? null;
+    return { ok: response.ok, status: response.status, apiVersion };
+  } catch {
+    return { ok: false, status: 0, apiVersion: null };
+  }
 }
 
 // Execute a remote plan step-by-step, streaming output. --dry-run prints the
