@@ -154,3 +154,64 @@ test("Codex NotificationBridge polls one peer event stream and keeps a bounded b
     await daemon.stop();
   }
 });
+
+// Proves transport (poll) is orthogonal to notification channel (claude): the
+// outbound-polling NotificationBridge — already used cross-machine for codex/Pi
+// — delivers on notifications/claude/channel when run in claude mode through the
+// real emitMcpNotification. This is the combination the multi-machine plan can
+// rely on instead of the localhost-bound EventSubscription callback.
+test("NotificationBridge in claude mode delivers on notifications/claude/channel via outbound poll", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-mcp-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+
+  try {
+    const alice = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
+      method: "POST",
+      body: JSON.stringify({ session_name: "alice", tool: "claude" }),
+    });
+    const bob = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
+      method: "POST",
+      body: JSON.stringify({ session_name: "bob", tool: "claude" }),
+    });
+    const notifications: Array<{ method: string }> = [];
+    const sink = {
+      notification: async (notification: { method: string }) => {
+        notifications.push(notification);
+      },
+      sendLoggingMessage: async (params: unknown) => {
+        notifications.push({ method: "notifications/message", params } as { method: string });
+      },
+    };
+    const bridge = new NotificationBridge({
+      peerId: bob.peer.peer_id,
+      mode: "claude",
+      client: { baseUrl: daemon.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
+      activeMs: 10,
+      idleMs: 10,
+      emit: (mode, event) => emitMcpNotification(sink, mode, event),
+    });
+    bridge.start();
+
+    await json(daemon.baseUrl, "/dm", {
+      method: "POST",
+      body: JSON.stringify({
+        sender_peer_id: alice.peer.peer_id,
+        recipient_peer_id: bob.peer.peer_id,
+        message: "hello from poll",
+      }),
+    });
+
+    const deadline = Date.now() + 2_000;
+    while (notifications.length < 1 && Date.now() < deadline) await Bun.sleep(20);
+    bridge.stop();
+
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      method: "notifications/claude/channel",
+      params: { content: "hello from poll" },
+    });
+  } finally {
+    await daemon.stop();
+  }
+});
