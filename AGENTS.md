@@ -44,6 +44,7 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
+- User-facing CLI install and Carapace completion instructions live in `README.md`; keep agent docs minimal and point there for detailed setup steps.
 - Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
 - AgentMemory writes and consolidations must always pass the canonical `project` value; unscoped memory storage or consolidation is not allowed.
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `CLAUDE.md`.

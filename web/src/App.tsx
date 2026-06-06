@@ -11,6 +11,7 @@ import { AgentRoster } from "./components/AgentRoster.tsx";
 import { ContextMenuProvider } from "./components/ContextMenu.tsx";
 import { ThreadPane } from "./components/ThreadPane.tsx";
 import { ResizeHandle } from "./components/ResizeHandle.tsx";
+import { ActivityView } from "./components/ActivityView.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
@@ -103,9 +104,14 @@ function ConnectionError({ message }: { message: string }) {
   );
 }
 
+const ACTIVITY_ID = "activity";
+
 function Shell() {
   const rooms = useRooms();
-  const [activeId, setActiveId] = useState<string>(rooms[0]?.id ?? "");
+  // Land on the first room as before; the sidebar's Activity item is the entry
+  // point. Fall back to Activity only when there are no rooms yet (more useful
+  // than an empty "no rooms" pane).
+  const [activeId, setActiveId] = useState<string>(rooms[0]?.id ?? ACTIVITY_ID);
   const [tab, setTab] = useState<RoomTab>("chat");
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
@@ -126,12 +132,30 @@ function Shell() {
     return isThemeName(stored) ? stored : "light";
   });
 
+  const isActivity = activeId === ACTIVITY_ID;
+
   useEffect(() => {
+    // "activity" is a virtual destination, not a room — never reset it away.
+    if (activeId === ACTIVITY_ID) return;
     if (!activeId && rooms[0]) setActiveId(rooms[0].id);
     if (activeId && rooms.length > 0 && !rooms.some((candidate) => candidate.id === activeId)) {
       setActiveId(rooms[0]?.id ?? "");
     }
   }, [activeId, rooms]);
+
+  // Jump from the Activity feed into a room, optionally scrolling to a message.
+  const jumpToRoom = (roomId: string, msgId?: string) => {
+    setActiveId(roomId);
+    setTab("chat");
+    if (!msgId) return;
+    window.setTimeout(() => {
+      const el = document.getElementById(`msg-${msgId}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("flash-highlight");
+      window.setTimeout(() => el.classList.remove("flash-highlight"), 2400);
+    }, 320);
+  };
 
   useEffect(() => {
     const onResize = () => setShellMode(shellModeForWidth(window.innerWidth));
@@ -267,10 +291,12 @@ function Shell() {
       data-shell-mode={shellMode}
     >
       {shellMode !== "compact" && (
-        <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} mode={vim.mode} />
+        <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
       <main className="main">
-        {room ? (
+        {isActivity ? (
+          <ActivityView onJumpToRoom={jumpToRoom} threadWidth={threadWidth} onThreadWidth={setThreadWidth} />
+        ) : room ? (
           <>
             <RoomHeader
               room={room}

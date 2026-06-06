@@ -4,6 +4,7 @@
 // room's messages doesn't re-render unrelated rooms.
 
 import type {
+  ActivityItem,
   Agent,
   Artifact,
   DataSource,
@@ -96,11 +97,61 @@ export class MockDataSource implements DataSource {
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
+  // Activity feed: aggregated once from the seed (every other agent's message
+  // across all rooms), then awaiting is recomputed from `ackedActivity`. This
+  // mirrors the daemon's inbox-backed feed and ack semantics in memory.
+  private readonly activityBase: ActivityItem[] = buildMockActivity(this._me.get().id);
+  private readonly ackedActivity = new Set<number>();
+  private readonly _activity = createSnapshot<ActivityItem[]>([]);
+  private readonly _activityAwaiting = createSnapshot<number>(0);
 
   agents(): Snapshot<Agent[]> { return this._agents; }
   rooms(): Snapshot<Room[]>   { return this._rooms; }
   me(): Snapshot<Agent>        { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+
+  activity(): Snapshot<ActivityItem[]> {
+    if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();
+    return this._activity;
+  }
+
+  activityAwaitingCount(): Snapshot<number> {
+    if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();
+    return this._activityAwaiting;
+  }
+
+  private emitActivity(): void {
+    const items = this.activityBase.map((item) => ({
+      ...item,
+      awaiting: item.awaiting && !this.ackedActivity.has(item.eventId),
+    }));
+    this._activity.set(items);
+    this._activityAwaiting.set(items.filter((item) => item.awaiting).length);
+  }
+
+  async ackActivity(eventId: number): Promise<void> {
+    this.ackedActivity.add(eventId);
+    this.emitActivity();
+  }
+
+  async ackAllActivity(): Promise<void> {
+    for (const item of this.activityBase) if (item.awaiting) this.ackedActivity.add(item.eventId);
+    this.emitActivity();
+  }
+
+  async loadMoreActivity(): Promise<void> {
+    // Mock aggregates the whole seed up front — nothing older to page in.
+    return;
+  }
+
+  // Engaging with a message (react/reply) clears its activity row — mirrors the
+  // daemon's server-side auto-ack.
+  private ackActivityByMsgId(msgId: string): void {
+    const item = this.activityBase.find((entry) => entry.msgId === msgId);
+    if (!item) return;
+    this.ackedActivity.add(item.eventId);
+    if (this._activity.get().length > 0) this.emitActivity();
+  }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);
@@ -196,6 +247,7 @@ export class MockDataSource implements DataSource {
       ...(input.parentMessageId !== undefined && { parentId: input.parentMessageId }),
     };
     if (input.parentMessageId) {
+      this.ackActivityByMsgId(input.parentMessageId);
       const snap = this.threadReplies(input.parentMessageId) as MutableSnapshot<Message[]>;
       snap.update((prev) => [...prev, msg]);
     } else {
@@ -215,6 +267,10 @@ export class MockDataSource implements DataSource {
 
   async reactToMessage(input: ReactToMessageInput): Promise<Message> {
     const me = this._me.get();
+    this.ackActivityByMsgId(input.messageId);
+    // Reacting from the Activity feed may target a room whose message snapshot
+    // hasn't been opened yet — seed it lazily so the reaction lands.
+    this.messages(input.roomId);
     const update = (messages: Message[]) =>
       messages.map((message) => {
         if (message.id !== input.messageId) return message;
@@ -236,12 +292,33 @@ export class MockDataSource implements DataSource {
       snap.update(update);
       return snap.get().find((message) => message.id === input.messageId)!;
     }
-    for (const replySnap of this._threadReplies.values()) {
+    for (const [parentId, replySnap] of this._threadReplies) {
       if (!replySnap.get().some((message) => message.id === input.messageId)) continue;
       replySnap.update(update);
       return replySnap.get().find((message) => message.id === input.messageId)!;
     }
-    throw new Error(`Unknown message: ${input.messageId}`);
+    // Thread replies are seeded lazily per parent; if the target is a seed reply
+    // we haven't opened, find it directly.
+    for (const replies of Object.values(THREAD_REPLIES)) {
+      const found = replies.find((message) => message.id === input.messageId);
+      if (found) {
+        const snap = this.threadReplies(found.parentId ?? "") as MutableSnapshot<Message[]>;
+        snap.update(update);
+        return snap.get().find((message) => message.id === input.messageId) ?? found;
+      }
+    }
+    // Not in any known surface (e.g. reacting from the feed on an item that's
+    // only in the aggregated activity list). The awaiting state is already
+    // cleared above; return a best-effort message so callers can proceed.
+    return {
+      id: input.messageId,
+      roomId: input.roomId,
+      authorId: "",
+      body: "",
+      createdAt: new Date().toISOString(),
+      mentions: [],
+      reactions: [{ emoji: input.emoji, by: [me.id] }],
+    };
   }
 
   async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
@@ -301,4 +378,51 @@ export class MockDataSource implements DataSource {
 
   async connect(): Promise<void> { /* mock has no live connection */ }
   disconnect(): void { /* noop */ }
+}
+
+// Aggregate the seed into a global, newest-first Activity feed — the in-memory
+// analogue of the daemon's observer feed. The feed shows every other agent's
+// messages across all rooms (own sends excluded). `awaiting` here is a narrower
+// demo APPROXIMATION of the daemon (an item "needs you" when it's an @-mention,
+// one of your DMs, or a reply in a thread you started). The daemon's real
+// awaiting set is every un-acked inbox row in your joined rooms + DMs — a
+// superset; the mock just makes the offline demo feel right.
+function buildMockActivity(meId: string): ActivityItem[] {
+  const dmRoomIds = new Set(DMS.map((dm) => dm.id));
+  const all: Message[] = [];
+  for (const list of Object.values(MESSAGES)) all.push(...list);
+  for (const list of Object.values(THREAD_REPLIES)) all.push(...list);
+  const yourMessageIds = new Set(all.filter((m) => m.authorId === meId).map((m) => m.id));
+
+  const seen = new Set<string>();
+  const candidates: Array<{ message: Message; awaiting: boolean; isMention: boolean }> = [];
+  for (const message of all) {
+    if (message.authorId === meId) continue; // exclude own sends
+    if (!message.roomId || seen.has(message.id)) continue;
+    seen.add(message.id);
+    const isMention = message.mentions.includes(meId) || /@you\b/i.test(message.body);
+    const isDm = dmRoomIds.has(message.roomId);
+    const isReplyToYou = Boolean(message.parentId && yourMessageIds.has(message.parentId));
+    candidates.push({ message, awaiting: isMention || isDm || isReplyToYou, isMention });
+  }
+  // Oldest-first to assign monotonic event ids, then present newest-first.
+  candidates.sort((a, b) => Date.parse(a.message.createdAt) - Date.parse(b.message.createdAt));
+  const items = candidates.map((entry, index): ActivityItem => {
+    const { message } = entry;
+    return {
+      id: message.id,
+      eventId: index + 1,
+      roomId: message.roomId,
+      actorId: message.authorId,
+      type: "activity",
+      text: message.body,
+      createdAt: message.createdAt,
+      awaiting: entry.awaiting,
+      isMention: entry.isMention,
+      ...(message.parentId ? { threadParentId: message.parentId } : {}),
+      ...(message.threadReplyCount !== undefined ? { replyCount: message.threadReplyCount } : {}),
+      msgId: message.id,
+    };
+  });
+  return items.reverse();
 }

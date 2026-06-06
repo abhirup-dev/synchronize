@@ -5,6 +5,7 @@ import * as hook from "./commands/hook.ts";
 import * as inbox from "./commands/inbox.ts";
 import * as launch from "./commands/launch.ts";
 import * as media from "./commands/media.ts";
+import * as completion from "./commands/completion.ts";
 import * as peers from "./commands/peers.ts";
 import * as query from "./commands/query.ts";
 import * as register from "./commands/register.ts";
@@ -72,6 +73,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "remote":
       await remote.run(rest);
+      return;
+    case "completion":
+      await completion.run(rest);
       return;
     default:
       console.error(`Unknown command: ${command}`);

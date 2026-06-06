@@ -46,6 +46,7 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
+- User-facing CLI install and Carapace completion instructions live in `README.md`; keep this file to repository workflow directives.
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.

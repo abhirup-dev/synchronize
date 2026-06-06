@@ -31,6 +31,23 @@ export function useTasks(roomId: string)    { return useSnapshot(useDataSource()
 export function useArtifacts(roomId: string) { return useSnapshot(useDataSource().artifacts(roomId)); }
 export function useThreadSummary(parentMessageId: string) { return useSnapshot(useDataSource().threadSummary(parentMessageId)); }
 export function useSkillCatalog() { return useSnapshot(useDataSource().skillCatalog()); }
+export function useActivity() { return useSnapshot(useDataSource().activity()); }
+export function useActivityAwaitingCount() { return useSnapshot(useDataSource().activityAwaitingCount()); }
+
+export function useAckActivity() {
+  const ds = useDataSource();
+  return ds.ackActivity.bind(ds);
+}
+
+export function useAckAllActivity() {
+  const ds = useDataSource();
+  return ds.ackAllActivity.bind(ds);
+}
+
+export function useLoadMoreActivity() {
+  const ds = useDataSource();
+  return ds.loadMoreActivity.bind(ds);
+}
 
 export function useSendMessage() {
   const ds = useDataSource();
