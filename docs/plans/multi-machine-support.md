@@ -218,6 +218,100 @@ Observations from the VPS setup:
   clients: `SYNCHRONIZE_REMOTE_URL`, `SYNCHRONIZE_TOKEN`, and a larger
   `SYNCHRONIZE_HEALTH_TIMEOUT_MS` for tailnet health checks.
 
+### Current manual harness setup
+
+This is the current state to simplify later. It is intentionally procedural:
+today the operator still has to assemble a remote runtime by hand before the
+cross-machine harnesses are easy to run.
+
+Mac side:
+
+- start a throwaway or chosen daemon with a tailnet bind, fixed port, and token,
+  for example:
+
+  ```bash
+  SYNCHRONIZE_HOME=/tmp/sync-mm-mac-itest \
+  SYNCHRONIZE_BIND=100.126.163.80 \
+  SYNCHRONIZE_PORT=58412 \
+  SYNCHRONIZE_TOKEN=... \
+  bun run src/daemon.ts
+  ```
+
+- keep that daemon alive while the remote harness runs;
+- verify from the VPS with `/health` and authenticated `/status`;
+- stop the daemon and delete its temporary `SYNCHRONIZE_HOME` after the run.
+
+VPS side:
+
+- ensure `~/.local/bin` is on `PATH` for non-interactive SSH commands;
+- ensure `aoe`, `tmux`, `uv`, `bun`, and the target agent CLI are installed;
+- rsync the Mac worktree into a remote path such as
+  `/tmp/synchronize-mm-client`;
+- run `bun install` in the remote copy;
+- invoke harness commands from the remote copy with:
+
+  ```bash
+  PATH="$HOME/.local/bin:$PATH" \
+  SYNCHRONIZE_REMOTE_URL=http://100.126.163.80:<port> \
+  SYNCHRONIZE_TOKEN=... \
+  SYNCHRONIZE_HEALTH_TIMEOUT_MS=5000 \
+  uv run scripts/<harness>.py --remote-url ... --remote-token ...
+  ```
+
+### Harness status today
+
+CLI harnesses:
+
+- work cross-machine when launched on the VPS against the Mac daemon;
+- use the remote REST client for assertions;
+- do not own or stop the daemon in remote mode.
+
+Pi agent harnesses:
+
+- work cross-machine after remote env is threaded into the temporary Pi
+  `mcp.json` and session command;
+- use client-side polling for remote event delivery instead of relying on a
+  daemon-to-client callback;
+- require careful session binding selection by repo, host tool, registration
+  timestamp, and session name to avoid stale Pi bindings from prior runs;
+- currently need the remote Pi runtime and `pi-mcp-adapter` installed or
+  provisioned before the test is reliable.
+
+Claude AOE sessions:
+
+- can be spawned by AOE on the VPS with `--cmd claude` or `--cmd-override`;
+- can run synchronize MCP when given a remote-aware MCP config with
+  `SYNCHRONIZE_REMOTE_URL`, `SYNCHRONIZE_TOKEN`, and
+  `SYNCHRONIZE_HEALTH_TIMEOUT_MS`;
+- can send a DM through `bridge_dm` to a peer registered in the Mac daemon;
+- can read the recipient durable inbox through `bridge_inbox`;
+- do **not** yet have cross-machine live push parity in claude-mode. The
+  current Claude subscription registers a `127.0.0.1:<port>` callback on the
+  VPS, which the Mac daemon cannot reach. Durable inbox works; Phase 2 still
+  needs client-initiated SSE/long-poll.
+
+### Pain points to remove
+
+- Remote setup is too manual: install/check `aoe`, `pi`, `claude`, `uv`, `bun`,
+  PATH, repo sync, and dependency install all happen through ad-hoc SSH.
+- The daemon lifecycle is manual: choose a tailnet IP, port, token, temp home,
+  keep the process alive, verify health, and tear it down.
+- The harness invocation has duplicated remote flags and env variables.
+- The remote MCP configuration for Claude is not first-class; for manual tests
+  we had to generate a temporary `--mcp-config` with remote daemon env.
+- Pi has a harness-owned isolated environment, but the equivalent Claude test
+  environment is still improvised.
+- Cleanup requires knowing both AOE and tmux state. Failed or interrupted runs
+  can leave profiles, tmux sessions, or agent processes behind.
+- AOE profile deletion can leave one default profile because AOE refuses to
+  delete the last profile.
+- Diagnostics are spread across daemon logs, AOE JSON, tmux panes, REST queries,
+  and remote transcript files.
+- There is no single command that answers: "is this VPS ready to run all remote
+  synchronize harnesses against this Mac daemon?"
+- There is no single command that syncs the current worktree and prints the
+  exact remote command/env the harness will use.
+
 Candidate command shape for later discussion:
 
 ```bash
