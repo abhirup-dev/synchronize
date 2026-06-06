@@ -423,6 +423,10 @@ export class LaunchService {
         model: req.model ?? null,
         thinking: req.thinking ?? null,
         args: req.args ?? null,
+        // Persist the resume target so the durable worker (specFromRow) respawns
+        // as a faithful resume; null for a fresh launch so it stays a fresh launch.
+        resumeHostSessionId: req.resume?.hostSessionId ?? null,
+        resumeHostSessionFile: req.resume?.hostSessionFile ?? null,
         now,
       });
       appendLaunchEvent(this.db, {
@@ -614,6 +618,12 @@ export class LaunchService {
 
   private async specFromRow(row: LaunchIntentRow): Promise<LaunchSpec> {
     const args = row.args_json ? (JSON.parse(row.args_json) as string[]) : undefined;
+    // Reconstruct the resume target ONLY when one was recorded (a resume launch).
+    // Fresh launches store null here, so they stay fresh (`pi` / `claude`, no
+    // --session/--resume) — including on respawn/retry of this same row.
+    const resume = row.resume_host_session_id
+      ? { hostSessionId: row.resume_host_session_id, hostSessionFile: row.resume_host_session_file }
+      : undefined;
     const spec = resolveLaunchSpec(
       {
         tool: row.tool,
@@ -623,6 +633,7 @@ export class LaunchService {
         ...(row.model ? { model: row.model } : {}),
         ...(row.thinking ? { thinking: row.thinking } : {}),
         ...(args ? { args } : {}),
+        ...(resume ? { resume } : {}),
       },
       { launchId: row.launch_id, peerId: row.peer_id, home: this.home },
     );

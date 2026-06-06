@@ -658,6 +658,23 @@ function migrate(db: Database): void {
     `);
     if (!hasMemberStateV12) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (12)`);
   }
+
+  // v13: persist the resume target on launch_intents. Without it, the durable
+  // launch worker (specFromRow) rebuilds the spawn WITHOUT --session, so every
+  // daemon-mode resume forks a FRESH session and loses prior context. These
+  // columns let the worker reconstruct req.resume and emit `pi --session <id>`
+  // / `claude --resume <id>` faithfully. (sync-ocdt bug.)
+  const hasResumeTargetV13 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 13")
+    .get();
+  const launchCols = db.query<{ name: string }, []>("PRAGMA table_info(launch_intents)").all().map((col) => col.name);
+  if (!hasResumeTargetV13 || !launchCols.includes("resume_host_session_id")) {
+    if (!launchCols.includes("resume_host_session_id"))
+      db.exec(`ALTER TABLE launch_intents ADD COLUMN resume_host_session_id TEXT`);
+    if (!launchCols.includes("resume_host_session_file"))
+      db.exec(`ALTER TABLE launch_intents ADD COLUMN resume_host_session_file TEXT`);
+    if (!hasResumeTargetV13) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (13)`);
+  }
 }
 
 /**

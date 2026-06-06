@@ -15,6 +15,10 @@ export interface LaunchIntentRow {
   model: string | null;
   thinking: string | null;
   args_json: string | null;
+  // Resume target: when set, the worker respawns as a faithful resume
+  // (`pi --session <id>` / `claude --resume <id>`) instead of a fresh launch.
+  resume_host_session_id: string | null;
+  resume_host_session_file: string | null;
   backend: string;
   backend_profile: string | null;
   backend_title: string;
@@ -74,6 +78,10 @@ export interface CreateLaunchIntentInput {
   model?: string | null;
   thinking?: string | null;
   args?: string[] | null;
+  // Set only for a resume launch; null for a fresh launch. Drives the worker's
+  // faithful-resume command reconstruction in specFromRow.
+  resumeHostSessionId?: string | null;
+  resumeHostSessionFile?: string | null;
   backendProfile?: string | null;
   state?: LaunchState;
   now?: string;
@@ -132,10 +140,11 @@ export function createLaunchIntent(db: Database, input: CreateLaunchIntentInput)
     .query(
       `INSERT INTO launch_intents (
          launch_id, peer_id, tool, session_name, alias, cwd, target_group,
-         model, thinking, args_json, backend, backend_profile, backend_title,
+         model, thinking, args_json, resume_host_session_id, resume_host_session_file,
+         backend, backend_profile, backend_title,
          state, created_at, updated_at, accepted_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.launchId,
@@ -148,6 +157,8 @@ export function createLaunchIntent(db: Database, input: CreateLaunchIntentInput)
       input.model ?? null,
       input.thinking ?? null,
       input.args ? JSON.stringify(input.args) : null,
+      input.resumeHostSessionId ?? null,
+      input.resumeHostSessionFile ?? null,
       input.backend,
       input.backendProfile ?? null,
       input.backendTitle,
