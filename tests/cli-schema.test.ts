@@ -29,7 +29,7 @@ describe("CLI schema", () => {
     expect(subcommandNames("media")).toEqual(["share", "list", "get"]);
     expect(subcommandNames("threads")).toEqual(["list", "status", "show", "summary"]);
     expect(subcommandNames("hook")).toEqual(["claude-session"]);
-    expect(subcommandNames("completion")).toEqual(["carapace"]);
+    expect(subcommandNames("completion")).toEqual(["carapace", "complete"]);
   });
 
   test("keeps help generated from schema aligned with the current CLI surface", () => {

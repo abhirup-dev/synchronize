@@ -318,6 +318,22 @@ export const cliSchema: CliSchema = {
           name: "carapace",
           description: "Print a Carapace spec for synchronize",
         },
+        {
+          name: "complete",
+          description: "Internal dynamic completion bridge",
+          positionals: [
+            {
+              name: "PROVIDER",
+              description: "Dynamic provider name",
+              value: {
+                kind: "enum",
+                values: ["group-names", "peer-ids", "session-names", "media-ids", "thread-root-event-ids"],
+              },
+              required: true,
+            },
+          ],
+          flags: [{ name: "context", description: "Provider context JSON" }],
+        },
       ],
     },
   ],
