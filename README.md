@@ -71,29 +71,48 @@ make setup
 bun test
 ```
 
-For convenient CLI use, link the package:
+If you only want to run from the checkout, use:
+
+```bash
+bun run src/cli.ts --help
+```
+
+## Install The CLI
+
+For day-to-day terminal use, link the package after `make setup`:
 
 ```bash
 make link
 synchronize --help
 ```
 
-`synchronize-mcp` is also linked for MCP clients; it is a stdio server, so it is
-normally launched by Codex or Claude rather than run interactively.
+`make link` installs two local commands through Bun:
 
-If you do not want to link it, run the CLI from the repo:
+- `synchronize` - the human/operator CLI
+- `synchronize-mcp` - the stdio MCP server used by Codex or Claude
 
-```bash
-bun run src/cli.ts --help
-```
+Run `synchronize status` once to start or connect to the local daemon. Runtime
+state is stored under `~/.synchronize` by default.
 
 ## Shell Completion
 
-V0 completion support is Carapace-first. The CLI can generate and install a
-Carapace spec from its typed command schema:
+Shell completion is Carapace-first. Install Carapace if it is not already
+available:
 
 ```bash
-synchronize completion carapace
+brew install carapace
+```
+
+Load Carapace from your zsh config:
+
+```bash
+echo 'source <(carapace _carapace zsh)' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Then install the generated `synchronize` completion spec:
+
+```bash
 synchronize completion install --shell carapace
 ```
 
@@ -101,6 +120,12 @@ On macOS, the install command writes:
 
 ```text
 ~/Library/Application Support/carapace/specs/synchronize.yaml
+```
+
+To inspect the generated spec without installing it:
+
+```bash
+synchronize completion carapace
 ```
 
 Completion is safe to use at the shell prompt. Static command and flag
