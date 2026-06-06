@@ -969,6 +969,18 @@
 .act-scroll.layout-flat { }
 .act-flat { max-width: 1040px; display: flex; flex-direction: column; gap: 12px; }
 .act-flat-list { display: flex; flex-direction: column; gap: 10px; }
+.act-timeline-bucket {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px 2px;
+  font-family: "Archivo Black", sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  border-bottom: 2px dashed var(--ink-soft);
+}
 .act-latest {
   display: flex;
   align-items: center;

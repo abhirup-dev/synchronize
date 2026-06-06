@@ -26,6 +26,9 @@ import { Avatar } from "./primitives.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 
 type Filter = "all" | "awaits" | "mentions";
+type TimelineEntry =
+  | { kind: "bucket"; id: string; label: string; count: number }
+  | { kind: "item"; id: string; item: ActivityItemModel };
 
 interface ActivityViewProps {
   onJumpToRoom(roomId: string, msgId?: string): void;
@@ -344,8 +347,9 @@ function TimelineFlat({
 }) {
   const scrollRef = useAutoScrollbar<HTMLDivElement>();
   const latest = items[0];
+  const entries = useMemo(() => bucketTimeline(items), [items]);
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: entries.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 44,
     overscan: 10,
@@ -358,17 +362,24 @@ function TimelineFlat({
         )}
         <div className="act-flat-list virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => {
-            const it = items[row.index];
-            if (!it) return null;
+            const entry = entries[row.index];
+            if (!entry) return null;
             return (
               <div
-                key={it.id}
+                key={entry.id}
                 className="virtualized-row"
                 data-index={row.index}
                 ref={virtualizer.measureElement}
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                <ActivityItem {...itemProps(it, true)} />
+                {entry.kind === "bucket" ? (
+                  <div className="act-timeline-bucket">
+                    <span>{entry.label}</span>
+                    <span>{entry.count}</span>
+                  </div>
+                ) : (
+                  <ActivityItem {...itemProps(entry.item, true)} />
+                )}
               </div>
             );
           })}
@@ -404,6 +415,37 @@ function LatestStrip({
       </button>
     </div>
   );
+}
+
+function bucketTimeline(items: ActivityItemModel[]): TimelineEntry[] {
+  // Cascading age buckets: each item belongs to the first matching window, so
+  // "Today" excludes the last 5h, "Last 3 days" excludes today, and so on.
+  const hour = 60 * 60 * 1000;
+  const day = 24 * hour;
+  const now = Date.now();
+  const buckets = [
+    { id: "5h", label: "Last 5h", maxAgeMs: 5 * hour },
+    { id: "1d", label: "Today", maxAgeMs: day },
+    { id: "3d", label: "Last 3 days", maxAgeMs: 3 * day },
+    { id: "7d", label: "Last 7 days", maxAgeMs: 7 * day },
+    { id: "30d", label: "Last 1 month", maxAgeMs: 30 * day },
+    { id: "older", label: "Older", maxAgeMs: Number.POSITIVE_INFINITY },
+  ];
+  const byBucket = buckets.map((bucket) => ({ ...bucket, items: [] as ActivityItemModel[] }));
+
+  for (const item of items) {
+    const age = now - Date.parse(item.createdAt);
+    const bucket = byBucket.find((candidate) => age <= candidate.maxAgeMs) ?? byBucket.at(-1)!;
+    bucket.items.push(item);
+  }
+
+  const entries: TimelineEntry[] = [];
+  for (const bucket of byBucket) {
+    if (bucket.items.length === 0) continue;
+    entries.push({ kind: "bucket", id: `bucket:${bucket.id}`, label: bucket.label, count: bucket.items.length });
+    entries.push(...bucket.items.map((item) => ({ kind: "item" as const, id: item.id, item })));
+  }
+  return entries;
 }
 
 // ─── multi-select room filter: fit as many pills as the bar allows + a panel ──
