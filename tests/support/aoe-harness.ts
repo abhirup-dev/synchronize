@@ -18,6 +18,13 @@ export const HARNESS = process.env.SYNCHRONIZE_AOE_HARNESS === "1";
 /** test() when the live harness is enabled, test.skip() otherwise. */
 export const harnessTest = HARNESS ? test : test.skip;
 
+// Mirror of the Python harness's --keep: when set, leave the daemon, the live
+// Pi agents, the temp homes, and the AOE profile in place after the test so you
+// can attach to the panes and inspect state. Reaping, daemon shutdown, and
+// AOE/home cleanup all become no-ops. Run a single scenario with -t and clean up
+// afterwards with `make clean-slate` + `aoe profile delete synchronize-<hash>`.
+export const KEEP = process.env.SYNCHRONIZE_AOE_KEEP === "1";
+
 export interface Delivery {
   pushed_to: string[];
   inbox_only: string[];
@@ -45,6 +52,14 @@ export function createHarness() {
   async function startHarnessDaemon(): Promise<TestDaemon> {
     const daemon = await startDaemon({ debug: true });
     startedHomes.push(daemon.home);
+    if (KEEP) {
+      // Under --keep, daemon.stop() becomes a no-op so the agents stay live.
+      const origStop = daemon.stop;
+      daemon.stop = async () => {
+        console.log(`[keep] daemon kept alive at ${daemon.baseUrl} (home=${daemon.home}); profile=${aoeProfileName(daemon.home)}`);
+        void origStop; // intentionally not called
+      };
+    }
     return daemon;
   }
 
@@ -63,6 +78,11 @@ export function createHarness() {
   // AOE profile each harness daemon created (which drops its AOE sessions +
   // groups — otherwise they accumulate as dead `synchronize-<hash>` profiles).
   async function cleanup(): Promise<void> {
+    if (KEEP) {
+      console.log(`[keep] leaving ${spawnedTitles.size} agent session(s) + ${startedHomes.length} daemon home(s)/profile(s) in place for inspection`);
+      for (const home of startedHomes) console.log(`[keep]   home=${home} profile=${aoeProfileName(home)}`);
+      return;
+    }
     for (const title of spawnedTitles) await killAoeByTitle(title);
     await Promise.all(spawnedRepos.map((repo) => rm(repo, { recursive: true, force: true })));
     for (const home of startedHomes) await deleteAoeProfile(home);
@@ -227,5 +247,6 @@ export function reached(delivery: Delivery): Set<string> {
 // Reap any live agents via the real archive path so nothing is orphaned (resume
 // mints new backend titles that title-tracking can miss).
 export async function reap(client: ClientConfig, peerIds: string[]): Promise<void> {
+  if (KEEP) return; // keep agents alive for inspection
   for (const peerId of peerIds) await archiveSession(client, { peerId }).catch(() => {});
 }
