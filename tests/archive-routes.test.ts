@@ -194,6 +194,73 @@ test("archive group reports per-member status and reserves every alias", async (
   }
 });
 
+test("a live archived (zombie) peer cannot send, re-subscribe, or be pushed until it re-registers", async () => {
+  const daemon = await startDaemon();
+  // A local callback server stands in for the agent's live push channel; it
+  // records every notification the daemon delivers.
+  const received: Array<{ event?: { body?: string } }> = [];
+  const cb = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: async (req) => {
+      received.push((await req.json()) as { event?: { body?: string } });
+      return new Response("ok");
+    },
+  });
+  const callbackUrl = `http://127.0.0.1:${cb.port}/events`;
+  const subscribe = (peerId: string) =>
+    fetch(`${daemon.client.baseUrl}/subscriptions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ peer_id: peerId, callback_url: callbackUrl, token: "tok" }),
+    });
+  const waitFor = async (predicate: () => boolean, ms = 4000) => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await Bun.sleep(100);
+    }
+    return predicate();
+  };
+
+  try {
+    const { peer: zombie } = await registerPeer(daemon.client, { sessionName: "zombie", tool: "claude" });
+    const { peer: sender } = await registerPeer(daemon.client, { sessionName: "sender", tool: "claude" });
+
+    // Live channel works before archive: a DM is pushed to the callback.
+    expect((await subscribe(zombie.peer_id)).status).toBe(201);
+    await sendDm(daemon.client, { senderPeerId: sender.peer_id, recipientPeerId: zombie.peer_id, message: "pre-archive ping" });
+    expect(await waitFor(() => received.some((r) => r.event?.body === "pre-archive ping"))).toBe(true);
+
+    // Archive the (still-alive) zombie.
+    await archiveSession(daemon.client, { peerId: zombie.peer_id });
+    const before = received.length;
+
+    // (a) cannot send while archived.
+    expect(await errorCode(() => sendDm(daemon.client, { senderPeerId: zombie.peer_id, recipientPeerId: sender.peer_id, message: "x" }))).toBe(
+      "must_reregister",
+    );
+    // (b) cannot re-open a live channel while archived.
+    expect((await subscribe(zombie.peer_id)).status).toBe(409);
+
+    // (c) no live push while archived — but the DM is durably queued for resume.
+    await sendDm(daemon.client, { senderPeerId: sender.peer_id, recipientPeerId: zombie.peer_id, message: "while-archived ping" });
+    await Bun.sleep(500);
+    expect(received.length).toBe(before); // nothing pushed
+    const inbox = await readInbox(daemon.client, zombie.peer_id);
+    expect(inbox.events.some((e) => e.body === "while-archived ping")).toBe(true); // durable fallback held it
+
+    // After re-registering, the identity resurrects: it can subscribe + be pushed again.
+    await registerPeer(daemon.client, { peerId: zombie.peer_id, sessionName: "zombie", tool: "claude" });
+    expect((await subscribe(zombie.peer_id)).status).toBe(201);
+    await sendDm(daemon.client, { senderPeerId: sender.peer_id, recipientPeerId: zombie.peer_id, message: "post-resume ping" });
+    expect(await waitFor(() => received.some((r) => r.event?.body === "post-resume ping"))).toBe(true);
+  } finally {
+    cb.stop(true);
+    await daemon.stop();
+  }
+});
+
 test("mentioning an archived alias yields an alias_archived warning (web guardrail signal)", async () => {
   const daemon = await startDaemon();
   try {

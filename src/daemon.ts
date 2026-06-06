@@ -938,6 +938,13 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     const callbackUrl = requireLocalCallbackUrl(requireString(body, "callback_url"));
     const token = requireString(body, "token");
     ensurePeer(ctx.db, peerId);
+    // A zombie (archived but still-running) process must not be able to (re)open a
+    // live push channel without first re-registering — re-registration is what
+    // resurrects it to active. Until then it stays delivery-dark (durable inbox only).
+    if (isPeerArchived(ctx.db, peerId)) {
+      debug(`guard: must_reregister subscribe peer=${peerId} (archived)`);
+      throw new HttpError(409, "must_reregister", "This identity is archived. Re-register before subscribing for live delivery.");
+    }
     const subscriber = {
       peer_id: peerId,
       callback_url: callbackUrl,
@@ -2451,6 +2458,16 @@ export function markPeerArchived(
     ).run(peerId);
   })();
   return reserved;
+}
+
+function isPeerArchived(db: Database, peerId: string): boolean {
+  return (
+    db
+      .query<{ lifecycle_state: string }, [string]>(
+        "SELECT lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+      )
+      .get(peerId)?.lifecycle_state === "archived"
+  );
 }
 
 // Send guard (C4 / Flow K): a live-but-archived identity must re-register before
@@ -4080,6 +4097,14 @@ function readWebRoomMedia(ctx: DaemonContext, input: { room: string | null; limi
 async function notifySubscribers(ctx: DaemonContext, peerIds: string[], event: EventRow): Promise<void> {
   await Promise.all(
     peerIds.map(async (peerId) => {
+      // Lifecycle gate: an ARCHIVED identity is not a live participant — even if a
+      // still-running (zombie) process holds a subscription, it must NOT receive
+      // pushed notifications until it re-registers (which resurrects it to active).
+      // The message remains in the durable inbox, so it is delivered on resume.
+      if (isPeerArchived(ctx.db, peerId)) {
+        debug(`notify: skip archived peer=${peerId} event_id=${event.event_id} (durable inbox fallback only)`);
+        return;
+      }
       const subscriber = ctx.subscribers.get(peerId);
       if (!subscriber) {
         log(`notification pending event_id=${event.event_id} peer_id=${peerId}: no active subscriber; durable inbox fallback only`);
