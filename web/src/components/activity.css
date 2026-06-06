@@ -765,10 +765,75 @@
   .act-roomfilter { display: none; }
 }
 
-/* dark theme: marker icon + chip text use ink-on-color reliably */
-:root[data-theme="dark"] .act-room-icon,
-:root[data-theme="dark"] .act-roomchip-icon,
-:root[data-theme="dark"] .act-nav-icon { color: #1B1815; }
+/* ═══════════════════ dark-mode anti-glare overrides (Activity) ═══════════════════
+   Same treatment as the chat shell: the Activity view's selected / active / "ink"
+   chrome is a bright cream-on-ink fill that glares on dark surfaces. Re-express it
+   as a lifted surface (--paper-3) + accent across every dark palette, recolour the
+   cream scrollbar thumb to the taupe edge, and chroma-mute the vivid identity
+   markers/icons so they read as tasteful tags. Scoped via :is() — light untouched.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* marker icon + chip glyphs sit on a coloured marker; force dark ink-on-colour */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-room-icon,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-roomchip-icon,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-nav-icon {
+  color: var(--on-accent);
+}
+
+/* cream scrollbar thumb → dim taupe edge (track stays on the paper floor) */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-scroll::-webkit-scrollbar-thumb {
+  background: var(--rule);
+}
+
+/* active sidebar nav: lifted surface + accent offset bar (matches active room) */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-nav.active {
+  background: var(--paper-3);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm), inset 4px 0 0 var(--accent);
+}
+
+/* "ink" count pill → dark chip + bright numeral */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-room-count {
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-xs);
+}
+
+/* primary action + active toggles/chips → elevated surface framed by the accent */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-markall,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .avt-btn.active,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-rf-chip.active,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-liveonly.active,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-rf-more.open {
+  background: var(--paper-3);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .avt-btn.active {
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-rf-chip.active .act-rf-dot {
+  border-color: var(--accent);
+}
+
+/* header bar + active filter count → elevated dark surface, not a cream block */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-filter.active .act-filter-n,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-roomlist-head {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+/* vivid identity markers / icons / thumbs → chroma-muted to tasteful tags */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-marker,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-room-icon,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-roomchip-icon,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-nav-icon,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-artifact-thumb,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-ticket-type,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-latest-actor,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .act-rf-dot {
+  filter: var(--chip-filter, saturate(0.85) brightness(0.97));
+}
 
 /* ═══════════ filter bar row 1: keep on one line + view toggle ═══════════ */
 .act-filterbar { flex-wrap: nowrap; }

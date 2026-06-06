@@ -8,17 +8,22 @@
   --ink: #111111;
   --ink-soft: #4A4636;
   --ink-faint: #8A8268;
-  /* `--rule` is the color used for borders and offset shadows. In light mode
-     it's the same as --ink (full brutalist contrast). In dark mode it gets
-     softened so the heavy black outlines/shadows don't fight the text — see
+  /* Borders and cast shadows are split into two tokens:
+       --rule       → border/edge color
+       --shadow-ink → the colour of offset (cast) shadows
+     In LIGHT mode both equal --ink (full brutalist contrast), so the split is a
+     no-op — light renders identically. The DARK themes break them apart: borders
+     dim to a warm taupe (--rule) while shadows become a genuine near-black cast
+     shadow (--shadow-ink) instead of an inverted bright cream block. See the
      research note in :root[data-theme="dark"] below. */
   --rule: var(--ink);
+  --shadow-ink: var(--ink);
   --line: 3px solid var(--rule);
   --line-2: 2px solid var(--rule);
-  --shadow: 4px 4px 0 var(--rule);
-  --shadow-sm: 2px 2px 0 var(--rule);
-  --shadow-lg: 6px 6px 0 var(--rule);
-  --shadow-hover: 3px 3px 0 var(--rule);
+  --shadow: 4px 4px 0 var(--shadow-ink);
+  --shadow-sm: 2px 2px 0 var(--shadow-ink);
+  --shadow-lg: 6px 6px 0 var(--shadow-ink);
+  --shadow-hover: 3px 3px 0 var(--shadow-ink);
   --font-display: "Archivo Black", sans-serif;
   --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
@@ -85,13 +90,13 @@
   --line-rule-dashed-sm: 2px dashed var(--rule);
   --line-rule-dashed-xs: 1.5px dashed var(--rule);
   --shadow-none: none;
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-chip: 1.5px 1.5px 0 var(--rule);
-  --shadow-md: 4px 4px 0 var(--rule);
-  --shadow-hover-sm: 2.5px 2.5px 0 var(--rule);
+  --shadow-xxs: 0.75px 0.75px 0 var(--shadow-ink);
+  --shadow-xs: 1px 1px 0 var(--shadow-ink);
+  --shadow-chip: 1.5px 1.5px 0 var(--shadow-ink);
+  --shadow-md: 4px 4px 0 var(--shadow-ink);
+  --shadow-hover-sm: 2.5px 2.5px 0 var(--shadow-ink);
   --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--rule);
+  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--shadow-ink);
   --shadow-accent-inset: inset 0 -2px 0 var(--accent);
   --shadow-tab-active: inset 0 -4px 0 var(--yellow);
   --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
@@ -170,167 +175,72 @@
   --code-fg: #F4EFE3;
 }
 
-/* Dark theme — warm coffee palette, off-white ink, slightly desaturated accents.
+/* ═══════════════════════════ DARK THEMES ═══════════════════════════
    Research notes (Atlassian elevation, Material 3 tonal elevation, Muz.li dark-mode
    guide, accessibilitychecker.org on halation):
-     - Dark mode communicates elevation via SURFACE LIGHTNESS, not via hard offset
-       shadows. A cream shadow on a dark surface reads as a glowing block, not depth.
-     - Heavy ink-color borders (3 px+) in dark mode produce a "billboard" effect:
-       they out-shout the text. Halve border weights, soften their color to ~45%
-       of the text ink — they still delineate but stop competing.
-     - Body text bumped from 400 → 500 weight; thin strokes "halate" (appear to
-       glow/blur) on dark backgrounds, especially for users with astigmatism. A
-       slightly heavier weight closes the perceptual gap without changing the
-       typeface character. */
+     - Dark mode communicates elevation via a SURFACE LIGHTNESS ladder
+       (--paper → --paper-2 → --paper-3) AND a genuine near-black cast shadow.
+       The old dark theme used a softened-cream shadow, which reads as a glowing
+       block rather than depth — the single loudest source of glare. We now split
+       borders from shadows: borders dim to a warm taupe (--rule), shadows become a
+       real dark drop (--shadow-ink). The brutalist chunky border weight is kept
+       (inherited from :root) because the dimmed taupe colour stops it billboarding.
+     - Body text is bumped 400 → 500 weight (see the body rule below); thin strokes
+       "halate" (appear to glow/blur) on deep backgrounds, especially for users with
+       astigmatism. A slightly heavier weight closes the perceptual gap.
+     - Vivid LIGHT-palette identity colours glow at full chroma on dark surfaces, so
+       every dark palette ships a --chip-filter that pulls saturation/brightness
+       down to a tasteful pastel-tag level (Catppuccin / One Dark style).
+
+   Single-axis model: each palette is a top-level data-theme value (matching the
+   repo's existing approach and App.tsx ALL_THEMES). The shared block below sets the
+   one piece of scale that differs from light — a larger hard-shadow ladder so the
+   dark 3D lift pops. Everything else is inherited from :root and re-resolves
+   against each palette's own --rule / --shadow-ink because data-theme sits on the
+   same <html> element where the base tokens are declared. */
+:root[data-theme="dark"],
+:root[data-theme="onyx"],
+:root[data-theme="catppuccin-mocha"],
+:root[data-theme="kanagawa-wave"],
+:root[data-theme="onedark"] {
+  --shadow-sm: 4px 4px 0 var(--shadow-ink);
+  --shadow-lg: 9px 9px 0 var(--shadow-ink);
+  /* The app accent (used by selection bars, active tabs, activity chips). In light
+     mode --accent is left to the per-context default; here we anchor it to the
+     palette accent so the dark-only selection bars below always resolve. */
+  --accent: var(--yellow);
+}
+
+/* ── EMBER (default dark) — warm coffee. Higher-contrast than the old dark:
+   brighter off-white ink, crisp warm-taupe edges, punchier amber/coral accents,
+   only light chroma-muting. ── */
 :root[data-theme="dark"] {
-  --paper: #1B1815;
-  --paper-2: #25221D;     /* +6% L step — surface ladder does the elevation work */
-  --paper-3: #312D27;     /* +12% L step */
-  --ink: #ECE3CD;
-  --ink-soft: #B5A988;
-  --ink-faint: #756B54;
-  --on-ink: #1B1815;
-  /* Borders + shadows use a softened ink (~45% of full ink luminance) so they
-     read as quiet rules rather than dominant chrome. Text still uses --ink. */
-  --rule: rgba(236, 227, 205, 0.42);
-  --line: 1.5px solid var(--rule);
-  --line-2: 1px solid var(--rule);
-  --shadow: 2px 2px 0 var(--rule);
-  --shadow-sm: 1px 1px 0 var(--rule);
-  --shadow-lg: 3px 3px 0 var(--rule);
-  --shadow-hover: 2px 2px 0 var(--rule);
-  --font-display: "Archivo Black", sans-serif;
-  --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-  --text-8: 8px;
-  --text-8-5: 8.5px;
-  --text-9: 9px;
-  --text-9-5: 9.5px;
-  --text-10: 10px;
-  --text-10-5: 10.5px;
-  --text-11: 11px;
-  --text-11-5: 11.5px;
-  --text-12: 12px;
-  --text-12-5: 12.5px;
-  --text-13: 13px;
-  --text-13-5: 13.5px;
-  --text-14: 14px;
-  --text-15: 15px;
-  --text-16: 16px;
-  --text-17: 17px;
-  --text-18: 18px;
-  --text-20: 20px;
-  --text-22: 22px;
-  --text-24: 24px;
-  --text-26: 26px;
-  --text-28: 28px;
-  --tracking-pixel-tight: -1px;
-  --tracking-pixel: 1px;
-  --tracking-tight: -0.01em;
-  --tracking-none: 0;
-  --tracking-xs: 0.02em;
-  --tracking-sm: 0.04em;
-  --tracking-md: 0.06em;
-  --tracking-lg: 0.08em;
-  --radius-none: 0;
-  --radius-hair: 1px;
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 5px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
-  --radius-2xl: 10px;
-  --radius-pill: 999px;
-  --radius-panel-top: 6px 6px 0 0;
-  --radius-panel-bottom: 0 0 6px 6px;
-  --line-bold: 3px solid var(--rule);
-  --line-md: 2.5px solid var(--rule);
-  --line-sm: 2px solid var(--rule);
-  --line-xs: 1.5px solid var(--rule);
-  --line-xxs: 1.25px solid var(--rule);
-  --line-hair: 1px solid var(--rule);
-  --line-xs-ink: 1.5px solid var(--ink);
-  --line-xs-faint: 1.5px solid var(--ink-faint);
-  --line-hair-faint: 1px solid var(--ink-faint);
-  --line-none: none;
-  --line-transparent: 2px solid transparent;
-  --line-md-transparent: 2.5px solid transparent;
-  --line-dashed-md: 2.5px dashed var(--ink);
-  --line-dashed-sm: 2px dashed var(--ink);
-  --line-dashed-xs: 1.5px dashed var(--ink);
-  --line-dashed-faint: 1.5px dashed var(--ink-faint);
-  --line-rule-dashed-sm: 2px dashed var(--rule);
-  --line-rule-dashed-xs: 1.5px dashed var(--rule);
-  --shadow-none: none;
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-chip: 1.5px 1.5px 0 var(--rule);
-  --shadow-md: 4px 4px 0 var(--rule);
-  --shadow-hover-sm: 2.5px 2.5px 0 var(--rule);
-  --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--rule);
-  --shadow-accent-inset: inset 0 -2px 0 var(--accent);
-  --shadow-tab-active: inset 0 -4px 0 var(--yellow);
-  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
-  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
-  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
-  --space-0: 0;
-  --space-1: 1px;
-  --space-2: 2px;
-  --space-3: 3px;
-  --space-4: 4px;
-  --space-5: 5px;
-  --space-6: 6px;
-  --space-7: 7px;
-  --space-8: 8px;
-  --space-9: 9px;
-  --space-10: 10px;
-  --space-11: 11px;
-  --space-12: 12px;
-  --space-14: 14px;
-  --space-16: 16px;
-  --space-18: 18px;
-  --space-20: 20px;
-  --space-22: 22px;
-  --space-24: 24px;
-  --space-30: 30px;
-  --space-38: 38px;
-  --space-40: 40px;
-  --space-50: 50px;
-  --space-56: 56px;
-  --space-row-gap: var(--space-14);
-  --space-row-gap-compact: var(--space-10);
-  --space-bubble-pad: 12px 16px;
-  --space-thread-bubble-pad: 7px 11px;
-  --space-chip-pad-xs: 1px 5px;
-  --space-chip-pad-sm: 1px 6px;
-  --space-chip-pad-md: 2px 7px;
-  --space-author-chip-pad: 3px 9px;
-  --space-thread-author-chip-pad: 2px 8px;
-  --space-sticker-pad: 4px 10px;
-  --space-button-pad-sm: 4px 8px;
-  --space-button-pad-md: 8px 12px;
-  --density-cozy-pad: 16px 20px 14px;
-  --density-compact-pad: 10px 16px 12px;
-  --yellow: #D9B53C;
-  --pink: #D4669A;
-  --blue: #6E90DC;
-  --lime: #82C383;
-  --tangerine: #D17B40;
-  --lilac: #A695DC;
-  --teal: #4CA89C;
-  --red: #D45F69;
-  --muted: #3A352D;
+  --paper: #20190F;
+  --paper-2: #2E2516;
+  --paper-3: #3B301E;
+  --ink: #F3EBD6;
+  --ink-soft: #B9AC8B;
+  --ink-faint: #7E7159;
+  --on-ink: #14110C;
+  --rule: #6B5F47;        /* warm taupe edge — borders only */
+  --shadow-ink: #050302;  /* near-black — genuine cast shadow, not cream glare */
+  --yellow: #F2B53C;
+  --pink: #F06A9A;
+  --blue: #6E9BEE;
+  --lime: #84CE84;
+  --tangerine: #F0833D;
+  --lilac: #B79CEE;
+  --teal: #45B3A4;
+  --red: #ED5E68;
+  --muted: #3E372C;
   --grain-alpha: 0.05;
-  --on-accent: #1B1815;
-  --you-bg: #3A352D;
-  --you-fg: #ECE3CD;
-  --bubble: #23201C;
-  --code-bg: #100E0C;
-  --code-fg: #ECE3CD;
+  --on-accent: #14110C;
+  --you-bg: #3E372C;
+  --you-fg: #F3EBD6;
+  --bubble: #201B14;
+  --chip-filter: saturate(0.85) brightness(0.97);
+  --code-bg: #0E0B07;
+  --code-fg: #F3EBD6;
 }
 
 :root[data-theme="rose-pine-dawn"] {
@@ -360,114 +270,49 @@
   --code-fg: #F2E9DE;
 }
 
+/* ── KANAGAWA (Wave) — desaturated indigo night with earthy, painterly accents
+   (sakura, wave-aqua, autumn red). Muted yet contrasty. ── */
 :root[data-theme="kanagawa-wave"] {
-  --paper: #16161D;
-  --paper-2: #1F1F28;
-  --paper-3: #2A2A37;
+  --paper: #1F1F28;
+  --paper-2: #2A2A37;
+  --paper-3: #353543;
   --ink: #DCD7BA;
-  --ink-soft: #C8C093;
-  --ink-faint: #727169;
-  --on-ink: #16161D;
-  --rule: rgba(220, 215, 186, 0.42);
-  --line: 1.5px solid var(--rule);
-  --line-2: 1px solid var(--rule);
-  --line-bold: 2px solid var(--rule);
-  --line-md: 1.5px solid var(--rule);
-  --line-sm: 1px solid var(--rule);
-  --line-xs: 1px solid rgba(220, 215, 186, 0.32);
-  --line-xxs: 1px solid rgba(220, 215, 186, 0.26);
-  --line-hair: 1px solid rgba(220, 215, 186, 0.2);
-  --line-xs-ink: 1px solid rgba(220, 215, 186, 0.58);
-  --line-xs-faint: 1px solid rgba(114, 113, 105, 0.6);
-  --line-hair-faint: 1px solid rgba(114, 113, 105, 0.42);
-  --line-transparent: 1px solid transparent;
-  --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed rgba(220, 215, 186, 0.5);
-  --line-dashed-sm: 1px dashed rgba(220, 215, 186, 0.42);
-  --line-dashed-xs: 1px dashed rgba(220, 215, 186, 0.36);
-  --line-dashed-faint: 1px dashed rgba(114, 113, 105, 0.52);
-  --line-rule-dashed-sm: 1px dashed var(--rule);
-  --line-rule-dashed-xs: 1px dashed var(--rule);
-  --shadow: 2px 2px 0 var(--rule);
-  --shadow-sm: 1px 1px 0 var(--rule);
-  --shadow-lg: 3px 3px 0 var(--rule);
-  --shadow-hover: 2px 2px 0 var(--rule);
-  --shadow-md: 3px 3px 0 var(--rule);
-  --shadow-hover-sm: 1.5px 1.5px 0 var(--rule);
-  --shadow-chip: 1px 1px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2px 2px 0 var(--pink), 3px 3px 0 var(--rule);
-  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
-  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
-  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --ink-soft: #A6A28C;
+  --ink-faint: #6B6B80;
+  --on-ink: #1F1F28;
+  --rule: #54546D;
+  --shadow-ink: #08080C;
   --yellow: #E6C384;
   --pink: #D27E99;
   --blue: #7E9CD8;
   --lime: #98BB6C;
   --tangerine: #FFA066;
   --lilac: #957FB8;
-  --teal: #6A9589;
+  --teal: #7AA89F;
   --red: #E46876;
-  --muted: #363646;
-  --grain-alpha: 0.045;
-  --on-accent: #16161D;
-  --you-bg: #2A2A37;
+  --muted: #3A3A48;
+  --grain-alpha: 0.05;
+  --on-accent: #1F1F28;
+  --you-bg: #3A3A48;
   --you-fg: #DCD7BA;
   --bubble: #1F1F28;
-  --code-bg: #0D0C11;
+  --chip-filter: saturate(0.88) brightness(1);
+  --code-bg: #16161D;
   --code-fg: #DCD7BA;
 }
 
+/* ── CATPPUCCIN (Mocha) — violet-charcoal surfaces, soft lavender ink, pastel
+   accents. Calm but colourful. ── */
 :root[data-theme="catppuccin-mocha"] {
   --paper: #1E1E2E;
-  --paper-2: #181825;
-  --paper-3: #313244;
+  --paper-2: #2A2A3C;
+  --paper-3: #383852;
   --ink: #CDD6F4;
-  --ink-soft: #BAC2DE;
-  --ink-faint: #7F849C;
+  --ink-soft: #A6ADC8;
+  --ink-faint: #6C7086;
   --on-ink: #1E1E2E;
-  --rule: rgba(205, 214, 244, 0.38);
-  --line: 1.5px solid var(--rule);
-  --line-2: 1px solid var(--rule);
-  --line-bold: 2px solid var(--rule);
-  --line-md: 1.5px solid var(--rule);
-  --line-sm: 1px solid var(--rule);
-  --line-xs: 1px solid rgba(205, 214, 244, 0.3);
-  --line-xxs: 1px solid rgba(205, 214, 244, 0.24);
-  --line-hair: 1px solid rgba(205, 214, 244, 0.18);
-  --line-xs-ink: 1px solid rgba(205, 214, 244, 0.56);
-  --line-xs-faint: 1px solid rgba(127, 132, 156, 0.62);
-  --line-hair-faint: 1px solid rgba(127, 132, 156, 0.44);
-  --line-transparent: 1px solid transparent;
-  --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed rgba(205, 214, 244, 0.48);
-  --line-dashed-sm: 1px dashed rgba(205, 214, 244, 0.4);
-  --line-dashed-xs: 1px dashed rgba(205, 214, 244, 0.34);
-  --line-dashed-faint: 1px dashed rgba(127, 132, 156, 0.52);
-  --line-rule-dashed-sm: 1px dashed var(--rule);
-  --line-rule-dashed-xs: 1px dashed var(--rule);
-  --shadow: 2px 2px 0 var(--rule);
-  --shadow-sm: 1px 1px 0 var(--rule);
-  --shadow-lg: 3px 3px 0 var(--rule);
-  --shadow-hover: 2px 2px 0 var(--rule);
-  --shadow-md: 3px 3px 0 var(--rule);
-  --shadow-hover-sm: 1.5px 1.5px 0 var(--rule);
-  --shadow-chip: 1px 1px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2px 2px 0 var(--pink), 3px 3px 0 var(--rule);
-  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
-  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
-  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --rule: #585B70;
+  --shadow-ink: #0B0B14;
   --yellow: #F9E2AF;
   --pink: #F5C2E7;
   --blue: #89B4FA;
@@ -476,14 +321,77 @@
   --lilac: #CBA6F7;
   --teal: #94E2D5;
   --red: #F38BA8;
-  --muted: #313244;
-  --grain-alpha: 0.04;
+  --muted: #383850;
+  --grain-alpha: 0.045;
   --on-accent: #1E1E2E;
-  --you-bg: #313244;
+  --you-bg: #383850;
   --you-fg: #CDD6F4;
-  --bubble: #181825;
+  --bubble: #1E1E2E;
+  --chip-filter: saturate(0.95) brightness(1.02);
   --code-bg: #11111B;
   --code-fg: #CDD6F4;
+}
+
+/* ── ONYX — neutral graphite slate, crisp white ink, GitHub-grade vivid accents.
+   The coolest + highest-contrast dark option. ── */
+:root[data-theme="onyx"] {
+  --paper: #161C24;
+  --paper-2: #232A34;
+  --paper-3: #2F3744;
+  --ink: #EEF1F5;
+  --ink-soft: #A6B0BD;
+  --ink-faint: #646E7B;
+  --on-ink: #0E1116;
+  --rule: #434D59;
+  --shadow-ink: #000000;
+  --yellow: #E3B341;
+  --pink: #F778BA;
+  --blue: #58A6FF;
+  --lime: #56D364;
+  --tangerine: #F0883E;
+  --lilac: #BC8CFF;
+  --teal: #39C5CF;
+  --red: #FF7B72;
+  --muted: #313B49;
+  --grain-alpha: 0.04;
+  --on-accent: #0E1116;
+  --you-bg: #313B49;
+  --you-fg: #EEF1F5;
+  --bubble: #1A1F27;
+  --chip-filter: saturate(1) brightness(1.02);
+  --code-bg: #05080C;
+  --code-fg: #EEF1F5;
+}
+
+/* ── ONE DARK (Atom) — classic blue-grey slate with the signature vivid syntax
+   palette. Balanced, familiar, mid-high contrast. ── */
+:root[data-theme="onedark"] {
+  --paper: #282C34;
+  --paper-2: #333845;
+  --paper-3: #3F4550;
+  --ink: #D7DAE0;
+  --ink-soft: #9DA5B4;
+  --ink-faint: #5C6370;
+  --on-ink: #282C34;
+  --rule: #4B5263;
+  --shadow-ink: #0B0D11;
+  --yellow: #E5C07B;
+  --pink: #E06C9A;
+  --blue: #61AFEF;
+  --lime: #98C379;
+  --tangerine: #D19A66;
+  --lilac: #C678DD;
+  --teal: #56B6C2;
+  --red: #E06C75;
+  --muted: #3E4654;
+  --grain-alpha: 0.04;
+  --on-accent: #282C34;
+  --you-bg: #3E4654;
+  --you-fg: #D7DAE0;
+  --bubble: #282C34;
+  --chip-filter: saturate(0.95) brightness(1.02);
+  --code-bg: #1A1D23;
+  --code-fg: #ABB2BF;
 }
 
 * { box-sizing: border-box; }
@@ -509,8 +417,10 @@ body {
 }
 
 :root[data-theme="dark"] body,
+:root[data-theme="onyx"] body,
+:root[data-theme="catppuccin-mocha"] body,
 :root[data-theme="kanagawa-wave"] body,
-:root[data-theme="catppuccin-mocha"] body {
+:root[data-theme="onedark"] body {
   background-image:
     radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
   /* Bump body weight slightly to combat halation on thin glyphs over deep
@@ -763,22 +673,33 @@ button { font-family: inherit; cursor: pointer; }
 .room-item.active .room-preview { color: var(--on-ink); opacity: 0.65; }
 .room-item.active .room-name { color: var(--on-ink); }
 
+/* Active room: light mode uses a bright cream-on-ink fill, which on dark surfaces
+   becomes a glaring block. Re-express selection the dark-theme way — a lifted
+   surface (--paper-3) + soft frame + a crisp accent offset bar — never a cream
+   block. (Applies to every dark palette.) */
 :root[data-theme="dark"] .room-item.active,
+:root[data-theme="onyx"] .room-item.active,
+:root[data-theme="catppuccin-mocha"] .room-item.active,
 :root[data-theme="kanagawa-wave"] .room-item.active,
-:root[data-theme="catppuccin-mocha"] .room-item.active {
+:root[data-theme="onedark"] .room-item.active {
   background: var(--paper-3);
   color: var(--ink);
-  border-color: var(--rule);
+  border-color: var(--ink-soft);
+  box-shadow: var(--shadow-sm), inset 4px 0 0 var(--accent);
 }
 :root[data-theme="dark"] .room-item.active .room-preview,
+:root[data-theme="onyx"] .room-item.active .room-preview,
+:root[data-theme="catppuccin-mocha"] .room-item.active .room-preview,
 :root[data-theme="kanagawa-wave"] .room-item.active .room-preview,
-:root[data-theme="catppuccin-mocha"] .room-item.active .room-preview {
+:root[data-theme="onedark"] .room-item.active .room-preview {
   color: var(--ink-soft);
   opacity: 1;
 }
 :root[data-theme="dark"] .room-item.active .room-name,
+:root[data-theme="onyx"] .room-item.active .room-name,
+:root[data-theme="catppuccin-mocha"] .room-item.active .room-name,
 :root[data-theme="kanagawa-wave"] .room-item.active .room-name,
-:root[data-theme="catppuccin-mocha"] .room-item.active .room-name {
+:root[data-theme="onedark"] .room-item.active .room-name {
   color: var(--ink);
 }
 
@@ -797,9 +718,134 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 :root[data-theme="dark"] .identity-icon,
+:root[data-theme="onyx"] .identity-icon,
+:root[data-theme="catppuccin-mocha"] .identity-icon,
 :root[data-theme="kanagawa-wave"] .identity-icon,
-:root[data-theme="catppuccin-mocha"] .identity-icon {
-  --identity-shadow: 0 0 0 1px rgba(17, 17, 17, 0.58), var(--shadow-chip);
+:root[data-theme="onedark"] .identity-icon {
+  --identity-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), var(--shadow-chip);
+}
+
+/* Identity colours (avatars, author chips, mentions, room icons, brand mark) ship
+   as the vivid LIGHT palette; at full chroma they glow on dark surfaces. Pull
+   chroma down per palette (--chip-filter) so they read as muted/pastel tags the
+   way Catppuccin & One Dark handle colour — still distinct, no longer neon.
+   Semantic status dots are intentionally excluded so they stay crisp. */
+:root[data-theme="dark"] .identity-icon,
+:root[data-theme="dark"] .author-chip,
+:root[data-theme="dark"] .mention,
+:root[data-theme="dark"] .reader-chip,
+:root[data-theme="dark"] .room-id-icon,
+:root[data-theme="dark"] .thread-pane-author,
+:root[data-theme="dark"] .brand-mark,
+:root[data-theme="onyx"] .identity-icon,
+:root[data-theme="onyx"] .author-chip,
+:root[data-theme="onyx"] .mention,
+:root[data-theme="onyx"] .reader-chip,
+:root[data-theme="onyx"] .room-id-icon,
+:root[data-theme="onyx"] .thread-pane-author,
+:root[data-theme="onyx"] .brand-mark,
+:root[data-theme="catppuccin-mocha"] .identity-icon,
+:root[data-theme="catppuccin-mocha"] .author-chip,
+:root[data-theme="catppuccin-mocha"] .mention,
+:root[data-theme="catppuccin-mocha"] .reader-chip,
+:root[data-theme="catppuccin-mocha"] .room-id-icon,
+:root[data-theme="catppuccin-mocha"] .thread-pane-author,
+:root[data-theme="catppuccin-mocha"] .brand-mark,
+:root[data-theme="kanagawa-wave"] .identity-icon,
+:root[data-theme="kanagawa-wave"] .author-chip,
+:root[data-theme="kanagawa-wave"] .mention,
+:root[data-theme="kanagawa-wave"] .reader-chip,
+:root[data-theme="kanagawa-wave"] .room-id-icon,
+:root[data-theme="kanagawa-wave"] .thread-pane-author,
+:root[data-theme="kanagawa-wave"] .brand-mark,
+:root[data-theme="onedark"] .identity-icon,
+:root[data-theme="onedark"] .author-chip,
+:root[data-theme="onedark"] .mention,
+:root[data-theme="onedark"] .reader-chip,
+:root[data-theme="onedark"] .room-id-icon,
+:root[data-theme="onedark"] .thread-pane-author,
+:root[data-theme="onedark"] .brand-mark {
+  filter: var(--chip-filter, saturate(0.85) brightness(0.97));
+}
+
+/* ═══════════════════ dark-mode anti-glare overrides ═══════════════════
+   Light mode fills selected / active / "ink" chrome (pills, primary buttons,
+   table headers, scrollbar thumbs, the focused roster card) with a bright
+   cream-on-ink block. On deep dark surfaces that block is the single loudest
+   source of glare. Across every dark palette we re-express it as a lifted
+   surface (--paper-3) + a crisp accent, and recolour cream scrollbar thumbs to
+   the dim taupe edge. Scoped with :is() so one rule covers all dark palettes —
+   adding a palette means extending the :is() list, nothing else. These rules
+   never match light themes, so light mode is untouched. ═══════════════════ */
+
+/* cream scrollbar thumbs → dim taupe edge (track stays on the paper floor) */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .chat-list::-webkit-scrollbar-thumb,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .board-col-body::-webkit-scrollbar-thumb {
+  background: var(--rule);
+}
+
+/* small "ink" count / label pills → dark chip + bright numeral, not a cream dot */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .count-chip,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .col-count,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .roster-count {
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-xs);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .day-pill {
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-sm);
+}
+
+/* primary actions + active chips → elevated dark surface framed by the accent
+   (dark ink text), not an inverted cream fill */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .send-btn,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .filter-chip.active {
+  background: var(--paper-3);
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+/* header bars / table headers / tags / hovered menu rows → elevated dark surface */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .md th,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .poll-tag,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .mention-pop-head,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .ctx-item:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .ctx-item:hover .ctx-shortcut {
+  color: var(--ink-soft);
+}
+
+/* active tab: subtle elevation + thin accent underline, not a thick bright bar */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .tab-btn.active {
+  background: var(--paper-3);
+  border-bottom-color: transparent;
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+/* focused roster card: lifted surface + soft frame + pink accent offset bar */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .roster-card.focused {
+  background: var(--paper-3);
+  color: var(--ink);
+  border-color: var(--ink-soft);
+  box-shadow: var(--shadow-sm), inset 4px 0 0 var(--pink);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .roster-card.focused .roster-card-role,
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .roster-card.focused .roster-card-note {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+/* composer sits one elevation step above the chat floor so its dark cast shadow
+   reads as a genuine lift; input glyphs stay full-ink so they don't blend in */
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .composer {
+  background: var(--paper-2);
+}
+:root:is([data-theme="dark"],[data-theme="onyx"],[data-theme="catppuccin-mocha"],[data-theme="kanagawa-wave"],[data-theme="onedark"]) .composer-input {
+  color: var(--ink);
 }
 
 .room-icon {

@@ -17,7 +17,7 @@ import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
 
 const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
+const DARK_THEMES = ["dark", "onyx", "catppuccin-mocha", "kanagawa-wave", "onedark"] as const;
 const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 type ThemeName = (typeof ALL_THEMES)[number];
