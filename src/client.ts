@@ -3,12 +3,12 @@ import { closeSync, openSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { loadDaemonEnvFiles } from "./env-files.ts";
+import { loadConfig, resolveConnection } from "./config.ts";
 import {
   API_VERSION,
   ENV_HEALTH_TIMEOUT_MS,
   ENV_STARTED_BY_CLIENT,
   ENV_REMOTE_URL,
-  ENV_TOKEN,
   HEALTH_TIMEOUT_MS,
   STALE_LOCK_MS,
   STARTUP_TIMEOUT_MS,
@@ -50,10 +50,14 @@ export interface ClientConfig {
 
 export async function ensureDaemon(): Promise<ClientConfig> {
   const paths = getRuntimePaths();
-  const token = process.env[ENV_TOKEN] ?? null;
-  const remoteUrl = normalizeRemoteUrl(process.env[ENV_REMOTE_URL]);
+  // Connection comes from env > active profile > local discovery. Profiles let
+  // operators name remote targets without re-typing SYNCHRONIZE_REMOTE_URL/TOKEN
+  // every invocation; env still wins so tests and one-off overrides are intact.
+  const conn = resolveConnection(await loadConfig(paths.configPath));
+  const token = conn.token;
+  const remoteUrl = normalizeRemoteUrl(conn.remoteUrl ?? undefined);
   if (remoteUrl) {
-    await validateRemoteDaemon(remoteUrl, token);
+    await validateRemoteDaemon(remoteUrl, token, conn.healthTimeoutMs ?? undefined);
     log(`using remote daemon base_url=${remoteUrl}`);
     return { baseUrl: remoteUrl, token, paths, started: false, remote: true };
   }
@@ -131,8 +135,8 @@ function normalizeRemoteUrl(raw: string | undefined): string | null {
   return url.toString().replace(/\/$/, "");
 }
 
-async function validateRemoteDaemon(baseUrl: string, token: string | null): Promise<void> {
-  if (!(await isHealthy(baseUrl))) {
+async function validateRemoteDaemon(baseUrl: string, token: string | null, timeoutMs?: number): Promise<void> {
+  if (!(await isHealthy(baseUrl, timeoutMs))) {
     throw new Error(`${ENV_REMOTE_URL} points to an unreachable or incompatible synchronize daemon: ${baseUrl}`);
   }
 
@@ -150,9 +154,9 @@ async function validateRemoteDaemon(baseUrl: string, token: string | null): Prom
   throw new Error(`${ENV_REMOTE_URL} /status failed: ${response.status} ${response.statusText}`);
 }
 
-async function isHealthy(baseUrl: string): Promise<boolean> {
+async function isHealthy(baseUrl: string, timeoutMs?: number): Promise<boolean> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), healthTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? healthTimeoutMs());
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
     if (!response.ok) return false;

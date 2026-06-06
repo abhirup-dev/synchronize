@@ -8,6 +8,7 @@ import * as media from "./commands/media.ts";
 import * as peers from "./commands/peers.ts";
 import * as query from "./commands/query.ts";
 import * as register from "./commands/register.ts";
+import * as remote from "./commands/remote.ts";
 import * as spawn from "./commands/spawn.ts";
 import * as status from "./commands/status.ts";
 import * as threads from "./commands/threads.ts";
@@ -68,6 +69,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "threads":
       await threads.run(rest);
+      return;
+    case "remote":
+      await remote.run(rest);
       return;
     default:
       console.error(`Unknown command: ${command}`);

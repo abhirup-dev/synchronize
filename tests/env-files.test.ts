@@ -15,6 +15,7 @@ function runtimePaths(home: string): RuntimePaths {
     logPath: join(home, "daemon.log"),
     errLogPath: join(home, "daemon.err.log"),
     cliIdentityPath: join(home, "cli-peer.json"),
+    configPath: join(home, "config.toml"),
   };
 }
 

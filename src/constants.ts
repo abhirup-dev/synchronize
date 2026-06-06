@@ -17,6 +17,9 @@ export const LOG_FILE = "daemon.log";
 // land there.
 export const ERR_LOG_FILE = "daemon.err.log";
 export const CLI_IDENTITY_FILE = "cli-peer.json";
+// Client-side multi-machine profile config (named remote daemon targets). This
+// is a CLIENT concern, distinct from the daemon-side .env loader (env-files.ts).
+export const CONFIG_FILE = "config.toml";
 
 export const ENV_HOME = "SYNCHRONIZE_HOME";
 export const ENV_BIND = "SYNCHRONIZE_BIND";

@@ -27,6 +27,8 @@ Usage:
   synchronize hook claude-session
   synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
+  synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--health-timeout-ms N] [--ssh-host HOST] [--use]
+  synchronize remote use NAME | ls | show [NAME] | remove NAME
   synchronize --help
 
 Commands:
@@ -45,6 +47,7 @@ Commands:
   host      Start or verify a token-protected daemon bound to a tailnet/LAN host
   launch    Start an agent in the foreground with synchronize daemon/env setup
   spawn     Launch a persistent agent session via the backend (AOE), optionally into a group
+  remote    Manage multi-machine connection profiles (~/.synchronize/config.toml)
 
 Environment:
   SYNCHRONIZE_HOME    Runtime directory (default: ~/.synchronize)
