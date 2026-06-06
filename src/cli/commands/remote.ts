@@ -12,6 +12,8 @@ import {
   type SynchronizeConfig,
 } from "../../config.ts";
 import { getRuntimePaths } from "../../paths.ts";
+import { buildProvisionPlan, buildSyncPlan, type RemoteStep } from "../../remote/plan.ts";
+import { resolve } from "node:path";
 
 // `synchronize remote` — the multi-machine control plane. v0 (sync-7mcv) covers
 // profile management (add/use/ls/show); provision/sync/upgrade/status land in
@@ -23,7 +25,10 @@ const USAGE = `synchronize remote <subcommand>
   use <name>                 set the active profile
   ls                         list profiles (active marked with *)
   show [name]                show a profile (default: active), with resolved connection
-  remove <name>              delete a profile`;
+  remove <name>              delete a profile
+  provision <ssh-host>       verify remote tools + non-interactive PATH [--dry-run]
+  sync <ssh-host> --hub-url <url> [--path <remote-dir>] [--token <t> | --token-env <ENV>]
+             [--skip-install] [--dry-run]   rsync runtime + write remote config + verify`;
 
 export async function run(argv: string[]): Promise<void> {
   const [sub, ...rest] = argv;
@@ -44,6 +49,12 @@ export async function run(argv: string[]): Promise<void> {
     case "remove":
     case "rm":
       await removeProfile(rest);
+      return;
+    case "provision":
+      await provisionRemote(rest);
+      return;
+    case "sync":
+      await syncRemote(rest);
       return;
     default:
       console.log(USAGE);
@@ -130,6 +141,69 @@ async function removeProfile(argv: string[]): Promise<void> {
   if (!config.remotes[name]) fail(`no such profile: ${name}`);
   await writeConfig(path, removeProfileFromConfig(config, name));
   console.log(`profile '${name}' removed`);
+}
+
+async function provisionRemote(argv: string[]): Promise<void> {
+  const flags = parseFlags(argv);
+  const sshHost = flags.positional[0];
+  if (!sshHost) fail("remote provision requires an <ssh-host>");
+  const plan = buildProvisionPlan({ sshHost });
+  await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
+}
+
+async function syncRemote(argv: string[]): Promise<void> {
+  const flags = parseFlags(argv);
+  const sshHost = flags.positional[0];
+  if (!sshHost) fail("remote sync requires an <ssh-host>");
+  const hubUrl = flags.opts["hub-url"];
+  if (!hubUrl) fail("remote sync requires --hub-url <url>");
+  const remotePath = flags.opts.path ?? "~/synchronize-runtime";
+  // Sync from the repo root (two levels up from src/cli/commands), not cwd.
+  const localRoot = flags.opts["local-root"] ?? resolve(import.meta.dir, "../../..");
+  const plan = buildSyncPlan({
+    sshHost,
+    remotePath,
+    localRoot,
+    hubUrl,
+    ...(flags.opts.token ? { token: flags.opts.token } : {}),
+    ...(flags.opts["token-env"] ? { tokenEnv: flags.opts["token-env"] } : {}),
+    skipInstall: flags.bools.has("skip-install"),
+  });
+  await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
+}
+
+// Execute a remote plan step-by-step, streaming output. --dry-run prints the
+// exact argv (and a note for any piped stdin) without touching the remote.
+async function runPlan(plan: RemoteStep[], opts: { dryRun: boolean }): Promise<void> {
+  for (const step of plan) {
+    const rendered = step.argv.map(shellPreview).join(" ");
+    if (opts.dryRun) {
+      console.log(`[dry-run] ${step.name}${step.optional ? " (optional)" : ""}`);
+      console.log(`          ${rendered}${step.stdin ? "   # + piped stdin" : ""}`);
+      continue;
+    }
+    console.log(`\n▶ ${step.name}${step.optional ? " (optional)" : ""}`);
+    console.log(`  ${rendered}`);
+    const proc = Bun.spawn({
+      cmd: step.argv,
+      stdin: step.stdin ? new TextEncoder().encode(step.stdin) : "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const code = await proc.exited;
+    if (code !== 0) {
+      if (step.optional) {
+        console.error(`  ⚠ ${step.name} failed (exit ${code}); continuing (optional)`);
+        continue;
+      }
+      fail(`✗ ${step.name} failed (exit ${code})`);
+    }
+  }
+  if (!opts.dryRun) console.log("\n✓ remote plan complete");
+}
+
+function shellPreview(arg: string): string {
+  return /[\s'"$]/.test(arg) ? JSON.stringify(arg) : arg;
 }
 
 interface Flags {
