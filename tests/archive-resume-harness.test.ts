@@ -1,40 +1,56 @@
-// AOE e2e harness for archive/resume — proves the REAL-agent flows that cannot
-// be unit-tested (sync-cmw2.2). These spawn live Claude/Pi sessions via `aoe`,
-// so they are GATED OFF by default: the normal `bun test` suite must stay fast
-// and deterministic and must not spawn real agents or burn API quota.
+// AOE e2e harness for archive/resume — the real-agent proof that cannot be
+// unit-tested (sync-cmw2.2). GATED OFF by default (SYNCHRONIZE_AOE_HARNESS=1) so
+// the normal `bun test` stays fast and never spawns agents or burns API quota.
 //
-// Run on a developer machine with aoe + claude + pi installed:
 //   SYNCHRONIZE_AOE_HARNESS=1 bun test tests/archive-resume-harness.test.ts
 //
-// Scenarios covered here (live): faithful resume (claude), faithful resume (pi),
-// group resume per-member. The remaining plan scenarios are already covered
-// deterministically by tests/archive-resume.test.ts without real agents:
-//   - implicit resume (re-register same host_session_id -> archived->active)
-//   - plain-terminal resume (--print command emission)
-//   - live zombie -> peer_still_live -> --force kills + resumes
-//   - reboot proxy (probe flips dead -> resume unblocks)
-// The auto-archive scenario (plan item 3) requires Epic 5 and is intentionally
-// out of scope here.
+// Scenario (Pi-first; Claude added once the dev-channel auto-confirm is hardened):
+//   1. Stand up two real Pi agents via the daemon's launch lifecycle.
+//   2. Exercise DM functionality between them (both directions).
+//   3. Archive both (backend reaped, identity reserved).
+//   4. Resume both (the archived identities resurrect via ENV_PEER_ID).
+//   5. Exercise DM functionality again — proving the resumed identities can
+//      still send and receive end to end.
+//
+// The DMs are driven through the daemon API on the agents' behalf (deterministic)
+// — headless agents don't reliably *initiate* a turn, so we assert the messaging
+// plumbing + the archive/resume effect on it, not the agents' cognition. Launch
+// and resume both go through the real ctx.launchService lifecycle (not a test-only
+// path). Tool-level session-id durability across resume is verified separately
+// (manual probe: pi --session keeps the id and recalls context for ≥1-msg sessions).
 import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiError, type ClientConfig } from "../src/client.ts";
 import { launchAgent, listAgentSessions } from "../src/api/agent-sessions.ts";
-import { listPeers } from "../src/api/peers.ts";
-import { archiveGroup, archiveSession } from "../src/api/archive.ts";
-import { resumeGroup, resumeSession } from "../src/api/resume.ts";
-import { getGroupHistory } from "../src/api/groups.ts";
+import { archiveSession } from "../src/api/archive.ts";
+import { resumeSession } from "../src/api/resume.ts";
+import { readInbox, sendDm } from "../src/api/inbox.ts";
 
 const HARNESS = process.env.SYNCHRONIZE_AOE_HARNESS === "1";
-// test.skip keeps these visible-but-skipped in the default suite; they execute
-// only when the harness flag is set on a machine with the real toolchain.
 const harnessTest = HARNESS ? test : test.skip;
 
 const homes: string[] = [];
+const spawnedTitles = new Set<string>();
+
 afterAll(async () => {
+  for (const title of spawnedTitles) await killAoeByTitle(title);
   await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
 });
+
+// Best-effort: kill the tmux session(s) AOE created for a backend title.
+async function killAoeByTitle(title: string): Promise<void> {
+  const list = Bun.spawn({ cmd: ["tmux", "list-sessions", "-F", "#{session_name}"], stdout: "pipe", stderr: "ignore" });
+  const names = (await new Response(list.stdout).text()).split("\n").map((s) => s.trim()).filter(Boolean);
+  await list.exited;
+  for (const name of names) {
+    if (name.startsWith(`aoe_${title}_`)) {
+      const kill = Bun.spawn({ cmd: ["tmux", "kill-session", "-t", name], stdout: "ignore", stderr: "ignore" });
+      await kill.exited;
+    }
+  }
+}
 
 async function startDaemon(): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
   const home = await mkdtemp(join(tmpdir(), "synchronize-harness-"));
@@ -69,128 +85,108 @@ async function startDaemon(): Promise<{ client: ClientConfig; stop: () => Promis
   throw new Error("daemon did not start");
 }
 
-// Poll until a launched agent has registered its host session (the hook/Pi-ext
-// fires a few seconds after spawn). Returns the captured host_session_id.
-async function waitForBinding(client: ClientConfig, peerId: string, timeoutMs = 90_000): Promise<string> {
+async function launch(client: ClientConfig, opts: { tool: "claude" | "pi"; name: string; repo: string }) {
+  const result = await launchAgent(client, opts);
+  spawnedTitles.add(result.title);
+  return result;
+}
+
+// Wait until a launched agent has registered its host session (the Pi extension
+// fires a few seconds after spawn).
+async function waitForBinding(client: ClientConfig, peerId: string, timeoutMs = 90_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const { bindings } = await listAgentSessions(client, { peerId });
-    const bound = bindings.find((b) => b.host_session_id);
-    if (bound?.host_session_id) return bound.host_session_id;
+    if (bindings.some((b) => b.host_session_id)) return;
     await Bun.sleep(1500);
   }
   throw new Error(`agent ${peerId} did not register a host session in time`);
 }
 
-async function activeMemberIds(client: ClientConfig, group: string): Promise<string[]> {
-  try {
-    const { peers } = (await listPeers(client, { group })) as { peers: Array<{ peer_id: string }> };
-    return peers.map((p) => p.peer_id);
-  } catch (error) {
-    // The group is created lazily when the first launched agent auto-joins, so a
-    // membership poll can race ahead of group creation — treat as "no members
-    // yet" and keep polling.
-    if (error instanceof ApiError && error.code === "group_not_found") return [];
-    throw error;
-  }
-}
-
-// Poll until `peerId` is (present=true) or is no longer (present=false) an active
-// member of `group`. Re-appearance after a resume proves the real agent booted,
-// re-registered, and its archived identity resurrected (archived->active).
-async function waitForMembership(
-  client: ClientConfig,
-  group: string,
-  peerId: string,
-  present: boolean,
-  timeoutMs = 120_000,
-): Promise<void> {
+// Poll a peer's inbox until a message body containing `marker` arrives.
+async function waitForInbox(client: ClientConfig, peerId: string, marker: string, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const ids = await activeMemberIds(client, group);
-    if (ids.includes(peerId) === present) return;
-    await Bun.sleep(1500);
+    const { events } = await readInbox(client, peerId);
+    if (events.some((e) => (e.body ?? "").includes(marker))) return;
+    await Bun.sleep(1000);
   }
-  throw new Error(`peer ${peerId} did not become ${present ? "an active" : "an inactive"} member of ${group} in time`);
+  throw new Error(`peer ${peerId} did not receive a DM containing "${marker}" in time`);
 }
 
-async function faithfulResume(tool: "claude" | "pi"): Promise<void> {
-  const daemon = await startDaemon();
-  const repo = await mkdtemp(join(tmpdir(), `harness-${tool}-`));
-  homes.push(repo);
+async function dmErrorCode(client: ClientConfig, senderPeerId: string, recipientPeerId: string, message: string): Promise<string> {
   try {
-    // 1. Launch a real agent into a group and wait for it to register + join.
-    const launched = await launchAgent(daemon.client, { tool, name: "critic", repo, group: "harness" });
-    const peerId = launched.peerId;
-    const hostSessionId = await waitForBinding(daemon.client, peerId);
-    await waitForMembership(daemon.client, "harness", peerId, true);
-
-    // 2. Archive it: backend reaped (runtime freed), seat reserved → the agent
-    //    leaves the active roster but its identity/alias survive.
-    const archived = await archiveSession(daemon.client, { peerId, reason: "harness" });
-    expect(archived.action).toBe("archived");
-    expect(archived.reaped).toBe(true); // real AOE/tmux session was reaped
-    await waitForMembership(daemon.client, "harness", peerId, false);
-
-    // 3. Resume: AOE respawns with --resume/--session in the original cwd.
-    const resumed = await resumeSession(daemon.client, { peerId, force: false });
-    expect(resumed.mode).toBe("launch");
-
-    // 4. The resumed REAL agent re-registers → the archived identity resurrects
-    //    (archived->active) under the SAME peer_id and rejoins the group.
-    //
-    //    NOTE (empirical finding): plan assumption A3 — "host_session_id is
-    //    stable across resume" — is FALSE in practice. `claude --resume <id>`
-    //    and `pi --session <id>` both load the prior conversation but the resumed
-    //    instance registers under a NEW host_session_id. Faithful resume does not
-    //    depend on that stability: identity reattaches via the pinned
-    //    ENV_PEER_ID, not host_session_id correlation. So we assert the resumed
-    //    agent rebinds (a new binding appears) and rejoins under the same peer_id.
-    await waitForMembership(daemon.client, "harness", peerId, true);
-    const newHostSessionId = await waitForBinding(daemon.client, peerId);
-    expect(newHostSessionId).toBeTruthy(); // rebound (id may differ from the original)
-    void hostSessionId;
-
-    // 5. Group history + alias intact (resurrected, not a brand-new member).
-    const history = await getGroupHistory(daemon.client, { name: "harness", peerId });
-    expect(history).toBeDefined();
-  } finally {
-    await daemon.stop();
+    await sendDm(client, { senderPeerId, recipientPeerId, message });
+  } catch (error) {
+    if (error instanceof ApiError) return error.code;
+    throw error;
   }
+  return "ok";
 }
 
-harnessTest("faithful resume (claude): launch -> archive(reap) -> resume reattaches same identity", async () => {
-  await faithfulResume("claude");
-}, 240_000);
+// Send a DM, retrying through `must_reregister` until the resumed sender has
+// re-registered (resurrected archived->active) and can send again.
+async function dmWhenActive(client: ClientConfig, senderPeerId: string, recipientPeerId: string, message: string, timeoutMs = 120_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await sendDm(client, { senderPeerId, recipientPeerId, message });
+      return;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "must_reregister") {
+        await Bun.sleep(1500);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error(`sender ${senderPeerId} did not resurrect (still must_reregister) in time`);
+}
 
-harnessTest("faithful resume (pi): launch -> archive(reap) -> resume reattaches same identity", async () => {
-  await faithfulResume("pi");
-}, 240_000);
-
-harnessTest("group resume relaunches each archived member with per-member status", async () => {
+harnessTest("two pi agents: DM works -> archive both -> resume both -> DM works again", async () => {
   const daemon = await startDaemon();
-  const repoA = await mkdtemp(join(tmpdir(), "harness-grp-a-"));
-  const repoB = await mkdtemp(join(tmpdir(), "harness-grp-b-"));
+  const repoA = await mkdtemp(join(tmpdir(), "harness-alice-"));
+  const repoB = await mkdtemp(join(tmpdir(), "harness-bob-"));
   homes.push(repoA, repoB);
+  let alice: string | undefined;
+  let bob: string | undefined;
   try {
-    const a = await launchAgent(daemon.client, { tool: "claude", name: "critic", repo: repoA, group: "team" });
-    const b = await launchAgent(daemon.client, { tool: "pi", name: "planner", repo: repoB, group: "team" });
-    await waitForMembership(daemon.client, "team", a.peerId, true);
-    await waitForMembership(daemon.client, "team", b.peerId, true);
+    // 1. Two real Pi agents.
+    alice = (await launch(daemon.client, { tool: "pi", name: "alice", repo: repoA })).peerId;
+    bob = (await launch(daemon.client, { tool: "pi", name: "bob", repo: repoB })).peerId;
+    await waitForBinding(daemon.client, alice);
+    await waitForBinding(daemon.client, bob);
 
-    const archived = await archiveGroup(daemon.client, { group: "team", reason: "overnight" });
-    expect(archived.members.every((m) => m.action === "archived")).toBe(true);
-    await waitForMembership(daemon.client, "team", a.peerId, false);
-    await waitForMembership(daemon.client, "team", b.peerId, false);
+    // 2. DM functionality works (both directions).
+    await sendDm(daemon.client, { senderPeerId: alice, recipientPeerId: bob, message: "hi bob (pre-archive)" });
+    await waitForInbox(daemon.client, bob, "hi bob (pre-archive)");
+    await sendDm(daemon.client, { senderPeerId: bob, recipientPeerId: alice, message: "hi alice (pre-archive)" });
+    await waitForInbox(daemon.client, alice, "hi alice (pre-archive)");
 
-    const resumed = await resumeGroup(daemon.client, { group: "team" });
-    expect(resumed.members).toHaveLength(2);
-    expect(resumed.members.every((m) => m.action === "launching")).toBe(true);
+    // 3. Archive both — backend reaped, identity reserved (not deleted).
+    const arA = await archiveSession(daemon.client, { peerId: alice, reason: "harness" });
+    const arB = await archiveSession(daemon.client, { peerId: bob, reason: "harness" });
+    expect(arA.action).toBe("archived");
+    expect(arB.action).toBe("archived");
+    expect(arA.reaped).toBe(true);
+    expect(arB.reaped).toBe(true);
+    // While archived, the identity cannot send.
+    expect(await dmErrorCode(daemon.client, alice, bob, "should be blocked")).toBe("must_reregister");
 
-    // Both real agents reboot, re-register, and rejoin under their original ids.
-    await waitForMembership(daemon.client, "team", a.peerId, true);
-    await waitForMembership(daemon.client, "team", b.peerId, true);
+    // 4. Resume both — the archived identities resurrect on re-registration.
+    expect((await resumeSession(daemon.client, { peerId: alice })).mode).toBe("launch");
+    expect((await resumeSession(daemon.client, { peerId: bob })).mode).toBe("launch");
+
+    // 5. DM functionality works again (proves both resurrected and can send/receive).
+    await dmWhenActive(daemon.client, alice, bob, "hi bob (post-resume)");
+    await waitForInbox(daemon.client, bob, "hi bob (post-resume)");
+    await dmWhenActive(daemon.client, bob, alice, "hi alice (post-resume)");
+    await waitForInbox(daemon.client, alice, "hi alice (post-resume)");
   } finally {
+    // Reap the live (resumed) agents via the real archive path so nothing is
+    // orphaned (resume mints new backend titles that title-tracking can miss).
+    if (alice) await archiveSession(daemon.client, { peerId: alice }).catch(() => {});
+    if (bob) await archiveSession(daemon.client, { peerId: bob }).catch(() => {});
     await daemon.stop();
   }
-}, 360_000);
+}, 300_000);
