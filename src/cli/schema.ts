@@ -88,6 +88,7 @@ export const cliSchema: CliSchema = {
     "synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]",
     "synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
     "synchronize completion carapace",
+    "synchronize completion install --shell carapace",
     "synchronize --help",
   ],
   commands: [
@@ -333,6 +334,18 @@ export const cliSchema: CliSchema = {
             },
           ],
           flags: [{ name: "context", description: "Provider context JSON" }],
+        },
+        {
+          name: "install",
+          description: "Install shell completion specs",
+          flags: [
+            {
+              name: "shell",
+              description: "Completion shell target",
+              value: { kind: "enum", values: ["carapace"] },
+              required: true,
+            },
+          ],
         },
       ],
     },

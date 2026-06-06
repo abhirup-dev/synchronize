@@ -29,7 +29,7 @@ describe("CLI schema", () => {
     expect(subcommandNames("media")).toEqual(["share", "list", "get"]);
     expect(subcommandNames("threads")).toEqual(["list", "status", "show", "summary"]);
     expect(subcommandNames("hook")).toEqual(["claude-session"]);
-    expect(subcommandNames("completion")).toEqual(["carapace", "complete"]);
+    expect(subcommandNames("completion")).toEqual(["carapace", "complete", "install"]);
   });
 
   test("keeps help generated from schema aligned with the current CLI surface", () => {
@@ -62,6 +62,7 @@ Usage:
   synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize completion carapace
+  synchronize completion install --shell carapace
   synchronize --help
 
 Commands:

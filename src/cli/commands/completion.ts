@@ -1,6 +1,7 @@
 import { renderCarapaceSpec } from "../completion/render-carapace.ts";
 import { completeDynamicProvider } from "../completion/dynamic.ts";
 import type { CompletionContext, DynamicCompletionProvider } from "../completion/types.ts";
+import { installCarapaceCompletion } from "../completion/install.ts";
 import { parseFlags } from "../flags.ts";
 
 export async function run(argv: string[]): Promise<void> {
@@ -17,7 +18,16 @@ export async function run(argv: string[]): Promise<void> {
     process.stdout.write(`${JSON.stringify(await completeDynamicProvider(provider, { ...(context ? { context } : {}) }))}\n`);
     return;
   }
-  throw new Error("completion requires a subcommand: carapace");
+  if (subcommand === "install") {
+    const args = parseFlags(rest);
+    if (args.flags.shell !== "carapace") {
+      throw new Error("completion install requires --shell carapace");
+    }
+    const result = await installCarapaceCompletion();
+    console.log(`Installed Carapace spec: ${result.path}`);
+    return;
+  }
+  throw new Error("completion requires a subcommand: carapace | complete | install");
 }
 
 function parseProvider(raw: string | undefined): DynamicCompletionProvider {
