@@ -6,7 +6,7 @@
 
 import { memo, type CSSProperties } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
-import { inkFor } from "./primitives.tsx";
+import { inkFor, StatusDot } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 
 export interface ActivityItemProps {
@@ -122,7 +122,12 @@ function ActivityItemImpl({
       </span>
       {showRoom && room && <RoomChip room={room} onJump={() => onJumpToRoom(item.roomId)} />}
       <span className="act-time">{relativeTime(item.createdAt)}</span>
-      {awaits && <span className="act-row-dot" title="Awaiting you" />}
+      <StatusDot
+        status={actor.status}
+        size={9}
+        className="act-row-presence"
+        pulse={actor.status === "busy"}
+      />
       <span className="act-row-actions" onClick={(e) => e.stopPropagation()}>
         <button
           className={`act-act-btn react${reacted ? " done" : ""}`}

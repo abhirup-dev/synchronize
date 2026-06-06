@@ -684,7 +684,13 @@
   font-weight: 800;
 }
 .act-row .act-time { flex-shrink: 0; }
-.act-row-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--pink); border: 1.5px solid var(--ink); flex-shrink: 0; }
+/* Right-edge row dot is sender presence, not "awaiting you": busy pulses pink,
+   idle is amber, offline/expired historical authors are grey. */
+.act-row-presence { flex-shrink: 0; --status-dot-border: var(--ink); }
+.act-row-presence.status-busy { color: var(--pink); }
+.act-row-presence.status-idle { color: var(--yellow); }
+.act-row-presence.status-offline { color: var(--muted); }
+.act-row-presence.status-online { color: var(--lime); }
 .act-row-actions { display: none; align-items: center; gap: 5px; flex-shrink: 0; }
 .act-row-actions .act-act-btn { padding: 3px 8px; font-size: 11px; }
 
