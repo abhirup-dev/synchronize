@@ -580,6 +580,10 @@ export class DaemonDataSource implements DataSource {
     const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)
       .then((res) => {
         if (res.peers?.length) {
+          // /activity is fetched independently from /web/state, so older pages
+          // may reference expired peers that are intentionally absent from the
+          // live roster. Merge the page-scoped identities before mapping rows or
+          // ActivityItem would drop those durable historical messages.
           const nextAgents = res.peers.map((peer) => mapAgent(peer, this.peerId));
           this._agents.set(reuseEqualAgents(this._agents.get(), mergeAgents(this._agents.get(), nextAgents)));
         }

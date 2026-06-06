@@ -61,6 +61,8 @@ function RoomChip({ room, onJump }: { room: Room; onJump(): void }) {
 }
 
 function ActivityPreview({ text }: { text: string }) {
+  // Keep Activity rows content-first: no leading "posted in" / "mentioned you"
+  // chrome. Mentions are emphasized where they appear in the message body.
   const parts = text.split(/(@(?:you|web:local-human)\b)/gi);
   return (
     <>
@@ -91,6 +93,8 @@ function ActivityItemImpl({
     onOpenThread(item);
   };
 
+  // Row click opens the in-place thread pane. The explicit jump button/context
+  // menu are the only affordances that navigate away from Activity.
   return (
     <div
       className={`act-row${awaits ? " awaits" : ""}${item.isNew ? " is-new" : ""}`}

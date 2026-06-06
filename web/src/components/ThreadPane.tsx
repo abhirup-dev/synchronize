@@ -52,6 +52,9 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose }: ThreadPa
   }, [replies, me.id, virtualizer]);
 
   useEffect(() => {
+    // Activity opens the pane from an arbitrary row, not always from the thread
+    // root. When the clicked row is a reply, center that reply after the
+    // virtualized list materializes so the user lands on the message they chose.
     if (!focusMessageId || focusMessageId === parentId) return;
     const index = replies.findIndex((reply) => reply.id === focusMessageId);
     if (index < 0) return;

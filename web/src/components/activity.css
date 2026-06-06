@@ -629,6 +629,9 @@
 }
 
 /* ═══════════ ITEM: ROW ═══════════ */
+/* Activity rows are deliberately stable: one-line compact rows, no hover lift,
+   no hidden-on-hover action reveal, and no reply-count badge. The row itself is
+   the thread opener; extra motion made the timeline feel noisy and misaligned. */
 .act-row {
   position: relative;
   display: flex;

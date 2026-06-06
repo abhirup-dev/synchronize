@@ -1787,6 +1787,10 @@ async function route(request: Request, ctx: DaemonContext): Promise<Response> {
     }
     const now = new Date().toISOString();
     const ids = [...peerIds];
+    // Activity can page into durable history after the live roster has dropped a
+    // lease-expired peer. Return just the authors referenced by this bounded
+    // Activity page so the client can render old rows without widening the main
+    // /web/state roster query or doing per-row identity lookups.
     const peers = ids.length === 0
       ? []
       : ctx.db

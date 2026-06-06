@@ -65,6 +65,10 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   };
 
   const onOpenThread = (item: ActivityItemModel) => {
+    // Every Activity row opens the side thread pane. Replies use their thread
+    // root, while root/no-reply messages use themselves as a single-message
+    // thread; focusMessageId preserves the exact row the user clicked so the
+    // pane can scroll to it instead of always showing the root first.
     setOpen({ roomId: item.roomId, parentId: item.threadParentId ?? item.msgId, focusMessageId: item.msgId });
   };
 
