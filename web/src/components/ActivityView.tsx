@@ -48,7 +48,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   const [cluster, setCluster] = useState(true);
   const [reacted, setReacted] = useState<Set<number>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const [open, setOpen] = useState<{ roomId: string; parentId: string } | null>(null);
+  const [open, setOpen] = useState<{ roomId: string; parentId: string; focusMessageId: string } | null>(null);
 
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a] as const)), [agents]);
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r] as const)), [rooms]);
@@ -65,7 +65,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   };
 
   const onOpenThread = (item: ActivityItemModel) => {
-    setOpen({ roomId: item.roomId, parentId: item.threadParentId ?? item.msgId });
+    setOpen({ roomId: item.roomId, parentId: item.threadParentId ?? item.msgId, focusMessageId: item.msgId });
   };
 
   const toggleRoom = (id: string) =>
@@ -244,7 +244,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
       {open && openRoom && (
         <>
           <ResizeHandle width={threadWidth} onChange={onThreadWidth} />
-          <ThreadPane room={openRoom} parentId={open.parentId} onClose={() => setOpen(null)} />
+          <ThreadPane room={openRoom} parentId={open.parentId} focusMessageId={open.focusMessageId} onClose={() => setOpen(null)} />
         </>
       )}
     </div>
