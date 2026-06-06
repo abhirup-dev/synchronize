@@ -25,6 +25,7 @@ async function fixture(name: string, response: Response): Promise<{ name: string
 function contractShape(value: unknown, key = ""): unknown {
   if (Array.isArray(value)) return value.length === 0 ? [] : [contractShape(value[0], key)];
   if (value === null) return null;
+  if (key === "git_dirty") return "boolean";
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return "number";
   if (typeof value === "string") {
@@ -86,7 +87,7 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
           capabilities: ["string"],
           pid: "number",
           started_at: "string",
-          provenance: { api_version: "number", entrypoint_path: "string", git_dirty: true, git_sha: "string", source_root: "string" },
+          provenance: { api_version: "number", entrypoint_path: "string", git_dirty: "boolean", git_sha: "string", source_root: "string" },
         },
       },
       { name: "peers.register", status: 201, body: { peer: peerShape({ deleted_at: null }) } },

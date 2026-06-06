@@ -8,7 +8,6 @@ import {
   type ActivityState,
   MAX_MESSAGE_CHARS,
   MAX_PAGE_LIMIT,
-  API_VERSION,
 } from "../constants.ts";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config.ts";
 import { openDatabase, pruneEphemeralGroups } from "../db.ts";
@@ -30,7 +29,6 @@ import {
   updateLaunchState,
   type LaunchIntentRow,
 } from "../launch/store.ts";
-import { runEventQuery } from "../query/events.ts";
 import { resolveProviderConfig } from "../llm/index.ts";
 import { loadSkillCatalog } from "../skill-catalog.ts";
 import {
@@ -60,7 +58,6 @@ import {
   optionalIntegerArray,
   optionalObjectJson,
   optionalReactionOp,
-  optionalSqlParams,
   optionalString,
   optionalStringArray,
   parseCursor,
@@ -72,7 +69,6 @@ import {
   requireEmoji,
   requireGroupName,
   requireLaunchPath,
-  requireLocalCallbackUrl,
   requirePositiveInteger,
   requireString,
   type ReactionOp,
@@ -143,41 +139,24 @@ import {
   writeMediaReadme
 } from "./server.ts";
 import type {
-  ActivityRow,
   DaemonContext,
   EventRow,
   GroupRow,
   InboxRow,
   MediaRow,
   MemberRow,
-  PeerRow,
-  SummaryGroupRow,
-  SummaryPeerRow
+  PeerRow
 } from "./server.ts";
+import { tryHandleActivityRoute } from "./routes/activity.ts";
+import { tryHandleHealthRoute } from "./routes/health.ts";
+import { tryHandleQueryRoute } from "./routes/query.ts";
+import { tryHandleStatusRoute } from "./routes/status.ts";
+import { tryHandleSubscriptionsRoute } from "./routes/subscriptions.ts";
 
 export async function route(request: Request, ctx: DaemonContext): Promise<Response> {
   const url = new URL(request.url);
-  if (request.method === "GET" && url.pathname === "/health") {
-    return jsonResponse({
-      ok: true,
-      service: "synchronize",
-      api_version: API_VERSION,
-      capabilities: [
-        "peers",
-        "dm",
-        "inbox",
-        "groups",
-        "events",
-        "event_subscriptions",
-        "media",
-        "summary",
-        "skill_catalog",
-      ],
-      pid: process.pid,
-      started_at: ctx.startedAt,
-      provenance: ctx.provenance,
-    });
-  }
+  const healthResponse = tryHandleHealthRoute(request, ctx, url);
+  if (healthResponse) return healthResponse;
 
   if (request.method === "GET" && url.pathname === "/web/state") {
     requireAuth(request, ctx);
@@ -280,156 +259,8 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
 
   requireAuth(request, ctx);
 
-  if (request.method === "GET" && url.pathname === "/status") {
-    const peerCount = ctx.db
-      .query<{ count: number }, []>("SELECT COUNT(*) AS count FROM peers WHERE deleted_at IS NULL")
-      .get()?.count ?? 0;
-    const groupCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM groups").get()?.count ?? 0;
-    const eventCount = ctx.db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM events").get()?.count ?? 0;
-    return jsonResponse({
-      ok: true,
-      pid: process.pid,
-      host: ctx.server.hostname,
-      port: ctx.server.port,
-      base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
-      started_at: ctx.startedAt,
-      machine: hostname(),
-      token_required: Boolean(ctx.token),
-      home: ctx.paths.home,
-      db_path: ctx.paths.dbPath,
-      media_path: ctx.paths.mediaPath,
-      provenance: ctx.provenance,
-      counts: {
-        peers: peerCount,
-        groups: groupCount,
-        events: eventCount,
-      },
-    });
-  }
-
-  if (request.method === "GET" && url.pathname === "/summary") {
-    const now = new Date().toISOString();
-    const peerTotals =
-      ctx.db
-        .query<{ total: number; online: number }, [string]>(
-          "SELECT COUNT(*) AS total, SUM(CASE WHEN lease_expires_at > ? THEN 1 ELSE 0 END) AS online FROM peers WHERE deleted_at IS NULL",
-        )
-        .get(now) ?? { total: 0, online: 0 };
-    const groupTotals =
-      ctx.db
-        .query<{ total: number; durable: number; ephemeral: number }, []>(
-          `SELECT
-             COUNT(*) AS total,
-             SUM(CASE WHEN durable = 1 THEN 1 ELSE 0 END) AS durable,
-             SUM(CASE WHEN durable = 0 THEN 1 ELSE 0 END) AS ephemeral
-           FROM groups`,
-        )
-        .get() ?? { total: 0, durable: 0, ephemeral: 0 };
-    const eventTotals =
-      ctx.db
-        .query<{ total: number; last_event_at: string | null }, []>(
-          "SELECT COUNT(*) AS total, MAX(created_at) AS last_event_at FROM events",
-        )
-        .get() ?? { total: 0, last_event_at: null };
-    const inboxTotals =
-      ctx.db
-        .query<{ total: number; pending: number }, []>(
-          "SELECT COUNT(*) AS total, SUM(CASE WHEN acked_at IS NULL THEN 1 ELSE 0 END) AS pending FROM inbox",
-        )
-        .get() ?? { total: 0, pending: 0 };
-    const mediaTotals =
-      ctx.db
-        .query<{ files: number; bytes: number }, []>(
-          "SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM media_items",
-        )
-        .get() ?? { files: 0, bytes: 0 };
-    const peers = ctx.db
-      .query<SummaryPeerRow, [string]>(
-        `SELECT
-           p.peer_id,
-           p.session_name,
-           p.tool,
-           p.purpose,
-           p.lease_expires_at > ? AS online,
-           p.activity_state,
-           COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
-           COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
-           p.updated_at,
-           (SELECT s.host_session_id FROM agent_sessions s
-            WHERE s.peer_id = p.peer_id
-            ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id
-         FROM peers p
-         LEFT JOIN inbox i ON i.recipient_peer_id = p.peer_id
-         LEFT JOIN group_members gm ON gm.peer_id = p.peer_id
-         WHERE p.deleted_at IS NULL
-         GROUP BY p.peer_id
-         ORDER BY online DESC, pending_inbox DESC, p.updated_at DESC
-         LIMIT 12`,
-      )
-      .all(now);
-    const groups = ctx.db
-      .query<SummaryGroupRow, [string]>(
-        `SELECT
-           g.name,
-           g.durable,
-           COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.peer_id END) AS members,
-           COUNT(DISTINCT CASE WHEN gm.active = 1 AND p.lease_expires_at > ? THEN gm.peer_id END) AS online_members,
-           COUNT(DISTINCT CASE WHEN e.type = 'group_message' THEN e.event_id END) AS messages,
-           COUNT(DISTINCT mi.media_id) AS media,
-           MAX(e.created_at) AS last_activity_at
-         FROM groups g
-         LEFT JOIN group_members gm ON gm.group_id = g.group_id
-         LEFT JOIN peers p ON p.peer_id = gm.peer_id
-         LEFT JOIN events e ON e.group_id = g.group_id
-         LEFT JOIN media_items mi ON mi.group_id = g.group_id
-         GROUP BY g.group_id
-         ORDER BY last_activity_at DESC, g.name ASC
-         LIMIT 12`,
-      )
-      .all(now);
-
-    return jsonResponse({
-      ok: true,
-      daemon: {
-        pid: process.pid,
-        base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
-        started_at: ctx.startedAt,
-        token_required: Boolean(ctx.token),
-        home: ctx.paths.home,
-        db_path: ctx.paths.dbPath,
-        media_path: ctx.paths.mediaPath,
-        provenance: ctx.provenance,
-      },
-      totals: {
-        peers: {
-          total: peerTotals.total,
-          online: peerTotals.online ?? 0,
-          stale: peerTotals.total - (peerTotals.online ?? 0),
-        },
-        groups: {
-          total: groupTotals.total,
-          durable: groupTotals.durable ?? 0,
-          ephemeral: groupTotals.ephemeral ?? 0,
-        },
-        events: {
-          total: eventTotals.total,
-          last_event_at: eventTotals.last_event_at,
-        },
-        inbox: {
-          total: inboxTotals.total,
-          pending: inboxTotals.pending ?? 0,
-        },
-        media: mediaTotals,
-      },
-      peers: peers.map((peer) => ({
-        ...peer,
-        online: Boolean(peer.online),
-        presence: derivePresence(Boolean(peer.online), peer.activity_state),
-      })),
-      groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
-      generated_at: now,
-    });
-  }
+  const statusResponse = tryHandleStatusRoute(request, ctx, url);
+  if (statusResponse) return statusResponse;
 
   if (request.method === "POST" && url.pathname === "/agent-sessions/register") {
     const body = await readBody(request);
@@ -711,30 +542,11 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
     return jsonResponse({ ok: true, peer_id: peerId });
   }
 
-  if (request.method === "POST" && url.pathname === "/subscriptions") {
-    const body = await readBody(request);
-    const peerId = requireString(body, "peer_id");
-    const callbackUrl = requireLocalCallbackUrl(requireString(body, "callback_url"));
-    const token = requireString(body, "token");
-    ensurePeer(ctx.db, peerId);
-    const subscriber = {
-      peer_id: peerId,
-      callback_url: callbackUrl,
-      token,
-      created_at: new Date().toISOString(),
-    };
-    ctx.subscribers.set(peerId, subscriber);
-    log(`subscription registered peer_id=${peerId} callback_url=${callbackUrl}`);
-    return jsonResponse({ subscription: subscriber }, { status: 201 });
-  }
+  const subscriptionsResponse = await tryHandleSubscriptionsRoute(request, ctx, url);
+  if (subscriptionsResponse) return subscriptionsResponse;
 
-  if (request.method === "POST" && url.pathname === "/query/events") {
-    const body = await readBody(request);
-    const sql = requireString(body, "sql");
-    const params = optionalSqlParams(body, "params");
-    const limit = optionalInteger(body, "limit");
-    return jsonResponse(runEventQuery(ctx.db, { sql, ...(params ? { params } : {}), ...(limit !== undefined ? { limit } : {}) }));
-  }
+  const queryResponse = await tryHandleQueryRoute(request, ctx, url);
+  if (queryResponse) return queryResponse;
 
   if (request.method === "POST" && url.pathname === "/dm") {
     const body = await readBody(request);
@@ -1544,74 +1356,8 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
   // That keeps the shared single web peer (all of a human's browsers resolve to
   // web:local-human) free of cross-device cursor contention. Newest-first with a
   // `before` cursor for load-older; `filter=awaiting` keeps only un-acked items.
-  const activityMatch = url.pathname.match(/^\/activity\/([^/]+)$/);
-  if (request.method === "GET" && activityMatch) {
-    const peerId = decodeURIComponent(activityMatch[1] ?? "");
-    ensurePeer(ctx.db, peerId);
-    const limit = parseLimit(url.searchParams.get("limit"));
-    const beforeRaw = url.searchParams.get("before");
-    const before = beforeRaw === null || beforeRaw === "" ? Number.MAX_SAFE_INTEGER : Number(beforeRaw);
-    if (!Number.isFinite(before)) throw new HttpError(400, "invalid_cursor", "before must be a number");
-    const awaitingOnly = url.searchParams.get("filter") === "awaiting";
-    const awaitingClause = awaitingOnly ? "AND i.event_id IS NOT NULL AND i.acked_at IS NULL" : "";
-    const rows = ctx.db
-      .query<ActivityRow, [string, number, string, string, string, number]>(
-        `SELECT e.*, g.name AS group_name, i.acked_at AS acked_at,
-                (i.event_id IS NOT NULL AND i.acked_at IS NULL) AS awaiting,
-                (SELECT COUNT(*) FROM events r WHERE r.parent_event_id = e.event_id) AS reply_count
-         FROM events e
-         LEFT JOIN groups g ON g.group_id = e.group_id
-         LEFT JOIN inbox i ON i.event_id = e.event_id AND i.recipient_peer_id = ?
-         WHERE e.event_id < ?
-           AND e.type IN ('group_message', 'dm')
-           AND e.sender_peer_id != ?
-           AND (e.group_id IS NOT NULL
-                OR (e.type = 'dm' AND (e.sender_peer_id = ? OR e.recipient_peer_id = ?)))
-           ${awaitingClause}
-         ORDER BY e.event_id DESC
-         LIMIT ?`,
-      )
-      .all(peerId, before, peerId, peerId, peerId, limit);
-    const awaitingCount =
-      ctx.db
-        .query<{ n: number }, [string]>(
-          "SELECT COUNT(*) AS n FROM inbox WHERE recipient_peer_id = ? AND acked_at IS NULL",
-        )
-        .get(peerId)?.n ?? 0;
-    const peerIds = new Set<string>();
-    for (const row of rows) {
-      if (row.sender_peer_id) peerIds.add(row.sender_peer_id);
-      if (row.recipient_peer_id) peerIds.add(row.recipient_peer_id);
-    }
-    const now = new Date().toISOString();
-    const ids = [...peerIds];
-    // Activity can page into durable history after the live roster has dropped a
-    // lease-expired peer. Return just the authors referenced by this bounded
-    // Activity page so the client can render old rows without widening the main
-    // /web/state roster query or doing per-row identity lookups.
-    const peers = ids.length === 0
-      ? []
-      : ctx.db
-        .query<PeerRow & { online: number }, [string, ...string[]]>(
-          `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-                  activity_state, last_activity_at, last_cursor, created_at, updated_at,
-                  lease_expires_at > ? AS online
-           FROM peers
-           WHERE peer_id IN (${ids.map(() => "?").join(",")})`,
-        )
-        .all(now, ...ids)
-        .map((peer) => ({
-          ...peer,
-          online: Boolean(peer.online),
-          presence: derivePresence(Boolean(peer.online), peer.activity_state),
-        }));
-    return jsonResponse({
-      events: attachReactions(ctx.db, rows.map((row) => eventForRecipient(row, peerId))),
-      peers,
-      next_cursor: rows.at(-1)?.event_id ?? null,
-      awaiting_count: awaitingCount,
-    });
-  }
+  const activityResponse = tryHandleActivityRoute(request, ctx, url);
+  if (activityResponse) return activityResponse;
 
   const eventsMatch = url.pathname.match(/^\/events\/([^/]+)$/);
   if (request.method === "GET" && eventsMatch) {
@@ -1650,4 +1396,3 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
 
   throw new HttpError(404, "not_found", `${request.method} ${url.pathname} is not implemented`);
 }
-
