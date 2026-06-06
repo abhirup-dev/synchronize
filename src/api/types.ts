@@ -1,8 +1,12 @@
 export interface StatusResponse {
   ok: boolean;
   pid: number;
+  host: string;
+  port: number;
   base_url: string;
   started_at: string;
+  /** Hostname of the machine hosting the daemon. */
+  machine?: string;
   token_required: boolean;
   home: string;
   db_path: string;
@@ -31,6 +35,8 @@ export interface Peer {
   tool: string;
   session_name: string;
   purpose: string | null;
+  /** Hostname of the machine the peer registered from (multi-machine roster). */
+  machine_id?: string;
   lease_expires_at: string;
   online?: boolean;
   /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */

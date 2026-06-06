@@ -48,10 +48,18 @@ A short glossary so the rest of the plan reads clearly:
 ## Topology decision (drives everything else)
 
 One daemon is **central**; all other machines are **clients** that point at it
-over the tailnet. The natural host for the central daemon is the **always-on
-VPS** (`vps`, tailnet `100.96.245.110`), because the Mac (`mtpl-7638`) sleeps,
-roams between networks, and changes IPs. Clients open *outbound* connections to
-the daemon — which is what makes the design NAT/sleep-friendly.
+over the tailnet.
+
+**v0 decision: the Mac hosts the daemon.** The Mac is the active workstation and
+the current goal is cross-machine support while the operator is actively using
+it, not an always-on deployment. The Mac daemon's `SYNCHRONIZE_HOME` remains the
+single runtime state owner; remote sessions register into that state over the
+tailnet. The VPS is a remote client/executor target for v0, not the central
+daemon host.
+
+Clients open *outbound* connections to the daemon — which is what makes the
+design NAT/sleep-friendly. A future always-on mode can move the same daemon
+contract to the VPS, but that is not required for the first cross-machine cut.
 
 We are **not** federating multiple daemons in v0 (no gossip/replication between
 daemons). Single durable owner, many thin clients — the existing model, stretched
@@ -62,14 +70,15 @@ across the tailnet.
 **Feasible now for the core goal.** The LAN-bind plumbing already exists and the
 data model already records which machine each peer is on. Split into two tiers:
 
-- **MVP-now** — bind the daemon to its tailnet IP + token, add a remote-URL
-  override for clients, surface `machine_id` in the UI. Remote **codex** sessions
-  work fully (their notifier already polls outbound). Remote **claude** sessions
-  *degrade gracefully*: live push fails, but polled delivery + the durable inbox
-  fallback (already the documented contract in CLAUDE.md) keep them functional.
-- **Push parity (follow-up)** — restore live push notifications for remote
-  claude-mode sessions. This is an enhancement, **not** a blocker for "render
-  sessions from both machines."
+- **MVP-now** — bind the Mac daemon to its tailnet IP + shared token, use
+  `SYNCHRONIZE_REMOTE_URL` on remote clients, and verify remote peer/session
+  registration into the Mac-owned runtime state. Remote **codex** sessions work
+  fully (their notifier already polls outbound). Remote **claude** sessions
+  *degrade gracefully* until Phase 2: durable inbox fallback remains available.
+- **Push parity (follow-up, chosen design)** — restore live push notifications
+  for remote claude-mode sessions by using a client-initiated SSE/long-poll pipe
+  to the daemon. This is more work than daemon-to-client callbacks, but it
+  unlocks the cleaner remote/session model.
 
 ## Empirical evidence (gathered this session)
 
@@ -81,7 +90,8 @@ Groundwork completed:
 - VPS and Mac are on the **same tailnet** (`sunnydas.das460@`): `vps` =
   `100.96.245.110`, `mtpl-7638` = `100.126.163.80`.
 - `synchronize` rsynced to `vps:~/synchronize`, `bun install` clean (bun 1.3.10).
-- **Daemon bound to the tailnet IP works:** started with
+- **Daemon bound to a tailnet IP works:** prior proof used the VPS as the host,
+  started with
   `SYNCHRONIZE_BIND=100.96.245.110 SYNCHRONIZE_PORT=58410 SYNCHRONIZE_TOKEN=…`
   - `GET /health` → 200 (reachable on the tailnet IP, not just localhost)
   - `GET /status` → `host: 100.96.245.110`, `machine: "vps"`, `token_required: true`
@@ -95,8 +105,10 @@ Groundwork completed:
   appears in the VPS daemon's `/peers` list tagged `machine_id: mtpl-7638`.
 
 That last step is the core goal in miniature: a session on one machine joined the
-daemon on another and is distinguishable by machine — exactly what the UI grouping
-needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down after.
+daemon on another and is distinguishable by machine. The throwaway VPS test
+daemon and `/tmp/sync-test` home were torn down after. For v0, repeat the same
+gate in the opposite direction: Mac hosts the daemon, VPS registers as the remote
+client/session.
 
 ## Current architecture — the constraints that matter
 
@@ -110,7 +122,8 @@ needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down af
 3. **`machine_id` is already in the data model.** `peers.machine_id` is
    `NOT NULL` (`db.ts:41`), set on every registration, defaulting to
    `os.hostname()` (`daemon.ts:439,570`). It flows into peer rows and `/web/state`.
-   The web UI does **not** yet group by it.
+   The web UI does **not** need to group by it for v0; a small machine indicator
+   can come later.
 4. **Claude push notifications are localhost-bound.** `EventSubscription`
    (`mcp/claude-subscription.ts`) starts a callback server on `127.0.0.1` on the
    *client*, and the daemon POSTs events to it. `requireLocalCallbackUrl`
@@ -136,12 +149,13 @@ needs. The throwaway VPS test daemon and `/tmp/sync-test` home were torn down af
      fall back to spawning a local daemon. Silent local spawn = two isolated
      daemons that each look healthy but never see each other (failure that
      masquerades as success).
-2. **Central daemon deployment on the VPS.** Run the daemon as a service bound to
-   the tailnet IP with a token (`SYNCHRONIZE_BIND`, `SYNCHRONIZE_PORT` stable,
-   `SYNCHRONIZE_TOKEN`). Document the env contract for clients.
-3. **Web UI: group sessions/peers by machine.** Use `machine_id` (prefer the
-   Tailscale device name as the stable key — `os.hostname()` is not guaranteed
-   stable/unique) to render "this machine" vs other machines.
+2. **Mac-hosted central daemon.** Run the daemon on the Mac bound to the Mac
+   tailnet IP with a stable port and a simple shared `SYNCHRONIZE_TOKEN`.
+   Document the client env contract:
+   `SYNCHRONIZE_REMOTE_URL=http://<mac-tailnet-ip>:<port>` plus the shared token.
+3. **Remote session registration/lifecycle.** Verify a remote VPS session
+   registers into the Mac daemon and shows up as a normal peer/session in the
+   existing UI. Do not make machine grouping a v0 requirement.
 4. **Web UI: token entry.** Capture a `?token=` query param into storage (or a
    small prompt) so a remote browser can authenticate without hand-editing
    localStorage.
@@ -162,37 +176,337 @@ Restore live push to remote claude-mode sessions. Two options:
   notifier already do) and the daemon streams events down it. NAT/sleep-friendly,
   unifies the notification model. **Recommended.**
 
-## Open questions / decisions for the user
+#### Revised plan: unified `/events/:peer_id` stream
 
-> These are the calls I'd like your input on. Annotate inline with answers.
+Use the existing peer event route instead of adding a separate conceptual
+endpoint. Today:
 
-1. **Which machine hosts the one daemon?** Everything else connects to it.
-   - *Recommendation:* the **VPS** — it's always on, so sessions can join any
-     time; the Mac sleeps and changes networks, which would knock everyone off.
-   - Trade-off: if the VPS is down, *nobody* can chat (even two local sessions).
-     Acceptable?
-2. **One shared password, or one per machine?** The daemon needs the bearer token
-   (the shared secret) to let clients in.
-   - *Recommendation:* one shared token for v0 — simple, and Tailscale already
-     ensures only your devices can even reach the daemon. Per-machine tokens are
-     more work for little gain on a personal tailnet. OK to start shared?
-3. **How do remote claude sessions get live updates (Phase 2)?** Two ways to fix
-   the push problem (finding 4):
-   - **(A) Quick patch:** let the daemon call the client on its Tailscale address.
-     Less code, but breaks whenever the client's address changes (laptop sleeps /
-     switches wifi).
-   - **(B) Client-opens-the-pipe (SSE), recommended:** the client holds open a
-     connection *to* the daemon and receives events down it. More work now, but
-     it just keeps working as machines sleep/roam — same approach the web UI
-     already uses.
-   - Or **defer Phase 2** entirely and rely on polling/inbox for remote claude
-     sessions for now. Which do you want?
-4. **What name do we group sessions by in the UI?** I'd use the **Tailscale device
-   name** (`vps`, `mtpl-7638`) because it's stable and unique. The current default
-   (`os.hostname()`) can change or collide. Agree?
+```text
+GET /events/:peer_id?cursor=N&limit=M
+Accept: application/json
+```
+
+returns a finite JSON batch and closes. Extend the same route with content
+negotiation:
+
+```text
+GET /events/:peer_id?cursor=N
+Accept: text/event-stream
+Authorization: Bearer <token>
+```
+
+The JSON mode remains the current finite read. The SSE mode replays inbox events
+after `cursor`, keeps the response open, and streams future recipient-visible
+events. The domain concept remains one thing: "events for this peer after this
+cursor".
+
+Current broken cross-machine Claude push:
+
+```text
+VPS Claude MCP
+  starts callback server
+  http://127.0.0.1:43123/events
+        |
+        | POST /subscriptions { callback_url }
+        v
+Mac daemon
+  stores callback_url
+        |
+        | later DM arrives
+        v
+Mac daemon fetch("http://127.0.0.1:43123/events")
+        |
+        v
+Mac localhost, not VPS localhost -> connection fails
+```
+
+Target architecture:
+
+```text
+VPS Claude MCP
+  opens outbound stream
+  GET /events/<peer_id>?cursor=<last_seen>
+  Accept: text/event-stream
+        |
+        | Tailscale outbound connection
+        v
+Mac daemon
+  keeps stream open
+        |
+        | DM arrives
+        v
+Mac daemon writes SSE frame
+        |
+        v
+VPS Claude MCP receives event
+        |
+        v
+MCP emits notifications/claude/channel
+        |
+        v
+Claude sees the DM live
+```
+
+Unified local/remote shape:
+
+```text
+Local Claude MCP
+  base_url from daemon.json
+  GET /events/<peer_id>?cursor=N
+  Accept: text/event-stream
+        |
+        v
+Local daemon
+
+Remote Claude MCP
+  base_url from SYNCHRONIZE_REMOTE_URL
+  GET /events/<peer_id>?cursor=N
+  Accept: text/event-stream
+        |
+        v
+Mac daemon over Tailscale
+```
+
+Only daemon discovery changes between local and remote. The delivery route,
+cursor semantics, MCP event emission, and durable fallback are the same.
+
+Write, live delivery, and recovery:
+
+```text
+Sender agent
+  bridge_dm
+      |
+      v
+Mac daemon
+  INSERT events
+  INSERT inbox
+      |
+      +--> active SSE stream?
+      |       |
+      |       v
+      |   write event frame
+      |   mark delivered_at
+      |
+      +--> no stream / disconnected
+              |
+              v
+          durable inbox row remains
+
+Recipient reconnects
+  GET /events/<peer_id>?cursor=<last_seen>
+      |
+      v
+Daemon replays missed inbox rows, then streams future events
+```
+
+Implementation shape:
+
+```text
+daemon.ts
+  GET /events/:peer_id
+    if Accept includes text/event-stream:
+      handleEventStream(peer_id, cursor)
+    else:
+      existing JSON readEvents behavior
+
+mcp/
+  EventStreamSubscription
+    open /events/:peer_id as SSE
+    parse event frames
+    call emitMcpNotification("claude", event)
+
+  EventSubscription callback
+    keep temporarily as fallback / legacy
+```
+
+Rollout:
+
+```text
+Phase A: add SSE mode to existing /events/:peer_id
+Phase B: add Claude MCP stream subscriber behind env flag
+Phase C: run local + remote E2E against stream mode
+Phase D: make stream default when SYNCHRONIZE_REMOTE_URL is set
+Phase E: make stream default for all Claude sessions after burn-in
+Phase F: remove callback path only after the stream path is stable
+```
+
+Risk controls:
+
+- keep the existing callback path until stream mode passes local and remote E2E;
+- keep durable inbox as the source of truth;
+- use `event_id` as cursor so reconnect can replay missed messages;
+- mark `delivered_at` only when a stream frame is accepted by the connection;
+- keep `read_at` tied to explicit inbox reads;
+- heartbeat SSE streams to detect dead connections;
+- close streams on disconnect to avoid leaked subscribers;
+- test duplicate delivery, reconnect, auth failures, slow clients, and daemon
+  restarts before flipping defaults.
+
+This changes the notification transport direction for Claude, not the core
+collaboration architecture. The central daemon, `bridge_dm`, durable `events`,
+durable `inbox`, and MCP `notifications/claude/channel` emission all remain.
+
+## Decisions
+
+1. **Daemon host for v0:** Mac hosts the daemon. The goal is active
+   cross-machine work while the Mac is in use, not an always-on server.
+2. **Auth for v0:** one simple shared bearer token. Tailscale is the network
+   boundary; per-machine credentials are deferred.
+3. **Remote Claude push:** use option B, client-initiated SSE/long-poll from the
+   remote session to the daemon, implemented as SSE content negotiation on the
+   existing `/events/:peer_id` route. Do not relax daemon-to-client callback
+   rules as the long-term answer.
+4. **UI machine treatment:** no v0 machine grouping requirement. Remote sessions
+   should mostly be indistinguishable once registered into the Mac daemon's
+   runtime state. Later UI polish can add a small icon or identifier for VPS vs
+   Mac agents.
 
 ## Groundwork artifacts
 
 - VPS test daemon: `SYNCHRONIZE_HOME=/tmp/sync-test` on `vps`, port `58410`,
   token `lan-test-token` (throwaway — tear down after the cross-machine curl).
 - Repo synced at `vps:~/synchronize`.
+
+## Follow-up notes: seamless VPS install and sync
+
+Live cross-machine harness work exposed a separate product gap: the Mac can host
+the daemon, but the remote session machine still needs the right client/runtime
+bits installed and refreshed.
+
+Observations from the VPS setup:
+
+- Non-interactive SSH did not include `~/.local/bin` in `PATH`; the harness must
+  either inject a deterministic PATH or install wrappers into a known location.
+- `uv` and `claude` already existed under `~/.local/bin`, while `aoe` and `pi`
+  were absent.
+- `aoe` was installed from the upstream Linux release tarball into
+  `~/.local/bin/aoe`.
+- `pi` was installed from npm with `npm config set prefix ~/.local` and
+  `npm install -g @earendil-works/pi-coding-agent@0.75.3`.
+- The repo copy for the run used `rsync` into `/tmp/synchronize-mm-client`,
+  followed by `bun install`.
+- The remote harness needs the same environment contract as normal remote
+  clients: `SYNCHRONIZE_REMOTE_URL`, `SYNCHRONIZE_TOKEN`, and a larger
+  `SYNCHRONIZE_HEALTH_TIMEOUT_MS` for tailnet health checks.
+
+### Current manual harness setup
+
+This is the current state to simplify later. It is intentionally procedural:
+today the operator still has to assemble a remote runtime by hand before the
+cross-machine harnesses are easy to run.
+
+Mac side:
+
+- start a throwaway or chosen daemon with a tailnet bind, fixed port, and token,
+  for example:
+
+  ```bash
+  SYNCHRONIZE_HOME=/tmp/sync-mm-mac-itest \
+  SYNCHRONIZE_BIND=100.126.163.80 \
+  SYNCHRONIZE_PORT=58412 \
+  SYNCHRONIZE_TOKEN=... \
+  bun run src/daemon.ts
+  ```
+
+- keep that daemon alive while the remote harness runs;
+- verify from the VPS with `/health` and authenticated `/status`;
+- stop the daemon and delete its temporary `SYNCHRONIZE_HOME` after the run.
+
+VPS side:
+
+- ensure `~/.local/bin` is on `PATH` for non-interactive SSH commands;
+- ensure `aoe`, `tmux`, `uv`, `bun`, and the target agent CLI are installed;
+- rsync the Mac worktree into a remote path such as
+  `/tmp/synchronize-mm-client`;
+- run `bun install` in the remote copy;
+- invoke harness commands from the remote copy with:
+
+  ```bash
+  PATH="$HOME/.local/bin:$PATH" \
+  SYNCHRONIZE_REMOTE_URL=http://100.126.163.80:<port> \
+  SYNCHRONIZE_TOKEN=... \
+  SYNCHRONIZE_HEALTH_TIMEOUT_MS=5000 \
+  uv run scripts/<harness>.py --remote-url ... --remote-token ...
+  ```
+
+### Harness status today
+
+CLI harnesses:
+
+- work cross-machine when launched on the VPS against the Mac daemon;
+- use the remote REST client for assertions;
+- do not own or stop the daemon in remote mode.
+
+Pi agent harnesses:
+
+- work cross-machine after remote env is threaded into the temporary Pi
+  `mcp.json` and session command;
+- use client-side polling for remote event delivery instead of relying on a
+  daemon-to-client callback;
+- require careful session binding selection by repo, host tool, registration
+  timestamp, and session name to avoid stale Pi bindings from prior runs;
+- currently need the remote Pi runtime and `pi-mcp-adapter` installed or
+  provisioned before the test is reliable.
+
+Claude AOE sessions:
+
+- can be spawned by AOE on the VPS with `--cmd claude` or `--cmd-override`;
+- can run synchronize MCP when given a remote-aware MCP config with
+  `SYNCHRONIZE_REMOTE_URL`, `SYNCHRONIZE_TOKEN`, and
+  `SYNCHRONIZE_HEALTH_TIMEOUT_MS`;
+- can send a DM through `bridge_dm` to a peer registered in the Mac daemon;
+- can read the recipient durable inbox through `bridge_inbox`;
+- do **not** yet have cross-machine live push parity in claude-mode. The
+  current Claude subscription registers a `127.0.0.1:<port>` callback on the
+  VPS, which the Mac daemon cannot reach. Durable inbox works; Phase 2 still
+  needs client-initiated SSE/long-poll.
+
+### Pain points to remove
+
+- Remote setup is too manual: install/check `aoe`, `pi`, `claude`, `uv`, `bun`,
+  PATH, repo sync, and dependency install all happen through ad-hoc SSH.
+- The daemon lifecycle is manual: choose a tailnet IP, port, token, temp home,
+  keep the process alive, verify health, and tear it down.
+- The harness invocation has duplicated remote flags and env variables.
+- The remote MCP configuration for Claude is not first-class; for manual tests
+  we had to generate a temporary `--mcp-config` with remote daemon env.
+- Pi has a harness-owned isolated environment, but the equivalent Claude test
+  environment is still improvised.
+- Cleanup requires knowing both AOE and tmux state. Failed or interrupted runs
+  can leave profiles, tmux sessions, or agent processes behind.
+- AOE profile deletion can leave one default profile because AOE refuses to
+  delete the last profile.
+- Diagnostics are spread across daemon logs, AOE JSON, tmux panes, REST queries,
+  and remote transcript files.
+- There is no single command that answers: "is this VPS ready to run all remote
+  synchronize harnesses against this Mac daemon?"
+- There is no single command that syncs the current worktree and prints the
+  exact remote command/env the harness will use.
+
+The future CLI/Makefile surface for this is tracked by Beads issue `sync-nxyp`
+("Remote sync command for VPS client runtime"). The unified Claude stream
+delivery implementation is tracked by `sync-ba7h` ("Claude cross-machine push
+via unified event stream"). Keep both work items connected to this document: the
+stream-delivery plan above makes remote Claude collaboration feel local, while
+the install/sync surface below makes the remote machine easy to prepare and
+verify.
+
+Candidate command shape for later discussion:
+
+```bash
+synchronize remote sync vpsme \
+  --path /opt/synchronize \
+  --install-tools aoe,pi,uv \
+  --daemon-url http://<mac-tailnet-ip>:58412 \
+  --token-env SYNCHRONIZE_TOKEN
+```
+
+Expected behavior:
+
+- run from the Mac, over SSH, with no interactive prompts;
+- install or update remote prerequisites into a user-owned prefix;
+- rsync the current worktree or a built release bundle to the remote path;
+- run `bun install` or copy prebuilt dependencies as appropriate;
+- write a small remote env/profile file that points CLI/MCP/Pi at the Mac daemon;
+- verify `synchronize status`, `synchronize-mcp`, and optional `pi --version`;
+- print the exact remote command/env used by AoE/Pi harnesses.

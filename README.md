@@ -575,6 +575,7 @@ SYNCHRONIZE_HOME   Runtime directory. Default: ~/.synchronize
 SYNCHRONIZE_BIND   Daemon bind host. Default: 127.0.0.1
 SYNCHRONIZE_PORT   Daemon port. Default: 58405
 SYNCHRONIZE_TOKEN  Bearer token. Required when SYNCHRONIZE_BIND is not localhost
+SYNCHRONIZE_REMOTE_URL  Existing daemon URL for remote clients; disables local autostart
 SYNCHRONIZE_MCP_MODE  codex or claude. Default: codex
 SYNCHRONIZE_PEER_ID   Stable MCP/Pi peer id across restarts
 SYNCHRONIZE_SESSION_NAME  Stable host-agent session name for hooks/Pi
@@ -594,17 +595,28 @@ SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
 Localhost mode needs no token. Non-localhost bind requires a token:
 
 ```bash
-export SYNCHRONIZE_BIND=0.0.0.0
-export SYNCHRONIZE_PORT=8787
-export SYNCHRONIZE_TOKEN='replace-with-a-secret'
-bun run src/daemon.ts
+bun run src/cli.ts host \
+  --bind 100.126.163.80 \
+  --port 8787 \
+  --token 'replace-with-a-secret'
 ```
 
-Clients must use the same token:
+Use the Mac's Tailscale IP for `--bind` when the Mac is the central v0 daemon.
+The command starts or verifies a token-protected daemon and prints the remote
+client environment. If a daemon is already running with incompatible host/token
+settings, it exits without changing it; pass `--restart` to relaunch that daemon
+while preserving `SYNCHRONIZE_HOME` state.
+
+Remote clients must use the printed daemon URL and the same token:
 
 ```bash
+export SYNCHRONIZE_REMOTE_URL='http://100.x.y.z:8787'
 export SYNCHRONIZE_TOKEN='replace-with-a-secret'
 ```
+
+When `SYNCHRONIZE_REMOTE_URL` is set, CLI and MCP clients use that daemon
+directly and do not read `daemon.json` or start a local daemon. If the remote
+daemon is unreachable or rejects the token, the client exits loudly.
 
 The daemon expects:
 

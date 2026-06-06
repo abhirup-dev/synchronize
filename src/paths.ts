@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   CLI_IDENTITY_FILE,
+  CONFIG_FILE,
   DB_FILE,
   DISCOVERY_FILE,
   ENV_HOME,
@@ -20,6 +21,7 @@ export interface RuntimePaths {
   logPath: string;
   errLogPath: string;
   cliIdentityPath: string;
+  configPath: string;
 }
 
 export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePaths {
@@ -33,5 +35,6 @@ export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePa
     logPath: join(home, LOG_FILE),
     errLogPath: join(home, ERR_LOG_FILE),
     cliIdentityPath: join(home, CLI_IDENTITY_FILE),
+    configPath: join(home, CONFIG_FILE),
   };
 }

@@ -21,6 +21,7 @@ describe("CLI schema", () => {
       "launch",
       "spawn",
       "completion",
+      "remote",
     ]);
   });
 
@@ -30,6 +31,18 @@ describe("CLI schema", () => {
     expect(subcommandNames("threads")).toEqual(["list", "status", "show", "summary"]);
     expect(subcommandNames("hook")).toEqual(["claude-session"]);
     expect(subcommandNames("completion")).toEqual(["carapace", "complete", "install"]);
+    expect(subcommandNames("remote")).toEqual([
+      "add",
+      "use",
+      "ls",
+      "show",
+      "remove",
+      "provision",
+      "sync",
+      "harness",
+      "status",
+      "doctor",
+    ]);
   });
 
   test("keeps help generated from schema aligned with the current CLI surface", () => {
@@ -63,6 +76,10 @@ Usage:
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize completion carapace
   synchronize completion install --shell carapace
+  synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]
+  synchronize remote use NAME | ls | show [NAME] | remove NAME
+  synchronize remote provision HOST | sync HOST --hub-url URL | harness HOST --hub-url URL [--all]
+  synchronize remote status | doctor
   synchronize --help
 
 Commands:
@@ -81,12 +98,14 @@ Commands:
   launch     Start an agent in the foreground with synchronize daemon/env setup
   spawn      Launch a persistent agent session via the backend (AOE), optionally into a group
   completion Generate shell completion specs
+  remote     Manage multi-machine profiles, provision/sync remotes, run the harness, and inspect status
 
 Environment:
   SYNCHRONIZE_HOME    Runtime directory (default: ~/.synchronize)
   SYNCHRONIZE_BIND    Daemon bind host (default: 127.0.0.1)
   SYNCHRONIZE_PORT    Daemon port (default: 0, random free port)
   SYNCHRONIZE_TOKEN   Bearer token; required for non-localhost bind
+  SYNCHRONIZE_REMOTE_URL Use an existing daemon URL; disables local autostart
 `);
   });
 });

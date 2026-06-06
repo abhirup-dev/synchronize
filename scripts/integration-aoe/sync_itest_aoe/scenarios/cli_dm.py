@@ -10,7 +10,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..aoe import AoeController
-from ..runtime import ArtifactWriter, CommandRunner, HarnessError, extract_json_object, require_tools, stop_daemon, synchronize_env, utc_run_id
+from ..runtime import (
+    ArtifactWriter,
+    CommandRunner,
+    HarnessError,
+    add_remote_daemon_args,
+    extract_json_object,
+    remote_daemon_from_args,
+    require_tools,
+    stop_daemon,
+    synchronize_env,
+    synchronize_shell_env,
+    utc_run_id,
+)
 from ..sync_rest import SyncRestClient
 from ..tmux import AgentPane, TmuxController, require_libtmux
 
@@ -35,12 +47,13 @@ class CliDmScenario:
             tempfile.mkdtemp(prefix=f"synchronize-itest-{self.run_id}-")
         )
         self.sync_home = Path(args.synchronize_home).expanduser().resolve() if args.synchronize_home else self.log_dir / "synchronize-home"
-        self.env = synchronize_env(self.sync_home)
+        self.remote = remote_daemon_from_args(args)
+        self.env = synchronize_env(self.sync_home, remote=self.remote)
         self.writer = ArtifactWriter(self.log_dir)
         self.runner = CommandRunner(self.repo, self.env, self.writer)
         self.aoe = AoeController(self.profile, self.repo, self.runner, self.writer)
         self.tmux = TmuxController(self.runner, self.writer)
-        self.rest = SyncRestClient(self.sync_home)
+        self.rest = SyncRestClient(self.sync_home, base_url=self.remote.url, token=self.remote.token)
         self.agent_panes: dict[str, AgentPane] = {}
         self.cli_peers: dict[str, CliPeer] = {}
         self.aoe_session_ids: dict[str, str] = {}
@@ -58,6 +71,7 @@ class CliDmScenario:
                 "sync_home": str(self.sync_home),
                 "log_dir": str(self.log_dir),
                 "keep": self.args.keep,
+                **self.remote.as_summary(),
             },
         )
         try:
@@ -135,8 +149,8 @@ class CliDmScenario:
             prefix += f"mkdir -p {shlex.quote(str(self.sync_home))} && printf %s {shlex.quote(identity)} > {shlex.quote(str(self.sync_home / 'cli-peer.json'))} && "
         command = (
             prefix
-            + f"SYNCHRONIZE_HOME={shlex.quote(str(self.sync_home))} "
-            + f"SYNCHRONIZE_PORT=0 bun run src/cli.ts {args}"
+            + synchronize_shell_env(self.remote, self.sync_home)
+            + f" bun run src/cli.ts {args}"
         )
         return self.tmux.send_shell_command(self.agent_panes[agent_name], command, self.args.command_timeout)
 
@@ -166,7 +180,7 @@ class CliDmScenario:
         except Exception as error:  # noqa: BLE001
             self.writer.write_text(f"{label}-pane-diagnostics-error.txt", str(error))
         try:
-            if (self.sync_home / "daemon.json").exists():
+            if self.remote.enabled or (self.sync_home / "daemon.json").exists():
                 self.writer.write_json(f"{label}-sync-status.json", self.rest.status())
                 self.writer.write_json(f"{label}-sync-peers.json", self.rest.peers())
         except Exception as error:  # noqa: BLE001
@@ -175,7 +189,8 @@ class CliDmScenario:
     def cleanup(self) -> None:
         if shutil.which("aoe") is not None:
             self.aoe.cleanup(self.agent_names)
-        stop_daemon(self.sync_home, self.writer)
+        if not self.remote.enabled:
+            stop_daemon(self.sync_home, self.writer)
         shutil.rmtree(self.sync_home, ignore_errors=True)
 
 
@@ -188,6 +203,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--shell", default=DEFAULT_SHELL, help="Shell command AoE should run in each session.")
     parser.add_argument("--aoe-tool", default="claude", help="Supported AoE tool name to satisfy AoE validation before command override.")
     parser.add_argument("--synchronize-home", help="SYNCHRONIZE_HOME for the smoke. Defaults under the log directory.")
+    add_remote_daemon_args(parser)
     parser.add_argument("--log-dir", help="Directory for run logs and diagnostics. Defaults to a temporary directory.")
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and synchronize state for debugging.")
     parser.add_argument("--verbose", action="store_true", help="Currently reserved; logs are always written to --log-dir.")

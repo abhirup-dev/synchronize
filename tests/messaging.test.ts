@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { startTestDaemon } from "./helpers/daemon.ts";
 
 const homes: string[] = [];
 
@@ -9,41 +10,10 @@ afterAll(async () => {
   await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
 });
 
+// Uses the shared harness; passes its own home since the CLI spawnSync calls
+// below need the same SYNCHRONIZE_HOME.
 async function startDaemon(home: string): Promise<{ baseUrl: string; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: {
-      ...process.env,
-      SYNCHRONIZE_HOME: home,
-      SYNCHRONIZE_PORT: "0",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = await Bun.file(discoveryPath).json();
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          baseUrl: discovery.baseUrl,
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not write discovery file");
+  return startTestDaemon({ home });
 }
 
 async function json<T>(baseUrl: string, path: string, init: RequestInit = {}): Promise<T> {

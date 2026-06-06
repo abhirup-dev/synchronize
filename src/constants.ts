@@ -17,11 +17,16 @@ export const LOG_FILE = "daemon.log";
 // land there.
 export const ERR_LOG_FILE = "daemon.err.log";
 export const CLI_IDENTITY_FILE = "cli-peer.json";
+// Client-side multi-machine profile config (named remote daemon targets). This
+// is a CLIENT concern, distinct from the daemon-side .env loader (env-files.ts).
+export const CONFIG_FILE = "config.toml";
 
 export const ENV_HOME = "SYNCHRONIZE_HOME";
 export const ENV_BIND = "SYNCHRONIZE_BIND";
 export const ENV_PORT = "SYNCHRONIZE_PORT";
 export const ENV_TOKEN = "SYNCHRONIZE_TOKEN";
+export const ENV_REMOTE_URL = "SYNCHRONIZE_REMOTE_URL";
+export const ENV_HEALTH_TIMEOUT_MS = "SYNCHRONIZE_HEALTH_TIMEOUT_MS";
 export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
 export const ENV_PEER_ID = "SYNCHRONIZE_PEER_ID";
 export const ENV_SESSION_NAME = "SYNCHRONIZE_SESSION_NAME";
@@ -42,26 +47,18 @@ export const STARTUP_TIMEOUT_MS = 5_000;
 export const HEALTH_TIMEOUT_MS = 500;
 export const STALE_LOCK_MS = 30_000;
 
-// Liveness lease window. A peer is "online" iff lease_expires_at > now; the
-// lease is refreshed by heartbeats (every MCP_HEARTBEAT_MS=15s) and by any
-// activity push. The production default is intentionally generous so suspended
-// local agents do not disappear during multi-day work. Tests and failure-mode
-// demos should override SYNCHRONIZE_LEASE_MS to a smaller value when they need
-// to observe lease-lapse quickly. See session-tracker/plan-agent-ttl-presence-v0.md.
+// Liveness lease window, retention, and sweep interval defaults now live in the
+// unified resolver (src/config.ts → CONFIG_DEFAULTS.daemon) and are read off
+// DaemonContext.config (defaults < config.toml < env). They were removed from
+// here because computing them at import time (process.env baked in on load) made
+// them un-injectable and forced tests into subprocess env mutation. The lease
+// window remains intentionally generous so suspended agents do not disappear
+// during multi-day work; SYNCHRONIZE_LEASE_MS still overrides it.
+// See session-tracker/plan-agent-ttl-presence-v0.md + docs/plans/config-unification.md.
 function positiveEnvMs(name: string, fallback: number): number {
   const raw = Number(process.env[name]);
   return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
-export const DEFAULT_LEASE_MS = positiveEnvMs(ENV_LEASE_MS, 3 * 24 * 60 * 60_000);
-
-// How long a peer's lease must have been expired before the background sweeper
-// soft-deletes it (retention window — keeps offline peers visible in the
-// roster + preserves reclaim audit before they are hidden). Override for tests.
-export const PEER_RETENTION_MS = positiveEnvMs(ENV_PEER_RETENTION_MS, 24 * 60 * 60_000);
-
-// How often the daemon's internal sweeper runs. Default hourly; tests shorten
-// it to observe a sweep within the test window.
-export const SWEEP_INTERVAL_MS = positiveEnvMs(ENV_SWEEP_INTERVAL_MS, 60 * 60_000);
 
 // Canonical agent activity states stored on peers.activity_state. NULL means
 // "uninstrumented" — the peer (web/cli/codex) reports no activity and renders

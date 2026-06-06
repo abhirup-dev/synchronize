@@ -1,7 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rm } from "node:fs/promises";
+import { startTestDaemon } from "./helpers/daemon.ts";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
 import { createGroup, joinGroup } from "../src/api/groups.ts";
 import { deletePeer, heartbeatPeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
@@ -27,44 +26,14 @@ interface DaemonEnv {
   sweepIntervalMs?: number;
 }
 
+// Tunables now flow through config.toml (via the shared harness), not a
+// SYNCHRONIZE_* env soup. Same emulation, env-free invocation.
 async function startDaemon(env: DaemonEnv = {}): Promise<{ client: ClientConfig; stop: () => Promise<void> }> {
-  const home = await mkdtemp(join(tmpdir(), "synchronize-presence-"));
-  homes.push(home);
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: {
-      ...process.env,
-      SYNCHRONIZE_HOME: home,
-      SYNCHRONIZE_PORT: "0",
-      ...(env.leaseMs !== undefined ? { SYNCHRONIZE_LEASE_MS: String(env.leaseMs) } : {}),
-      ...(env.retentionMs !== undefined ? { SYNCHRONIZE_PEER_RETENTION_MS: String(env.retentionMs) } : {}),
-      ...(env.sweepIntervalMs !== undefined ? { SYNCHRONIZE_SWEEP_INTERVAL_MS: String(env.sweepIntervalMs) } : {}),
-    },
-    stdout: "pipe",
-    stderr: "pipe",
+  const daemon = await startTestDaemon({
+    config: { daemon: { leaseMs: env.leaseMs, peerRetentionMs: env.retentionMs, sweepIntervalMs: env.sweepIntervalMs } },
   });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          client: { baseUrl: discovery.baseUrl, token: null, paths: {} as ClientConfig["paths"], started: false },
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
+  homes.push(daemon.home);
+  return daemon;
 }
 
 async function rosterPeer(client: ClientConfig, peerId: string): Promise<Peer | undefined> {
