@@ -22,5 +22,5 @@ export function printHelp(): void {
 }
 
 function renderCommandSummary(command: CliCommandSpec): string {
-  return `  ${command.name.padEnd(9)} ${command.description}`;
+  return `  ${command.name.padEnd(10)} ${command.description}`;
 }

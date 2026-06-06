@@ -20,6 +20,7 @@ describe("CLI schema", () => {
       "hook",
       "launch",
       "spawn",
+      "completion",
     ]);
   });
 
@@ -28,6 +29,7 @@ describe("CLI schema", () => {
     expect(subcommandNames("media")).toEqual(["share", "list", "get"]);
     expect(subcommandNames("threads")).toEqual(["list", "status", "show", "summary"]);
     expect(subcommandNames("hook")).toEqual(["claude-session"]);
+    expect(subcommandNames("completion")).toEqual(["carapace"]);
   });
 
   test("keeps help generated from schema aligned with the current CLI surface", () => {
@@ -59,23 +61,25 @@ Usage:
   synchronize hook claude-session
   synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]
   synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
+  synchronize completion carapace
   synchronize --help
 
 Commands:
-  status    Start or connect to the local daemon and print health/status
-  top       Live htop-style dashboard for daemon, peers, groups, inbox, and media
-  register  Register this CLI session and remember its peer id
-  whoami    Show the registered CLI peer identity
-  peers     List registered peers
-  dm        Send a durable direct message from the registered CLI peer
-  inbox     Read the registered CLI peer inbox; --ack acknowledges returned rows
-  group     Create, join, leave, send to, and read group history
-  media     Share, list, and inspect group media
-  threads   Discover, summarize, and render deeper group conversations
-  query     Run guarded read-only SQL against daemon event state
-  hook      Internal host-agent hook ingestion commands
-  launch    Start an agent in the foreground with synchronize daemon/env setup
-  spawn     Launch a persistent agent session via the backend (AOE), optionally into a group
+  status     Start or connect to the local daemon and print health/status
+  top        Live htop-style dashboard for daemon, peers, groups, inbox, and media
+  register   Register this CLI session and remember its peer id
+  whoami     Show the registered CLI peer identity
+  peers      List registered peers
+  dm         Send a durable direct message from the registered CLI peer
+  inbox      Read the registered CLI peer inbox; --ack acknowledges returned rows
+  group      Create, join, leave, send to, and read group history
+  media      Share, list, and inspect group media
+  threads    Discover, summarize, and render deeper group conversations
+  query      Run guarded read-only SQL against daemon event state
+  hook       Internal host-agent hook ingestion commands
+  launch     Start an agent in the foreground with synchronize daemon/env setup
+  spawn      Launch a persistent agent session via the backend (AOE), optionally into a group
+  completion Generate shell completion specs
 
 Environment:
   SYNCHRONIZE_HOME    Runtime directory (default: ~/.synchronize)

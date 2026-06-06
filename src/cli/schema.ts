@@ -87,6 +87,7 @@ export const cliSchema: CliSchema = {
     "synchronize hook claude-session",
     "synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]",
     "synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+    "synchronize completion carapace",
     "synchronize --help",
   ],
   commands: [
@@ -308,6 +309,16 @@ export const cliSchema: CliSchema = {
         { name: "thinking", description: "Thinking level" },
       ],
       passthrough: { marker: "--", description: "Arguments passed to the spawned tool" },
+    },
+    {
+      name: "completion",
+      description: "Generate shell completion specs",
+      subcommands: [
+        {
+          name: "carapace",
+          description: "Print a Carapace spec for synchronize",
+        },
+      ],
     },
   ],
   environment: [
