@@ -492,7 +492,6 @@
   color: var(--ink);
   box-shadow: 1.5px 1.5px 0 var(--ink);
 }
-.act-roomchip:hover { transform: translate(-1px, -1px); box-shadow: 2.5px 2.5px 0 var(--ink); }
 .act-roomchip.sm { font-size: 10.5px; padding: 1px 8px 1px 2px; }
 .act-roomchip-icon {
   width: 20px;
@@ -635,14 +634,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  height: 48px;
   padding: 7px 12px 7px 14px;
   background: var(--paper);
   border: 2px solid var(--ink);
   border-radius: 6px;
   box-shadow: 1.5px 1.5px 0 var(--ink);
   cursor: pointer;
+  overflow: hidden;
 }
-.act-row:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
 .act-row.awaits { box-shadow: 1.5px 1.5px 0 var(--ink), inset 4px 0 0 var(--pink); padding-left: 16px; }
 .act-row-bar { display: none; }
 .author-chip.xs {
@@ -659,21 +659,30 @@
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.act-row-verb { color: var(--ink-soft); }
-.act-row-preview, .act-row-preview .md, .act-row-preview .md > div, .act-row-preview .md p {
-  display: inline;
+.act-row-preview {
+  display: block;
   margin: 0;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.act-row-replies { font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 700; color: var(--ink-soft); flex-shrink: 0; }
+.act-mention-hit {
+  display: inline;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 800;
+}
 .act-row .act-time { flex-shrink: 0; }
 .act-row-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--pink); border: 1.5px solid var(--ink); flex-shrink: 0; }
 .act-row-actions { display: none; align-items: center; gap: 5px; flex-shrink: 0; }
-.act-row:hover .act-row-actions { display: inline-flex; }
 .act-row-actions .act-act-btn { padding: 3px 8px; font-size: 11px; }
 
 /* ═══════════ ITEM: TICKET ═══════════ */

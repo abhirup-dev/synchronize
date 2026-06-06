@@ -6,8 +6,7 @@
 
 import { memo, type CSSProperties } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
-import { Avatar, inkFor } from "./primitives.tsx";
-import { Markdown } from "./Markdown.tsx";
+import { inkFor } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 
 export interface ActivityItemProps {
@@ -19,13 +18,6 @@ export interface ActivityItemProps {
   onReact(item: ActivityItemModel): void;
   onOpenThread(item: ActivityItemModel): void;
   onJumpToRoom(roomId: string, msgId?: string): void;
-}
-
-function verbPhrase(item: ActivityItemModel, room: Room | undefined): string {
-  if (item.isMention) return room?.kind === "dm" ? "messaged you" : "mentioned you in";
-  if (item.threadParentId) return "replied in a thread in";
-  if (room?.kind === "dm") return "messaged you";
-  return "posted in";
 }
 
 function MarkerIcon({ item }: { item: ActivityItemModel }) {
@@ -68,6 +60,19 @@ function RoomChip({ room, onJump }: { room: Room; onJump(): void }) {
   );
 }
 
+function ActivityPreview({ text }: { text: string }) {
+  const parts = text.split(/(@(?:you|web:local-human)\b)/gi);
+  return (
+    <>
+      {parts.map((part, index) =>
+        /^@(?:you|web:local-human)$/i.test(part)
+          ? <mark key={index} className="act-mention-hit">{part}</mark>
+          : <span key={index}>{part}</span>
+      )}
+    </>
+  );
+}
+
 function ActivityItemImpl({
   item,
   actor,
@@ -81,7 +86,6 @@ function ActivityItemImpl({
   const openMenu = useContextMenu();
   if (!actor) return null;
   const awaits = item.awaiting;
-  const verb = verbPhrase(item, room);
 
   const onRowClick = () => {
     onOpenThread(item);
@@ -110,11 +114,9 @@ function ActivityItemImpl({
         {actor.name}
       </span>
       <span className="act-row-text">
-        <span className="act-row-verb">{verb}</span>{" "}
-        <span className="act-row-preview"><Markdown>{item.text}</Markdown></span>
+        <span className="act-row-preview"><ActivityPreview text={item.text} /></span>
       </span>
       {showRoom && room && <RoomChip room={room} onJump={() => onJumpToRoom(item.roomId)} />}
-      {item.replyCount ? <span className="act-row-replies">↩ {item.replyCount}</span> : null}
       <span className="act-time">{relativeTime(item.createdAt)}</span>
       {awaits && <span className="act-row-dot" title="Awaiting you" />}
       <span className="act-row-actions" onClick={(e) => e.stopPropagation()}>
