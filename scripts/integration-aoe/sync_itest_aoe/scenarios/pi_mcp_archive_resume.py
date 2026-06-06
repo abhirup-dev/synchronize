@@ -7,8 +7,9 @@ import sys
 import time
 from pathlib import Path
 
-from .pi_mcp_dm import DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario
-from ..runtime import HarnessError
+from .pi_mcp_dm import DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario, PiPeer
+from ..claude_env import DEFAULT_CLAUDE_MODEL, ClaudeEnvironment
+from ..runtime import HarnessError, require_tools
 from ..tmux import AgentPane
 
 DEFAULT_ARCHIVE_RESUME_AGENTS = 1
@@ -44,10 +45,97 @@ class PiMcpArchiveResumeScenario(PiMcpDmScenario):
 
     def __init__(self, args: argparse.Namespace, repo: Path) -> None:
         super().__init__(args, repo)
+        self.tool = getattr(args, "tool", "pi")
+        prefix = "sync-claude-archive-resume-itest" if self.tool == "claude" else "sync-pi-archive-resume-itest"
         if args.profile is None:
-            self.profile = f"sync-pi-archive-resume-itest-{self.repo.name}-{self.run_id.lower()}"
-            self.profile_cleanup_prefix = f"sync-pi-archive-resume-itest-{self.repo.name}-"
+            self.profile = f"{prefix}-{self.repo.name}-{self.run_id.lower()}"
+            self.profile_cleanup_prefix = f"{prefix}-{self.repo.name}-"
             self.aoe.profile = self.profile
+        if self.tool == "claude":
+            # Swap the Pi provisioner for the Claude one (global OAuth, isolated
+            # hooks + MCP). It is duck-typed to PiEnvironment so the base run()
+            # (provision / install / command_for_session) works unchanged.
+            self.pi_env = ClaudeEnvironment(
+                repo=self.repo,
+                sync_home=self.sync_home,
+                config_dir=self.run_dir / "claude-cfg",
+                model=args.model,
+                writer=self.writer,
+                runner=self.runner,
+            )
+
+    def preflight(self) -> None:
+        if self.tool != "claude":
+            super().preflight()
+            return
+        require_tools(("aoe", "tmux", "bun", "uv", "claude"))
+        self.pi_env.validate()
+        self.writer.write_json("preflight.json", {"tool": "claude"})
+
+    def install_pi_packages(self) -> None:
+        if self.tool == "claude":
+            return  # Claude needs no package install step.
+        super().install_pi_packages()
+
+    def setup_aoe(self) -> None:
+        self.aoe.launch_sessions(
+            self.agent_names,
+            self.tool,
+            {name: self.pi_env.command_for_session(name) for name in self.agent_names},
+        )
+        self.aoe_session_ids = self.aoe.wait_for_sessions(self.agent_names, self.args.start_timeout, self.tool)
+        self.aoe.collect_state("after-launch")
+
+    def discover_tmux_panes(self) -> None:
+        super().discover_tmux_panes()
+        if self.tool == "claude":
+            # Claude shows confirm prompts on a fresh session — the dev-channel
+            # ("load development channels?") and possibly an onboarding prompt.
+            # Dismiss with Enter (the default option), mirroring the TS AOE launch
+            # path; send a few with gaps to clear whichever prompts appear. The
+            # alternate-screen renderer is disabled via env so capture works.
+            time.sleep(6)
+            for _ in range(4):
+                for name in self.agent_names:
+                    self.runner.run(
+                        ["tmux", "send-keys", "-t", self.agent_panes[name].pane_id, "Enter"],
+                        check=False,
+                        log_name=f"claude-dismiss-{name}",
+                    )
+                time.sleep(3)
+            self.tmux.capture_all_panes("after-claude-dismiss", self.agent_panes, lines=700)
+
+    def wait_for_pi_registration(self) -> None:
+        if self.tool != "claude":
+            super().wait_for_pi_registration()
+            return
+        # Map each agent to its binding by session_name (== SYNCHRONIZE_SESSION_NAME
+        # we passed in the env, which the SessionStart hook registers). Robust for
+        # N agents and independent of the host_session_id (Claude assigns its own
+        # id regardless of --session-id; the daemon's resume uses whatever the
+        # binding records). Avoids Claude-pane scraping (no host_session_id in pane).
+        deadline = time.time() + self.args.registration_timeout
+        while time.time() < deadline:
+            try:
+                bindings = self.rest.agent_sessions("claude").get("bindings", [])
+            except HarnessError:
+                bindings = []
+            mapped: dict[str, PiPeer] = {}
+            for name in self.agent_names:
+                for b in bindings:
+                    if not isinstance(b, dict):
+                        continue
+                    peer = b.get("peer") or {}
+                    if str(peer.get("session_name") or "") == name and b.get("host_session_id"):
+                        mapped[name] = PiPeer(name=name, peer_id=str(b["peer_id"]), host_session_id=str(b["host_session_id"]))
+                        break
+            if len(mapped) == len(self.agent_names):
+                self.pi_peers = mapped
+                self.writer.write_json("pi-peers.json", {n: p.__dict__ for n, p in mapped.items()})
+                return
+            time.sleep(1)
+        self.tmux.capture_all_panes("registration-timeout", self.agent_panes, lines=700)
+        raise HarnessError(f"Claude agents did not register within {self.args.registration_timeout}s")
 
     def cleanup(self) -> None:
         # The daemon's resume launch creates its OWN AoE profile (keyed on
@@ -68,6 +156,11 @@ class PiMcpArchiveResumeScenario(PiMcpDmScenario):
         name = self.agent_names[0]
         peer = self.pi_peers[name]
         pane = self.agent_panes[name]
+        if getattr(self.args, "launch_only", False):
+            # Steps 1-3 validated: AoE launched, prompt dismissed (warmup marker
+            # already answered by the base run()), and the agent registered.
+            print(f"[archive-resume] launch-only OK: {name} peer={peer.peer_id} pane={pane.tmux_session}", flush=True)
+            return
         codeword = f"CODEWORD-{self.run_id}-{secrets.token_hex(3)}"
 
         # 1. Store a codeword via real cognition (proves alive pre-archive).
@@ -192,9 +285,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # (LAUNCH_ALIAS_MAX). "arpi-1" stays well under. Daemon-launched agents are
     # always short ("alpha"); only the harness picked long descriptive names.
     parser.add_argument("--agent-prefix", default="arpi", help="Prefix for Pi session titles (keep short; becomes the session name).")
-    parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="Pi provider to use for the smoke.")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
-    parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
+    parser.add_argument("--tool", choices=["pi", "claude"], default="pi", help="Agent tool to launch + archive/resume.")
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER, help="Pi provider to use for the smoke (Pi only).")
+    parser.add_argument("--model", default=None, help="Model. Defaults to gpt-5.4-mini (pi) / haiku (claude, cheapest).")
+    parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke (Pi only).")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
@@ -203,9 +297,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--command-timeout", type=int, default=240, help="Seconds to wait for real Pi MCP behavior.")
     parser.add_argument("--pre-archive-wait", type=int, default=30, help="Seconds to let the agent idle/persist after storing the codeword, before archiving.")
     parser.add_argument("--post-archive-wait", type=int, default=10, help="Seconds to wait after archiving before resuming.")
+    parser.add_argument("--launch-only", action="store_true", help="Validate launch + prompt-dismissal + registration + warmup, then stop (skip archive/resume).")
     args = parser.parse_args(argv)
     if args.agents < 1:
         parser.error("--agents must be at least 1 for the archive→resume smoke")
+    if args.model is None:
+        args.model = DEFAULT_CLAUDE_MODEL if args.tool == "claude" else DEFAULT_MODEL
     return args
 
 
