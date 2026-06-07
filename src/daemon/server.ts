@@ -59,6 +59,8 @@ import {
   ensurePeer,
   getPeer,
   LOCAL_WEB_PEER_ID,
+  selectExpiredPeerIds,
+  selectStoppedLaunchPeerIds,
   softDeletePeerIfPresent,
   type PeerRow,
 } from "./repo/peers.ts";
@@ -298,21 +300,25 @@ function deactivateWebAliasHolders(db: Database, groupId: number, alias: string,
 function sweepExpiredPeers(ctx: DaemonContext): void {
   const retentionMs = ctx.config.daemon.peerRetentionMs;
   const cutoff = new Date(Date.now() - retentionMs).toISOString();
-  const swept = ctx.db.transaction(() => {
-    const rows = ctx.db
-      .query<{ peer_id: string }, [string]>(
-        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, [string]>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived' AND lease_expires_at < ?",
       )
-      .all(cutoff);
+      .get(cutoff)?.n ?? 0;
+    if (exempt > 0) debug(`sweep[retention]: exempting ${exempt} archived lease-expired peer(s) (reserved for resume)`);
+  }
+  const swept = ctx.db.transaction(() => {
+    const peerIds = selectExpiredPeerIds(ctx.db, cutoff);
     const now = new Date().toISOString();
-    for (const { peer_id } of rows) {
+    for (const peer_id of peerIds) {
       ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
       ctx.db
         .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
         .run(now, peer_id);
       ctx.subscribers.delete(peer_id);
     }
-    return rows.map((row) => row.peer_id);
+    return peerIds;
   })();
   if (swept.length > 0) {
     log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${retentionMs}ms`);
@@ -321,20 +327,20 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
 }
 
 function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
-  const rows = ctx.db
-    .query<{ peer_id: string }, []>(
-      `SELECT DISTINCT li.peer_id
-       FROM launch_intents li
-       JOIN peers p ON p.peer_id = li.peer_id
-       WHERE li.state = 'stopped'
-         AND p.deleted_at IS NULL`,
-    )
-    .all();
-  if (rows.length === 0) return 0;
+  const peerIds = selectStoppedLaunchPeerIds(ctx.db);
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived'",
+      )
+      .get()?.n ?? 0;
+    debug(`sweep[stopped-launch]: ${peerIds.length} candidate(s)${exempt > 0 ? `, ${exempt} archived peer(s) exempt` : ""}`);
+  }
+  if (peerIds.length === 0) return 0;
   const deletedAt = new Date().toISOString();
   let deactivated = 0;
-  for (const row of rows) {
-    if (softDeletePeerIfPresent(ctx, row.peer_id, deletedAt)) deactivated += 1;
+  for (const peerId of peerIds) {
+    if (softDeletePeerIfPresent(ctx, peerId, deletedAt)) deactivated += 1;
   }
   if (deactivated > 0) {
     log(`launch cleanup soft-deleted ${deactivated} stopped launch peer(s)`);
