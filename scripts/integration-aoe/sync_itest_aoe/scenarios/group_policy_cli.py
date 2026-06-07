@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .cli_dm import CliPeer
 from .cli_dm import CliDmScenario, DEFAULT_AGENTS, DEFAULT_SHELL
-from ..runtime import HarnessError, add_remote_daemon_args
+from ..runtime import HarnessError
 
 
 class CliGroupPolicyScenario(CliDmScenario):
@@ -193,7 +193,7 @@ class CliGroupPolicyScenario(CliDmScenario):
         if any(event.get("event_id") in {reply1_event.get("event_id"), reply2_event.get("event_id")} for event in main_messages):
             raise HarnessError("Default group history included thread replies")
 
-        thread_history = self.rest.get_thread(root_id, peer_id=bob.peer_id)
+        thread_history = self.rest.group_history(group_name, peer_id=bob.peer_id, thread_of=root_id, limit=200)
         thread_message_ids = [
             event.get("event_id")
             for event in thread_history.get("events", [])
@@ -269,7 +269,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--shell", default=DEFAULT_SHELL, help="Shell command AoE should run in each session.")
     parser.add_argument("--aoe-tool", default="claude", help="Supported AoE tool name to satisfy AoE validation before command override.")
     parser.add_argument("--synchronize-home", help="SYNCHRONIZE_HOME for the workflow. Defaults under the log directory.")
-    add_remote_daemon_args(parser)
     parser.add_argument("--log-dir", help="Directory for run logs and diagnostics. Defaults to a temporary directory.")
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and synchronize state for debugging.")
     parser.add_argument("--verbose", action="store_true", help="Currently reserved; logs are always written to --log-dir.")
