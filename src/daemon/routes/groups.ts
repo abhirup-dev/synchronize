@@ -22,6 +22,7 @@ import {
 } from "../repo/groups.ts";
 import { ensurePeer, getPeer } from "../repo/peers.ts";
 import { listGroupHistoryFlat, listGroupHistoryThreads } from "../repo/threads.ts";
+import { ensureSenderNotArchived } from "../services/archive.ts";
 import { notifySubscribers } from "../services/subscriptions.ts";
 import { emitWebStateChanged } from "../services/web-events.ts";
 import {
@@ -290,6 +291,7 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
     if (message.length > MAX_MESSAGE_CHARS) {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
+    ensureSenderNotArchived(ctx.db, senderPeerId);
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
     const directReplyTarget = inReplyTo !== undefined ? getEvent(ctx.db, inReplyTo) : null;

@@ -13,7 +13,7 @@ import { emitWebStateChanged } from "./web-events.ts";
 
 export type { ArchivePlan, ResumePlan, ArchiveAliasReservation, ArchivedSessionSummary };
 
-function ensureSenderNotArchived(db: DaemonContext["db"], peerId: string): void {
+export function ensureSenderNotArchived(db: DaemonContext["db"], peerId: string): void {
   const peer = db
     .query<{ lifecycle_state: string }, [string]>(
       "SELECT lifecycle_state FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
