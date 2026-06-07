@@ -112,7 +112,7 @@ interface DiscoveryFile {
 
 interface MentionWarning {
   token: string;
-  reason: "alias_not_in_group";
+  reason: "alias_not_in_group" | "alias_archived";
 }
 
 export interface InboxRow extends EventRow {
@@ -233,6 +233,9 @@ export function resolveMentions(
   const lookup = db.query<{ peer_id: string }, [number, string]>(
     "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND alias = ?",
   );
+  const archivedAliasLookup = db.query<{ peer_id: string }, [number, string]>(
+    "SELECT peer_id FROM group_members WHERE group_id = ? AND member_state = 'archived' AND alias = ?",
+  );
   const peerIds: string[] = [];
   const warnings: MentionWarning[] = [];
   for (const token of tokens) {
@@ -243,8 +246,16 @@ export function resolveMentions(
     }
     const normalizedToken = normalizeMentionToken(token);
     const normalizedRow = normalizedToken !== token && normalizedToken ? lookup.get(groupId, normalizedToken) : null;
-    if (normalizedRow) peerIds.push(normalizedRow.peer_id);
-    else warnings.push({ token: `@${normalizedToken || token}`, reason: "alias_not_in_group" });
+    if (normalizedRow) {
+      peerIds.push(normalizedRow.peer_id);
+      continue;
+    }
+    // Distinguish "archived" from "unknown": an archived seat keeps its alias
+    // reserved (member_state='archived', active=0), so it won't match the
+    // active-only lookup above. Surfacing alias_archived lets the web warn
+    // "they're archived — resume to reach them" instead of "no such alias".
+    const archived = archivedAliasLookup.get(groupId, token) ?? (normalizedToken && normalizedToken !== token ? archivedAliasLookup.get(groupId, normalizedToken) : null);
+    warnings.push({ token: `@${normalizedToken || token}`, reason: archived ? "alias_archived" : "alias_not_in_group" });
   }
   return { peerIds, warnings };
 }
@@ -547,7 +558,8 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
               activity_state, last_activity_at,
-              last_cursor, created_at, updated_at, lease_expires_at > ? AS online
+              last_cursor, lifecycle_state, archived_at, archived_reason, archive_source,
+              created_at, updated_at, lease_expires_at > ? AS online
        FROM peers
        WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, session_name ASC`,
@@ -623,8 +635,9 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     const row = ctx.db
       .query<PeerRow & { online: number }, [string, string]>(
         `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-                activity_state, last_activity_at, last_cursor, created_at, updated_at,
-                lease_expires_at > ? AS online
+                activity_state, last_activity_at, last_cursor,
+                lifecycle_state, archived_at, archived_reason, archive_source,
+                created_at, updated_at, lease_expires_at > ? AS online
          FROM peers WHERE peer_id = ?`,
       )
       .get(now, peerId);

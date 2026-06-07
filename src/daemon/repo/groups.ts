@@ -34,6 +34,7 @@ export interface MemberRow {
   join_event_id: number | null;
   history_from_event_id: number | null;
   active: number;
+  member_state: string;
   purpose: string | null;
   joined_at: string;
   left_at: string | null;

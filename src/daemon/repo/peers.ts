@@ -21,6 +21,10 @@ export interface PeerRow {
   activity_state: string | null;
   last_activity_at: string | null;
   last_cursor: number;
+  lifecycle_state: string;
+  archived_at: string | null;
+  archived_reason: string | null;
+  archive_source: string | null;
   created_at: string;
   updated_at: string;
 }

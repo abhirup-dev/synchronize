@@ -29,6 +29,10 @@ interface AgentSessionJoinedRow extends AgentSessionRow {
   peer_purpose: string | null;
   peer_lease_expires_at: string;
   peer_activity_state: string | null;
+  peer_lifecycle_state: string;
+  peer_archived_at: string | null;
+  peer_archived_reason: string | null;
+  peer_archive_source: string | null;
   peer_online: number;
 }
 
@@ -105,6 +109,10 @@ function agentSessionSelectSql(): string {
       p.purpose AS peer_purpose,
       p.lease_expires_at AS peer_lease_expires_at,
       p.activity_state AS peer_activity_state,
+      p.lifecycle_state AS peer_lifecycle_state,
+      p.archived_at AS peer_archived_at,
+      p.archived_reason AS peer_archived_reason,
+      p.archive_source AS peer_archive_source,
       p.lease_expires_at > ? AS peer_online
     FROM agent_sessions s
     JOIN peers p ON p.peer_id = s.peer_id`;
@@ -141,6 +149,10 @@ function formatAgentSession(
       activity_state: row.peer_activity_state,
       last_activity_at: null,
       last_cursor: 0,
+      lifecycle_state: row.peer_lifecycle_state,
+      archived_at: row.peer_archived_at,
+      archived_reason: row.peer_archived_reason,
+      archive_source: row.peer_archive_source,
       created_at: "",
       updated_at: "",
       online: Boolean(row.peer_online),

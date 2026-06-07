@@ -149,7 +149,7 @@ function agentSessionShape(): Record<string, unknown> {
     created_at: "string",
     updated_at: "string",
     last_seen_at: "string",
-    peer: peerShape({ online: true, presence: "string" }),
+    peer: peerShape({ online: true, presence: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null }),
   };
 }
 
@@ -255,7 +255,7 @@ function webStateShape(): Record<string, unknown> {
     daemon: { pid: "number", base_url: "string", started_at: "string", token_required: false },
     generated_at: "string",
     cursor: "number",
-    peers: [peerShape({ online: true, presence: "string", purpose: "string" })],
+    peers: [peerShape({ online: true, presence: "string", purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
     groups: [groupShape()],
     group_paths: [groupPathShape()],
     memberships: [memberShape({ activity_state: "string", online: true, presence: "string" })],
