@@ -8,6 +8,7 @@ import { AGENTS as SEED_AGENTS } from "../data/seed.ts";
 import { roomAgents } from "../data/roomAgents.ts";
 import { useToast } from "./Toast.tsx";
 import { copyText } from "../utils/clipboard.ts";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 
 interface AgentRosterProps {
   room: Room;
@@ -31,6 +32,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
   const openMenu = useContextMenu();
   const setAgentColor = useSetAgentColor();
   const toast = useToast();
+  const archive = useArchiveWorkflow();
   const [picker, setPicker] = useState<{ agent: Agent; x: number; y: number } | null>(null);
   const members = useMemo(
     () => displayAgents.filter((a) => room.members.includes(a.id)),
@@ -87,6 +89,9 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                     { label: "View profile", onSelect: () => console.log("profile", agent.id) },
                     { divider: true },
                     aoeMenuItem,
+                    { divider: true },
+                    { label: "Archive session...", disabled: agent.id === "you" || agent.lifecycleState === "archived", onSelect: () => archive.archiveSession(agent) },
+                    { label: "Resume session...", disabled: agent.lifecycleState !== "archived", onSelect: () => archive.resumeSession(agent) },
                     { divider: true },
                     { label: "Change color…", onSelect: () => setPicker({ agent, x: clientX, y: clientY }) },
                     {

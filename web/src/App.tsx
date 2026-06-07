@@ -12,6 +12,7 @@ import { ContextMenuProvider } from "./components/ContextMenu.tsx";
 import { ThreadPane } from "./components/ThreadPane.tsx";
 import { ResizeHandle } from "./components/ResizeHandle.tsx";
 import { ActivityView } from "./components/ActivityView.tsx";
+import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
@@ -79,7 +80,9 @@ export function App() {
     <DataSourceProvider value={ds}>
       <ContextMenuProvider>
         <ToastProvider>
-          <Shell />
+          <ArchiveRecoveryProvider>
+            <Shell />
+          </ArchiveRecoveryProvider>
         </ToastProvider>
       </ContextMenuProvider>
     </DataSourceProvider>

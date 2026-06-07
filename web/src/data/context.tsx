@@ -33,6 +33,7 @@ export function useThreadSummary(parentMessageId: string) { return useSnapshot(u
 export function useSkillCatalog() { return useSnapshot(useDataSource().skillCatalog()); }
 export function useActivity() { return useSnapshot(useDataSource().activity()); }
 export function useActivityAwaitingCount() { return useSnapshot(useDataSource().activityAwaitingCount()); }
+export function useArchivedSessions() { return useSnapshot(useDataSource().archivedSessions()); }
 
 export function useAckActivity() {
   const ds = useDataSource();
@@ -72,6 +73,20 @@ export function useReactToMessage() {
 export function useSpawnAgent() {
   const ds = useDataSource();
   return ds.spawnAgent.bind(ds);
+}
+
+export function useArchiveCommands() {
+  const ds = useDataSource();
+  return {
+    archiveSessionPreview: ds.archiveSessionPreview.bind(ds),
+    archiveGroupPreview: ds.archiveGroupPreview.bind(ds),
+    confirmArchiveSession: ds.confirmArchiveSession.bind(ds),
+    confirmArchiveGroup: ds.confirmArchiveGroup.bind(ds),
+    resumeSessionPreview: ds.resumeSessionPreview.bind(ds),
+    resumeGroupPreview: ds.resumeGroupPreview.bind(ds),
+    confirmResumeSession: ds.confirmResumeSession.bind(ds),
+    confirmResumeGroup: ds.confirmResumeGroup.bind(ds),
+  };
 }
 
 export function useSetAgentColor() {

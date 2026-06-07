@@ -587,7 +587,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
-       WHERE gm.active = 1
+       WHERE gm.member_state IN ('active','archived')
          AND p.deleted_at IS NULL
        ORDER BY gm.group_id ASC, gm.alias ASC`,
     )

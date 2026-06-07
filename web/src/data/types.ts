@@ -4,6 +4,9 @@
 // go through the hooks in ./context.tsx.
 
 export type AgentStatus = "online" | "busy" | "idle" | "offline";
+export type AgentLifecycleState = "active" | "archived";
+export type MemberState = "active" | "archived" | "left";
+export type RoomArchiveState = "active" | "mixed" | "archived";
 
 export interface Agent {
   id: string;
@@ -12,6 +15,10 @@ export interface Agent {
   color: string;
   role: string;
   status: AgentStatus;
+  lifecycleState?: AgentLifecycleState;
+  archivedAt?: string;
+  archivedReason?: string;
+  archiveSource?: string;
   statusNote?: string;
   launchLifecycle?: {
     launchId: string;
@@ -44,6 +51,10 @@ export interface Room {
   color: string;
   members: string[]; // agent ids; for DMs always [you, other]
   memberAliases?: Record<string, string>; // group-scoped peer_id -> alias
+  memberStates?: Record<string, MemberState>; // group-scoped peer_id -> lifecycle seat state
+  archiveState?: RoomArchiveState;
+  activeMemberCount?: number;
+  archivedMemberCount?: number;
   paths?: GroupPath[]; // group-scoped launch paths
   description?: string;
   lastPreview?: string;
@@ -258,6 +269,65 @@ export interface SpawnAgentResult {
   group: string;
 }
 
+export interface ArchiveAliasReservation {
+  group: string;
+  alias: string;
+}
+
+export interface ArchivedSession {
+  peerId: string;
+  sessionName: string;
+  tool: string;
+  archivedAt: string | null;
+  archivedReason: string | null;
+  archiveSource: string | null;
+  aliases: ArchiveAliasReservation[];
+}
+
+export type ArchivePreviewAction = "archived" | "already_archived" | "would_archive" | "skipped";
+
+export interface ArchivePreviewMember {
+  alias?: string;
+  peerId: string;
+  sessionName?: string;
+  tool: string;
+  action: ArchivePreviewAction;
+  reaped: boolean;
+  zombie: boolean;
+  warning?: string;
+}
+
+export interface ArchivePreview {
+  target: "session" | "group";
+  group?: string;
+  dryRun: boolean;
+  members: ArchivePreviewMember[];
+}
+
+export type ResumePreviewAction = "will_launch" | "will_print" | "blocked" | "skipped";
+
+export interface ResumePreviewMember {
+  peerId: string;
+  sessionName: string;
+  alias: string | null;
+  tool: string;
+  group: string | null;
+  cwd: string | null;
+  hostSessionId: string | null;
+  action: ResumePreviewAction;
+  code?: string;
+  forceAvailable: boolean;
+  warning?: string;
+}
+
+export interface ResumePreview {
+  target: "session" | "group";
+  group?: string;
+  mode: "launch" | "print";
+  dryRun: boolean;
+  members: ResumePreviewMember[];
+}
+
 export interface DataSource {
   // queries
   rooms(): Snapshot<Room[]>;
@@ -276,6 +346,7 @@ export interface DataSource {
   activity(): Snapshot<ActivityItem[]>;
   /** Count of items awaiting the local user (server-authoritative). */
   activityAwaitingCount(): Snapshot<number>;
+  archivedSessions(): Snapshot<ArchivedSession[]>;
 
   // commands
   stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment>;
@@ -289,6 +360,14 @@ export interface DataSource {
   /** Page in older activity rows (cursor "load older"). */
   loadMoreActivity(): Promise<void>;
   spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult>;
+  archiveSessionPreview(input: { peerId: string; reason?: string }): Promise<ArchivePreview>;
+  archiveGroupPreview(input: { group: string; reason?: string }): Promise<ArchivePreview>;
+  confirmArchiveSession(input: { peerId: string; reason?: string }): Promise<ArchivePreview>;
+  confirmArchiveGroup(input: { group: string; reason?: string }): Promise<ArchivePreview>;
+  resumeSessionPreview(input: { peerId: string; print?: boolean; force?: boolean }): Promise<ResumePreview>;
+  resumeGroupPreview(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<ResumePreview>;
+  confirmResumeSession(input: { peerId: string; print?: boolean; force?: boolean }): Promise<unknown>;
+  confirmResumeGroup(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<unknown>;
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */
   setAgentColor(agentId: string, hex: string | null): void;

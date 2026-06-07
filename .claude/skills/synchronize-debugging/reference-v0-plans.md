@@ -78,6 +78,7 @@
 | `docs/plans/global-skill-picker.md` | 188 | Global web composer skill picker. Supersedes the old per-peer `@Alice::` draft; daemon owns a startup-loaded Claude/Pi skill catalog, web sends selected `skill_directives`, and only mentioned recipients receive the directive prefix (epic sync-yamq; slices sync-tyne/p40h/wewu/3dmv/7kof). |
 | `docs/plans/web-attachment-preview-ui.md` | 241 | Web attachment preview UI for pasted/picked images and files, runtime staging cleanup, path-shaped daemon bridge text, and local sent-message preview metadata (sync-q181, sync-q181.2, sync-ntiv, sync-ldo7). |
 | `docs/plans/web-activity-view.md` | ~150 | Web Activity view — global cross-room feed above Groups (Digest + Row + Grouped/Timeline). Derives from real data; awaiting-you is server-authoritative via `inbox.acked_at` (react/reply/mark-all clear it); dedicated `GET /activity/:peerId` over `inbox⋈events` (one indexed scan, not per-room fan-out) + inbox `(recipient_peer_id, event_id)` index; SSE-driven incremental refresh; memoized rows + virtualized Timeline; single generic item type now, forward-compatible for future work-event categories (epic sync-njd5; slices sync-xokt/riqh/gzwj/t31i/cbq3/kljk/pep6/4ofn). |
+| `docs/plans/web-archive-recovery-console.md` | 427 | Web archive recovery console plan for contextual archive/resume preview-confirm flows plus a bottom-left archived sessions recovery console, derived from backend lifecycle state and scoped by epic sync-4trr. |
 | `docs/plans/cli-completion-carapace-v0.md` | 555 | CLI completion Carapace V0 plan for schema-first command metadata, generated Carapace specs, daemon-safe dynamic candidates, and raw zsh forward compatibility (sync-x7q1). |
 | `docs/plans/daemon-modularization-v2.md` | 1322 | Current master daemon modularization plan for a strictly structural, phase-wise refactor with pre-refactor route precedence, validation, and response-shape snapshot tests first (sync-mkj, sync-mkj.12, sync-mkj.13). |
 | `docs/agentmemory-scope-repair.md` | 101 | Local AgentMemory project-scope repair and repeatable restore process for preserving sessions, observations, memories, lessons, crystals, and summaries while clearing polluted derived scopes (sync-815x). |
@@ -115,6 +116,7 @@ document to load (or whether the answer is in current code instead):
 | Durable launch lifecycle and remote-executor seam | `src/launch/*`, `src/daemon.ts`, `src/db.ts` | `docs/plans/launch-lifecycle-kernel.md` |
 | CLI completion architecture | `src/cli/*` | `docs/plans/cli-completion-carapace-v0.md` |
 | Web UI data flow | `src/web/*` + `web/DESIGN.md` | `web/DESIGN.md` itself is current; load it directly when the question is UI-design |
+| Web archive recovery UI | `web/src/*`, `src/daemon/routes/archive.ts`, `src/daemon/services/archive.ts` | `docs/plans/web-archive-recovery-console.md` |
 | Local web session identity | `src/daemon.ts`, `web/src/data/daemon.ts`, plus `glossary.md` | `docs/plans/web-local-session-store.md` |
 | tmux integration harness | `scripts/integration-*.py`, `scripts/integration-aoe/` | `docs/integration-tmux.md` |
 

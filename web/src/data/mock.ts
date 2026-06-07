@@ -6,11 +6,16 @@
 import type {
   ActivityItem,
   Agent,
+  ArchivePreview,
+  ArchivePreviewMember,
+  ArchivedSession,
   Artifact,
   DataSource,
   Message,
   MessageAttachment,
   ReactToMessageInput,
+  ResumePreview,
+  ResumePreviewMember,
   Room,
   SendMessageInput,
   StageAttachmentInput,
@@ -78,6 +83,19 @@ const MOCK_SKILL_CATALOG: SkillCatalogEntry[] = [
   },
 ];
 
+const MOCK_ARCHIVED_AT = new Date(Date.now() - 18 * 60_000).toISOString();
+const MOCK_ARCHIVED_SESSIONS: ArchivedSession[] = [
+  {
+    peerId: "pulse",
+    sessionName: "Pulse",
+    tool: "pi",
+    archivedAt: MOCK_ARCHIVED_AT,
+    archivedReason: "paused ranking investigation",
+    archiveSource: "manual",
+    aliases: [{ group: "ml-ranking", alias: "pulse" }],
+  },
+];
+
 export class MockDataSource implements DataSource {
   readonly kind = "mock" as const;
 
@@ -97,6 +115,7 @@ export class MockDataSource implements DataSource {
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
+  private readonly _archivedSessions = createSnapshot<ArchivedSession[]>(MOCK_ARCHIVED_SESSIONS);
   // Activity feed: aggregated once from the seed (every other agent's message
   // across all rooms), then awaiting is recomputed from `ackedActivity`. This
   // mirrors the daemon's inbox-backed feed and ack semantics in memory.
@@ -119,6 +138,8 @@ export class MockDataSource implements DataSource {
     if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();
     return this._activityAwaiting;
   }
+
+  archivedSessions(): Snapshot<ArchivedSession[]> { return this._archivedSessions; }
 
   private emitActivity(): void {
     const items = this.activityBase.map((item) => ({
@@ -334,6 +355,7 @@ export class MockDataSource implements DataSource {
       color: "#B49BFF",
       role: input.tool,
       status: "idle",
+      lifecycleState: "active",
       avatar: (sessionName[0] ?? input.tool[0] ?? "?").toUpperCase(),
     };
     this._agents.update((agents) => [...agents, agent]);
@@ -357,6 +379,80 @@ export class MockDataSource implements DataSource {
     };
   }
 
+  async archiveSessionPreview(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    return {
+      target: "session",
+      dryRun: true,
+      members: [this.mockArchiveMember(input.peerId, "would_archive")],
+    };
+  }
+
+  async archiveGroupPreview(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const room = this.findGroup(input.group);
+    return {
+      target: "group",
+      group: room.name,
+      dryRun: true,
+      members: room.members
+        .filter((peerId) => peerId !== this._me.get().id)
+        .map((peerId) => this.mockArchiveMember(peerId, this.isArchived(peerId) ? "already_archived" : "would_archive")),
+    };
+  }
+
+  async confirmArchiveSession(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    const member = this.mockArchiveMember(input.peerId, this.isArchived(input.peerId) ? "already_archived" : "archived");
+    if (member.action === "archived") this.archivePeer(input.peerId, input.reason);
+    return { target: "session", dryRun: false, members: [member] };
+  }
+
+  async confirmArchiveGroup(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const preview = await this.archiveGroupPreview(input);
+    const members = preview.members.map((member) => {
+      if (member.action === "already_archived") return member;
+      this.archivePeer(member.peerId, input.reason);
+      return { ...member, action: "archived" as const };
+    });
+    return { target: "group", group: input.group, dryRun: false, members };
+  }
+
+  async resumeSessionPreview(input: { peerId: string; print?: boolean; force?: boolean }): Promise<ResumePreview> {
+    return {
+      target: "session",
+      mode: input.print ? "print" : "launch",
+      dryRun: true,
+      members: [this.mockResumeMember(input.peerId, input.print ? "print" : "launch")],
+    };
+  }
+
+  async resumeGroupPreview(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<ResumePreview> {
+    const mode = input.print ? "print" : "launch";
+    const sessions = this._archivedSessions.get().filter((session) =>
+      session.aliases.some((alias) => alias.group === input.group) &&
+      (!input.only || input.only.length === 0 || session.aliases.some((alias) => input.only!.includes(alias.alias))) &&
+      (!input.exclude || !session.aliases.some((alias) => input.exclude!.includes(alias.alias)))
+    );
+    return {
+      target: "group",
+      group: input.group,
+      mode,
+      dryRun: true,
+      members: sessions.map((session) => this.mockResumeMember(session.peerId, mode)),
+    };
+  }
+
+  async confirmResumeSession(input: { peerId: string; print?: boolean; force?: boolean }): Promise<unknown> {
+    this.resumePeer(input.peerId);
+    return { ok: true };
+  }
+
+  async confirmResumeGroup(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<unknown> {
+    const preview = await this.resumeGroupPreview(input);
+    for (const member of preview.members) {
+      if (member.action === "will_launch" || member.action === "will_print") this.resumePeer(member.peerId);
+    }
+    return { ok: true };
+  }
+
   setAgentColor(agentId: string, hex: string | null): void {
     const overrides = readColorOverrides();
     if (hex === null) {
@@ -378,6 +474,135 @@ export class MockDataSource implements DataSource {
 
   async connect(): Promise<void> { /* mock has no live connection */ }
   disconnect(): void { /* noop */ }
+
+  private findGroup(group: string): Room {
+    const room = this._rooms.get().find((candidate) => candidate.kind === "group" && (candidate.name === group || candidate.id === group));
+    if (!room) throw new Error(`group not found: ${group}`);
+    return room;
+  }
+
+  private isArchived(peerId: string): boolean {
+    return this._archivedSessions.get().some((session) => session.peerId === peerId);
+  }
+
+  private mockArchiveMember(peerId: string, action: ArchivePreviewMember["action"]): ArchivePreviewMember {
+    const agent = this._agents.get().find((candidate) => candidate.id === peerId);
+    return {
+      peerId,
+      sessionName: agent?.name ?? peerId,
+      tool: agent?.role ?? "mock",
+      action,
+      reaped: false,
+      zombie: false,
+    };
+  }
+
+  private mockResumeMember(peerId: string, mode: "launch" | "print"): ResumePreviewMember {
+    const session = this._archivedSessions.get().find((candidate) => candidate.peerId === peerId);
+    const agent = this._agents.get().find((candidate) => candidate.id === peerId);
+    if (!session) {
+      return {
+        peerId,
+        sessionName: agent?.name ?? peerId,
+        alias: null,
+        tool: agent?.role ?? "mock",
+        group: null,
+        cwd: null,
+        hostSessionId: null,
+        action: "skipped",
+        code: "peer_not_archived",
+        forceAvailable: false,
+        warning: "session is not archived",
+      };
+    }
+    const alias = session.aliases[0];
+    return {
+      peerId,
+      sessionName: session.sessionName,
+      alias: alias?.alias ?? session.sessionName,
+      tool: session.tool,
+      group: alias?.group ?? null,
+      cwd: "/mock/synchronize/worktree",
+      hostSessionId: `mock-session-${peerId}`,
+      action: mode === "print" ? "will_print" : "will_launch",
+      forceAvailable: false,
+    };
+  }
+
+  private archivePeer(peerId: string, reason?: string): void {
+    const agent = this._agents.get().find((candidate) => candidate.id === peerId);
+    const aliases = this._rooms.get()
+      .filter((room) => room.kind === "group" && room.members.includes(peerId))
+      .map((room) => ({ group: room.name, alias: room.memberAliases?.[peerId] ?? agent?.handle ?? peerId }));
+    if (!this.isArchived(peerId)) {
+      this._archivedSessions.update((sessions) => [
+        {
+          peerId,
+          sessionName: agent?.name ?? peerId,
+          tool: agent?.role ?? "mock",
+          archivedAt: new Date().toISOString(),
+          archivedReason: reason ?? null,
+          archiveSource: "manual",
+          aliases,
+        },
+        ...sessions,
+      ]);
+    }
+    this._agents.update((agents) => agents.map((candidate) =>
+      candidate.id === peerId
+        ? {
+            ...candidate,
+            lifecycleState: "archived",
+            status: "offline",
+            archivedAt: new Date().toISOString(),
+            ...(reason ? { archivedReason: reason } : {}),
+            archiveSource: "manual",
+          }
+        : candidate,
+    ));
+    this._rooms.update((rooms) => rooms.map((room) => room.kind === "group" ? recalcArchiveRoom({
+      ...room,
+      members: room.members.filter((id) => id !== peerId),
+      memberStates: { ...room.memberStates, [peerId]: "archived" },
+      memberAliases: { ...room.memberAliases, [peerId]: room.memberAliases?.[peerId] ?? agent?.handle ?? peerId },
+    }) : room));
+  }
+
+  private resumePeer(peerId: string): void {
+    const session = this._archivedSessions.get().find((candidate) => candidate.peerId === peerId);
+    this._archivedSessions.update((sessions) => sessions.filter((candidate) => candidate.peerId !== peerId));
+    this._agents.update((agents) => agents.map((candidate) =>
+      candidate.id === peerId ? activeAgent(candidate) : candidate,
+    ));
+    if (!session) return;
+    this._rooms.update((rooms) => rooms.map((room) => {
+      const alias = session.aliases.find((candidate) => candidate.group === room.name);
+      if (!alias || room.kind !== "group") return room;
+      return recalcArchiveRoom({
+        ...room,
+        members: room.members.includes(peerId) ? room.members : [...room.members, peerId],
+        memberStates: { ...room.memberStates, [peerId]: "active" },
+        memberAliases: { ...room.memberAliases, [peerId]: alias.alias },
+      });
+    }));
+  }
+}
+
+function recalcArchiveRoom(room: Room): Room {
+  const memberStates = room.memberStates ?? Object.fromEntries(room.members.map((id) => [id, "active"]));
+  const archivedMemberCount = Object.values(memberStates).filter((state) => state === "archived").length;
+  const activeMemberCount = room.members.length;
+  return {
+    ...room,
+    activeMemberCount,
+    archivedMemberCount,
+    archiveState: archivedMemberCount > 0 ? (activeMemberCount > 0 ? "mixed" : "archived") : "active",
+  };
+}
+
+function activeAgent(agent: Agent): Agent {
+  const { archivedAt: _archivedAt, archivedReason: _archivedReason, archiveSource: _archiveSource, ...rest } = agent;
+  return { ...rest, lifecycleState: "active", status: "idle" };
 }
 
 // Aggregate the seed into a global, newest-first Activity feed — the in-memory

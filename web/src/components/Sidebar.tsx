@@ -5,6 +5,7 @@ import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 
 interface SidebarProps {
   activeRoomId: string;
@@ -37,6 +38,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const openMenu = useContextMenu();
   const [spawnRoom, setSpawnRoom] = useState<Room | null>(null);
   const awaitingCount = useActivityAwaitingCount();
+  const archive = useArchiveWorkflow();
 
   return (
     <aside className="sidebar" data-vim-panel="sidebar">
@@ -110,32 +112,37 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         </div>
       </section>
 
-      <button
-        type="button"
-        className="user-bubble"
-        title={`${me.name} · @${me.handle}`}
-        onClick={() => console.log("user-bubble click", me.id)}
-        onContextMenu={(e) =>
-          openMenu(e, [
-            { label: `Signed in as ${me.name}`, onSelect: () => console.log("profile", me.id) },
-            { divider: true },
-            { label: "Set status: ready",   onSelect: () => console.log("status online") },
-            { label: "Set status: working", onSelect: () => console.log("status busy") },
-            { label: "Set status: idle",    onSelect: () => console.log("status idle") },
-            { divider: true },
-            { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${me.handle}`) },
-            { label: "View profile", onSelect: () => console.log("profile", me.id) },
-            { divider: true },
-            { label: "Sign out", danger: true, onSelect: () => console.log("sign out") },
-          ])
-        }
-      >
-        <span className="user-bubble-avatar">{me.avatar}</span>
-        <StatusDot status={me.status} size={11} />
-        <span className={`vim-mode-chip vim-mode-${mode}`} aria-label={`vim mode: ${mode}`}>
-          {mode === "navigate" ? "NAV" : "INS"}
-        </span>
-      </button>
+      <div className="sidebar-bottom-actions">
+        <button
+          type="button"
+          className="user-bubble"
+          title={`${me.name} · @${me.handle}`}
+          onClick={() => console.log("user-bubble click", me.id)}
+          onContextMenu={(e) =>
+            openMenu(e, [
+              { label: `Signed in as ${me.name}`, onSelect: () => console.log("profile", me.id) },
+              { divider: true },
+              { label: "Set status: ready",   onSelect: () => console.log("status online") },
+              { label: "Set status: working", onSelect: () => console.log("status busy") },
+              { label: "Set status: idle",    onSelect: () => console.log("status idle") },
+              { divider: true },
+              { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${me.handle}`) },
+              { label: "View profile", onSelect: () => console.log("profile", me.id) },
+              { divider: true },
+              { label: "Sign out", danger: true, onSelect: () => console.log("sign out") },
+            ])
+          }
+        >
+          <span className="user-bubble-avatar">{me.avatar}</span>
+          <StatusDot status={me.status} size={11} />
+          <span className={`vim-mode-chip vim-mode-${mode}`} aria-label={`vim mode: ${mode}`}>
+            {mode === "navigate" ? "NAV" : "INS"}
+          </span>
+        </button>
+        <button type="button" className="archive-open-btn" onClick={archive.openConsole} title="Open archive recovery console">
+          ARCHIVE
+        </button>
+      </div>
       {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
     </aside>
   );
@@ -157,6 +164,7 @@ function RoomItem({
   otherColor?: string;
 }) {
   const openMenu = useContextMenu();
+  const archive = useArchiveWorkflow();
   const iconColor = otherColor ?? room.color;
   const iconInk = inkFor(iconColor);
   return (
@@ -174,6 +182,13 @@ function RoomItem({
           { label: room.pinned ? "Unpin" : "Pin to top", onSelect: () => console.log("pin", room.id) },
           { label: "Mute notifications", onSelect: () => console.log("mute", room.id) },
           { divider: true },
+          ...(room.kind === "group"
+            ? [
+                { label: "Archive group...", onSelect: () => archive.archiveGroup(room) },
+                { label: "Resume archived sessions...", disabled: (room.archivedMemberCount ?? 0) === 0, onSelect: () => archive.resumeGroup(room) },
+                { divider: true as const },
+              ]
+            : []),
           { label: "Copy room id", onSelect: () => navigator.clipboard?.writeText(room.id) },
           { divider: true },
           { label: room.kind === "group" ? "Leave group" : "Close DM", danger: true, onSelect: () => console.log("leave", room.id) },
