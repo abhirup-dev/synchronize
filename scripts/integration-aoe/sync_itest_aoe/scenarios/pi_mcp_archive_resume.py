@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .pi_mcp_dm import DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario, PiPeer
 from ..claude_env import DEFAULT_CLAUDE_MODEL, ClaudeEnvironment
-from ..runtime import HarnessError, require_tools
+from ..runtime import HarnessError, add_remote_daemon_args, require_tools
 from ..tmux import AgentPane
 
 DEFAULT_ARCHIVE_RESUME_AGENTS = 1
@@ -290,6 +290,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=None, help="Model. Defaults to gpt-5.4-mini (pi) / haiku (claude, cheapest).")
     parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke (Pi only).")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
+    add_remote_daemon_args(parser)
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=90, help="Seconds to wait for Pi extension auto-registration.")

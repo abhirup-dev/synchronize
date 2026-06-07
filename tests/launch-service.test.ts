@@ -25,6 +25,11 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
+
 test("provisionPiLaunchRuntime clears a stale pi mcp-cache.json so MCP reconnects on relaunch", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-pi-cache-"));
   dirs.push(home);
@@ -44,6 +49,34 @@ test("provisionPiLaunchRuntime clears a stale pi mcp-cache.json so MCP reconnect
   await provisionPiLaunchRuntime({ home, repoRoot: process.cwd() }).catch(() => {});
 
   expect(existsSync(cachePath)).toBe(false);
+});
+
+test("provisionPiLaunchRuntime propagates remote hub auth to daemon-launched Pi", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-pi-remote-env-"));
+  dirs.push(home);
+  const authPath = join(home, "codex-auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.trunc(Date.now() / 1000) + 3600 })).toString("base64url");
+  await writeFile(
+    authPath,
+    JSON.stringify({ tokens: { access_token: `h.${payload}.s`, refresh_token: "refresh", account_id: "acct" } }),
+  );
+  const prevAuth = process.env.SYNCHRONIZE_PI_AUTH_SOURCE;
+  const prevUrl = process.env.SYNCHRONIZE_REMOTE_URL;
+  const prevToken = process.env.SYNCHRONIZE_TOKEN;
+  try {
+    process.env.SYNCHRONIZE_PI_AUTH_SOURCE = authPath;
+    process.env.SYNCHRONIZE_REMOTE_URL = "http://100.96.245.110:58410";
+    process.env.SYNCHRONIZE_TOKEN = "shared-token";
+
+    const env = await provisionPiLaunchRuntime({ home, repoRoot: process.cwd(), key: "peer-1" });
+
+    expect(env.SYNCHRONIZE_REMOTE_URL).toBe("http://100.96.245.110:58410");
+    expect(env.SYNCHRONIZE_TOKEN).toBe("shared-token");
+  } finally {
+    restoreEnv("SYNCHRONIZE_PI_AUTH_SOURCE", prevAuth);
+    restoreEnv("SYNCHRONIZE_REMOTE_URL", prevUrl);
+    restoreEnv("SYNCHRONIZE_TOKEN", prevToken);
+  }
 });
 
 function fakeBackend(opts: { failSpawn?: boolean } = {}): { backend: SessionBackend; spawned: LaunchSpec[]; stopped: string[] } {

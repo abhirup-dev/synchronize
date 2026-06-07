@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .runtime import ArtifactWriter, HarnessError
+from .runtime import ArtifactWriter, HarnessError, RemoteDaemonConfig, remote_env
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class PiEnvironment:
         thinking: str,
         auth_source: str | None,
         writer: ArtifactWriter,
+        remote: RemoteDaemonConfig | None = None,
     ) -> None:
         self.repo = repo
         self.paths = paths
@@ -37,6 +38,7 @@ class PiEnvironment:
         self.thinking = thinking
         self.auth_source = auth_source
         self.writer = writer
+        self.remote = remote or RemoteDaemonConfig()
 
     def auth_source_path(self) -> Path:
         if self.auth_source:
@@ -73,20 +75,26 @@ class PiEnvironment:
             "packages": ["npm:pi-mcp-adapter"],
         }
         self.writer.write_json_at(self.paths.pi_home / "settings.json", settings)
+        mcp_env = {
+            "SYNCHRONIZE_HOME": str(self.paths.sync_home),
+            "SYNCHRONIZE_MCP_MODE": "codex",
+            "PATH": os.environ.get("PATH", ""),
+            **remote_env(self.remote),
+        }
         mcp_config = {
             "mcpServers": {
                 "synchronize": {
                     "command": "sh",
                     "args": ["-c", self.resilient_mcp_command()],
-                    "env": {
-                        "SYNCHRONIZE_HOME": str(self.paths.sync_home),
-                        "SYNCHRONIZE_MCP_MODE": "codex",
-                        "PATH": os.environ.get("PATH", ""),
-                    },
+                    "env": mcp_env,
                 }
             }
         }
         self.writer.write_json_at(self.paths.pi_home / "mcp.json", mcp_config)
+        artifact_mcp_config = json.loads(json.dumps(mcp_config))
+        artifact_env = artifact_mcp_config["mcpServers"]["synchronize"]["env"]
+        if "SYNCHRONIZE_TOKEN" in artifact_env:
+            artifact_env["SYNCHRONIZE_TOKEN"] = "<set>"
         self.writer.write_json(
             "pi-environment.json",
             {
@@ -94,7 +102,7 @@ class PiEnvironment:
                 "pi_sessions": str(self.paths.pi_sessions),
                 "auth_source": str(self.auth_source_path()),
                 "settings": settings,
-                "mcp_config": mcp_config,
+                "mcp_config": artifact_mcp_config,
                 "extension": str(self.required_worktree_paths()["pi_extension"]),
                 "skill": str(self.required_worktree_paths()["pi_skill"]),
             },
@@ -188,10 +196,12 @@ class PiEnvironment:
             "SYNCHRONIZE_HOME": str(self.paths.sync_home),
             "SYNCHRONIZE_CLI": str(self.repo / "bin" / "synchronize"),
             "SYNCHRONIZE_MCP": str(self.repo / "bin" / "synchronize-mcp"),
-            "SYNCHRONIZE_PORT": "0",
             "SYNCHRONIZE_SESSION_NAME": name,
             "SYNCHRONIZE_PI_DEBUG": "1",
+            **remote_env(self.remote),
         }
+        if not self.remote.enabled:
+            env_parts["SYNCHRONIZE_PORT"] = "0"
         # Let a scenario shorten the Pi heartbeat (e.g. the peer-revival smoke)
         # so lease-lapse / sweep / re-register recovery happens within the test
         # window. Honored by extensions/pi-synchronize HEARTBEAT_MS.

@@ -785,6 +785,11 @@ export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: 
     SYNCHRONIZE_CLI: join(input.repoRoot, "bin", "synchronize"),
     SYNCHRONIZE_MCP: join(input.repoRoot, "bin", "synchronize-mcp"),
     SYNCHRONIZE_PI_DEBUG: "1",
+    // A non-localhost daemon requires bearer auth even for same-machine children.
+    // Propagate the daemon's remote/auth env so resumed Pi MCP + extension calls
+    // can authenticate to the hub instead of discovering an unauthenticated URL.
+    ...(process.env.SYNCHRONIZE_REMOTE_URL ? { SYNCHRONIZE_REMOTE_URL: process.env.SYNCHRONIZE_REMOTE_URL } : {}),
+    ...(process.env.SYNCHRONIZE_TOKEN ? { SYNCHRONIZE_TOKEN: process.env.SYNCHRONIZE_TOKEN } : {}),
   };
 }
 

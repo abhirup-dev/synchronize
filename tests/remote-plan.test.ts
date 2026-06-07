@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, renderRemoteConfig } from "../src/remote/plan.ts";
-import { parseConfig } from "../src/config.ts";
+import { parseConfig, resolveRuntimeConfig } from "../src/config.ts";
 
 // Pure unit tests for the remote command plans — they assert the exact ssh/rsync
 // invocations BEFORE any remote machine is touched (the value of plan/execute
@@ -64,17 +64,28 @@ test("sync plan: --skip-install omits the bun install step", () => {
   expect(plan.map((s) => s.name)).not.toContain("bun install (remote)");
 });
 
-test("remote config.toml points at the hub with a literal token", () => {
+test("remote config.toml points at the hub with a literal token and daemon shape", () => {
   const toml = renderRemoteConfig({ hubUrl: "http://100.126.163.80:58412", token: "shared-token" });
   const config = parseConfig(toml);
+  const runtime = resolveRuntimeConfig(config, Bun.TOML.parse(toml) as Record<string, unknown>, {});
   expect(config.active).toBe("hub");
   expect(config.remotes.hub).toEqual({ url: "http://100.126.163.80:58412", token: "shared-token" });
+  expect(runtime.daemon).toEqual({
+    bind: "0.0.0.0",
+    port: 58412,
+    token: "shared-token",
+    leaseMs: 30_000,
+    peerRetentionMs: 15_000,
+    sweepIntervalMs: 1_000,
+  });
 });
 
 test("remote config.toml can use token_env instead of a literal", () => {
   const toml = renderRemoteConfig({ hubUrl: "http://h:1", tokenEnv: "SYNCHRONIZE_TOKEN" });
   const config = parseConfig(toml);
+  const runtime = resolveRuntimeConfig(config, Bun.TOML.parse(toml) as Record<string, unknown>, { SYNCHRONIZE_TOKEN: "env-token" });
   expect(config.remotes.hub).toEqual({ url: "http://h:1", tokenEnv: "SYNCHRONIZE_TOKEN" });
+  expect(runtime.daemon.token).toBe("env-token");
 });
 
 test("harness plan: one ssh step per scenario, pointed at the hub with timeouts", () => {
@@ -105,8 +116,14 @@ test("harness plan: --all covers every known scenario; extraArgs appended", () =
     scenarios: ALL_HARNESS_SCENARIOS,
     extraArgs: ["--keep"],
   });
-  expect(plan).toHaveLength(6);
+  expect(plan).toHaveLength(7);
   expect(plan.every((s) => s.argv[2]!.includes("--keep"))).toBe(true);
+});
+
+test("harness plan includes archive/resume Pi scenario", () => {
+  const plan = buildHarnessPlan({ sshHost: "h", remotePath: "/r", hubUrl: "http://h:1", scenarios: ["pi_mcp_archive_resume"] });
+  expect(plan[0]!.argv[2]).toContain("uv run scripts/integration_archive_resume_pi.py");
+  expect(ALL_HARNESS_SCENARIOS).toContain("pi_mcp_archive_resume");
 });
 
 test("harness plan: unknown scenario throws with the known list", () => {
