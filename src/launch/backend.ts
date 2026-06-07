@@ -76,14 +76,33 @@ function shellJoin(tokens: string[]): string {
 /**
  * Build the `--cmd-override` string AOE runs in the pane:
  * `env KEY=VAL … <agent argv>`. Exported for testing.
+ *
+ * `wrapExec` (claude only): AOE recognizes the `claude` binary and appends its
+ * own `--session-id <uuid>` for session tracking. That collides with our
+ * `claude --resume <id>` (claude rejects `--session-id` with `--resume` unless
+ * `--fork-session`, which we must never use — it forks instead of resuming). So
+ * for claude we wrap the real command in `sh -c '<inner>' aoe-claude-wrap`:
+ * AOE's appended `--session-id` lands as an ignored positional arg to `sh`
+ * (never reaching claude), and `exec` replaces the shell with claude so it is
+ * the direct PTY process (clean TTY + signal handling). Pi has no such prompt
+ * and is left unwrapped.
  */
-export function buildCmdOverride(env: Record<string, string>, command: string[]): string {
-  return shellJoin([
+export function buildCmdOverride(
+  env: Record<string, string>,
+  command: string[],
+  opts: { wrapExec?: boolean } = {},
+): string {
+  const envCmd = [
     "env",
     ...LAUNCH_ENV_UNSET_KEYS.flatMap((key) => ["-u", key]),
     ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
     ...command,
-  ]);
+  ];
+  if (opts.wrapExec) {
+    const inner = shellJoin(["exec", ...envCmd]);
+    return shellJoin(["sh", "-c", inner, "aoe-claude-wrap"]);
+  }
+  return shellJoin(envCmd);
 }
 
 /** Tolerant parser for `aoe list --json` (top-level array of sessions). */
@@ -161,7 +180,7 @@ export class AoeBackend implements SessionBackend {
       // Cosmetic AOE group for HUD grouping; idempotent, errors ignored.
       await this.run(this.aoe(["group", "create", spec.group]));
     }
-    const override = buildCmdOverride(spec.env, spec.command);
+    const override = buildCmdOverride(spec.env, spec.command, { wrapExec: spec.tool === "claude" });
     const addArgs = ["add", "--title", spec.title, "--cmd", spec.tool, "--cmd-override", override];
     if (spec.group) addArgs.push("-g", spec.group);
     addArgs.push(spec.cwd);

@@ -1,3 +1,4 @@
+import * as archive from "./commands/archive.ts";
 import * as dm from "./commands/dm.ts";
 import * as group from "./commands/group.ts";
 import * as host from "./commands/host.ts";
@@ -9,6 +10,7 @@ import * as completion from "./commands/completion.ts";
 import * as peers from "./commands/peers.ts";
 import * as query from "./commands/query.ts";
 import * as register from "./commands/register.ts";
+import * as resume from "./commands/resume.ts";
 import * as remote from "./commands/remote.ts";
 import * as spawn from "./commands/spawn.ts";
 import * as status from "./commands/status.ts";
@@ -49,6 +51,12 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "group":
       await group.run(rest);
+      return;
+    case "archive":
+      await archive.run(rest);
+      return;
+    case "resume":
+      await resume.run(rest);
       return;
     case "host":
       await host.run(rest);

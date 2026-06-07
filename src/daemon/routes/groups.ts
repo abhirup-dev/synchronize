@@ -267,7 +267,7 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
       ctx.db
         .query(
           `UPDATE group_members
-           SET active = 0, left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           SET active = 0, member_state = 'left', left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
            WHERE group_id = ? AND peer_id = ?`,
         )
         .run(group.group_id, peerId);

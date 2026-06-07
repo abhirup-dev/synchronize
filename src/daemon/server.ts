@@ -268,7 +268,7 @@ export function fanoutRosterEventToInbox(db: Database, groupId: number, eventId:
 function deactivateWebAliasHolders(db: Database, groupId: number, alias: string, peerId: string): void {
   db.query(
     `UPDATE group_members
-     SET active = 0,
+     SET active = 0, member_state = 'left',
          left_at = COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
      WHERE group_id = ?
        AND alias = ?
@@ -299,7 +299,7 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
     for (const { peer_id } of rows) {
       ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
       ctx.db
-        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
         .run(now, peer_id);
       ctx.subscribers.delete(peer_id);
     }
