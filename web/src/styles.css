@@ -754,6 +754,29 @@ button { font-family: inherit; cursor: pointer; }
   border-color: var(--rule);
   box-shadow: var(--shadow-sm);
 }
+.room-item.archived {
+  background: #e6e6e6;
+  border-color: #cfcfcf;
+  color: #555555;
+}
+.room-item.archived.active,
+.room-item.archived:hover {
+  background: #dddddd;
+  border-color: #bdbdbd;
+  color: #4a4a4a;
+}
+.room-item.archived .room-icon {
+  background: #d0d0d0;
+  color: #646464;
+  border-color: #b8b8b8;
+  box-shadow: none;
+}
+.room-item.archived .room-name {
+  color: #4f4f4f;
+}
+.room-item.archived .room-preview {
+  color: #777777;
+}
 .room-item.active {
   background: var(--ink);
   color: var(--on-ink);

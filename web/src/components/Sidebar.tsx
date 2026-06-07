@@ -177,7 +177,7 @@ function RoomItem({
     <div
       role="button"
       tabIndex={0}
-      className={`room-item${active ? " active" : ""}`}
+      className={`room-item${active ? " active" : ""}${isArchivedGroup ? " archived" : ""}`}
       data-vim-item={`room-${room.id}`}
       onClick={() => onSelect(room.id)}
       onKeyDown={handleKeyDown}
@@ -206,10 +206,10 @@ function RoomItem({
     >
       <div
         className="room-icon identity-icon"
-        style={{
+        style={isArchivedGroup ? undefined : ({
           background: iconColor,
           color: iconInk,
-        } as CSSProperties}
+        } as CSSProperties)}
       >
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
