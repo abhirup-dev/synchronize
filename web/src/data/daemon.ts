@@ -2,11 +2,17 @@ import type {
   ActivityItem,
   Agent,
   AgentStatus,
+  ArchivePreview,
+  ArchivePreviewMember,
+  ArchivedSession,
   Artifact,
   DataSource,
+  MemberState,
   Message,
   MessageAttachment,
   ReactToMessageInput,
+  ResumePreview,
+  ResumePreviewMember,
   Room,
   SendMessageInput,
   SkillCatalogEntry,
@@ -37,6 +43,10 @@ interface DaemonPeer {
   session_name: string;
   purpose: string | null;
   lease_expires_at: string;
+  lifecycle_state?: "active" | "archived";
+  archived_at?: string | null;
+  archived_reason?: string | null;
+  archive_source?: string | null;
   online?: boolean;
   presence?: DaemonPresence;
   aoe_session?: {
@@ -68,6 +78,7 @@ interface DaemonMember {
   peer_id: string;
   alias: string;
   active: boolean;
+  member_state?: MemberState;
   purpose: string | null;
   session_name: string;
   tool: string;
@@ -208,6 +219,63 @@ interface DaemonLaunchResponse {
   group?: string;
 }
 
+interface DaemonArchivedSession {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  archived_at: string | null;
+  archived_reason: string | null;
+  archive_source: string | null;
+  aliases: Array<{ group: string; alias: string }>;
+}
+
+interface DaemonArchiveSessionResult {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  action: "archived" | "already_archived" | "would_archive";
+  reaped: boolean;
+  zombie: boolean;
+  warning?: string;
+  dry_run?: boolean;
+}
+
+interface DaemonArchiveGroupResult {
+  group: string;
+  dry_run: boolean;
+  members: Array<{
+    alias: string;
+    tool: string;
+    peer_id: string;
+    action: "archived" | "already_archived" | "would_archive" | "skipped";
+    reaped: boolean;
+    zombie: boolean;
+    warning?: string;
+  }>;
+}
+
+interface DaemonResumePreviewMember {
+  mode: "launch" | "print";
+  peer_id: string;
+  session_name: string;
+  alias: string | null;
+  tool: string;
+  group: string | null;
+  cwd: string | null;
+  host_session_id: string | null;
+  action: "will_launch" | "will_print" | "blocked" | "skipped";
+  code?: string;
+  force_available: boolean;
+  warning?: string;
+}
+
+interface DaemonResumeGroupPreview {
+  group: string;
+  mode: "launch" | "print";
+  dry_run: boolean;
+  members: DaemonResumePreviewMember[];
+}
+
 const PEER_KEY = "synchronize.web.peerId";
 const PENDING_WEB_PEER_ID = "web:pending";
 // Activity feed: fetch this many rows per page; keep at most this many in memory
@@ -245,7 +313,9 @@ export class DaemonDataSource implements DataSource {
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
+  private readonly _archivedSessions = createSnapshot<ArchivedSession[]>([]);
   private activityRequested = false;
+  private archivedRequested = false;
   private activityRefresh: Promise<void> | null = null;
   private activityOldestCursor: number | null = null;
   private activitySeen = new Set<number>();
@@ -286,6 +356,14 @@ export class DaemonDataSource implements DataSource {
   }
 
   activityAwaitingCount(): Snapshot<number> { return this._activityAwaiting; }
+
+  archivedSessions(): Snapshot<ArchivedSession[]> {
+    if (!this.archivedRequested) {
+      this.archivedRequested = true;
+      if (this.connected) void this.refreshArchivedSessions();
+    }
+    return this._archivedSessions;
+  }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);
@@ -402,6 +480,7 @@ export class DaemonDataSource implements DataSource {
     await this.registerWebPeer();
     await this.refresh();
     void this.refreshActivity({ reset: true });
+    if (this.archivedRequested) void this.refreshArchivedSessions();
     this.openStream();
     this.pollTimer = window.setInterval(() => {
       void this.refresh();
@@ -554,6 +633,123 @@ export class DaemonDataSource implements DataSource {
   async loadMoreActivity(): Promise<void> {
     if (this.activityOldestCursor === null) return;
     await this.refreshActivity({ before: this.activityOldestCursor });
+  }
+
+  async archiveSessionPreview(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveSessionResult>("/archive/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        dry_run: true,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    return {
+      target: "session",
+      dryRun: true,
+      members: [mapArchiveSessionResult(result)],
+    };
+  }
+
+  async archiveGroupPreview(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveGroupResult>("/archive/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        dry_run: true,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    return mapArchiveGroupResult(result, true);
+  }
+
+  async confirmArchiveSession(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveSessionResult>("/archive/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return {
+      target: "session",
+      dryRun: false,
+      members: [mapArchiveSessionResult(result)],
+    };
+  }
+
+  async confirmArchiveGroup(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveGroupResult>("/archive/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return mapArchiveGroupResult(result, false);
+  }
+
+  async resumeSessionPreview(input: { peerId: string; print?: boolean; force?: boolean }): Promise<ResumePreview> {
+    const result = await this.request<DaemonResumePreviewMember>("/resume/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        dry_run: true,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+      }),
+    });
+    return {
+      target: "session",
+      mode: result.mode,
+      dryRun: true,
+      members: [mapResumePreviewMember(result)],
+    };
+  }
+
+  async resumeGroupPreview(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<ResumePreview> {
+    const result = await this.request<DaemonResumeGroupPreview>("/resume/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        dry_run: true,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+        ...(input.only ? { only: input.only } : {}),
+        ...(input.exclude ? { exclude: input.exclude } : {}),
+      }),
+    });
+    return mapResumeGroupPreview(result);
+  }
+
+  async confirmResumeSession(input: { peerId: string; print?: boolean; force?: boolean }): Promise<unknown> {
+    const result = await this.request<unknown>("/resume/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return result;
+  }
+
+  async confirmResumeGroup(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<unknown> {
+    const result = await this.request<unknown>("/resume/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+        ...(input.only ? { only: input.only } : {}),
+        ...(input.exclude ? { exclude: input.exclude } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return result;
   }
 
   private setActivityAwaiting(eventId: number, awaiting: boolean): void {
@@ -774,6 +970,7 @@ export class DaemonDataSource implements DataSource {
           state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
         }
         this.applySummaryState(state);
+        if (this.archivedRequested) void this.refreshArchivedSessions();
       } catch {
         this.markRemoteAgentsOffline();
       }
@@ -781,6 +978,20 @@ export class DaemonDataSource implements DataSource {
       this.refreshing = null;
     });
     return this.refreshing;
+  }
+
+  private async refreshAfterArchiveChange(): Promise<void> {
+    await this.refresh();
+    await this.refreshArchivedSessions();
+    for (const roomId of this._messages.keys()) await this.refreshRoom(roomId, { reset: true }).catch(() => undefined);
+  }
+
+  private async refreshArchivedSessions(): Promise<void> {
+    const response = await this.request<{ sessions: DaemonArchivedSession[] }>("/archive/sessions").catch(() => ({ sessions: [] }));
+    this._archivedSessions.set(reuseEqualArchivedSessions(
+      this._archivedSessions.get(),
+      response.sessions.map(mapArchivedSession),
+    ));
   }
 
   private markRemoteAgentsOffline(): void {
@@ -828,6 +1039,11 @@ export class DaemonDataSource implements DataSource {
 
     const groupRooms = state.groups.map((group) => {
       const members = memberByGroup.get(group.group_id) ?? [];
+      const activeMembers = members.filter((member) => member.active);
+      const archivedMembers = members.filter((member) => member.member_state === "archived");
+      const archiveEligibleMembers = members.filter((member) => member.tool !== "web" && !member.peer_id.startsWith("web:"));
+      const activeArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.active);
+      const archivedArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.member_state === "archived");
       const roomId = groupRoomId(group.group_id);
       this.groupNameByRoomId.set(roomId, group.name);
       const summary = summaryByGroup.get(group.group_id);
@@ -837,8 +1053,12 @@ export class DaemonDataSource implements DataSource {
         name: group.name,
         emoji: "#",
         color: colorForGroup(group.group_id),
-        members: members.map((member) => member.peer_id),
+        members: activeMembers.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
+        memberStates: Object.fromEntries(members.map((member) => [member.peer_id, member.member_state ?? (member.active ? "active" : "left")])),
+        archiveState: archivedArchiveEligibleMembers.length > 0 ? (activeArchiveEligibleMembers.length > 0 ? "mixed" : "archived") : "active",
+        activeMemberCount: activeMembers.length,
+        archivedMemberCount: archivedMembers.length,
         paths: (pathsByGroup.get(group.group_id) ?? []).map((path) => ({
           id: String(path.path_id),
           path: path.path,
@@ -851,7 +1071,7 @@ export class DaemonDataSource implements DataSource {
       } satisfies Room;
     });
     const dmRooms = state.peers
-      .filter((peer) => peer.peer_id !== this.peerId)
+      .filter((peer) => peer.peer_id !== this.peerId && peer.lifecycle_state !== "archived")
       .map((peer) => {
         return {
           id: dmRoomId(peer.peer_id),
@@ -1079,6 +1299,7 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
 // own amber; generic "online" (uninstrumented peers) and the local human stay
 // green. Falls back to the legacy online boolean when presence is absent.
 function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
+  if (peer.lifecycle_state === "archived") return "offline";
   if (isMe) return "online";
   switch (peer.presence) {
     case "working":
@@ -1106,6 +1327,10 @@ function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifec
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
     status: statusForPeer(peer, isMe),
+    lifecycleState: peer.lifecycle_state ?? "active",
+    ...(peer.archived_at ? { archivedAt: peer.archived_at } : {}),
+    ...(peer.archived_reason ? { archivedReason: peer.archived_reason } : {}),
+    ...(peer.archive_source ? { archiveSource: peer.archive_source } : {}),
     ...(launchNote ? { statusNote: launchNote } : peer.purpose ? { statusNote: peer.purpose } : {}),
     ...(launch
       ? {
@@ -1235,7 +1460,6 @@ function parseMentions(raw: string | null): string[] {
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
   for (const member of memberships) {
-    if (!member.active) continue;
     pushMap(grouped, member.group_id, member);
   }
   return grouped;
@@ -1324,6 +1548,73 @@ function mapSkillCatalog(entries: DaemonSkillCatalogEntry[]): SkillCatalogEntry[
   }));
 }
 
+function mapArchivedSession(session: DaemonArchivedSession): ArchivedSession {
+  return {
+    peerId: session.peer_id,
+    sessionName: session.session_name,
+    tool: session.tool,
+    archivedAt: session.archived_at,
+    archivedReason: session.archived_reason,
+    archiveSource: session.archive_source,
+    aliases: session.aliases,
+  };
+}
+
+function mapArchiveSessionResult(result: DaemonArchiveSessionResult): ArchivePreviewMember {
+  return {
+    peerId: result.peer_id,
+    sessionName: result.session_name,
+    tool: result.tool,
+    action: result.action,
+    reaped: result.reaped,
+    zombie: result.zombie,
+    ...(result.warning ? { warning: result.warning } : {}),
+  };
+}
+
+function mapArchiveGroupResult(result: DaemonArchiveGroupResult, dryRun: boolean): ArchivePreview {
+  return {
+    target: "group",
+    group: result.group,
+    dryRun,
+    members: result.members.map((member) => ({
+      alias: member.alias,
+      peerId: member.peer_id,
+      tool: member.tool,
+      action: member.action,
+      reaped: member.reaped,
+      zombie: member.zombie,
+      ...(member.warning ? { warning: member.warning } : {}),
+    })),
+  };
+}
+
+function mapResumePreviewMember(member: DaemonResumePreviewMember): ResumePreviewMember {
+  return {
+    peerId: member.peer_id,
+    sessionName: member.session_name,
+    alias: member.alias,
+    tool: member.tool,
+    group: member.group,
+    cwd: member.cwd,
+    hostSessionId: member.host_session_id,
+    action: member.action,
+    ...(member.code ? { code: member.code } : {}),
+    forceAvailable: member.force_available,
+    ...(member.warning ? { warning: member.warning } : {}),
+  };
+}
+
+function mapResumeGroupPreview(result: DaemonResumeGroupPreview): ResumePreview {
+  return {
+    target: "group",
+    group: result.group,
+    mode: result.mode,
+    dryRun: result.dry_run,
+    members: result.members.map(mapResumePreviewMember),
+  };
+}
+
 function pushMap<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const existing = map.get(key);
   if (existing) existing.push(value);
@@ -1370,5 +1661,9 @@ function reuseEqualMessages(prev: Message[], next: Message[]): Message[] {
 }
 
 function reuseEqualSkillCatalog(prev: SkillCatalogEntry[], next: SkillCatalogEntry[]): SkillCatalogEntry[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualArchivedSessions(prev: ArchivedSession[], next: ArchivedSession[]): ArchivedSession[] {
   return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }

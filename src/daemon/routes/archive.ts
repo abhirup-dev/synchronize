@@ -8,7 +8,9 @@ import {
   archiveGroupApply,
   archiveSessionApply,
   resumeGroupApply,
+  resumeGroupPreview,
   resumeSessionApply,
+  resumeSessionPreview,
 } from "../services/archive.ts";
 import { log, type DaemonContext } from "../server.ts";
 import { optionalString, optionalStringArray, readBody, requireString } from "../validation.ts";
@@ -83,6 +85,10 @@ export async function tryHandleArchiveRoute(request: Request, ctx: DaemonContext
     const peerId = resolveResumePeerId(ctx.db, body);
     const mode = body.print === true ? "print" : "launch";
     const force = body.force === true;
+    if (body.dry_run === true) {
+      const result = await resumeSessionPreview(ctx, peerId, { mode, force });
+      return jsonResponse({ ...result, dry_run: true });
+    }
     const result = await resumeSessionApply(ctx, peerId, { mode, force });
     return jsonResponse(result);
   }
@@ -94,6 +100,15 @@ export async function tryHandleArchiveRoute(request: Request, ctx: DaemonContext
     const force = body.force === true;
     const only = optionalStringArray(body, "only");
     const exclude = optionalStringArray(body, "exclude");
+    if (body.dry_run === true) {
+      const members = await resumeGroupPreview(ctx, group.group_id, {
+        mode,
+        force,
+        ...(only ? { only } : {}),
+        ...(exclude ? { exclude } : {}),
+      });
+      return jsonResponse({ group: group.name, mode, dry_run: true, members });
+    }
     const members = await resumeGroupApply(ctx, group.group_id, {
       mode,
       force,

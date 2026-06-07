@@ -173,6 +173,30 @@ test("archive group reports per-member status and reserves every alias", async (
   }
 });
 
+test("archive group skips the local web viewer membership", async () => {
+  const daemon = await startDaemon({ debug: true });
+  try {
+    const { peer: a } = await registerPeer(daemon.client, { sessionName: "a", tool: "claude" });
+    const { peer: web } = await registerPeer(daemon.client, { peerId: "web:local-human", sessionName: "web-ui", tool: "web" });
+    await createGroup(daemon.client, { name: "room", creatorPeerId: a.peer_id });
+    await joinGroup(daemon.client, { name: "room", peerId: a.peer_id, alias: "critic" });
+    await joinGroup(daemon.client, { name: "room", peerId: web.peer_id, alias: "you" });
+
+    const result = await archiveGroup(daemon.client, { group: "room", reason: "overnight" });
+    const byAlias = Object.fromEntries(result.members.map((m) => [m.alias, m]));
+    expect(byAlias.critic?.action).toBe("archived");
+    expect(byAlias.you).toMatchObject({
+      action: "skipped",
+      peer_id: "web:local-human",
+      tool: "web",
+    });
+
+    await sendGroupMessage(daemon.client, { name: "room", senderPeerId: web.peer_id, message: "still browsing" });
+  } finally {
+    await daemon.stop();
+  }
+});
+
 test("a live archived (zombie) peer cannot send, re-subscribe, or be pushed until it re-registers", async () => {
   const daemon = await startDaemon({ debug: true });
   // A local callback server stands in for the agent's live push channel; it

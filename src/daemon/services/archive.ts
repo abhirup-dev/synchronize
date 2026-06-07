@@ -122,11 +122,17 @@ export interface GroupArchiveMemberResult {
   warning?: string;
 }
 
+function isLocalWebPeer(member: { peer_id: string; tool: string }): boolean {
+  return member.tool === "web" || member.peer_id.startsWith("web:");
+}
+
 // Archive a whole group as a unit. Each active member is archived via the same
 // single-session path (so AOE members are reaped, non-AOE members probed), and
 // EVERY member's outcome is reported — a partial result is never collapsed into
 // one success/fail bit (Flow I). A failure on one member is captured as a
-// 'skipped' row rather than aborting the batch.
+// 'skipped' row rather than aborting the batch. The daemon-owned local web
+// viewer can be a "you" member for UI navigation, but it is not an agent
+// session and should never be archived as part of group recovery operations.
 export async function archiveGroupApply(
   ctx: DaemonContext,
   groupId: number,
@@ -144,6 +150,18 @@ export async function archiveGroupApply(
 
   const results: GroupArchiveMemberResult[] = [];
   for (const member of members) {
+    if (isLocalWebPeer(member)) {
+      results.push({
+        alias: member.alias,
+        tool: member.tool,
+        peer_id: member.peer_id,
+        action: "skipped",
+        reaped: false,
+        zombie: false,
+        warning: "local web viewer is not archived by group archive",
+      });
+      continue;
+    }
     try {
       const r = await archiveSessionApply(ctx, member.peer_id, {
         reason: opts.reason ?? null,
@@ -188,6 +206,21 @@ export interface ResumeSessionResult {
   launch?: unknown;
 }
 
+export interface ResumeSessionPreview {
+  mode: "launch" | "print";
+  peer_id: string;
+  session_name: string;
+  alias: string | null;
+  tool: string;
+  group: string | null;
+  cwd: string | null;
+  host_session_id: string | null;
+  action: "will_launch" | "will_print" | "blocked" | "skipped";
+  code?: "peer_still_live" | "cwd_missing" | "resume_not_launchable" | "peer_not_archived" | "error";
+  force_available: boolean;
+  warning?: string;
+}
+
 export async function probeResumeLiveness(ctx: DaemonContext, plan: ResumePlan): Promise<Liveness> {
   if (plan.isAoe && plan.backendTitle) {
     return (await ctx.launchService.hasBackendSession(plan.backendTitle)) ? "alive" : "dead";
@@ -204,6 +237,109 @@ export function peerStillLiveMessage(plan: ResumePlan): string {
     `  or let synchronize do it:   synchronize resume launch --peer-id ${plan.peerId} --force`,
     `  or reboot — the lease lapses and resume unblocks.`,
   ].join("\n");
+}
+
+function previewFromPlan(
+  plan: ResumePlan,
+  mode: "launch" | "print",
+  action: ResumeSessionPreview["action"],
+  extra: Pick<ResumeSessionPreview, "code" | "force_available" | "warning">,
+): ResumeSessionPreview {
+  return {
+    mode,
+    peer_id: plan.peerId,
+    session_name: plan.sessionName,
+    alias: plan.alias,
+    tool: plan.tool,
+    group: plan.group,
+    cwd: plan.cwd,
+    host_session_id: plan.hostSessionId,
+    action,
+    ...extra,
+  };
+}
+
+function skippedResumePreview(
+  ctx: DaemonContext,
+  peerId: string,
+  mode: "launch" | "print",
+  code: ResumeSessionPreview["code"],
+  warning: string,
+): ResumeSessionPreview {
+  const peer = ctx.db
+    .query<{ session_name: string; tool: string }, [string]>(
+      "SELECT session_name, tool FROM peers WHERE peer_id = ? AND deleted_at IS NULL",
+    )
+    .get(peerId);
+  return {
+    mode,
+    peer_id: peerId,
+    session_name: peer?.session_name ?? peerId,
+    alias: null,
+    tool: peer?.tool ?? "unknown",
+    group: null,
+    cwd: null,
+    host_session_id: null,
+    action: "skipped",
+    ...(code ? { code } : {}),
+    force_available: false,
+    warning,
+  };
+}
+
+export async function resumeSessionPreview(
+  ctx: DaemonContext,
+  peerId: string,
+  opts: { mode: "launch" | "print"; force?: boolean },
+): Promise<ResumeSessionPreview> {
+  let plan: ResumePlan;
+  try {
+    plan = planResume(ctx.db, peerId);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      const code =
+        error.code === "peer_not_archived" || error.code === "resume_not_launchable"
+          ? error.code
+          : "error";
+      return skippedResumePreview(ctx, peerId, opts.mode, code, error.message);
+    }
+    return skippedResumePreview(ctx, peerId, opts.mode, "error", error instanceof Error ? error.message : String(error));
+  }
+
+  if (!plan.cwd) {
+    return previewFromPlan(plan, opts.mode, "blocked", {
+      code: "cwd_missing",
+      force_available: false,
+      warning: `Peer ${peerId} has no recorded cwd; cannot resume.`,
+    });
+  }
+  try {
+    await stat(plan.cwd);
+  } catch {
+    return previewFromPlan(plan, opts.mode, "blocked", {
+      code: "cwd_missing",
+      force_available: false,
+      warning: `cwd ${plan.cwd} is gone. Restore the worktree${plan.gitBranch ? ` for branch '${plan.gitBranch}'` : ""} at that path, then re-run resume.`,
+    });
+  }
+
+  const liveness = await probeResumeLiveness(ctx, plan);
+  if (liveness === "alive" && !opts.force) {
+    return previewFromPlan(plan, opts.mode, "blocked", {
+      code: "peer_still_live",
+      force_available: true,
+      warning: peerStillLiveMessage(plan),
+    });
+  }
+
+  const forcedWarning =
+    liveness === "alive" && opts.force
+      ? "Force resume will terminate the currently live process before launching."
+      : undefined;
+  return previewFromPlan(plan, opts.mode, opts.mode === "print" ? "will_print" : "will_launch", {
+    force_available: liveness === "alive",
+    ...(forcedWarning ? { warning: forcedWarning } : {}),
+  });
 }
 
 // Orchestrates a single-session resume: validate (archived/cwd/liveness) →
@@ -305,6 +441,10 @@ export interface GroupResumeMemberResult {
   warning?: string;
 }
 
+export interface GroupResumePreviewMember extends ResumeSessionPreview {
+  alias: string | null;
+}
+
 // Resume a whole archived group. Each archived member is resumed via the same
 // single-session path; non-launchable (inspect-only) members are skipped and
 // live zombies are blocked — every member's outcome is reported (never collapsed).
@@ -340,6 +480,32 @@ export async function resumeGroupApply(
         warning: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+  return results;
+}
+
+export async function resumeGroupPreview(
+  ctx: DaemonContext,
+  groupId: number,
+  opts: { mode: "launch" | "print"; force?: boolean; only?: string[]; exclude?: string[] },
+): Promise<GroupResumePreviewMember[]> {
+  const members = ctx.db
+    .query<{ peer_id: string; alias: string; tool: string }, [number]>(
+      `SELECT gm.peer_id AS peer_id, gm.alias AS alias, p.tool AS tool
+       FROM group_members gm JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.group_id = ? AND gm.member_state = 'archived' ORDER BY gm.alias ASC`,
+    )
+    .all(groupId);
+
+  const results: GroupResumePreviewMember[] = [];
+  for (const member of members) {
+    if (opts.only && opts.only.length > 0 && !opts.only.includes(member.alias)) continue;
+    if (opts.exclude && opts.exclude.includes(member.alias)) continue;
+    const preview = await resumeSessionPreview(ctx, member.peer_id, {
+      mode: opts.mode,
+      ...(opts.force ? { force: true } : {}),
+    });
+    results.push({ ...preview, alias: preview.alias ?? member.alias, tool: preview.tool || member.tool });
   }
   return results;
 }
