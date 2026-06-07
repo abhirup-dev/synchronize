@@ -1565,13 +1565,9 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-8);
-  width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
-  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
+  width: 100%;
   min-height: 26px;
   margin-top: 1px;
-}
-.message-row.is-you .message-footer {
-  align-self: flex-end;
 }
 .message-footer-left,
 .message-footer-right {

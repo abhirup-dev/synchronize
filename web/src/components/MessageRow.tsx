@@ -78,112 +78,114 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
             </span>
           </div>
         )}
-        <div className="bubble">
-          {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
-          {message.attachments?.length ? (
-            <AttachmentPreviewList attachments={message.attachments} mode="message" />
-          ) : null}
-          {message.poll && (
-            <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
-          )}
-        </div>
-        {(hasThreadBadge || onReact) && (
-          <div className="message-footer">
-            <div className="message-footer-left">
-              {hasThreadBadge && (
-                <button className="thread-badge" onClick={() => onOpenThread?.(message.id)}>
-                  <span className="thread-badge-avs">
-                    {(message.threadParticipantIds ?? []).slice(0, 4).map((aid) => {
-                      const a = agents.find((x) => x.id === aid);
-                      if (!a) return null;
-                      return (
-                        <span
-                          key={aid}
-                          className="thread-badge-av"
-                          title={a.name}
-                          style={{ background: a.color, color: inkFor(a.color) }}
-                        >
-                          {a.avatar}
-                        </span>
-                      );
-                    })}
-                  </span>
-                  <span className="thread-badge-count">
-                    {threadReplyCount} {threadReplyCount === 1 ? "reply" : "replies"}
-                  </span>
-                  {message.threadLastReplyAt && (
-                    <span className="thread-badge-time">
-                      last {new Date(message.threadLastReplyAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+        <div className="message-stack">
+          <div className="bubble">
+            {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
+            {message.attachments?.length ? (
+              <AttachmentPreviewList attachments={message.attachments} mode="message" />
+            ) : null}
+            {message.poll && (
+              <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
+            )}
+          </div>
+          {(hasThreadBadge || onReact) && (
+            <div className="message-footer">
+              <div className="message-footer-left">
+                {hasThreadBadge && (
+                  <button className="thread-badge" onClick={() => onOpenThread?.(message.id)}>
+                    <span className="thread-badge-avs">
+                      {(message.threadParticipantIds ?? []).slice(0, 4).map((aid) => {
+                        const a = agents.find((x) => x.id === aid);
+                        if (!a) return null;
+                        return (
+                          <span
+                            key={aid}
+                            className="thread-badge-av"
+                            title={a.name}
+                            style={{ background: a.color, color: inkFor(a.color) }}
+                          >
+                            {a.avatar}
+                          </span>
+                        );
+                      })}
                     </span>
-                  )}
-                </button>
-              )}
-            </div>
-            <div className="message-footer-right">
-              <div className="reactions" aria-label="message reactions">
-                {message.reactions.map((reaction) => {
-                  const mine = reaction.by.includes(me.id);
-                  const names = reaction.by.map((id) => agentById.get(id)?.name ?? id);
-                  return (
-                    <span
-                      className="reaction-wrap"
-                      key={reaction.emoji}
-                      onMouseEnter={() => setDetailsEmoji(reaction.emoji)}
-                      onMouseLeave={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
-                    >
-                      <button
-                        className={`reaction${mine ? " is-mine" : ""}`}
-                        title={names.join(", ")}
-                        aria-pressed={mine}
-                        aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
-                        onClick={() => {
-                          setPickerOpen(false);
-                          onReact?.(message.id, reaction.emoji);
-                        }}
-                        onFocus={() => setDetailsEmoji(reaction.emoji)}
-                        onBlur={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
+                    <span className="thread-badge-count">
+                      {threadReplyCount} {threadReplyCount === 1 ? "reply" : "replies"}
+                    </span>
+                    {message.threadLastReplyAt && (
+                      <span className="thread-badge-time">
+                        last {new Date(message.threadLastReplyAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </div>
+              <div className="message-footer-right">
+                <div className="reactions" aria-label="message reactions">
+                  {message.reactions.map((reaction) => {
+                    const mine = reaction.by.includes(me.id);
+                    const names = reaction.by.map((id) => agentById.get(id)?.name ?? id);
+                    return (
+                      <span
+                        className="reaction-wrap"
+                        key={reaction.emoji}
+                        onMouseEnter={() => setDetailsEmoji(reaction.emoji)}
+                        onMouseLeave={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
                       >
-                        <span>{reaction.emoji}</span>
-                        <span className="rcount">{reaction.by.length}</span>
+                        <button
+                          className={`reaction${mine ? " is-mine" : ""}`}
+                          title={names.join(", ")}
+                          aria-pressed={mine}
+                          aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
+                          onClick={() => {
+                            setPickerOpen(false);
+                            onReact?.(message.id, reaction.emoji);
+                          }}
+                          onFocus={() => setDetailsEmoji(reaction.emoji)}
+                          onBlur={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
+                        >
+                          <span>{reaction.emoji}</span>
+                          <span className="rcount">{reaction.by.length}</span>
+                        </button>
+                        {detailsEmoji === reaction.emoji && (
+                          <div className="reaction-popover" role="dialog" aria-label={`${reaction.emoji} reactions`}>
+                            <div className="reaction-popover-head">{reaction.emoji}</div>
+                            {names.map((name, index) => (
+                              <div className="reaction-person" key={`${reaction.emoji}-${reaction.by[index]}`}>{name}</div>
+                            ))}
+                          </div>
+                        )}
+                      </span>
+                    );
+                  })}
+                  {onReact && (
+                    <span className="reaction-wrap">
+                      <button className="reaction add" aria-label="add reaction" onClick={() => setPickerOpen(!pickerOpen)}>
+                        +
                       </button>
-                      {detailsEmoji === reaction.emoji && (
-                        <div className="reaction-popover" role="dialog" aria-label={`${reaction.emoji} reactions`}>
-                          <div className="reaction-popover-head">{reaction.emoji}</div>
-                          {names.map((name, index) => (
-                            <div className="reaction-person" key={`${reaction.emoji}-${reaction.by[index]}`}>{name}</div>
+                      {pickerOpen && (
+                        <div className="reaction-picker" role="menu" aria-label="choose reaction">
+                          {QUICK_REACTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              className="reaction-choice"
+                              onClick={() => {
+                                onReact(message.id, emoji);
+                                setPickerOpen(false);
+                              }}
+                            >
+                              {emoji}
+                            </button>
                           ))}
                         </div>
                       )}
                     </span>
-                  );
-                })}
-                {onReact && (
-                  <span className="reaction-wrap">
-                    <button className="reaction add" aria-label="add reaction" onClick={() => setPickerOpen(!pickerOpen)}>
-                      +
-                    </button>
-                    {pickerOpen && (
-                      <div className="reaction-picker" role="menu" aria-label="choose reaction">
-                        {QUICK_REACTIONS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            className="reaction-choice"
-                            onClick={() => {
-                              onReact(message.id, emoji);
-                              setPickerOpen(false);
-                            }}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </span>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
