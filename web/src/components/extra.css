@@ -928,7 +928,8 @@
   min-width: 0;
 }
 .message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
-.chat-view.is-group-room .message-row.is-web-author .bubble {
+.chat-view.is-group-room .message-row.is-web-author .bubble,
+.thread-pane-body .message-row.is-web-author .bubble {
   background: #BDB9AA;
   color: var(--ink);
 }
