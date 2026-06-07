@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, type CSSProperties } from "react";
+import { useDeferredValue, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/context.tsx";
 import { StatusDot, inkFor } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
@@ -139,8 +139,8 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
             {mode === "navigate" ? "NAV" : "INS"}
           </span>
         </button>
-        <button type="button" className="archive-open-btn" onClick={archive.openConsole} title="Open archive recovery console">
-          ARCHIVE
+        <button type="button" className="archive-open-btn" onClick={archive.openConsole} title="Open resume recovery console">
+          RESUME
         </button>
       </div>
       {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
@@ -167,11 +167,20 @@ function RoomItem({
   const archive = useArchiveWorkflow();
   const iconColor = otherColor ?? room.color;
   const iconInk = inkFor(iconColor);
+  const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelect(room.id);
+  };
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       className={`room-item${active ? " active" : ""}`}
       data-vim-item={`room-${room.id}`}
       onClick={() => onSelect(room.id)}
+      onKeyDown={handleKeyDown}
       onContextMenu={(e) =>
         openMenu(e, [
           ...(room.kind === "group" && onSpawnAgent
@@ -223,6 +232,21 @@ function RoomItem({
         <div className="room-preview">{room.lastPreview}</div>
       </div>
       {room.unread > 0 && <span className="unread">{room.unread}</span>}
-    </button>
+      {isArchivedGroup && (
+        <button
+          type="button"
+          className="room-resume-btn"
+          aria-label={`Resume #${room.name}`}
+          title={`Resume #${room.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            archive.resumeGroup(room);
+          }}
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <span className="room-resume-icon" aria-hidden="true" />
+        </button>
+      )}
+    </div>
   );
 }

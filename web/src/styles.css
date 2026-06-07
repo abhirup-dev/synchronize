@@ -747,6 +747,7 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
   transition: transform 80ms, box-shadow 80ms;
   position: relative;
+  cursor: pointer;
 }
 .room-item:hover {
   background: var(--paper);
@@ -870,6 +871,41 @@ button { font-family: inherit; cursor: pointer; }
 }
 .room-item.active .unread { background: var(--yellow); }
 
+.room-resume-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  background: var(--yellow);
+  color: var(--ink);
+  border: var(--line-md);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-chip);
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.room-resume-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-hover);
+}
+
+.room-resume-icon {
+  width: 0;
+  height: 0;
+  margin-left: 2px;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 9px solid currentColor;
+}
+
+.room-item.active .room-resume-btn {
+  background: var(--paper);
+  color: var(--ink);
+}
+
 /* Compact user bubble — replaces the old full-width user-footer. A small
    circular avatar pinned to the bottom-left of the sidebar; click for the
    default action, right-click for the full options menu (status, profile,
@@ -896,13 +932,14 @@ button { font-family: inherit; cursor: pointer; }
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   margin: 10px 14px 14px;
 }
 
 .archive-open-btn {
   height: 40px;
-  min-width: 96px;
+  min-width: 104px;
   padding: 0 12px;
   background: var(--yellow);
   color: var(--ink);

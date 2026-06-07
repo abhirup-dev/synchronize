@@ -1041,6 +1041,9 @@ export class DaemonDataSource implements DataSource {
       const members = memberByGroup.get(group.group_id) ?? [];
       const activeMembers = members.filter((member) => member.active);
       const archivedMembers = members.filter((member) => member.member_state === "archived");
+      const archiveEligibleMembers = members.filter((member) => member.tool !== "web" && !member.peer_id.startsWith("web:"));
+      const activeArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.active);
+      const archivedArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.member_state === "archived");
       const roomId = groupRoomId(group.group_id);
       this.groupNameByRoomId.set(roomId, group.name);
       const summary = summaryByGroup.get(group.group_id);
@@ -1053,7 +1056,7 @@ export class DaemonDataSource implements DataSource {
         members: activeMembers.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
         memberStates: Object.fromEntries(members.map((member) => [member.peer_id, member.member_state ?? (member.active ? "active" : "left")])),
-        archiveState: archivedMembers.length > 0 ? (activeMembers.length > 0 ? "mixed" : "archived") : "active",
+        archiveState: archivedArchiveEligibleMembers.length > 0 ? (activeArchiveEligibleMembers.length > 0 ? "mixed" : "archived") : "active",
         activeMemberCount: activeMembers.length,
         archivedMemberCount: archivedMembers.length,
         paths: (pathsByGroup.get(group.group_id) ?? []).map((path) => ({
