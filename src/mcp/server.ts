@@ -9,6 +9,7 @@ import {
   type SynchronizeMcpServer,
 } from "./state.ts";
 import type { ToolContext } from "./tools/context.ts";
+import { registerArchiveTools } from "./tools/archive.ts";
 import { registerGroupTools } from "./tools/groups.ts";
 import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
@@ -45,6 +46,7 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerMessagingTools(ctx);
   registerGroupTools(ctx);
   registerLaunchTools(ctx);
+  registerArchiveTools(ctx);
   registerMediaTools(ctx);
   registerQueryTools(ctx);
   registerReactionTools(ctx);
