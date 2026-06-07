@@ -106,16 +106,17 @@ document to load (or whether the answer is in current code instead):
 
 | Topic | First check (current code) | Historical reference (load only if code is unclear) |
 |---|---|---|
-| Peer lifecycle and ownership | `src/api/peers.ts`, `src/mcp/lifecycle.ts`, `extensions/pi-synchronize/src/index.ts`, plus `peer-lifecycle.md` | `session-tracker/plan-group-policy-v0.md` (soft-delete section) |
-| Group + alias semantics | `src/api/groups.ts`, `src/db.ts`, plus `delivery-forensics.md` | `docs/group-sync-integrity.md` |
-| Mention resolution | `src/daemon.ts` (`MENTION_TOKEN_RE`) | `session-tracker/plan-group-policy-v0.md` (mentions section) |
-| Thread normalization | `src/daemon.ts` (`parent_event_id` logic) | `session-tracker/plan-group-policy-v0.md` (threads section) |
+| Peer lifecycle and ownership | `src/daemon/routes/peers.ts`, `src/daemon/repo/peers.ts`, `src/mcp/lifecycle.ts`, `extensions/pi-synchronize/src/index.ts`, plus `peer-lifecycle.md` | `session-tracker/plan-group-policy-v0.md` (soft-delete section) |
+| Group + alias semantics | `src/daemon/routes/groups.ts`, `src/daemon/repo/groups.ts`, `src/db.ts`, plus `delivery-forensics.md` | `docs/group-sync-integrity.md` |
+| Mention resolution | `src/daemon/server.ts` (`MENTION_TOKEN_RE`) plus `src/daemon/routes/{groups,messaging}.ts` | `session-tracker/plan-group-policy-v0.md` (mentions section) |
+| Thread normalization | `src/daemon/server.ts`, `src/daemon/routes/{groups,messaging,threads}.ts`, `src/daemon/repo/threads.ts` | `session-tracker/plan-group-policy-v0.md` (threads section) |
 | SessionStart hook & launch-id correlation | `src/cli/commands/hook.ts`, `scripts/claude-hooks-config.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
-| agent_sessions table | `src/db.ts`, `src/api/agent-sessions.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
-| Durable launch lifecycle and remote-executor seam | `src/launch/*`, `src/daemon.ts`, `src/db.ts` | `docs/plans/launch-lifecycle-kernel.md` |
+| agent_sessions table | `src/db.ts`, `src/daemon/routes/agent-sessions.ts`, `src/daemon/repo/agent-sessions.ts`, `src/api/agent-sessions.ts` | `session-tracker/plan-advanced-synchronize-registering-hooks.md` |
+| Durable launch lifecycle and remote-executor seam | `src/launch/*`, `src/daemon/repo/launch.ts`, `src/db.ts` | `docs/plans/launch-lifecycle-kernel.md` |
 | CLI completion architecture | `src/cli/*` | `docs/plans/cli-completion-carapace-v0.md` |
-| Web UI data flow | `src/web/*` + `web/DESIGN.md` | `web/DESIGN.md` itself is current; load it directly when the question is UI-design |
-| Local web session identity | `src/daemon.ts`, `web/src/data/daemon.ts`, plus `glossary.md` | `docs/plans/web-local-session-store.md` |
+| Runtime/remote configuration | `src/config.ts`, `src/cli/commands/remote.ts`, `docs/configuration/README.md` | `docs/plans/config-unification.md`, `docs/plans/multi-machine-cli-devex.md` |
+| Web UI data flow | `src/daemon/routes/web.ts`, `src/daemon/services/web-events.ts`, `web/src/*`, `web/DESIGN.md` | `web/DESIGN.md` itself is current; load it directly when the question is UI-design |
+| Local web session identity | `src/daemon/routes/web.ts`, `src/daemon/repo/peers.ts`, `web/src/data/daemon.ts`, plus `glossary.md` | `docs/plans/web-local-session-store.md` |
 | tmux integration harness | `scripts/integration-*.py`, `scripts/integration-aoe/` | `docs/integration-tmux.md` |
 
 ---

@@ -1,38 +1,39 @@
-# Graphify And Unified Memory Readiness
+# Graphify Navigation
 
-Use this when preparing `synchronize` for the unified query memory skill or checking whether Graphify is current.
+Use this memory to run or interpret Graphify without re-learning repo-specific
+scope rules.
 
-## Current Graphify setup
+## Where to look
 
-- `graphify` is installed at `/Users/abhirupdas/.local/bin/graphify`; version checked on 2026-05-30 was `0.8.14`.
-- The intended project graph is the root `graphify-out/graph.json` under `/Users/abhirupdas/Codes/Personal/synchronize`.
-- `graphify-out/` is ignored by git and should be treated as regenerated output.
-- `.graphifyignore` should exclude generated/local roots: `graphify-out/`, `node_modules/`, `web/node_modules/`, `web/dist/`, `coverage/`, `.codex/`, `.synchronize-itest/`, `.demo-synchronize/`, `.claude/launch.json`, `.pytest_cache/`, `.claude/worktrees/`, `work/`, `.beads/`, `.serena/`.
+- `.graphifyignore` is the source of truth for Graphify scope.
+- `graphify-out/graph.json` is the regenerated project graph.
+- `graphify-out/` is ignored by git and should not be treated as a durable
+  source file.
 
-## Verified clean rebuild
+## Current scope rule
 
-On 2026-05-30, a clean full rebuild was run after tightening `.graphifyignore`:
+Graphify should exclude generated/local roots including `graphify-out/`,
+`node_modules/`, `web/dist/`, `.beads/`, `.serena/`, `.understand-anything/`,
+test/demo runtime homes, worktrees, and local agent/cache folders. Keep that
+list in `.graphifyignore`, not in memory.
 
-```bash
-rm -f graphify-out/graph.json graphify-out/GRAPH_REPORT.md graphify-out/graph.html
-graphify extract . --backend gemini --out . --max-concurrency 1
+## Latest known clean graph
+
+On 2026-06-07, a clean scoped extraction at commit
+`2e89c000a2b245846f7f302dec78f1733e0dcdad` produced:
+
+```text
+2391 nodes
+5605 links
+134 communities
+0 ignored-source leakage hits
 ```
 
-Result: `graphify-out/graph.json` contained 1,223 nodes, 2,485 edges, and 89 communities. Semantic extraction used 27 cached docs and re-extracted 18 docs. No tracked file was newer than the rebuilt graph at verification time.
+Topic coverage included config, daemon, remote profiles, archive/resume, web,
+launch, and MCP.
 
-## Readiness checks
+## Gotcha
 
-Run these from the repo root:
-
-```bash
-graphify benchmark graphify-out/graph.json
-graphify query "LaunchService reconcileLaunch bridge_launch agent-sessions launch" --graph graphify-out/graph.json --budget 2400
-```
-
-The targeted launch query should surface `src/launch/service.ts`, `src/launch/backend.ts`, `src/launch/build.ts`, `src/daemon.ts`, `src/api/agent-sessions.ts`, `src/mcp/tools/launch.ts`, and launch tests rather than local/generated folders.
-
-## Gotchas
-
-- `graphify update .` refreshes code incrementally but can preserve stale nodes from previously indexed ignored/generated folders. Use clean `extract` after changing ignore rules.
-- Graphify broad queries can choose generic nodes like `Agent`; use exact terms such as `LaunchService`, `reconcileLaunch`, `bridge_launch`, or `/agent-sessions/launch` for launch work.
-- Graphify is a routing/orientation layer. Use raw source/tests for exact line-level claims.
+`graphify update .` can preserve stale nodes from previously indexed ignored
+folders. After changing ignore rules, move top-level current graph/cache files
+aside and run `graphify extract . --out .`.

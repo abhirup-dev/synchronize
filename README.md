@@ -568,23 +568,44 @@ Important details:
 - Media files are copied into the group MediaStore by default.
 - `index.jsonl` is intentionally easy to inspect with `rg`, `jq`, or `find`.
 
-## Environment
+## Configuration
+
+Runtime settings resolve in this order:
 
 ```text
-SYNCHRONIZE_HOME   Runtime directory. Default: ~/.synchronize
-SYNCHRONIZE_BIND   Daemon bind host. Default: 127.0.0.1
-SYNCHRONIZE_PORT   Daemon port. Default: 58405
-SYNCHRONIZE_TOKEN  Bearer token. Required when SYNCHRONIZE_BIND is not localhost
-SYNCHRONIZE_REMOTE_URL  Existing daemon URL for remote clients; disables local autostart
-SYNCHRONIZE_MCP_MODE  codex or claude. Default: codex
-SYNCHRONIZE_PEER_ID   Stable MCP/Pi peer id across restarts
-SYNCHRONIZE_SESSION_NAME  Stable host-agent session name for hooks/Pi
-SYNCHRONIZE_HOOK_ENABLE   Enables hook ingestion when set to 1
-SYNCHRONIZE_LAUNCH_ID     Correlates launch/hook registration events
-SYNCHRONIZE_WEB_DIST      Override built web asset directory
+defaults < $SYNCHRONIZE_HOME/config.toml < environment variables
 ```
 
-Use a separate test environment:
+Use `config.toml` for persistent machine/operator settings and named remote
+profiles. Use environment variables for one-off overrides, per-process agent
+wiring, and test harness isolation. The default runtime directory is
+`~/.synchronize`, so the default config file is `~/.synchronize/config.toml`.
+
+Minimal local daemon config:
+
+```toml
+[daemon]
+bind = "127.0.0.1"
+port = 58405
+```
+
+Named remote profiles let CLI and MCP clients target an existing daemon without
+retyping `SYNCHRONIZE_REMOTE_URL`:
+
+```toml
+active = "hub"
+
+[remote.hub]
+url = "http://100.x.y.z:8787"
+token_env = "SYNCHRONIZE_TOKEN"
+health_timeout_ms = 5000
+```
+
+See [docs/configuration/](docs/configuration/README.md) for the full config and
+environment reference. It is split by use case: runtime daemon settings, remote
+profiles, environment variables, daemon env files, and test harnesses.
+
+Use a separate runtime home for manual tests:
 
 ```bash
 SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
@@ -592,7 +613,8 @@ SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
 
 ## LAN Mode
 
-Localhost mode needs no token. Non-localhost bind requires a token:
+Localhost mode needs no token. Non-localhost bind requires a token. For
+one-off hosting, use:
 
 ```bash
 bun run src/cli.ts host \
@@ -614,9 +636,12 @@ export SYNCHRONIZE_REMOTE_URL='http://100.x.y.z:8787'
 export SYNCHRONIZE_TOKEN='replace-with-a-secret'
 ```
 
-When `SYNCHRONIZE_REMOTE_URL` is set, CLI and MCP clients use that daemon
-directly and do not read `daemon.json` or start a local daemon. If the remote
-daemon is unreachable or rejects the token, the client exits loudly.
+For persistent clients, prefer a named `[remote.<name>]` profile in
+`config.toml`; environment variables remain the one-off override path. When a
+remote URL is resolved from either env or the active profile, CLI and MCP
+clients use that daemon directly and do not read `daemon.json` or start a local
+daemon. If the remote daemon is unreachable or rejects the token, the client
+exits loudly.
 
 The daemon expects:
 

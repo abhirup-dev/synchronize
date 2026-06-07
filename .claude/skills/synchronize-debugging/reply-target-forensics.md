@@ -32,6 +32,9 @@ Older rows may have null direct context after migration.
 
 ## MCP SQL Examples
 
+For full copy-paste SQL, use `docs/debugging/sql-queries.md`. Keep this file as
+the short mental model and report template.
+
 Exact message answered plus thread root:
 
 ```text
