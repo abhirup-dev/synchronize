@@ -67,22 +67,31 @@ def remote_daemon_from_args(args: argparse.Namespace) -> RemoteDaemonConfig:
     return RemoteDaemonConfig(url=raw_url or None, token=raw_token or None)
 
 
-def remote_env(remote: RemoteDaemonConfig) -> dict[str, str]:
-    env: dict[str, str] = {}
+_REMOTE_ONLY = ("SYNCHRONIZE_REMOTE_URL", "SYNCHRONIZE_TOKEN", "SYNCHRONIZE_HEALTH_TIMEOUT_MS")
+_LOCAL_ONLY = ("SYNCHRONIZE_PORT",)
+
+
+def daemon_connection_env(remote: RemoteDaemonConfig, sync_home: Path) -> dict[str, str]:
+    env = {"SYNCHRONIZE_HOME": str(sync_home)}
     if remote.enabled and remote.url:
         env["SYNCHRONIZE_REMOTE_URL"] = remote.url
         env["SYNCHRONIZE_HEALTH_TIMEOUT_MS"] = "5000"
         if remote.token:
             env["SYNCHRONIZE_TOKEN"] = remote.token
+    else:
+        env["SYNCHRONIZE_PORT"] = "0"
     return env
 
 
+def remote_env(remote: RemoteDaemonConfig) -> dict[str, str]:
+    # Compatibility helper for Pi/Claude MCP env snippets that already include
+    # their own SYNCHRONIZE_HOME. Keep the remote-mode half delegated to the
+    # canonical resolver so URL/token/timeout cannot drift.
+    return {key: value for key, value in daemon_connection_env(remote, Path(".")).items() if key != "SYNCHRONIZE_HOME" and key not in _LOCAL_ONLY}
+
+
 def synchronize_shell_env(remote: RemoteDaemonConfig, sync_home: Path, extra: dict[str, str] | None = None) -> str:
-    env = {
-        "SYNCHRONIZE_HOME": str(sync_home),
-        **(remote_env(remote) if remote.enabled else {"SYNCHRONIZE_PORT": "0"}),
-        **(extra or {}),
-    }
+    env = {**daemon_connection_env(remote, sync_home), **(extra or {})}
     return " ".join(f"{key}={shlex.quote(value)}" for key, value in env.items())
 
 
@@ -143,18 +152,11 @@ def synchronize_env(
     remote: RemoteDaemonConfig | None = None,
 ) -> dict[str, str]:
     remote = remote or RemoteDaemonConfig()
-    env = {
-        **os.environ,
-        "SYNCHRONIZE_HOME": str(sync_home),
-        **(extra or {}),
-    }
-    env.pop("SYNCHRONIZE_REMOTE_URL", None)
-    env.pop("SYNCHRONIZE_TOKEN", None)
-    if remote.enabled:
-        env.update(remote_env(remote))
-        env.pop("SYNCHRONIZE_PORT", None)
-    else:
-        env["SYNCHRONIZE_PORT"] = "0"
+    env = {**os.environ}
+    for key in (*_REMOTE_ONLY, *_LOCAL_ONLY):
+        env.pop(key, None)
+    env.update(daemon_connection_env(remote, sync_home))
+    env.update(extra or {})
     return env
 
 

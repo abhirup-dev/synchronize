@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from sync_itest_aoe.runtime import RemoteDaemonConfig, synchronize_env, synchronize_shell_env
+from sync_itest_aoe.runtime import RemoteDaemonConfig, daemon_connection_env, synchronize_env, synchronize_shell_env
 from sync_itest_aoe.sync_rest import SyncRestClient
 
 
@@ -17,7 +17,11 @@ class RemoteDaemonRuntimeTest(unittest.TestCase):
             sync_home = Path(tmp)
             with patch.dict(
                 os.environ,
-                {"SYNCHRONIZE_REMOTE_URL": "http://stale.example", "SYNCHRONIZE_TOKEN": "stale"},
+                {
+                    "SYNCHRONIZE_REMOTE_URL": "http://stale.example",
+                    "SYNCHRONIZE_TOKEN": "stale",
+                    "SYNCHRONIZE_HEALTH_TIMEOUT_MS": "1",
+                },
                 clear=False,
             ):
                 env = synchronize_env(sync_home)
@@ -26,6 +30,7 @@ class RemoteDaemonRuntimeTest(unittest.TestCase):
             self.assertEqual(env["SYNCHRONIZE_PORT"], "0")
             self.assertNotIn("SYNCHRONIZE_REMOTE_URL", env)
             self.assertNotIn("SYNCHRONIZE_TOKEN", env)
+            self.assertNotIn("SYNCHRONIZE_HEALTH_TIMEOUT_MS", env)
 
     def test_synchronize_env_remote_mode_targets_existing_daemon(self) -> None:
         with tempfile.TemporaryDirectory(prefix="synchronize-remote-env-") as tmp:
@@ -44,6 +49,17 @@ class RemoteDaemonRuntimeTest(unittest.TestCase):
             self.assertIn("SYNCHRONIZE_REMOTE_URL=http://100.126.163.80:58412", shell_env)
             self.assertIn("SYNCHRONIZE_TOKEN=secret", shell_env)
             self.assertIn("SYNCHRONIZE_HEALTH_TIMEOUT_MS=5000", shell_env)
+
+    def test_daemon_connection_env_is_mutually_exclusive(self) -> None:
+        sync_home = Path("/tmp/sync-home")
+        local = daemon_connection_env(RemoteDaemonConfig(), sync_home)
+        remote = daemon_connection_env(RemoteDaemonConfig(url="http://hub", token="secret"), sync_home)
+
+        self.assertEqual(local, {"SYNCHRONIZE_HOME": str(sync_home), "SYNCHRONIZE_PORT": "0"})
+        self.assertEqual(remote["SYNCHRONIZE_HOME"], str(sync_home))
+        self.assertEqual(remote["SYNCHRONIZE_REMOTE_URL"], "http://hub")
+        self.assertEqual(remote["SYNCHRONIZE_TOKEN"], "secret")
+        self.assertNotIn("SYNCHRONIZE_PORT", remote)
 
     def test_sync_rest_client_uses_remote_base_url_and_bearer_auth(self) -> None:
         requests = []
