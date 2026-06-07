@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildAgentCommand, buildLaunchEnv, isLaunchTool, type LaunchTool } from "./build.ts";
+import { buildAgentCommand, buildAgentResumeCommand, buildLaunchEnv, isLaunchTool, type LaunchTool, type ResumeTarget } from "./build.ts";
 import type { LaunchSpec, SessionBackend } from "./backend.ts";
 import { transitionLaunch, type LaunchLifecycleEvent } from "./lifecycle.ts";
 import {
@@ -37,6 +37,18 @@ export interface LaunchRequest {
   thinking?: string;
   /** Tool-specific passthrough args. Provider/model/thinking args are owned by the launch request. */
   args?: string[];
+  /**
+   * Pin the identity instead of minting a fresh one. Resume reuses the ARCHIVED
+   * peer_id so the re-registration on boot matches (and resurrects) the original
+   * identity via host_session_id correlation + ENV_PEER_ID.
+   */
+  peerId?: string;
+  /**
+   * When set, build the FAITHFUL-RESUME command (claude --resume / pi --session)
+   * instead of a fresh launch, so the spawned agent continues its prior
+   * conversation rather than starting over.
+   */
+  resume?: ResumeTarget;
 }
 
 /**
@@ -289,9 +301,10 @@ function stripOption(args: string[], option: string): string[] {
   return filtered;
 }
 
-function forceClaudeLaunchDefaults(args: string[], model: string, thinking: string): string[] {
+function forceClaudeLaunchDefaults(args: string[], model: string, _thinking: string): string[] {
+  // Pin the model; do NOT set --effort (left to Claude's default).
   const filtered = stripOption(stripOption(args, "--model"), "--effort");
-  return ["--model", model, "--effort", thinking, ...filtered];
+  return ["--model", model, ...filtered];
 }
 
 function forcePiLaunchDefaults(args: string[], model: string, thinking: string): string[] {
@@ -332,13 +345,23 @@ export function resolveLaunchSpec(
   return {
     title,
     tool: req.tool,
-    command: buildAgentCommand(req.tool, withLaunchDefaults(req)),
-    env: buildLaunchEnv({
-      launchId: ids.launchId,
-      sessionName: req.name,
-      peerId: ids.peerId,
-      home: ids.home,
-    }),
+    command: req.resume
+      ? buildAgentResumeCommand(req.tool, req.resume, withLaunchDefaults(req))
+      : buildAgentCommand(req.tool, withLaunchDefaults(req)),
+    env: {
+      ...buildLaunchEnv({
+        launchId: ids.launchId,
+        sessionName: req.name,
+        peerId: ids.peerId,
+        home: ids.home,
+      }),
+      // Headless Claude under AOE/tmux: disable the alternate-screen (fullscreen)
+      // renderer so the dev-channel confirm prompt renders inline where the AOE
+      // backend's auto-confirm (capture-pane + Enter) can see and dismiss it.
+      // Without this the prompt is hidden in the alt buffer → auto-confirm
+      // exhausts its attempts and the (resumed) session dies. Pi has no such prompt.
+      ...(req.tool === "claude" ? { CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: "1" } : {}),
+    },
     cwd: req.repo,
     ...(req.group ? { group: req.group } : {}),
   };
@@ -390,7 +413,8 @@ export class LaunchService {
 
   async launch(req: LaunchRequest): Promise<LaunchResult> {
     const launchId = this.mintLaunchId();
-    const peerId = this.mintPeerId();
+    // Resume pins the archived peer_id; a fresh launch mints a new one.
+    const peerId = req.peerId ?? this.mintPeerId();
     const spec = resolveLaunchSpec(req, { launchId, peerId, home: this.home });
     if (this.db) {
       const now = this.nowIso();
@@ -408,6 +432,10 @@ export class LaunchService {
         model: req.model ?? null,
         thinking: req.thinking ?? null,
         args: req.args ?? null,
+        // Persist the resume target so the durable worker (specFromRow) respawns
+        // as a faithful resume; null for a fresh launch so it stays a fresh launch.
+        resumeHostSessionId: req.resume?.hostSessionId ?? null,
+        resumeHostSessionFile: req.resume?.hostSessionFile ?? null,
         now,
       });
       appendLaunchEvent(this.db, {
@@ -468,6 +496,19 @@ export class LaunchService {
   /** Tear down a backend session by its (derivable) title. */
   async stop(title: string): Promise<void> {
     await this.backend.stop(title);
+  }
+
+  /**
+   * Real-time liveness of a backend session (resume gate, D8). Returns false on
+   * backend error so a flaky backend never blocks resume forever — the reap/kill
+   * arms are idempotent.
+   */
+  async hasBackendSession(title: string): Promise<boolean> {
+    try {
+      return (await this.backend.list()).some((session) => session.title === title);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -586,6 +627,12 @@ export class LaunchService {
 
   private async specFromRow(row: LaunchIntentRow): Promise<LaunchSpec> {
     const args = row.args_json ? (JSON.parse(row.args_json) as string[]) : undefined;
+    // Reconstruct the resume target ONLY when one was recorded (a resume launch).
+    // Fresh launches store null here, so they stay fresh (`pi` / `claude`, no
+    // --session/--resume) — including on respawn/retry of this same row.
+    const resume = row.resume_host_session_id
+      ? { hostSessionId: row.resume_host_session_id, hostSessionFile: row.resume_host_session_file }
+      : undefined;
     const spec = resolveLaunchSpec(
       {
         tool: row.tool,
@@ -595,6 +642,7 @@ export class LaunchService {
         ...(row.model ? { model: row.model } : {}),
         ...(row.thinking ? { thinking: row.thinking } : {}),
         ...(args ? { args } : {}),
+        ...(resume ? { resume } : {}),
       },
       { launchId: row.launch_id, peerId: row.peer_id, home: this.home },
     );
@@ -737,6 +785,11 @@ export async function provisionPiLaunchRuntime(input: { home: string; repoRoot: 
     SYNCHRONIZE_CLI: join(input.repoRoot, "bin", "synchronize"),
     SYNCHRONIZE_MCP: join(input.repoRoot, "bin", "synchronize-mcp"),
     SYNCHRONIZE_PI_DEBUG: "1",
+    // A non-localhost daemon requires bearer auth even for same-machine children.
+    // Propagate the daemon's remote/auth env so resumed Pi MCP + extension calls
+    // can authenticate to the hub instead of discovering an unauthenticated URL.
+    ...(process.env.SYNCHRONIZE_REMOTE_URL ? { SYNCHRONIZE_REMOTE_URL: process.env.SYNCHRONIZE_REMOTE_URL } : {}),
+    ...(process.env.SYNCHRONIZE_TOKEN ? { SYNCHRONIZE_TOKEN: process.env.SYNCHRONIZE_TOKEN } : {}),
   };
 }
 

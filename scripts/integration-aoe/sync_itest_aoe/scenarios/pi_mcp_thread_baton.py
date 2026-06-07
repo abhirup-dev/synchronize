@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .pi_mcp_dm import DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario
-from ..runtime import HarnessError, add_remote_daemon_args
+from ..runtime import HarnessError
 
 DEFAULT_THREAD_BATON_AGENTS = 3
 
@@ -204,7 +204,7 @@ class PiMcpThreadBatonScenario(PiMcpDmScenario):
         while time.time() < deadline:
             self.assert_no_baton_loop()
             try:
-                events = self.rest.get_thread(thread_of, peer_id=observer_peer_id).get("events", [])
+                events = self.rest.group_history(group_name, peer_id=observer_peer_id, thread_of=thread_of, limit=200).get("events", [])
             except HarnessError:
                 events = []
             for event in events:
@@ -303,7 +303,7 @@ class PiMcpThreadBatonScenario(PiMcpDmScenario):
             if aliases.get(peer_id) != alias:
                 raise HarnessError(f"Baton group alias mismatch for {alias}: {aliases}")
 
-        thread = self.rest.get_thread(root_id, peer_id=peer_ids["alpha"])
+        thread = self.rest.group_history(group_name, peer_id=peer_ids["alpha"], thread_of=root_id, limit=200)
         thread_ids = [event.get("event_id") for event in thread.get("events", []) if event.get("type") == "group_message"]
         expected_ids = [
             root_event.get("event_id"),
@@ -344,7 +344,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
     parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
-    add_remote_daemon_args(parser)
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=120, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=120, help="Seconds to wait for Pi extension auto-registration.")

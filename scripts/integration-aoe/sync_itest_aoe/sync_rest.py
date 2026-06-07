@@ -63,6 +63,24 @@ class SyncRestClient:
     def agent_sessions(self, tool: str) -> dict[str, Any]:
         return self.http_json(f"/agent-sessions?tool={url_quote(tool)}")
 
+    def agent_sessions_for_peer(self, peer_id: str) -> dict[str, Any]:
+        return self.http_json(f"/agent-sessions?peer_id={url_quote(peer_id)}")
+
+    def archive_session(self, *, peer_id: str, reason: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if reason is not None:
+            body["reason"] = reason
+        return self.http_json("/archive/session", method="POST", body=body)
+
+    def resume_session(self, *, peer_id: str, force: bool = False) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if force:
+            body["force"] = True
+        return self.http_json("/resume/session", method="POST", body=body)
+
+    def list_archived(self) -> dict[str, Any]:
+        return self.http_json("/archive/sessions")
+
     def list_groups(self) -> dict[str, Any]:
         return self.http_json("/groups")
 
@@ -118,19 +136,14 @@ class SyncRestClient:
         name: str,
         *,
         peer_id: str,
+        thread_of: int | None = None,
         cursor: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
         params = {"peer_id": peer_id, "cursor": str(cursor), "limit": str(limit)}
+        if thread_of is not None:
+            params["thread_of"] = str(thread_of)
         return self.http_json(f"/groups/{url_quote(name)}/history?{urllib.parse.urlencode(params)}")
-
-    def get_thread(self, root_event_id: int, *, peer_id: str, format: str = "events") -> dict[str, Any]:
-        params = {
-            "peer_id": peer_id,
-            "format": format,
-            "selector_strategy": "all",
-        }
-        return self.http_json(f"/threads/{root_event_id}?{urllib.parse.urlencode(params)}")
 
 
 def url_quote(value: str) -> str:

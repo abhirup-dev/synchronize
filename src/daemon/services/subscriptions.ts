@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 
+import { isPeerArchived } from "../repo/archive.ts";
 import { eventForRecipient, type EventRow } from "../repo/events.ts";
 
 export interface EventSubscriber {
@@ -24,6 +25,10 @@ export async function notifySubscribers(
 ): Promise<void> {
   await Promise.all(
     peerIds.map(async (peerId) => {
+      if (isPeerArchived(ctx.db, peerId)) {
+        log(`notification skipped event_id=${event.event_id} peer_id=${peerId}: archived; durable inbox fallback only`);
+        return;
+      }
       const subscriber = ctx.subscribers.get(peerId);
       if (!subscriber) {
         log(`notification pending event_id=${event.event_id} peer_id=${peerId}: no active subscriber; durable inbox fallback only`);

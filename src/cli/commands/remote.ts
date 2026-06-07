@@ -34,11 +34,12 @@ const USAGE = `synchronize remote <subcommand>
   remove <name>              delete a profile
   provision <ssh-host>       verify remote tools + non-interactive PATH [--dry-run]
   sync <ssh-host> --hub-url <url> [--path <remote-dir>] [--token <t> | --token-env <ENV>]
+             [--daemon-bind <ip>] [--lease-ms <n>] [--peer-retention-ms <n>] [--sweep-interval-ms <n>]
              [--skip-install] [--dry-run]   rsync runtime + write remote config + verify
   harness <ssh-host> --hub-url <url> [--scenario <name> | --all] [--token <t>]
              [--path <remote-dir>] [--dry-run] [-- <extra scenario args>]
              run the Python AOE harness on the remote against the hub
-             scenarios: cli-dm cli-group-policy pi-dm pi-group-policy pi-thread-baton pi-revival
+             scenarios: cli-dm cli-group-policy pi-dm pi-group-policy pi-thread-baton pi-revival pi_mcp_archive_resume
   status                     hub health + agent roster grouped by machine
   doctor                     readiness checklist for the active connection`;
 
@@ -188,6 +189,10 @@ async function syncRemote(argv: string[]): Promise<void> {
     hubUrl,
     ...(flags.opts.token ? { token: flags.opts.token } : {}),
     ...(flags.opts["token-env"] ? { tokenEnv: flags.opts["token-env"] } : {}),
+    ...(flags.opts["daemon-bind"] ? { daemonBind: flags.opts["daemon-bind"] } : {}),
+    ...(positiveFlag(flags, "lease-ms")),
+    ...(positiveFlag(flags, "peer-retention-ms")),
+    ...(positiveFlag(flags, "sweep-interval-ms")),
     skipInstall: flags.bools.has("skip-install"),
   });
   await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
@@ -353,6 +358,15 @@ function parseFlags(argv: string[]): Flags {
     }
   }
   return flags;
+}
+
+function positiveFlag(flags: Flags, key: "lease-ms" | "peer-retention-ms" | "sweep-interval-ms"): Partial<Record<"leaseMs" | "peerRetentionMs" | "sweepIntervalMs", number>> {
+  const raw = flags.opts[key];
+  if (raw === undefined) return {};
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) fail(`--${key} must be a positive number`);
+  const prop = key === "lease-ms" ? "leaseMs" : key === "peer-retention-ms" ? "peerRetentionMs" : "sweepIntervalMs";
+  return { [prop]: Math.trunc(n) };
 }
 
 function fail(message: string): never {

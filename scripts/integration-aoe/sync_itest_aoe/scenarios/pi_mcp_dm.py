@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -48,12 +49,27 @@ class PiMcpDmScenario:
         self.state_root = Path(args.state_dir).expanduser().resolve() if args.state_dir else self.repo / ".synchronize-itest"
         self.run_dir = Path(args.run_dir).expanduser().resolve() if args.run_dir else self.state_root / "runs" / self.run_id
         self.pi_home = self.run_dir / "pi-agent"
-        self.pi_sessions = self.run_dir / "pi-sessions"
         self.sync_home = self.run_dir / "synchronize-home"
+        # Pi session transcripts MUST live where the daemon's resume launch will
+        # look for them. The daemon's provisionPiLaunchRuntime always points
+        # PI_CODING_AGENT_SESSION_DIR at <sync_home>/pi-sessions (not keyed by
+        # peer), so a faithful `pi --session <id>` resume only resolves if the
+        # original agent wrote its transcript there too. (In a global install
+        # this is a non-issue — one PI home — but the harness runs each agent in
+        # a simulated PI home, so we must align the session dir with the daemon's
+        # deterministic convention.)
+        self.pi_sessions = self.sync_home / "pi-sessions"
         self.profile = args.profile or f"sync-pi-itest-{self.repo.name}-{self.run_id.lower()}"
         self.profile_cleanup_prefix = args.profile or f"sync-pi-itest-{self.repo.name}-"
         self.agent_names = [f"{args.agent_prefix}-{index}" for index in range(1, args.agents + 1)]
         self.remote = remote_daemon_from_args(args)
+        if self.remote.enabled:
+            # In remote mode, /resume/session runs in the daemon process and Pi
+            # resumes from the daemon's conventional <SYNCHRONIZE_HOME>/pi-sessions.
+            # For the VPS self-hosted topology the harness runs on that same host,
+            # so seed transcripts there instead of in the harness-local sync_home.
+            self.pi_sessions = Path(os.environ.get("SYNCHRONIZE_REMOTE_PI_SESSION_DIR", str(Path.home() / ".synchronize" / "pi-sessions"))).expanduser()
+        self.owns_pi_sessions = not self.remote.enabled
         self.env = synchronize_env(self.sync_home, remote=self.remote)
         self.writer = ArtifactWriter(self.run_dir)
         self.runner = CommandRunner(self.repo, self.env, self.writer)
@@ -315,7 +331,8 @@ class PiMcpDmScenario:
         if not self.remote.enabled:
             stop_daemon(self.sync_home, self.writer)
         shutil.rmtree(self.pi_home, ignore_errors=True)
-        shutil.rmtree(self.pi_sessions, ignore_errors=True)
+        if self.owns_pi_sessions:
+            shutil.rmtree(self.pi_sessions, ignore_errors=True)
         shutil.rmtree(self.sync_home, ignore_errors=True)
 
     def cleanup_dirty_state_before_run(self) -> None:

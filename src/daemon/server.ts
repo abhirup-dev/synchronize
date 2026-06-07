@@ -59,6 +59,8 @@ import {
   ensurePeer,
   getPeer,
   LOCAL_WEB_PEER_ID,
+  selectExpiredPeerIds,
+  selectStoppedLaunchPeerIds,
   softDeletePeerIfPresent,
   type PeerRow,
 } from "./repo/peers.ts";
@@ -110,7 +112,7 @@ interface DiscoveryFile {
 
 interface MentionWarning {
   token: string;
-  reason: "alias_not_in_group";
+  reason: "alias_not_in_group" | "alias_archived";
 }
 
 export interface InboxRow extends EventRow {
@@ -144,6 +146,15 @@ export interface SummaryGroupRow {
 
 export function log(message: string): void {
   console.error(`[synchronize-daemon] ${message}`);
+}
+
+export function debugEnabled(): boolean {
+  const flag = process.env.SYNCHRONIZE_DEBUG;
+  return Boolean(flag) && flag !== "0" && flag !== "false";
+}
+
+export function debug(message: string): void {
+  if (debugEnabled()) console.error(`[synchronize-daemon:debug] ${message}`);
 }
 
 function formatError(error: unknown): string {
@@ -222,6 +233,9 @@ export function resolveMentions(
   const lookup = db.query<{ peer_id: string }, [number, string]>(
     "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND alias = ?",
   );
+  const archivedAliasLookup = db.query<{ peer_id: string }, [number, string]>(
+    "SELECT peer_id FROM group_members WHERE group_id = ? AND member_state = 'archived' AND alias = ?",
+  );
   const peerIds: string[] = [];
   const warnings: MentionWarning[] = [];
   for (const token of tokens) {
@@ -232,8 +246,16 @@ export function resolveMentions(
     }
     const normalizedToken = normalizeMentionToken(token);
     const normalizedRow = normalizedToken !== token && normalizedToken ? lookup.get(groupId, normalizedToken) : null;
-    if (normalizedRow) peerIds.push(normalizedRow.peer_id);
-    else warnings.push({ token: `@${normalizedToken || token}`, reason: "alias_not_in_group" });
+    if (normalizedRow) {
+      peerIds.push(normalizedRow.peer_id);
+      continue;
+    }
+    // Distinguish "archived" from "unknown": an archived seat keeps its alias
+    // reserved (member_state='archived', active=0), so it won't match the
+    // active-only lookup above. Surfacing alias_archived lets the web warn
+    // "they're archived — resume to reach them" instead of "no such alias".
+    const archived = archivedAliasLookup.get(groupId, token) ?? (normalizedToken && normalizedToken !== token ? archivedAliasLookup.get(groupId, normalizedToken) : null);
+    warnings.push({ token: `@${normalizedToken || token}`, reason: archived ? "alias_archived" : "alias_not_in_group" });
   }
   return { peerIds, warnings };
 }
@@ -268,7 +290,7 @@ export function fanoutRosterEventToInbox(db: Database, groupId: number, eventId:
 function deactivateWebAliasHolders(db: Database, groupId: number, alias: string, peerId: string): void {
   db.query(
     `UPDATE group_members
-     SET active = 0,
+     SET active = 0, member_state = 'left',
          left_at = COALESCE(left_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
      WHERE group_id = ?
        AND alias = ?
@@ -289,21 +311,25 @@ function deactivateWebAliasHolders(db: Database, groupId: number, alias: string,
 function sweepExpiredPeers(ctx: DaemonContext): void {
   const retentionMs = ctx.config.daemon.peerRetentionMs;
   const cutoff = new Date(Date.now() - retentionMs).toISOString();
-  const swept = ctx.db.transaction(() => {
-    const rows = ctx.db
-      .query<{ peer_id: string }, [string]>(
-        "SELECT peer_id FROM peers WHERE deleted_at IS NULL AND lease_expires_at < ?",
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, [string]>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived' AND lease_expires_at < ?",
       )
-      .all(cutoff);
+      .get(cutoff)?.n ?? 0;
+    if (exempt > 0) debug(`sweep[retention]: exempting ${exempt} archived lease-expired peer(s) (reserved for resume)`);
+  }
+  const swept = ctx.db.transaction(() => {
+    const peerIds = selectExpiredPeerIds(ctx.db, cutoff);
     const now = new Date().toISOString();
-    for (const { peer_id } of rows) {
+    for (const peer_id of peerIds) {
       ctx.db.query("UPDATE peers SET deleted_at = ? WHERE peer_id = ?").run(now, peer_id);
       ctx.db
-        .query("UPDATE group_members SET active = 0, left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+        .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
         .run(now, peer_id);
       ctx.subscribers.delete(peer_id);
     }
-    return rows.map((row) => row.peer_id);
+    return peerIds;
   })();
   if (swept.length > 0) {
     log(`sweeper soft-deleted ${swept.length} peer(s) lease-expired > ${retentionMs}ms`);
@@ -312,20 +338,20 @@ function sweepExpiredPeers(ctx: DaemonContext): void {
 }
 
 function sweepStoppedLaunchPeers(ctx: DaemonContext): number {
-  const rows = ctx.db
-    .query<{ peer_id: string }, []>(
-      `SELECT DISTINCT li.peer_id
-       FROM launch_intents li
-       JOIN peers p ON p.peer_id = li.peer_id
-       WHERE li.state = 'stopped'
-         AND p.deleted_at IS NULL`,
-    )
-    .all();
-  if (rows.length === 0) return 0;
+  const peerIds = selectStoppedLaunchPeerIds(ctx.db);
+  if (debugEnabled()) {
+    const exempt = ctx.db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) AS n FROM peers WHERE deleted_at IS NULL AND lifecycle_state = 'archived'",
+      )
+      .get()?.n ?? 0;
+    debug(`sweep[stopped-launch]: ${peerIds.length} candidate(s)${exempt > 0 ? `, ${exempt} archived peer(s) exempt` : ""}`);
+  }
+  if (peerIds.length === 0) return 0;
   const deletedAt = new Date().toISOString();
   let deactivated = 0;
-  for (const row of rows) {
-    if (softDeletePeerIfPresent(ctx, row.peer_id, deletedAt)) deactivated += 1;
+  for (const peerId of peerIds) {
+    if (softDeletePeerIfPresent(ctx, peerId, deletedAt)) deactivated += 1;
   }
   if (deactivated > 0) {
     log(`launch cleanup soft-deleted ${deactivated} stopped launch peer(s)`);
@@ -532,7 +558,8 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
               activity_state, last_activity_at,
-              last_cursor, created_at, updated_at, lease_expires_at > ? AS online
+              last_cursor, lifecycle_state, archived_at, archived_reason, archive_source,
+              created_at, updated_at, lease_expires_at > ? AS online
        FROM peers
        WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, session_name ASC`,
@@ -608,8 +635,9 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     const row = ctx.db
       .query<PeerRow & { online: number }, [string, string]>(
         `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-                activity_state, last_activity_at, last_cursor, created_at, updated_at,
-                lease_expires_at > ? AS online
+                activity_state, last_activity_at, last_cursor,
+                lifecycle_state, archived_at, archived_reason, archive_source,
+                created_at, updated_at, lease_expires_at > ? AS online
          FROM peers WHERE peer_id = ?`,
       )
       .get(now, peerId);
@@ -835,14 +863,32 @@ export function joinGroupCore(
     if (peer.peer_id === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
       deactivateWebAliasHolders(ctx.db, group.group_id, alias, peer.peer_id);
     }
+    // An archived member's seat is RESERVED (not reclaimable). If a different
+    // peer tries to take the alias, fail with a clear, actionable error instead
+    // of a generic alias_collision from the unique index. The same peer resuming
+    // its own archived seat is handled by the resume path, not here.
+    const archivedHolder = ctx.db
+      .query<{ peer_id: string }, [number, string]>(
+        "SELECT peer_id FROM group_members WHERE group_id = ? AND alias = ? AND member_state = 'archived' LIMIT 1",
+      )
+      .get(group.group_id, alias);
+    if (archivedHolder && archivedHolder.peer_id !== peer.peer_id) {
+      debug(`guard: alias_reserved_by_archived alias=${alias} group=${group.name} held_by=${archivedHolder.peer_id} attempted_by=${peer.peer_id} (join)`);
+      throw new HttpError(
+        409,
+        "alias_reserved_by_archived",
+        `Alias '${alias}' is reserved by an archived session in group '${group.name}'. Resume or delete it to free the seat.`,
+      );
+    }
     // Detect alias reclaim: the most-recently-departed prior holder of this
     // alias belongs to a different peer_id. Respawn (same peer_id) is not a
-    // reclaim. v0 storage policy frees the alias on leave; the event leaves
-    // an audit trail so observers can distinguish respawn from a new peer.
+    // reclaim. Only a 'left' member frees its alias for reclaim — an archived
+    // seat is reserved (guarded above). The event leaves an audit trail so
+    // observers can distinguish respawn from a new peer.
     const previousHolder = ctx.db
       .query<{ peer_id: string }, [number, string]>(
         `SELECT peer_id FROM group_members
-         WHERE group_id = ? AND alias = ? AND active = 0
+         WHERE group_id = ? AND alias = ? AND member_state = 'left'
          ORDER BY COALESCE(left_at, joined_at) DESC
          LIMIT 1`,
       )
@@ -871,13 +917,14 @@ export function joinGroupCore(
       ctx.db
         .query(
           `INSERT INTO group_members
-             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
+             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, member_state, purpose, left_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'active', ?, NULL)
            ON CONFLICT(group_id, peer_id) DO UPDATE SET
              alias = excluded.alias,
              join_event_id = excluded.join_event_id,
              history_from_event_id = excluded.history_from_event_id,
              active = 1,
+             member_state = 'active',
              purpose = excluded.purpose,
              joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
              left_at = NULL`,

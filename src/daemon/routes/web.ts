@@ -44,11 +44,11 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
       ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
-          `${p.peer_id}:${presenceOf(p)}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
+          `${p.peer_id}:${presenceOf(p)}:${p.lifecycle_state}:${p.archived_at ?? ""}:${p.archived_reason ?? ""}:${p.archive_source ?? ""}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
             p.aoe_session?.attach_command ?? ""
           }`,
       ),
-      ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${presenceOf(m)}`),
+      ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${m.member_state}:${presenceOf(m)}`),
       ...state.events.map((e) =>
         `${e.event_id}:${(e.reactions ?? [])
           .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.by.map((actor) => actor.peer_id).sort().join(",")}`)

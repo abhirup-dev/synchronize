@@ -597,6 +597,87 @@ function migrate(db: Database): void {
     if (!agentSessionCols.includes("git_dirty")) db.exec(`ALTER TABLE agent_sessions ADD COLUMN git_dirty INTEGER`);
     if (!hasAgentSessionGitV10) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (10)`);
   }
+
+  // Migration v11 — archive/resume LIFECYCLE axis on peers + groups
+  // (docs/plans/resumable-archived-sessions.md). lifecycle_state is the second
+  // orthogonal axis (presence/lease is the first); deleted_at stays the
+  // canonical 'released' tombstone (a third axis), so we do NOT add a 'deleted'
+  // value here. Columns are inert until later issues consume them.
+  //   peers.lifecycle_state  : 'active' | 'archived'   (archived IS resumable)
+  //   peers.archived_at      : when it was archived
+  //   peers.archived_reason  : free-text reason
+  //   peers.archive_source   : 'manual' | 'auto'       (drives future cleanup)
+  //   peers.auto_archive     : per-agent override (NULL = inherit the group)
+  //   groups.auto_archive    : per-group toggle (cascades to members), 0 = off
+  const hasArchiveLifecycleV11 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 11")
+    .get();
+  const peerArchiveCols = db.query<{ name: string }, []>("PRAGMA table_info(peers)").all().map((col) => col.name);
+  const groupArchiveCols = db.query<{ name: string }, []>("PRAGMA table_info(groups)").all().map((col) => col.name);
+  if (
+    !hasArchiveLifecycleV11 ||
+    !peerArchiveCols.includes("lifecycle_state") ||
+    !groupArchiveCols.includes("auto_archive")
+  ) {
+    if (!peerArchiveCols.includes("lifecycle_state"))
+      db.exec(`ALTER TABLE peers ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'active'`);
+    if (!peerArchiveCols.includes("archived_at")) db.exec(`ALTER TABLE peers ADD COLUMN archived_at TEXT`);
+    if (!peerArchiveCols.includes("archived_reason")) db.exec(`ALTER TABLE peers ADD COLUMN archived_reason TEXT`);
+    if (!peerArchiveCols.includes("archive_source")) db.exec(`ALTER TABLE peers ADD COLUMN archive_source TEXT`);
+    if (!peerArchiveCols.includes("auto_archive")) db.exec(`ALTER TABLE peers ADD COLUMN auto_archive INTEGER`);
+    if (!groupArchiveCols.includes("auto_archive"))
+      db.exec(`ALTER TABLE groups ADD COLUMN auto_archive INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_peers_lifecycle_state ON peers (lifecycle_state)`);
+    if (!hasArchiveLifecycleV11) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (11)`);
+  }
+
+  // Migration v12 — group_members LIFECYCLE column + archived-seat alias
+  // reservation. The `active` INTEGER stays the hot DELIVERY bit (~6 hot SQL
+  // paths unchanged); member_state adds the lifecycle dimension so an archived
+  // seat keeps its alias reserved while being excluded from delivery.
+  //   INVARIANT: active = 1  ⇔  member_state = 'active'   (archived/left ⇒ active = 0)
+  // The alias uniqueness index moves from (WHERE active = 1) to
+  // (WHERE member_state IN ('active','archived')) so an archived member's alias
+  // is NOT reclaimable, while a 'left' member frees its alias as today.
+  // Daemon leave/sweep SQL updated to also set member_state='left' (merge-map §7/§15).
+  const hasMemberStateV12 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 12")
+    .get();
+  const memberCols = db.query<{ name: string }, []>("PRAGMA table_info(group_members)").all().map((col) => col.name);
+  if (!hasMemberStateV12 || !memberCols.includes("member_state")) {
+    if (!memberCols.includes("member_state"))
+      db.exec(`ALTER TABLE group_members ADD COLUMN member_state TEXT NOT NULL DEFAULT 'active'`);
+    // Backfill existing rows from the delivery bit, preserving the invariant.
+    db.exec(`UPDATE group_members SET member_state = 'left' WHERE active = 0`);
+    db.exec(`UPDATE group_members SET member_state = 'active' WHERE active = 1`);
+    // Swap the alias-reservation index to cover archived seats too.
+    // The daemon leave/sweep code also sets member_state='left' (merge-map §7/§15)
+    // so the invariant active=1 ⇔ member_state='active' is always honored.
+    db.exec(`DROP INDEX IF EXISTS idx_group_members_alias`);
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_alias
+        ON group_members (group_id, alias)
+        WHERE member_state IN ('active','archived')
+    `);
+    if (!hasMemberStateV12) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (12)`);
+  }
+
+  // v13: persist the resume target on launch_intents. Without it, the durable
+  // launch worker (specFromRow) rebuilds the spawn WITHOUT --session, so every
+  // daemon-mode resume forks a FRESH session and loses prior context. These
+  // columns let the worker reconstruct req.resume and emit `pi --session <id>`
+  // / `claude --resume <id>` faithfully. (sync-ocdt bug.)
+  const hasResumeTargetV13 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 13")
+    .get();
+  const launchCols = db.query<{ name: string }, []>("PRAGMA table_info(launch_intents)").all().map((col) => col.name);
+  if (!hasResumeTargetV13 || !launchCols.includes("resume_host_session_id")) {
+    if (!launchCols.includes("resume_host_session_id"))
+      db.exec(`ALTER TABLE launch_intents ADD COLUMN resume_host_session_id TEXT`);
+    if (!launchCols.includes("resume_host_session_file"))
+      db.exec(`ALTER TABLE launch_intents ADD COLUMN resume_host_session_file TEXT`);
+    if (!hasResumeTargetV13) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (13)`);
+  }
 }
 
 /**

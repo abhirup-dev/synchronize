@@ -101,7 +101,7 @@ export function leaveGroup(client: ClientConfig, input: { name: string; peerId: 
 
 export interface MentionWarning {
   token: string;
-  reason: "alias_not_in_group";
+  reason: "alias_not_in_group" | "alias_archived";
 }
 
 // Delivery summary so callers can verify routing without having to scan

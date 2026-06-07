@@ -90,9 +90,9 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
           provenance: { api_version: "number", entrypoint_path: "string", git_dirty: "boolean", git_sha: "string", source_root: "string" },
         },
       },
-      { name: "peers.register", status: 201, body: { peer: peerShape({ deleted_at: null }) } },
-      { name: "peers.list", status: 200, body: { peers: [peerShape({ deleted_at: null, online: true, presence: "string" })] } },
-      { name: "peers.activity", status: 200, body: { peer: peerShape({ deleted_at: null, activity_state: "string", last_activity_at: "string" }) } },
+      { name: "peers.register", status: 201, body: { peer: peerShape({ deleted_at: null, lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
+      { name: "peers.list", status: 200, body: { peers: [peerShape({ deleted_at: null, online: true, presence: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null })] } },
+      { name: "peers.activity", status: 200, body: { peer: peerShape({ deleted_at: null, activity_state: "string", last_activity_at: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
       { name: "agent-sessions.register", status: 201, body: { binding: agentSessionShape() } },
       { name: "agent-sessions.lookup", status: 200, body: { binding: agentSessionShape() } },
       { name: "groups.create", status: 201, body: { group: groupShape() } },
@@ -104,7 +104,7 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
       { name: "inbox.read", status: 200, body: { events: [], next_cursor: "number" } },
       { name: "activity.feed", status: 200, body: { events: [eventShape({ acked_at: "string", awaiting: "number", reply_count: "number" })], peers: [peerShape({ activity_state: "string", last_activity_at: "string", online: true, presence: "string" })], next_cursor: "number", awaiting_count: "number" } },
       { name: "query.events", status: 200, body: { columns: ["string"], rows: [{ event_id: "number", type: "string" }], row_count: "number", truncated: true, elapsed_ms: "number" } },
-      { name: "web.session", status: 200, body: { peer: peerShape({ deleted_at: null, purpose: "string" }) } },
+      { name: "web.session", status: 200, body: { peer: peerShape({ deleted_at: null, purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
       { name: "web.state", status: 200, body: webStateShape() },
       { name: "unknown.not_found", status: 404, body: { error: { code: "not_found", message: "GET /phase0/unknown is not implemented" } } },
     ]);
@@ -149,7 +149,7 @@ function agentSessionShape(): Record<string, unknown> {
     created_at: "string",
     updated_at: "string",
     last_seen_at: "string",
-    peer: peerShape({ online: true, presence: "string" }),
+    peer: peerShape({ online: true, presence: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null }),
   };
 }
 
@@ -162,6 +162,7 @@ function groupShape(): Record<string, unknown> {
     creator_peer_id: "string",
     description: "string",
     created_at: "string",
+    auto_archive: "number",
   };
 }
 
@@ -176,6 +177,7 @@ function memberShape(extra: Record<string, unknown> = {}): Record<string, unknow
     purpose: null,
     joined_at: "string",
     left_at: null,
+    member_state: "string",
     session_name: "string",
     tool: "string",
     host_session_id: null,
@@ -253,7 +255,7 @@ function webStateShape(): Record<string, unknown> {
     daemon: { pid: "number", base_url: "string", started_at: "string", token_required: false },
     generated_at: "string",
     cursor: "number",
-    peers: [peerShape({ online: true, presence: "string", purpose: "string" })],
+    peers: [peerShape({ online: true, presence: "string", purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
     groups: [groupShape()],
     group_paths: [groupPathShape()],
     memberships: [memberShape({ activity_state: "string", online: true, presence: "string" })],

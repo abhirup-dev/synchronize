@@ -3,6 +3,7 @@ import { HttpError, jsonResponse } from "../../http.ts";
 import { getEvent, getVisibleEvent } from "../repo/events.ts";
 import { ensureActiveMember, getGroupById } from "../repo/groups.ts";
 import { ensurePeer } from "../repo/peers.ts";
+import { ensureSenderNotArchived } from "../services/archive.ts";
 import { notifySubscribers } from "../services/subscriptions.ts";
 import { emitWebStateChanged } from "../services/web-events.ts";
 import {
@@ -24,6 +25,7 @@ export async function tryHandleMessagingRoute(request: Request, ctx: DaemonConte
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
     ensurePeer(ctx.db, senderPeerId);
+    ensureSenderNotArchived(ctx.db, senderPeerId);
     ensurePeer(ctx.db, recipientPeerId);
 
     const eventId = ctx.db.transaction(() => {
@@ -64,6 +66,8 @@ export async function tryHandleMessagingRoute(request: Request, ctx: DaemonConte
         `Cannot reply to event ${inReplyTo}: type is '${target.type}', not 'group_message' or 'dm'`,
       );
     }
+
+    ensureSenderNotArchived(ctx.db, senderPeerId);
 
     if (target.type === "dm") {
       const recipientPeerId = target.sender_peer_id === senderPeerId ? target.recipient_peer_id : target.sender_peer_id;

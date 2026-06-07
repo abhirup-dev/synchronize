@@ -3,6 +3,7 @@ import { requireAuth } from "./auth.ts";
 import type { DaemonContext } from "./server.ts";
 import { tryHandleActivityRoute } from "./routes/activity.ts";
 import { tryHandleAgentSessionsRoute } from "./routes/agent-sessions.ts";
+import { tryHandleArchiveRoute } from "./routes/archive.ts";
 import { tryHandleEventLookupRoute, tryHandleEventPullRoute } from "./routes/events.ts";
 import { tryHandleGroupsRoute } from "./routes/groups.ts";
 import { tryHandleHealthRoute } from "./routes/health.ts";
@@ -32,6 +33,9 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
 
   const agentSessionsResponse = await tryHandleAgentSessionsRoute(request, ctx, url);
   if (agentSessionsResponse) return agentSessionsResponse;
+
+  const archiveResponse = await tryHandleArchiveRoute(request, ctx, url);
+  if (archiveResponse) return archiveResponse;
 
   const peersResponse = await tryHandlePeersRoute(request, ctx, url);
   if (peersResponse) return peersResponse;

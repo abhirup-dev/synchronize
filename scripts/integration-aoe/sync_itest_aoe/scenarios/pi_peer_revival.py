@@ -6,7 +6,7 @@ import sys
 import time
 from pathlib import Path
 
-from ..runtime import HarnessError, add_remote_daemon_args
+from ..runtime import HarnessError
 from .pi_mcp_dm import DEFAULT_MODEL, DEFAULT_PROVIDER, DEFAULT_THINKING, PiMcpDmScenario
 
 # Real-Pi end-to-end check for the peer-revival recovery path (sync-3nu).
@@ -156,7 +156,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--thinking", default=DEFAULT_THINKING)
     parser.add_argument("--auth-source")
-    add_remote_daemon_args(parser)
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--pi-heartbeat-ms", type=int, default=DEFAULT_PI_HEARTBEAT_MS)
     parser.add_argument("--start-timeout", type=int, default=90)

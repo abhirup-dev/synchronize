@@ -21,12 +21,21 @@ function recorder(results: Record<string, CommandResult | CommandResult[]> = {})
 test("buildCmdOverride wraps env + command and quotes spaced values", () => {
   const s = buildCmdOverride({ SYNCHRONIZE_HOME: "/tmp/h", X: "a b" }, ["claude", "--model", "opus"]);
   expect(s.startsWith("env ")).toBe(true);
-  expect(s).toContain("-u SSL_CERT_FILE");
-  expect(s).toContain("-u SSL_CERT_DIR");
-  expect(s).toContain("-u GRPC_DEFAULT_SSL_ROOTS_FILE_PATH");
   expect(s).toContain("SYNCHRONIZE_HOME=/tmp/h");
   expect(s).toContain("'X=a b'");
   expect(s.endsWith("claude --model opus")).toBe(true);
+});
+
+test("buildCmdOverride wrapExec wraps claude in sh -c so AOE's --session-id is absorbed", () => {
+  const s = buildCmdOverride({ SYNCHRONIZE_HOME: "/tmp/h" }, ["claude", "--resume", "abc"], { wrapExec: true });
+  // AOE appends `--session-id <uuid>` to the sh invocation; it becomes a
+  // positional arg to `sh -c`, never reaching claude. `exec` keeps claude as
+  // the direct PTY process.
+  expect(s.startsWith("sh -c ")).toBe(true);
+  expect(s).toContain("exec env");
+  expect(s).toContain("SYNCHRONIZE_HOME=/tmp/h");
+  expect(s).toContain("claude --resume abc");
+  expect(s.endsWith("aoe-claude-wrap")).toBe(true);
 });
 
 test("spawn issues profile create, group create, add, and session start in order", async () => {

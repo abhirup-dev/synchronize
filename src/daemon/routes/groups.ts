@@ -22,11 +22,13 @@ import {
 } from "../repo/groups.ts";
 import { ensurePeer, getPeer } from "../repo/peers.ts";
 import { listGroupHistoryFlat, listGroupHistoryThreads } from "../repo/threads.ts";
+import { ensureSenderNotArchived } from "../services/archive.ts";
 import { notifySubscribers } from "../services/subscriptions.ts";
 import { emitWebStateChanged } from "../services/web-events.ts";
 import {
   buildReplyDestination,
   computeThreadParticipants,
+  debug,
   fanoutRosterEventToInbox,
   joinGroupCore,
   log,
@@ -194,6 +196,19 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
       if (oldAlias === newAlias) {
         throw new HttpError(400, "no_op_rename", `Alias is already '${newAlias}'`);
       }
+      const archivedHolder = ctx.db
+        .query<{ peer_id: string }, [number, string]>(
+          "SELECT peer_id FROM group_members WHERE group_id = ? AND alias = ? AND member_state = 'archived' LIMIT 1",
+        )
+        .get(group.group_id, newAlias);
+      if (archivedHolder && archivedHolder.peer_id !== peerId) {
+        debug(`guard: alias_reserved_by_archived alias=${newAlias} group=${group.name} held_by=${archivedHolder.peer_id} attempted_by=${peerId} (rename)`);
+        throw new HttpError(
+          409,
+          "alias_reserved_by_archived",
+          `Alias '${newAlias}' is reserved by an archived session in group '${group.name}'. Resume or delete it to free the seat.`,
+        );
+      }
       try {
         ctx.db
           .query("UPDATE group_members SET alias = ? WHERE group_id = ? AND peer_id = ?")
@@ -267,7 +282,7 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
       ctx.db
         .query(
           `UPDATE group_members
-           SET active = 0, left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           SET active = 0, member_state = 'left', left_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
            WHERE group_id = ? AND peer_id = ?`,
         )
         .run(group.group_id, peerId);
@@ -290,6 +305,7 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
     if (message.length > MAX_MESSAGE_CHARS) {
       throw new HttpError(413, "message_too_large", `Message exceeds ${MAX_MESSAGE_CHARS} characters`);
     }
+    ensureSenderNotArchived(ctx.db, senderPeerId);
     ensureActiveMember(ctx.db, group.group_id, senderPeerId);
     const parentEventId = inReplyTo !== undefined ? resolveThreadParent(ctx.db, group.group_id, inReplyTo) : null;
     const directReplyTarget = inReplyTo !== undefined ? getEvent(ctx.db, inReplyTo) : null;

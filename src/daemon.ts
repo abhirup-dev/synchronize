@@ -1,7 +1,7 @@
 import { main } from "./daemon/server.ts";
 
 export { main, reconcileLaunch } from "./daemon/server.ts";
-export { deactivateStoppedLaunchPeer, upsertPeer } from "./daemon/repo/peers.ts";
+export { deactivateStoppedLaunchPeer, selectExpiredPeerIds, selectStoppedLaunchPeerIds, upsertPeer } from "./daemon/repo/peers.ts";
 export type { DaemonContext } from "./daemon/server.ts";
 
 if (import.meta.main) {

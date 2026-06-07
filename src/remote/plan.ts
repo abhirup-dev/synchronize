@@ -60,6 +60,12 @@ export interface SyncPlanInput {
   /** Either a literal token (written into config.toml) or an env var name. */
   token?: string;
   tokenEnv?: string;
+  /** Bind used when the synced runtime starts its own daemon. Defaults to LAN-safe 0.0.0.0. */
+  daemonBind?: string;
+  /** Short daemon lifecycle timings for remote archive/resume GC verification. */
+  leaseMs?: number;
+  peerRetentionMs?: number;
+  sweepIntervalMs?: number;
   /** Remote SYNCHRONIZE_HOME where config.toml is written (default ~/.synchronize). */
   remoteHome?: string;
   excludes?: string[];
@@ -67,9 +73,17 @@ export interface SyncPlanInput {
   skipInstall?: boolean;
 }
 
-/** Render the config.toml the remote client uses to reach the hub. */
-export function renderRemoteConfig(input: Pick<SyncPlanInput, "hubUrl" | "token" | "tokenEnv">): string {
-  return serializeConfig({
+const DEFAULT_REMOTE_DAEMON = {
+  bind: "0.0.0.0",
+  // Keep archive-GC verification fast without racing the default 15s MCP heartbeat.
+  leaseMs: 30_000,
+  peerRetentionMs: 15_000,
+  sweepIntervalMs: 1_000,
+} as const;
+
+/** Render the config.toml the remote runtime uses both as a client and, when started locally, as a daemon. */
+export function renderRemoteConfig(input: Pick<SyncPlanInput, "hubUrl" | "token" | "tokenEnv" | "daemonBind" | "leaseMs" | "peerRetentionMs" | "sweepIntervalMs">): string {
+  const clientConfig = serializeConfig({
     active: "hub",
     remotes: {
       hub: {
@@ -79,6 +93,17 @@ export function renderRemoteConfig(input: Pick<SyncPlanInput, "hubUrl" | "token"
       },
     },
   });
+  const daemonLines = [
+    "[daemon]",
+    `bind = ${tomlString(input.daemonBind ?? DEFAULT_REMOTE_DAEMON.bind)}`,
+    ...(daemonPort(input.hubUrl) !== null ? [`port = ${daemonPort(input.hubUrl)}`] : []),
+    ...(input.token ? [`token = ${tomlString(input.token)}`] : []),
+    `lease_ms = ${positiveInt(input.leaseMs, DEFAULT_REMOTE_DAEMON.leaseMs)}`,
+    `peer_retention_ms = ${positiveInt(input.peerRetentionMs, DEFAULT_REMOTE_DAEMON.peerRetentionMs)}`,
+    `sweep_interval_ms = ${positiveInt(input.sweepIntervalMs, DEFAULT_REMOTE_DAEMON.sweepIntervalMs)}`,
+    "",
+  ];
+  return `${clientConfig}\n${daemonLines.join("\n")}`;
 }
 
 export function buildSyncPlan(input: SyncPlanInput): RemoteStep[] {
@@ -138,6 +163,7 @@ export const HARNESS_SCENARIOS: Record<string, HarnessScenario> = {
   "pi-group-policy": { script: "scripts/integration_group_policy_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "180", "--registration-timeout", "120", "--warmup-timeout", "120"] },
   "pi-thread-baton": { script: "scripts/integration_thread_baton_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "240", "--registration-timeout", "120", "--warmup-timeout", "120"] },
   "pi-revival": { script: "scripts/integration_pi_revival.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "180", "--registration-timeout", "120", "--warmup-timeout", "120"] },
+  "pi_mcp_archive_resume": { script: "scripts/integration_archive_resume_pi.py", defaultArgs: ["--start-timeout", "120", "--command-timeout", "240", "--registration-timeout", "120", "--warmup-timeout", "120"] },
 };
 
 export const ALL_HARNESS_SCENARIOS = Object.keys(HARNESS_SCENARIOS);
@@ -185,4 +211,23 @@ function shq(value: string): string {
 
 function quote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function tomlString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function positiveInt(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value !== undefined && value > 0 ? Math.trunc(value) : fallback;
+}
+
+function daemonPort(hubUrl: string): number | null {
+  try {
+    const port = new URL(hubUrl).port;
+    if (!port) return null;
+    const n = Number(port);
+    return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : null;
+  } catch {
+    return null;
+  }
 }
