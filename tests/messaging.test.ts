@@ -185,9 +185,15 @@ test("Claude hook is env gated and registers native session binding when enabled
     model: "sonnet",
   });
 
+  // Strip SYNCHRONIZE_HOOK_ENABLE from the inherited env so the "disabled" case
+  // is genuinely disabled regardless of the ambient shell (the var is commonly
+  // exported globally for the real Claude hook). Without this, a developer whose
+  // shell exports SYNCHRONIZE_HOOK_ENABLE=1 sees this case spuriously start a
+  // daemon and the daemon.json-absence assertion below fails.
+  const { SYNCHRONIZE_HOOK_ENABLE: _hookGate, ...envWithoutHookGate } = process.env;
   const disabled = Bun.spawnSync({
     cmd: ["bash", "-lc", `printf '%s' '${input}' | bun run src/cli.ts hook claude-session`],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
+    env: { ...envWithoutHookGate, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(disabled.exitCode).toBe(0);
   await expect(stat(join(home, "daemon.json"))).rejects.toThrow();
