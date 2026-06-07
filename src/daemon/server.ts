@@ -146,6 +146,15 @@ export function log(message: string): void {
   console.error(`[synchronize-daemon] ${message}`);
 }
 
+export function debugEnabled(): boolean {
+  const flag = process.env.SYNCHRONIZE_DEBUG;
+  return Boolean(flag) && flag !== "0" && flag !== "false";
+}
+
+export function debug(message: string): void {
+  if (debugEnabled()) console.error(`[synchronize-daemon:debug] ${message}`);
+}
+
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
