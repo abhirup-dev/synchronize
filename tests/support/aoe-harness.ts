@@ -74,9 +74,28 @@ export function createHarness() {
     return { peerId: result.peerId, title: result.title, name };
   }
 
-  // Reap spawned tmux backends, remove per-agent temp repo dirs, and delete the
-  // AOE profile each harness daemon created (which drops its AOE sessions +
-  // groups — otherwise they accumulate as dead `synchronize-<hash>` profiles).
+  // Seed a real Pi transcript before archive/resume. Without at least one real
+  // turn, Pi only writes the synchronize extension stub and `pi --session <id>`
+  // has no transcript to resume.
+  async function warmUpPi(agent: LaunchedAgent, timeoutMs = 120_000): Promise<void> {
+    const target = await waitForAoePane(agent.title);
+    const marker = `HARNESS_WARMED_${agent.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`.replace(/[^A-Za-z0-9_]/g, "_");
+    const prompt = [
+      "This is a synchronize archive/resume harness warm-up.",
+      "Do not use any tools and do not send any messages.",
+      `Reply with exactly: WARMED ${marker}`,
+    ].join(" ");
+    await sendPiPrompt(target, prompt);
+    await waitForPaneMarker(target, marker, timeoutMs);
+    // Give Pi a short settle window to flush the session transcript before the
+    // test immediately archives/reaps the process.
+    await Bun.sleep(2_000);
+  }
+
+  // Reap spawned tmux backends, including daemon-resumed panes whose titles are
+  // freshly minted and therefore not in spawnedTitles. The resumed titles still
+  // contain the stable agent alias (`-alice`, `-bob`, …), so kill by both exact
+  // launch title and alias before deleting profiles/repos.
   async function cleanup(): Promise<void> {
     if (KEEP) {
       console.log(`[keep] leaving ${spawnedTitles.size} agent session(s) + ${startedHomes.length} daemon home(s)/profile(s) in place for inspection`);
@@ -84,11 +103,12 @@ export function createHarness() {
       return;
     }
     for (const title of spawnedTitles) await killAoeByTitle(title);
+    await killAoeByAgentNames([...new Set(spawnedTitles)].map((title) => title.replace(/^[^-]+-/, "")));
     await Promise.all(spawnedRepos.map((repo) => rm(repo, { recursive: true, force: true })));
     for (const home of startedHomes) await deleteAoeProfile(home);
   }
 
-  return { spawnedTitles, startHarnessDaemon, launchPi, cleanup };
+  return { spawnedTitles, startHarnessDaemon, launchPi, warmUpPi, cleanup };
 }
 
 // Delete the AOE profile a daemon home owns (removes its AOE sessions + groups).
@@ -106,15 +126,66 @@ export async function deleteAoeProfile(home: string): Promise<void> {
 
 // Best-effort: kill the tmux session(s) AOE created for a backend title.
 export async function killAoeByTitle(title: string): Promise<void> {
-  const list = Bun.spawn({ cmd: ["tmux", "list-sessions", "-F", "#{session_name}"], stdout: "pipe", stderr: "ignore" });
-  const names = (await new Response(list.stdout).text()).split("\n").map((s) => s.trim()).filter(Boolean);
-  await list.exited;
+  const names = await listTmuxSessionNames();
   for (const name of names) {
     if (name.startsWith(`aoe_${title}_`)) {
       const kill = Bun.spawn({ cmd: ["tmux", "kill-session", "-t", name], stdout: "ignore", stderr: "ignore" });
       await kill.exited;
     }
   }
+}
+
+export async function killAoeByAgentNames(agentNames: string[]): Promise<void> {
+  const names = await listTmuxSessionNames();
+  for (const session of names) {
+    if (!session.startsWith("aoe_")) continue;
+    if (!agentNames.some((name) => session.includes(`-${name}_`))) continue;
+    const kill = Bun.spawn({ cmd: ["tmux", "kill-session", "-t", session], stdout: "ignore", stderr: "ignore" });
+    await kill.exited;
+  }
+}
+
+async function listTmuxSessionNames(): Promise<string[]> {
+  const list = Bun.spawn({ cmd: ["tmux", "list-sessions", "-F", "#{session_name}"], stdout: "pipe", stderr: "ignore" });
+  const names = (await new Response(list.stdout).text()).split("\n").map((s) => s.trim()).filter(Boolean);
+  await list.exited;
+  return names;
+}
+
+async function waitForAoePane(title: string, timeoutMs = 30_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const session = (await listTmuxSessionNames()).find((name) => name.startsWith(`aoe_${title}_`));
+    if (session) return session;
+    await Bun.sleep(500);
+  }
+  throw new Error(`AOE tmux session for ${title} did not appear in time`);
+}
+
+async function sendPiPrompt(target: string, prompt: string): Promise<void> {
+  await Bun.spawn({ cmd: ["tmux", "send-keys", "-t", target, "C-u"], stdout: "ignore", stderr: "ignore" }).exited;
+  await Bun.spawn({ cmd: ["tmux", "send-keys", "-t", target, "-l", prompt], stdout: "ignore", stderr: "ignore" }).exited;
+  // Pi's TUI does not reliably submit with C-m under tmux; named Enter is required.
+  await Bun.spawn({ cmd: ["tmux", "send-keys", "-t", target, "Enter"], stdout: "ignore", stderr: "ignore" }).exited;
+}
+
+async function capturePane(target: string, lines = 1000): Promise<string> {
+  const capture = Bun.spawn({ cmd: ["tmux", "capture-pane", "-p", "-S", `-${lines}`, "-t", target], stdout: "pipe", stderr: "ignore" });
+  const output = await new Response(capture.stdout).text();
+  await capture.exited;
+  return output;
+}
+
+async function waitForPaneMarker(target: string, marker: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const output = await capturePane(target);
+    // The prompt itself contains the marker; the second occurrence is the
+    // agent's actual reply, which proves a real turn was persisted.
+    if (output.split(marker).length - 1 >= 2) return;
+    await Bun.sleep(1_000);
+  }
+  throw new Error(`Pi warm-up marker ${marker} did not appear in ${target}`);
 }
 
 // Wait until a launched agent has registered its host session (the Pi extension

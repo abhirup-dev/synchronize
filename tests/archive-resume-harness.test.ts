@@ -32,12 +32,13 @@
 //   5. archived alias is RESERVED — 4th agent blocked + @mention warns
 //   6. idempotency & guards — already_archived / peer_not_archived / dry-run
 //   7. two full archive/resume cycles — identity + alias stable, no orphans
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect } from "bun:test";
 import { ApiError } from "../src/client.ts";
 import { archiveGroup, archiveSession, listArchived } from "../src/api/archive.ts";
 import { resumeGroup, resumeSession } from "../src/api/resume.ts";
 import { sendDm } from "../src/api/inbox.ts";
 import { createGroup, joinGroup, listMyGroups, sendGroupMessage } from "../src/api/groups.ts";
+import { registerPeer } from "../src/api/peers.ts";
 import { cleanupDaemonHomes } from "./support/daemon.ts";
 import {
   createHarness,
@@ -51,12 +52,6 @@ import {
   waitForResumed,
 } from "./support/aoe-harness.ts";
 
-// These resume scenarios launch real agents but drive them only through REST.
-// A zero-turn Pi process writes only the synchronize extension stub, not a real
-// resumable transcript, so faithful transcript-resurrection is intentionally
-// proven by scripts/integration_archive_resume_pi.py instead.
-const transcriptResumeHarnessTest = test.skip;
-
 const h = createHarness();
 afterAll(async () => {
   await h.cleanup();
@@ -64,13 +59,17 @@ afterAll(async () => {
 });
 
 // ── 1. DM survives archive → resume ──────────────────────────────────────────
-transcriptResumeHarnessTest("DM works -> archive both -> resume both -> DM works again (2 agents)", async () => {
+harnessTest("DM works -> archive both -> resume both -> DM works again (2 agents)", async () => {
   const daemon = await h.startHarnessDaemon();
   let alice: string | undefined;
   let bob: string | undefined;
   try {
-    alice = (await h.launchPi(daemon.client, "alice")).peerId;
-    bob = (await h.launchPi(daemon.client, "bob")).peerId;
+    const aliceAgent = await h.launchPi(daemon.client, "alice");
+    const bobAgent = await h.launchPi(daemon.client, "bob");
+    alice = aliceAgent.peerId;
+    bob = bobAgent.peerId;
+    await h.warmUpPi(aliceAgent);
+    await h.warmUpPi(bobAgent);
 
     await sendDm(daemon.client, { senderPeerId: alice, recipientPeerId: bob, message: "hi bob (pre-archive)" });
     await waitForInbox(daemon.client, bob, "hi bob (pre-archive)");
@@ -100,14 +99,20 @@ transcriptResumeHarnessTest("DM works -> archive both -> resume both -> DM works
 }, 300_000);
 
 // ── 2. group fanout excludes an archived member, restored on resume ───────────
-transcriptResumeHarnessTest("group fanout EXCLUDES an archived member and includes it again after resume (3 agents)", async () => {
+harnessTest("group fanout EXCLUDES an archived member and includes it again after resume (3 agents)", async () => {
   const daemon = await h.startHarnessDaemon();
   const peers: string[] = [];
   try {
-    const alice = (await h.launchPi(daemon.client, "alice")).peerId;
-    const bob = (await h.launchPi(daemon.client, "bob")).peerId;
-    const carol = (await h.launchPi(daemon.client, "carol")).peerId;
+    const aliceAgent = await h.launchPi(daemon.client, "alice");
+    const bobAgent = await h.launchPi(daemon.client, "bob");
+    const carolAgent = await h.launchPi(daemon.client, "carol");
+    const alice = aliceAgent.peerId;
+    const bob = bobAgent.peerId;
+    const carol = carolAgent.peerId;
     peers.push(alice, bob, carol);
+    await h.warmUpPi(aliceAgent);
+    await h.warmUpPi(bobAgent);
+    await h.warmUpPi(carolAgent);
 
     const group = "fanout-team";
     await createGroup(daemon.client, { name: group, creatorPeerId: alice });
@@ -178,14 +183,20 @@ harnessTest("archive group -> every member archived + reaped + alias reserved (3
 }, 300_000);
 
 // ── 4. group resume: every member launching + comms restored ──────────────────
-transcriptResumeHarnessTest("resume group -> every member launching + group comms restored (3 agents)", async () => {
+harnessTest("resume group -> every member launching + group comms restored (3 agents)", async () => {
   const daemon = await h.startHarnessDaemon();
   const peers: string[] = [];
   try {
-    const alice = (await h.launchPi(daemon.client, "alice")).peerId;
-    const bob = (await h.launchPi(daemon.client, "bob")).peerId;
-    const carol = (await h.launchPi(daemon.client, "carol")).peerId;
+    const aliceAgent = await h.launchPi(daemon.client, "alice");
+    const bobAgent = await h.launchPi(daemon.client, "bob");
+    const carolAgent = await h.launchPi(daemon.client, "carol");
+    const alice = aliceAgent.peerId;
+    const bob = bobAgent.peerId;
+    const carol = carolAgent.peerId;
     peers.push(alice, bob, carol);
+    await h.warmUpPi(aliceAgent);
+    await h.warmUpPi(bobAgent);
+    await h.warmUpPi(carolAgent);
 
     const group = "resume-team";
     await createGroup(daemon.client, { name: group, creatorPeerId: alice });
@@ -253,7 +264,7 @@ harnessTest("archived alias is RESERVED — joining peer blocked + @mention warn
 }, 300_000);
 
 // ── 6. idempotency & guards ───────────────────────────────────────────────────
-transcriptResumeHarnessTest("idempotency & guards — already_archived / peer_not_archived / dry-run (1 agent)", async () => {
+harnessTest("idempotency & guards — already_archived / peer_not_archived / dry-run (1 agent)", async () => {
   const daemon = await h.startHarnessDaemon();
   let alice: string | undefined;
   try {
@@ -265,9 +276,9 @@ transcriptResumeHarnessTest("idempotency & guards — already_archived / peer_no
     expect(again.action).toBe("already_archived");
     expect(again.reaped).toBe(false);
 
-    // Resume brings it back; resuming an ACTIVE peer is rejected.
-    expect((await resumeSession(daemon.client, { peerId: alice })).mode).toBe("launch");
-    await waitForResumed(daemon.client, alice);
+    // API-level resurrection brings it back without requiring a transcript;
+    // resuming an ACTIVE peer is rejected.
+    await registerPeer(daemon.client, { peerId: alice, sessionName: "alice", tool: "pi" });
     let resumeCode = "ok";
     try {
       await resumeSession(daemon.client, { peerId: alice });
@@ -288,13 +299,17 @@ transcriptResumeHarnessTest("idempotency & guards — already_archived / peer_no
 }, 300_000);
 
 // ── 7. two full archive/resume cycles — identity + alias stable, no orphans ───
-transcriptResumeHarnessTest("two full archive/resume cycles keep identity + alias stable (2 agents)", async () => {
+harnessTest("two full archive/resume cycles keep identity + alias stable (2 agents)", async () => {
   const daemon = await h.startHarnessDaemon();
   const peers: string[] = [];
   try {
-    const alice = (await h.launchPi(daemon.client, "alice")).peerId;
-    const bob = (await h.launchPi(daemon.client, "bob")).peerId;
+    const aliceAgent = await h.launchPi(daemon.client, "alice");
+    const bobAgent = await h.launchPi(daemon.client, "bob");
+    const alice = aliceAgent.peerId;
+    const bob = bobAgent.peerId;
     peers.push(alice, bob);
+    await h.warmUpPi(aliceAgent);
+    await h.warmUpPi(bobAgent);
 
     const group = "cycle-team";
     await createGroup(daemon.client, { name: group, creatorPeerId: alice });
