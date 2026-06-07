@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { ApiError } from "../src/client.ts";
-import { registerPeer } from "../src/api/peers.ts";
+import { deletePeer, registerPeer } from "../src/api/peers.ts";
 import { createGroup, joinGroup, renameInGroup, sendGroupMessage } from "../src/api/groups.ts";
 import { readInbox, sendDm } from "../src/api/inbox.ts";
 import { archiveGroup, archiveSession } from "../src/api/archive.ts";
@@ -40,6 +40,28 @@ test("archive session: non-AOE peer archives cleanly, reserves alias, is not del
     const { peer: other } = await registerPeer(daemon.client, { sessionName: "other", tool: "claude" });
     const code = await errorCode(() => joinGroup(daemon.client, { name: "room", peerId: other.peer_id, alias: "critic" }));
     expect(code).toBe("alias_reserved_by_archived");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("deleting an archived peer releases its reserved alias seat", async () => {
+  const daemon = await startDaemon({ debug: true });
+  try {
+    const { peer } = await registerPeer(daemon.client, { sessionName: "critic", tool: "claude" });
+    await createGroup(daemon.client, { name: "room", creatorPeerId: peer.peer_id });
+    await joinGroup(daemon.client, { name: "room", peerId: peer.peer_id, alias: "critic" });
+    await archiveSession(daemon.client, { peerId: peer.peer_id });
+
+    const { peer: blocked } = await registerPeer(daemon.client, { sessionName: "blocked", tool: "claude" });
+    expect(await errorCode(() => joinGroup(daemon.client, { name: "room", peerId: blocked.peer_id, alias: "critic" }))).toBe(
+      "alias_reserved_by_archived",
+    );
+
+    await deletePeer(daemon.client, peer.peer_id);
+
+    const { peer: replacement } = await registerPeer(daemon.client, { sessionName: "replacement", tool: "claude" });
+    await expect(joinGroup(daemon.client, { name: "room", peerId: replacement.peer_id, alias: "critic" })).resolves.toBeDefined();
   } finally {
     await daemon.stop();
   }

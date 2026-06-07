@@ -95,7 +95,7 @@ export function softDeletePeerIfPresent(
       .query("UPDATE peers SET deleted_at = ?, lease_expires_at = ?, updated_at = ? WHERE peer_id = ? AND deleted_at IS NULL")
       .run(deletedAt, deletedAt, deletedAt, peerId);
     ctx.db
-      .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND active = 1")
+      .query("UPDATE group_members SET active = 0, member_state = 'left', left_at = COALESCE(left_at, ?) WHERE peer_id = ? AND member_state != 'left'")
       .run(deletedAt, peerId);
   })();
   ctx.subscribers.delete(peerId);
