@@ -850,14 +850,32 @@ export function joinGroupCore(
     if (peer.peer_id === LOCAL_WEB_PEER_ID && peer.tool === "web" && alias === "you") {
       deactivateWebAliasHolders(ctx.db, group.group_id, alias, peer.peer_id);
     }
+    // An archived member's seat is RESERVED (not reclaimable). If a different
+    // peer tries to take the alias, fail with a clear, actionable error instead
+    // of a generic alias_collision from the unique index. The same peer resuming
+    // its own archived seat is handled by the resume path, not here.
+    const archivedHolder = ctx.db
+      .query<{ peer_id: string }, [number, string]>(
+        "SELECT peer_id FROM group_members WHERE group_id = ? AND alias = ? AND member_state = 'archived' LIMIT 1",
+      )
+      .get(group.group_id, alias);
+    if (archivedHolder && archivedHolder.peer_id !== peer.peer_id) {
+      debug(`guard: alias_reserved_by_archived alias=${alias} group=${group.name} held_by=${archivedHolder.peer_id} attempted_by=${peer.peer_id} (join)`);
+      throw new HttpError(
+        409,
+        "alias_reserved_by_archived",
+        `Alias '${alias}' is reserved by an archived session in group '${group.name}'. Resume or delete it to free the seat.`,
+      );
+    }
     // Detect alias reclaim: the most-recently-departed prior holder of this
     // alias belongs to a different peer_id. Respawn (same peer_id) is not a
-    // reclaim. v0 storage policy frees the alias on leave; the event leaves
-    // an audit trail so observers can distinguish respawn from a new peer.
+    // reclaim. Only a 'left' member frees its alias for reclaim — an archived
+    // seat is reserved (guarded above). The event leaves an audit trail so
+    // observers can distinguish respawn from a new peer.
     const previousHolder = ctx.db
       .query<{ peer_id: string }, [number, string]>(
         `SELECT peer_id FROM group_members
-         WHERE group_id = ? AND alias = ? AND active = 0
+         WHERE group_id = ? AND alias = ? AND member_state = 'left'
          ORDER BY COALESCE(left_at, joined_at) DESC
          LIMIT 1`,
       )
@@ -886,13 +904,14 @@ export function joinGroupCore(
       ctx.db
         .query(
           `INSERT INTO group_members
-             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, purpose, left_at)
-           VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
+             (group_id, peer_id, alias, join_event_id, history_from_event_id, active, member_state, purpose, left_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'active', ?, NULL)
            ON CONFLICT(group_id, peer_id) DO UPDATE SET
              alias = excluded.alias,
              join_event_id = excluded.join_event_id,
              history_from_event_id = excluded.history_from_event_id,
              active = 1,
+             member_state = 'active',
              purpose = excluded.purpose,
              joined_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
              left_at = NULL`,
