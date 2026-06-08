@@ -22,7 +22,7 @@ import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/typ
 import { ActivityItem } from "./ActivityItem.tsx";
 import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
-import { Avatar } from "./primitives.tsx";
+import { Avatar, IdentityBadge } from "./primitives.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 
 type Filter = "all" | "awaits" | "mentions";
@@ -124,13 +124,12 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
     });
 
   const baseItems = useMemo(() => {
-    // "Live only" is a sender-presence filter: keep currently known active or
-    // idle agents, drop deleted/expired/offline historical authors while
-    // preserving all other Activity semantics.
+    // "Live only" follows the header indicator: show rows from agents that are
+    // currently working/initializing, which map to the UI's busy status.
     if (!aliveOnly) return items;
     return items.filter((it) => {
       const status = agentsById.get(it.actorId)?.status;
-      return status === "online" || status === "busy" || status === "idle";
+      return status === "busy";
     });
   }, [items, agentsById, aliveOnly]);
 
@@ -198,7 +197,10 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
   return (
     <div
       className={`activity-view${open ? " split" : ""}`}
-      style={open ? ({ gridTemplateColumns: `minmax(0, 1fr) 6px ${threadWidth}px` } as CSSProperties) : undefined}
+      style={open ? ({
+        gridTemplateColumns: `minmax(0, 1fr) ${threadWidth}px`,
+        "--thread-pane-width": `${threadWidth}px`,
+      } as CSSProperties) : undefined}
     >
       <div className="activity-main">
         <header className="act-header">
@@ -223,14 +225,51 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
               </div>
             </div>
             <div className="act-header-actions">
-              <span className="act-live">
+              <button
+                className="act-view-switch"
+                onClick={() => setCluster((value) => !value)}
+                type="button"
+                title={cluster ? "Switch to timeline" : "Switch to grouped"}
+                aria-label={cluster ? "Switch to timeline" : "Switch to grouped"}
+              >
+                {cluster ? (
+                  <>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+                    </svg>
+                    TIMELINE
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3.5" y="3.5" width="7" height="7" /><rect x="13.5" y="3.5" width="7" height="7" />
+                      <rect x="3.5" y="13.5" width="7" height="7" /><rect x="13.5" y="13.5" width="7" height="7" />
+                    </svg>
+                    GROUPED
+                  </>
+                )}
+              </button>
+              <button
+                className={`act-live${aliveOnly ? " active" : ""}`}
+                onClick={() => setAliveOnly((value) => !value)}
+                type="button"
+                title="Show only activity from working agents"
+                aria-pressed={aliveOnly}
+              >
                 <span className="act-live-dot" />
                 LIVE
                 <span className="act-live-sep">·</span>
                 <span className="act-live-working">▸ {busyCount} working</span>
-              </span>
-              <button className="act-markall" onClick={() => void ackAll()} disabled={counts.awaits === 0} type="button">
-                ✓ MARK ALL HANDLED
+              </button>
+              <button
+                className="act-markall"
+                onClick={() => void ackAll()}
+                disabled={counts.awaits === 0}
+                type="button"
+                title="Mark all handled"
+                aria-label="Mark all handled"
+              >
+                ✓
               </button>
             </div>
           </div>
@@ -249,35 +288,15 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth }: Activ
                 </button>
               ))}
             </div>
-            <span className="act-spacer" />
-            <button
-              className={`act-liveonly${aliveOnly ? " active" : ""}`}
-              onClick={() => setAliveOnly((value) => !value)}
-              type="button"
-              title="Show only activity from non-offline agents"
-              aria-pressed={aliveOnly}
-            >
-              <span className="act-liveonly-dot" />
-              LIVE
-            </button>
-            <div className="act-viewtoggle" role="radiogroup" aria-label="View mode">
-              <button className={`avt-btn${cluster ? " active" : ""}`} onClick={() => setCluster(true)} type="button" title="Group by room">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3.5" y="3.5" width="7" height="7" /><rect x="13.5" y="3.5" width="7" height="7" />
-                  <rect x="3.5" y="13.5" width="7" height="7" /><rect x="13.5" y="13.5" width="7" height="7" />
-                </svg>
-                GROUPED
-              </button>
-              <button className={`avt-btn${!cluster ? " active" : ""}`} onClick={() => setCluster(false)} type="button" title="Flat timeline">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
-                </svg>
-                TIMELINE
-              </button>
-            </div>
+            <RoomFilterBar
+              roomIds={allRoomIds}
+              roomsById={roomsById}
+              selected={roomSel}
+              onToggle={toggleRoom}
+              onClear={() => setRoomSel(new Set())}
+              compact
+            />
           </div>
-
-          <RoomFilterBar roomIds={allRoomIds} roomsById={roomsById} selected={roomSel} onToggle={toggleRoom} onClear={() => setRoomSel(new Set())} />
         </header>
 
         {visible.length === 0 ? (
@@ -360,9 +379,9 @@ function RoomDigest({
       <div className="act-digest-head">
         <button className="act-digest-toggle" onClick={onToggle} type="button">
           <span className="act-digest-chevron">{expanded ? "▾" : "▸"}</span>
-          <span className="act-room-icon sm" style={{ background: room.color } as CSSProperties}>
+          <IdentityBadge className="act-room-icon sm" color={room.color}>
             {room.emoji ?? label[0]}
-          </span>
+          </IdentityBadge>
           <span className="act-room-name">{label}</span>
           <span className="act-room-count">{items.length}</span>
           {awaiting > 0 && <span className="act-room-await">{awaiting} awaiting</span>}
@@ -411,7 +430,7 @@ function TimelineFlat({
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => 56,
     overscan: 10,
   });
   return (
@@ -427,7 +446,7 @@ function TimelineFlat({
             return (
               <div
                 key={entry.id}
-                className="virtualized-row"
+                className="virtualized-row activity-virtual-row"
                 data-index={row.index}
                 ref={virtualizer.measureElement}
                 style={{ transform: `translateY(${row.start}px)` }}
@@ -466,7 +485,7 @@ function LatestStrip({
     <div className="act-latest">
       <span className="act-latest-tag">▸ MOST RECENT</span>
       <Avatar agent={actor} size={26} />
-      <span className="act-latest-actor" style={{ background: actor.color } as CSSProperties}>{actor.name}</span>
+      <IdentityBadge className="act-latest-actor" color={actor.color}>{actor.name}</IdentityBadge>
       <span className="act-latest-text">{stripMd(item.text).slice(0, 90)}</span>
       {room && <span className="act-latest-room">{room.kind === "dm" ? room.name : `#${room.name}`}</span>}
       <span className="act-spacer" />
@@ -515,12 +534,14 @@ function RoomFilterBar({
   selected,
   onToggle,
   onClear,
+  compact = false,
 }: {
   roomIds: string[];
   roomsById: Map<string, Room>;
   selected: Set<string>;
   onToggle(id: string): void;
   onClear(): void;
+  compact?: boolean;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -569,20 +590,26 @@ function RoomFilterBar({
   const hiddenCount = ordered.length - visN;
 
   return (
-    <div className="act-roombar">
+    <div className={`act-roombar${compact ? " act-roombar-inline" : ""}`}>
       <span className="act-roombar-label">ROOM</span>
       <button className={`act-rf-chip${selected.size === 0 ? " active" : ""}`} onClick={onClear} type="button">all</button>
       <div className="act-roombar-rail" ref={railRef}>
         {visiblePills.map(({ id, room }) => (
           <button key={id} className={`act-rf-chip${selected.has(id) ? " active" : ""}`} onClick={() => onToggle(id)} type="button">
-            <span className="act-rf-dot" style={{ background: room.color } as CSSProperties} />
+            <IdentityBadge className="act-rf-dot" color={room.color} />
             {room.kind === "dm" ? room.name : `#${room.name}`}
           </button>
         ))}
       </div>
-      <div className="act-rf-more-wrap" ref={moreRef}>
-        <button className={`act-rf-more${panelOpen ? " open" : ""}`} onClick={() => setPanelOpen((o) => !o)} type="button">
-          {hiddenCount > 0 ? `+${hiddenCount} more` : "all rooms"} ▾
+      {(!compact || hiddenCount > 0) && <div className="act-rf-more-wrap" ref={moreRef}>
+        <button
+          className={`act-rf-more${compact ? " act-rf-more-arrow" : ""}${panelOpen ? " open" : ""}`}
+          onClick={() => setPanelOpen((o) => !o)}
+          type="button"
+          title={hiddenCount > 0 ? `${hiddenCount} more rooms` : "All rooms"}
+          aria-label={hiddenCount > 0 ? `${hiddenCount} more rooms` : "All rooms"}
+        >
+          {compact ? "›" : `${hiddenCount > 0 ? `+${hiddenCount} more` : "all rooms"} ▾`}
         </button>
         {panelOpen && (
           <div className="act-roomlist">
@@ -597,7 +624,7 @@ function RoomFilterBar({
                 return (
                   <button key={id} className={`act-roomlist-row${on ? " on" : ""}`} onClick={() => onToggle(id)} type="button">
                     <span className={`act-roomlist-check${on ? " on" : ""}`}>{on ? "✓" : ""}</span>
-                    <span className="act-room-icon sm" style={{ background: room.color } as CSSProperties}>{room.emoji ?? (room.kind === "dm" ? room.name[0] : "#")}</span>
+                    <IdentityBadge className="act-room-icon sm" color={room.color}>{room.emoji ?? (room.kind === "dm" ? room.name[0] : "#")}</IdentityBadge>
                     <span className="act-roomlist-name">{room.kind === "dm" ? room.name : `#${room.name}`}</span>
                     {room.unread > 0 && <span className="act-roomlist-unread">{room.unread}</span>}
                   </button>
@@ -606,7 +633,7 @@ function RoomFilterBar({
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

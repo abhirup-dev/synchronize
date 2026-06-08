@@ -24,6 +24,7 @@ interface Ctx {
 }
 
 const ContextMenuCtx = createContext<Ctx | null>(null);
+const OVERLAY_CLOSE_EVENT = "synchronize:overlay-close";
 
 export function ContextMenuProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<OpenState | null>(null);
@@ -31,22 +32,35 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
   const open = useCallback((e: MouseEvent, items: MenuEntry[]) => {
     e.preventDefault();
     e.stopPropagation();
+    window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
     setState({ x: e.clientX, y: e.clientY, items });
+  }, []);
+
+  useEffect(() => {
+    const close = () => setState(null);
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener(OVERLAY_CLOSE_EVENT, close);
+    document.addEventListener("keydown", onEscape, true);
+    document.addEventListener("keyup", onEscape, true);
+    return () => {
+      window.removeEventListener(OVERLAY_CLOSE_EVENT, close);
+      document.removeEventListener("keydown", onEscape, true);
+      document.removeEventListener("keyup", onEscape, true);
+    };
   }, []);
 
   useEffect(() => {
     if (!state) return;
     const close = () => setState(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
     window.addEventListener("click", close);
     window.addEventListener("scroll", close, true);
-    window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("click", close);
       window.removeEventListener("scroll", close, true);
-      window.removeEventListener("keydown", onKey);
     };
   }, [state]);
 

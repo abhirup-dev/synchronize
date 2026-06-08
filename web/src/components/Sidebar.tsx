@@ -1,6 +1,6 @@
-import { useDeferredValue, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useDeferredValue, useMemo, useState, type KeyboardEvent } from "react";
 import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/context.tsx";
-import { StatusDot, inkFor } from "./primitives.tsx";
+import { IdentityBadge, StatusDot } from "./primitives.tsx";
 import type { Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
@@ -60,22 +60,6 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         <span className="search-key">⌘K</span>
       </div>
 
-      <button
-        type="button"
-        className={`activity-nav${activeRoomId === "activity" ? " active" : ""}`}
-        data-vim-item="room-activity"
-        onClick={() => onSelect("activity")}
-        title="Activity — global cross-room feed"
-      >
-        <span className="activity-nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 13 8 13 10.5 19 14 6 16 13 21 13" />
-          </svg>
-        </span>
-        <span className="activity-nav-label">ACTIVITY</span>
-        {awaitingCount > 0 && <span className="activity-nav-badge">{awaitingCount}</span>}
-      </button>
-
       <section className="sidebar-section">
         <div className="section-head">
           GROUPS
@@ -112,7 +96,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         </div>
       </section>
 
-      <div className="sidebar-bottom-actions">
+      <div className="sidebar-bottom">
         <button
           type="button"
           className="user-bubble"
@@ -139,7 +123,20 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
             {mode === "navigate" ? "NAV" : "INS"}
           </span>
         </button>
-        <button type="button" className="archive-open-btn" onClick={archive.openConsole} title="Open resume recovery console">
+        <button
+          type="button"
+          className={`activity-dock-btn${activeRoomId === "activity" ? " active" : ""}`}
+          data-vim-item="room-activity"
+          onClick={() => onSelect("activity")}
+          title="Activity - global cross-room feed"
+          aria-label={`Activity${awaitingCount > 0 ? `, ${awaitingCount} awaiting you` : ""}`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="3 13 8 13 10.5 19 14 6 16 13 21 13" />
+          </svg>
+          {awaitingCount > 0 && <span className="activity-dock-badge">{awaitingCount}</span>}
+        </button>
+        <button type="button" className="archive-open-btn" onClick={archive.openConsole} title="Open resume recovery console" aria-label="Open resume recovery console">
           RESUME
         </button>
       </div>
@@ -166,7 +163,6 @@ function RoomItem({
   const openMenu = useContextMenu();
   const archive = useArchiveWorkflow();
   const iconColor = otherColor ?? room.color;
-  const iconInk = inkFor(iconColor);
   const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -204,13 +200,12 @@ function RoomItem({
         ])
       }
     >
-      <div
-        className="room-icon identity-icon"
-        style={isArchivedGroup ? undefined : ({
-          background: iconColor,
-          color: iconInk,
-        } as CSSProperties)}
-      >
+      {isArchivedGroup ? (
+        <div className="room-icon identity-icon">
+          <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
+        </div>
+      ) : (
+        <IdentityBadge as="div" className="room-icon identity-icon" color={iconColor}>
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
           <span
@@ -223,7 +218,8 @@ function RoomItem({
             }}
           />
         )}
-      </div>
+        </IdentityBadge>
+      )}
       <div className="room-body">
         <div className="room-name-row">
           <div className="room-name">{room.kind === "group" ? `#${room.name}` : room.name}</div>

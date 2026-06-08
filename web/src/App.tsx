@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
@@ -45,7 +45,7 @@ function cycleTheme(theme: ThemeName): ThemeName {
 }
 
 function toggleThemeFamily(theme: ThemeName): ThemeName {
-  return themeFamily(theme) === "light" ? "dark" : "light";
+  return themeFamily(theme) === "light" ? "kanagawa-wave" : "light";
 }
 
 function pickDataSource(): DataSource {
@@ -132,7 +132,7 @@ function Shell() {
   }, [threadWidth]);
   const [theme, setTheme] = useState<ThemeName>(() => {
     const stored = localStorage.getItem("synchronize.theme");
-    return isThemeName(stored) ? stored : "light";
+    return isThemeName(stored) ? stored : "kanagawa-wave";
   });
 
   const isActivity = activeId === ACTIVITY_ID;
@@ -201,6 +201,11 @@ function Shell() {
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
   const toast = useToast();
+  const threadParent = threadParentId ? roomMessages.find((message) => message.id === threadParentId) : undefined;
+  const threadAuthor = threadParent && room
+    ? agents.find((agent) => agent.id === threadParent.authorId)
+    : undefined;
+  const displayThreadAuthor = threadAuthor && room ? roomAgent(threadAuthor, room) : undefined;
   const rosterPersistent = shellMode === "desktop" && !threadParentId;
   const rosterPanelAvailable = shellMode !== "desktop" && !threadParentId;
   const communityPanelAvailable = shellMode === "compact";
@@ -296,7 +301,10 @@ function Shell() {
       {shellMode !== "compact" && (
         <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
-      <main className="main">
+      <main
+        className="main"
+        style={threadParentId ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
+      >
         {isActivity ? (
           <ActivityView onJumpToRoom={jumpToRoom} threadWidth={threadWidth} onThreadWidth={setThreadWidth} />
         ) : room ? (
@@ -305,17 +313,26 @@ function Shell() {
               room={room}
               tab={tab}
               onTab={setTab}
+              theme={theme}
+              themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
+              onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
               showAgentsButton={rosterPanelAvailable}
               onOpenAgents={() => {
                 rememberOverlayOpener();
                 setAgentPanelOpen(true);
               }}
+              {...(displayThreadAuthor
+                ? { threadBanner: { author: displayThreadAuthor, onClose: () => setThreadParentId(null) } }
+                : {})}
             />
             <div
-              className="main-body"
+              className={`main-body${threadParentId ? " thread-open" : ""}`}
               style={
                 threadParentId
-                  ? { gridTemplateColumns: `minmax(0, 1fr) 6px ${threadWidth}px` }
+                  ? ({
+                      gridTemplateColumns: `minmax(0, 1fr) ${threadWidth}px`,
+                      "--thread-pane-width": `${threadWidth}px`,
+                    } as CSSProperties)
                   : undefined
               }
             >
@@ -346,7 +363,7 @@ function Shell() {
               {threadParentId ? (
                 <>
                   <ResizeHandle width={threadWidth} onChange={setThreadWidth} />
-                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} />
+                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} showHeader={false} />
                 </>
               ) : rosterPersistent ? (
                 <AgentRoster
@@ -368,13 +385,6 @@ function Shell() {
           </div>
         )}
       </main>
-      <button
-        className="theme-toggle"
-        onClick={(event) => setTheme((t) => (event.shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
-        title={`${theme} · click toggles light/dark, shift-click cycles variants`}
-      >
-        {themeFamily(theme) === "light" ? "🌙" : "☀️"}
-      </button>
       {communityPanelAvailable && communityOpen && (
         <div className="shell-overlay shell-overlay-community" role="dialog" aria-modal="true" aria-label="communities">
           <div className="shell-overlay-head">

@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import type { Agent, Message } from "../data/types.ts";
 import { useThreadSummary } from "../data/context.tsx";
-import { Avatar, Sticker } from "./primitives.tsx";
+import { Avatar, IdentityBadge, IdentityText, Sticker } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { computeThreadSummaryLayout, normalizeWheelDelta } from "./threadSummaryLayout.ts";
 
@@ -318,9 +318,9 @@ function ThreadSummaryRow({
     >
       <div className="ts-body">
         <div className="ts-meta">
-          <span className="ts-author" style={{ color: dotColor }}>
+          <IdentityText className="ts-author" color={dotColor}>
             {author?.name ?? "?"}
-          </span>
+          </IdentityText>
           <span className="ts-meta-sep">·</span>
           <span className="ts-time">{formatTime(msg.createdAt)}</span>
           <span className="ts-meta-sep">·</span>
@@ -350,7 +350,7 @@ function ThreadSummaryRow({
         </div>
       </div>
       <span className="ts-connector" />
-      <span className="ts-dot" style={{ background: dotColor }} aria-hidden="true" />
+      <IdentityBadge className="ts-dot" color={dotColor} />
     </div>
   );
 }

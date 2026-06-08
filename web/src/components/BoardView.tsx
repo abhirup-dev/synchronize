@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import type { Agent, Task, TaskPriority, TaskStatus } from "../data/types.ts";
 import { useAgents, useTasks } from "../data/context.tsx";
-import { Avatar, Sticker } from "./primitives.tsx";
+import { Avatar, IdentityBadge, Sticker } from "./primitives.tsx";
 
 interface Column {
   id: TaskStatus;
@@ -93,12 +93,11 @@ function TaskCard({ task, agentById }: { task: Task; agentById: Map<string, Agen
 
       {task.status === "doing" && typeof task.progress === "number" ? (
         <div className="task-progress">
-          <div
+          <IdentityBadge
+            as="div"
             className="task-progress-fill"
-            style={{
-              width: `${Math.round(task.progress)}%`,
-              background: assignee?.color ?? "var(--ink)",
-            }}
+            color={assignee?.color ?? "var(--ink)"}
+            style={{ width: `${Math.round(task.progress)}%` }}
           />
           <span className="task-progress-label">{Math.round(task.progress)}%</span>
         </div>

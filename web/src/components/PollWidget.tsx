@@ -1,6 +1,6 @@
 import type { Poll } from "../data/types.ts";
 import type { Agent } from "../data/types.ts";
-import { inkFor } from "./primitives.tsx";
+import { IdentityBadge } from "./primitives.tsx";
 
 interface PollWidgetProps {
   poll: Poll;
@@ -61,14 +61,14 @@ export function PollWidget({ poll, me, agents, onVote }: PollWidgetProps) {
                   const a = agents.find((x) => x.id === vid);
                   if (!a) return null;
                   return (
-                    <span
+                    <IdentityBadge
                       key={vid}
                       className="poll-voter"
+                      color={a.color}
                       title={a.name}
-                      style={{ background: a.color, color: inkFor(a.color) }}
                     >
                       {a.avatar}
-                    </span>
+                    </IdentityBadge>
                   );
                 })}
               </span>

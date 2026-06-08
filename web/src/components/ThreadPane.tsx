@@ -7,16 +7,17 @@ import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
-import { inkFor } from "./primitives.tsx";
+import { IdentityBadge } from "./primitives.tsx";
 
 interface ThreadPaneProps {
   room: Room;
   parentId: string;
   focusMessageId?: string;
   onClose(): void;
+  showHeader?: boolean;
 }
 
-export function ThreadPane({ room, parentId, focusMessageId, onClose }: ThreadPaneProps) {
+export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader = true }: ThreadPaneProps) {
   const messages = useMessages(room.id);
   const replies = useThreadReplies(parentId);
   const agents = useAgents();
@@ -67,29 +68,30 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose }: ThreadPa
 
   return (
     <aside className="thread-pane" aria-label="thread" data-vim-panel="thread">
-      <header className="thread-pane-head">
-        <div className="thread-pane-title">
-          <strong>Thread</strong>
-          <span className="thread-pane-sep">·</span>
-          <span className="thread-pane-sub">replying to</span>
-          <span
-            className="author-name"
-            style={{
-              background: parentAuthor.color,
-              color: inkFor(parentAuthor.color),
-              padding: "var(--space-thread-author-chip-pad)",
-              border: "var(--line-sm)",
-              borderRadius: "var(--radius-sm)",
-              boxShadow: "var(--shadow-chip)",
-              fontFamily: "var(--font-display)",
-              fontSize: "var(--text-11)",
-            }}
-          >
-            {parentAuthor.name}
-          </span>
-        </div>
-        <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>
-      </header>
+      {showHeader && (
+        <header className="thread-pane-head">
+          <div className="thread-pane-title">
+            <strong>Thread</strong>
+            <span className="thread-pane-sep">·</span>
+            <span className="thread-pane-sub">replying to</span>
+            <IdentityBadge
+              className="author-name"
+              color={parentAuthor.color}
+              style={{
+                padding: "var(--space-thread-author-chip-pad)",
+                border: "var(--line-sm)",
+                borderRadius: "var(--radius-sm)",
+                boxShadow: "var(--shadow-chip)",
+                fontFamily: "var(--font-display)",
+                fontSize: "var(--text-11)",
+              }}
+            >
+              {parentAuthor.name}
+            </IdentityBadge>
+          </div>
+          <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>
+        </header>
+      )}
 
       <div className="thread-scroll-wrap">
       <div className="thread-pane-body autoscroll" ref={bodyRef}>

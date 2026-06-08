@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
 import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
-import { inkFor } from "./primitives.tsx";
+import { IdentityBadge } from "./primitives.tsx";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 
@@ -450,7 +450,7 @@ export function Composer({
               onClick={() => commitMention(a)}
               onMouseEnter={() => setMentionIdx(i)}
             >
-              <span className="mention-av" style={{ background: a.color, color: inkFor(a.color) }}>{a.avatar}</span>
+              <IdentityBadge className="mention-av" color={a.color}>{a.avatar}</IdentityBadge>
               <span className="mention-meta">
                 <span className="mention-name">{a.name}</span>
                 <span className="mention-handle">@{a.handle}</span>

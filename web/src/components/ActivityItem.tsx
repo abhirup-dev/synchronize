@@ -4,9 +4,9 @@
 // keys off the derived mention/reply flags and is the forward-compatible seam
 // for future work-event categories (claim/deliver/ship/…).
 
-import { memo, type CSSProperties } from "react";
+import { memo } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
-import { inkFor, StatusDot } from "./primitives.tsx";
+import { IdentityBadge, StatusDot } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 
 export interface ActivityItemProps {
@@ -52,9 +52,9 @@ function RoomChip({ room, onJump }: { room: Room; onJump(): void }) {
       title={`Go to ${isDm ? room.name : `#${room.name}`}`}
       type="button"
     >
-      <span className="act-roomchip-icon" style={{ background: room.color } as CSSProperties}>
+      <IdentityBadge className="act-roomchip-icon" color={room.color}>
         {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
-      </span>
+      </IdentityBadge>
       <span className="act-roomchip-name">{isDm ? room.name : `#${room.name}`}</span>
     </button>
   );
@@ -110,13 +110,13 @@ function ActivityItemImpl({
       }
     >
       {awaits && <span className="act-row-bar" />}
-      <div className="act-marker sm" style={{ background: actor.color, color: inkFor(actor.color) } as CSSProperties}>
+      <IdentityBadge as="div" className="act-marker sm" color={actor.color}>
         <MarkerIcon item={item} />
         {actor.status === "busy" && <span className="act-marker-pulse" />}
-      </div>
-      <span className="author-chip xs" style={{ background: actor.color, color: inkFor(actor.color) } as CSSProperties}>
+      </IdentityBadge>
+      <IdentityBadge className="author-chip xs" color={actor.color}>
         {actor.name}
-      </span>
+      </IdentityBadge>
       <span className="act-row-text">
         <span className="act-row-preview"><ActivityPreview text={item.text} /></span>
       </span>
