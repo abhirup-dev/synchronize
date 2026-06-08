@@ -65,6 +65,7 @@
 | File | Lines | Topic |
 |---|---|---|
 | `web/DESIGN.md` | 427 | Web UI design — DataSource interface, ChatView/MessageRow/Sidebar component layout, theme tokens. |
+| `docs/plans/web-kanagawa-dark-theme-reference.md` | 76 | Incremental Kanagawa dark-theme visual retune against copied reference screenshots, sliced by chat cards, composer, sidebar, header, roster, board, artifacts, and activity surfaces (sync-a694, sync-4ste, sync-eeas, sync-063f, sync-ntmy, sync-0kj2, sync-nxee, sync-iimf). |
 | `docs/plans/web-local-session-store.md` | 134 | Plan for daemon-owned local web session store and future principal identity tracking (sync-z2q, sync-c5t). |
 | `docs/plans/web-responsive-compact-shell.md` | 321 | Responsive compact web shell plan for staged roster/sidebar collapse, community and agent takeovers, and compact composer navigation (sync-ogbk). |
 | `docs/plans/multi-machine-support.md` | 137 | Feasibility + phased plan for remote sessions joining one daemon over Tailscale, rendered together in the UI (sync-kp1 epic; sync-2bo, sync-stn, sync-xl3, sync-h9h). **Phase 2 (unified SSE) superseded by `multi-machine-push-v0.md`** — read that for the shipped delivery approach. |

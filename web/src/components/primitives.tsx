@@ -1,6 +1,6 @@
 // Small, reusable UI primitives shared across the app.
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
 
 // WCAG-style relative luminance; used to pick black-or-white text on a tinted
@@ -17,6 +17,68 @@ export function inkFor(bgHex: string): string {
   return relLum(bgHex) > 0.55 ? "#111111" : "#FFFFFF";
 }
 
+function identityInkFor(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? inkFor(color) : "var(--ink)";
+}
+
+export function IdentityBadge({
+  color,
+  ink,
+  children,
+  className = "",
+  size,
+  fontSize,
+  self = false,
+  title,
+  style,
+  as = "span",
+}: {
+  color: string;
+  ink?: string;
+  children?: ReactNode;
+  className?: string;
+  size?: number;
+  fontSize?: number | string;
+  self?: boolean;
+  title?: string;
+  style?: CSSProperties;
+  as?: "span" | "div";
+}) {
+  const Element = as;
+  const identityStyle = {
+    ...style,
+    ...(size !== undefined ? { "--identity-size": `${size}px` } : null),
+    ...(fontSize !== undefined ? { "--identity-font-size": typeof fontSize === "number" ? `${fontSize}px` : fontSize } : null),
+    "--identity-color": self ? "var(--paper-3)" : color,
+    "--identity-ink": self ? "var(--ink)" : ink ?? identityInkFor(color),
+  } as CSSProperties;
+  return (
+    <Element
+      className={`${className ? `${className} ` : ""}identity-tint${self ? " identity-self" : ""}`}
+      style={identityStyle}
+      title={title}
+    >
+      {children}
+    </Element>
+  );
+}
+
+export function IdentityText({
+  color,
+  className = "",
+  children,
+}: {
+  color: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={`${className ? `${className} ` : ""}identity-text-tint`} style={{ "--identity-color": color } as CSSProperties}>
+      {children}
+    </span>
+  );
+}
+
 export function Avatar({
   agent,
   size = 32,
@@ -30,19 +92,19 @@ export function Avatar({
 }) {
   const isYou = agent.id === "you";
   return (
-    <div
+    <IdentityBadge
+      as="div"
       className={`avatar identity-icon${ring ? " avatar-ring" : ""}`}
-      style={{
-        "--identity-size": `${size}px`,
-        "--identity-font-size": `${Math.round(size * 0.45)}px`,
-        background: isYou ? "var(--paper-3)" : agent.color,
-        color: isYou ? "var(--ink)" : inkFor(agent.color),
-      } as CSSProperties}
+      color={agent.color}
+      ink={inkFor(agent.color)}
+      self={isYou}
+      size={size}
+      fontSize={Math.round(size * 0.45)}
       title={`${agent.name} · ${agent.handle}`}
     >
       {agent.avatar}
       {showStatus && <StatusDot status={agent.status} className="identity-status-dot" pulse />}
-    </div>
+    </IdentityBadge>
   );
 }
 
@@ -112,12 +174,13 @@ export function Sticker({ label, color, tilt = -2 }: { label: string; color?: st
 
 export function MentionChip({ agent }: { agent: Agent }) {
   return (
-    <span
+    <IdentityBadge
       className={`mention-chip${agent.handle === "you" ? " mention-chip-self" : ""}`}
-      style={{ "--mention-color": agent.color, "--mention-ink": inkFor(agent.color) } as CSSProperties}
+      color={agent.color}
+      ink={inkFor(agent.color)}
     >
       @{agent.handle}
-    </span>
+    </IdentityBadge>
   );
 }
 

@@ -1,7 +1,8 @@
 import { useAgents } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
-import { Avatar, Sticker, inkFor } from "./primitives.tsx";
+import { Avatar, IdentityBadge } from "./primitives.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
+import type { Agent } from "../data/types.ts";
 
 export type RoomTab = "chat" | "board" | "artifacts";
 
@@ -9,11 +10,28 @@ interface RoomHeaderProps {
   room: Room;
   tab: RoomTab;
   onTab(t: RoomTab): void;
+  theme: string;
+  themeIcon: string;
+  onToggleTheme(shiftKey: boolean): void;
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
+  threadBanner?: {
+    author: Agent;
+    onClose(): void;
+  };
 }
 
-export function RoomHeader({ room, tab, onTab, showAgentsButton = false, onOpenAgents }: RoomHeaderProps) {
+export function RoomHeader({
+  room,
+  tab,
+  onTab,
+  theme,
+  themeIcon,
+  onToggleTheme,
+  showAgentsButton = false,
+  onOpenAgents,
+  threadBanner,
+}: RoomHeaderProps) {
   const agents = useAgents();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
@@ -23,24 +41,20 @@ export function RoomHeader({ room, tab, onTab, showAgentsButton = false, onOpenA
     <header className="room-header">
       <div className="room-header-top">
         <div className="room-id">
-          <div className="room-id-icon" style={{ background: room.color, color: inkFor(room.color) }}>
+          <IdentityBadge as="div" className="room-id-icon" color={room.color}>
             {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
-          </div>
+          </IdentityBadge>
           <div className="room-id-text">
             <div className="room-title">
-              <span className="room-title-name">{room.kind === "group" ? `#${room.name}` : room.name}</span>{" "}
-              <Sticker label={room.kind.toUpperCase()} color="var(--yellow)" tilt={-2} />
-            </div>
-            <div className="room-meta">
-              <span>{members.length} member{members.length === 1 ? "" : "s"}</span>
-              {working > 0 ? (
-                <>
-                  <span className="dot-sep">•</span>
-                  <span className="busy-inline"><span className="busy-dot" />{working} working</span>
-                </>
-              ) : null}
+              <span className="room-title-name">{room.kind === "group" ? `#${room.name}` : room.name}</span>
             </div>
             {room.description ? <div className="room-topic">{room.description}</div> : null}
+          </div>
+        </div>
+
+        <div className="room-header-summary">
+          <div className="room-meta">
+            <span className="busy-inline"><span className="busy-dot" />{working} / {members.length} working</span>
           </div>
         </div>
 
@@ -59,6 +73,14 @@ export function RoomHeader({ room, tab, onTab, showAgentsButton = false, onOpenA
               <span className="room-agents-count">{members.length}</span>
             </button>
           )}
+          <button
+            className="icon-btn theme-toggle"
+            onClick={(event) => onToggleTheme(event.shiftKey)}
+            title={`${theme} · click toggles light/dark, shift-click cycles variants`}
+            aria-label="toggle theme"
+          >
+            {themeIcon}
+          </button>
           <button className="icon-btn" aria-label="pin">📌</button>
           <button className="icon-btn" aria-label="search">🔍</button>
           <button className="icon-btn" aria-label="more">⋯</button>
@@ -75,10 +97,24 @@ export function RoomHeader({ room, tab, onTab, showAgentsButton = false, onOpenA
             {t === "chat" ? "💬 CHAT" : t === "board" ? "▦ BOARD" : "▤ ARTIFACTS"}
           </button>
         ))}
-        <div className="room-activity">
-          ROOM ACTIVITY
-          <span className="activity-spark">▁▂▃▅▆▇▆▅▃▂</span>
-        </div>
+        {threadBanner ? (
+          <div className="room-thread-banner" aria-label={`thread replying to ${threadBanner.author.name}`}>
+            <div className="room-thread-title">
+              <strong>Thread</strong>
+              <span className="thread-pane-sep">·</span>
+              <span className="thread-pane-sub">replying to</span>
+              <IdentityBadge className="author-name room-thread-author" color={threadBanner.author.color}>
+                {threadBanner.author.name}
+              </IdentityBadge>
+            </div>
+            <button className="thread-pane-close room-thread-close" onClick={threadBanner.onClose} aria-label="close thread">×</button>
+          </div>
+        ) : (
+          <div className="room-activity">
+            ROOM ACTIVITY
+            <span className="activity-spark">▁▂▃▅▆▇▆▅▃▂</span>
+          </div>
+        )}
       </div>
     </header>
   );

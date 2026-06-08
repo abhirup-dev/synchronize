@@ -1,6 +1,7 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import type { Agent, Message } from "../data/types.ts";
-import { Avatar, MentionChip, inkFor } from "./primitives.tsx";
+import { Avatar, IdentityBadge, MentionChip } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { PollWidget } from "./PollWidget.tsx";
@@ -20,26 +21,79 @@ interface MessageRowProps {
 }
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
+const OVERLAY_CLOSE_EVENT = "synchronize:overlay-close";
+const FLOATING_PICKER_HEIGHT = 88;
+const FLOATING_POPOVER_HEIGHT = 96;
+
+type FloatingStyle = Pick<CSSProperties, "top" | "right" | "bottom">;
+
+function floatingStyleFor(anchor: HTMLElement, height: number): FloatingStyle {
+  const rect = anchor.getBoundingClientRect();
+  const above = rect.top >= height + 12;
+  return {
+    right: Math.max(8, window.innerWidth - rect.right),
+    top: above ? "auto" : Math.min(window.innerHeight - height - 8, rect.bottom + 8),
+    bottom: above ? window.innerHeight - rect.top + 8 : "auto",
+  };
+}
 
 export const MessageRow = memo(function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, onReact, hideAvatar }: MessageRowProps) {
   const openMenu = useContextMenu();
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const me = useMe();
   const isYou = author.id === me.id || author.id === "you";
   const isWebAuthor = author.role === "web";
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerStyle, setPickerStyle] = useState<FloatingStyle | null>(null);
   const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null);
+  const [detailsStyle, setDetailsStyle] = useState<FloatingStyle | null>(null);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent] as const)), [agents]);
   const threadReplyCount = message.threadReplyCount ?? 0;
   const hasThreadBadge = threadReplyCount > 0 && Boolean(onOpenThread);
+
+  const closeReactionOverlays = () => {
+    setPickerOpen(false);
+    setPickerStyle(null);
+    setDetailsEmoji(null);
+    setDetailsStyle(null);
+  };
+
+  const openPicker = (anchor?: HTMLElement | null) => {
+    window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
+    setDetailsEmoji(null);
+    setDetailsStyle(null);
+    setPickerStyle(anchor ? floatingStyleFor(anchor, FLOATING_PICKER_HEIGHT) : null);
+    setPickerOpen(true);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeReactionOverlays();
+    };
+    window.addEventListener(OVERLAY_CLOSE_EVENT, closeReactionOverlays);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("keyup", onKeyDown, true);
+    window.addEventListener("scroll", closeReactionOverlays, true);
+    return () => {
+      window.removeEventListener(OVERLAY_CLOSE_EVENT, closeReactionOverlays);
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("keyup", onKeyDown, true);
+      window.removeEventListener("scroll", closeReactionOverlays, true);
+    };
+  }, []);
+
   return (
     <div
+      ref={rowRef}
       id={`msg-${message.id}`}
       data-vim-item={`msg-${message.id}`}
       className={`message-row${isYou ? " is-you" : ""}${isWebAuthor ? " is-web-author" : ""}${groupedWithPrev ? " is-grouped" : ""}${hideAvatar ? " no-avatar" : ""}`}
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
-          { label: "Add reaction", onSelect: () => setPickerOpen(true) },
+          { label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) },
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
           { label: "Copy link", onSelect: () => console.log("link", message.id) },
           { divider: true },
@@ -57,11 +111,10 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
       <div className="message-body">
         {!groupedWithPrev && !isWebAuthor && (
           <div className="author-chip">
-            <span
+            <IdentityBadge
               className="author-name"
+              color={author.color}
               style={{
-                background: author.color,
-                color: inkFor(author.color),
                 fontFamily: "var(--font-display)",
                 fontSize: "var(--text-12)",
                 letterSpacing: "var(--tracking-xs)",
@@ -72,10 +125,10 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                 display: "inline-flex",
                 alignItems: "center",
                 lineHeight: 1.2,
-              }}
+              } as CSSProperties}
             >
               {author.name}
-            </span>
+            </IdentityBadge>
           </div>
         )}
         <div className="message-stack">
@@ -98,14 +151,14 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                         const a = agents.find((x) => x.id === aid);
                         if (!a) return null;
                         return (
-                          <span
+                          <IdentityBadge
                             key={aid}
                             className="thread-badge-av"
+                            color={a.color}
                             title={a.name}
-                            style={{ background: a.color, color: inkFor(a.color) }}
                           >
                             {a.avatar}
-                          </span>
+                          </IdentityBadge>
                         );
                       })}
                     </span>
@@ -129,8 +182,15 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                       <span
                         className="reaction-wrap"
                         key={reaction.emoji}
-                        onMouseEnter={() => setDetailsEmoji(reaction.emoji)}
-                        onMouseLeave={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
+                        onMouseEnter={(event) => {
+                          window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
+                          setDetailsEmoji(reaction.emoji);
+                          setDetailsStyle(floatingStyleFor(event.currentTarget, FLOATING_POPOVER_HEIGHT));
+                        }}
+                        onMouseLeave={() => {
+                          setDetailsEmoji((current) => current === reaction.emoji ? null : current);
+                          setDetailsStyle(null);
+                        }}
                       >
                         <button
                           className={`reaction${mine ? " is-mine" : ""}`}
@@ -139,32 +199,61 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                           aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
                           onClick={() => {
                             setPickerOpen(false);
+                            setPickerStyle(null);
                             onReact?.(message.id, reaction.emoji);
                           }}
-                          onFocus={() => setDetailsEmoji(reaction.emoji)}
-                          onBlur={() => setDetailsEmoji((current) => current === reaction.emoji ? null : current)}
+                          onFocus={(event) => {
+                            window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
+                            setDetailsEmoji(reaction.emoji);
+                            setDetailsStyle(floatingStyleFor(event.currentTarget, FLOATING_POPOVER_HEIGHT));
+                          }}
+                          onBlur={() => {
+                            setDetailsEmoji((current) => current === reaction.emoji ? null : current);
+                            setDetailsStyle(null);
+                          }}
                         >
                           <span>{reaction.emoji}</span>
                           <span className="rcount">{reaction.by.length}</span>
                         </button>
-                        {detailsEmoji === reaction.emoji && (
-                          <div className="reaction-popover" role="dialog" aria-label={`${reaction.emoji} reactions`}>
+                        {detailsEmoji === reaction.emoji && createPortal(
+                          <div
+                            className={`reaction-popover${detailsStyle ? " is-floating" : ""}`}
+                            role="dialog"
+                            aria-label={`${reaction.emoji} reactions`}
+                            style={detailsStyle ?? undefined}
+                          >
                             <div className="reaction-popover-head">{reaction.emoji}</div>
                             {names.map((name, index) => (
                               <div className="reaction-person" key={`${reaction.emoji}-${reaction.by[index]}`}>{name}</div>
                             ))}
-                          </div>
+                          </div>,
+                          document.body,
                         )}
                       </span>
                     );
                   })}
                   {onReact && (
                     <span className="reaction-wrap">
-                      <button className="reaction add" aria-label="add reaction" onClick={() => setPickerOpen(!pickerOpen)}>
+                      <button
+                        className="reaction add"
+                        aria-label="add reaction"
+                        onClick={(event) => {
+                          if (pickerOpen) {
+                            closeReactionOverlays();
+                          } else {
+                            openPicker(event.currentTarget);
+                          }
+                        }}
+                      >
                         +
                       </button>
-                      {pickerOpen && (
-                        <div className="reaction-picker" role="menu" aria-label="choose reaction">
+                      {pickerOpen && createPortal(
+                        <div
+                          className={`reaction-picker${pickerStyle ? " is-floating" : ""}`}
+                          role="menu"
+                          aria-label="choose reaction"
+                          style={pickerStyle ?? undefined}
+                        >
                           {QUICK_REACTIONS.map((emoji) => (
                             <button
                               key={emoji}
@@ -172,12 +261,14 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                               onClick={() => {
                                 onReact(message.id, emoji);
                                 setPickerOpen(false);
+                                setPickerStyle(null);
                               }}
                             >
                               {emoji}
                             </button>
                           ))}
-                        </div>
+                        </div>,
+                        document.body,
                       )}
                     </span>
                   )}
