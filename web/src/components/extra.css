@@ -1109,12 +1109,31 @@
   margin: 12px 0 6px;
 }
 .markdown p { line-height: 1.6; }
-.markdown ul, .markdown ol { padding-left: 22px; line-height: 1.64; }
-.markdown li { margin: 2px 0; }
+.markdown em { font-style: italic; }
+.markdown ul, .markdown ol { margin: 4px 0 8px 0; padding-left: 22px; line-height: 1.64; }
+.markdown li { margin: 2px 0 3px; }
+.markdown ul { list-style: none; padding-left: 4px; }
+.markdown ul li {
+  position: relative;
+  padding-left: 16px;
+}
+.markdown ul li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: var(--ink);
+  font-weight: 900;
+}
+.markdown strong {
+  color: var(--strong-fg, var(--ink));
+  font-weight: var(--strong-weight, 700);
+}
 .markdown code {
   font-family: var(--font-mono);
   font-size: var(--text-12);
-  background: var(--paper-3);
+  background: var(--code-inline-bg, var(--paper-3));
+  color: var(--code-inline-fg, var(--ink));
+  border: var(--code-inline-border, var(--line-xs));
   padding: var(--space-chip-pad-xs);
   border-radius: var(--radius-xs);
 }
@@ -1124,33 +1143,54 @@
   border: var(--line-2);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
+  margin: 8px 0;
   overflow-x: auto;
   box-shadow: var(--shadow-sm);
+  font-size: var(--text-12-5);
+  line-height: 1.55;
 }
 .markdown pre code {
   background: transparent;
+  border: var(--line-none);
   padding: 0;
-  font-size: var(--text-12);
-  line-height: 1.5;
-  color: var(--code-fg);
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 .markdown blockquote {
-  border-left: 4px solid var(--rule);
-  padding: 4px 12px;
-  color: var(--ink-soft);
-  background: var(--paper-2);
+  margin: 8px 0;
+  padding: 8px 14px;
+  background: var(--paper);
+  border-left: 5px solid var(--pink);
+  border-top: var(--line-sm);
+  border-right: var(--line-sm);
+  border-bottom: var(--line-sm);
+  font-style: italic;
 }
 .markdown table {
-  border-collapse: collapse;
-  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 8px 0;
+  border: var(--line-md);
+  background: var(--paper);
+  font-size: var(--text-12-5);
 }
 .markdown th, .markdown td {
-  border: var(--line-xs);
-  padding: 6px 10px;
+  padding: 5px 10px;
+  border-bottom: var(--line-sm);
+  border-right: var(--line-sm);
   text-align: left;
 }
-.markdown tr:nth-child(2n) td { background: var(--paper-2); }
-.markdown a { color: var(--ink); text-decoration: underline; }
+.markdown th:last-child, .markdown td:last-child { border-right: none; }
+.markdown tr:last-child td { border-bottom: none; }
+.markdown th {
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+}
+.markdown a { color: var(--blue); text-decoration: underline; text-decoration-thickness: 2px; }
 .markdown del { color: var(--ink-faint); }
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */

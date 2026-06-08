@@ -100,7 +100,7 @@
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
   --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
-  --message-card-shadow-offset: 4px;
+  --message-card-shadow-offset: 2px;
   --message-card-border: var(--line-2);
   --message-card-border-color: var(--rule);
   --message-card-shadow-color: var(--rule);
@@ -172,6 +172,11 @@
   --bubble: #ECE6D2;
   --code-bg: #1B1815;
   --code-fg: #F4EFE3;
+  --code-inline-bg: var(--paper-3);
+  --code-inline-fg: var(--ink);
+  --code-inline-border: var(--line-none);
+  --strong-fg: var(--ink);
+  --strong-weight: 700;
 }
 
 /* Dark theme — warm coffee palette, off-white ink, slightly desaturated accents.
@@ -281,6 +286,7 @@
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
   --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 4px;
   --space-0: 0;
   --space-1: 1px;
   --space-2: 2px;
@@ -333,8 +339,13 @@
   --you-bg: #3A352D;
   --you-fg: #ECE3CD;
   --bubble: #23201C;
-  --code-bg: #100E0C;
-  --code-fg: #ECE3CD;
+  --code-bg: #181512;
+  --code-fg: #F2E8D0;
+  --code-inline-bg: #332E27;
+  --code-inline-fg: #F2E8D0;
+  --code-inline-border: 1px solid rgba(236, 227, 205, 0.28);
+  --strong-fg: #F2E8D0;
+  --strong-weight: 800;
 }
 
 :root[data-theme="rose-pine-dawn"] {
@@ -430,8 +441,13 @@
   --message-card-border: 1.5px solid var(--message-card-border-color);
   --message-card-border-color: #4F4F5F;
   --message-card-shadow-color: #05060C;
-  --code-bg: #0D0C11;
-  --code-fg: #D4CEB0;
+  --code-bg: #1B1B24;
+  --code-fg: #E4DCBE;
+  --code-inline-bg: #383847;
+  --code-inline-fg: #E8E0C2;
+  --code-inline-border: 1px solid rgba(212, 206, 176, 0.28);
+  --strong-fg: #E8E0C2;
+  --strong-weight: 800;
 }
 
 :root[data-theme="catppuccin-mocha"] {
@@ -479,6 +495,7 @@
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
   --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 4px;
   --yellow: #F9E2AF;
   --pink: #F5C2E7;
   --blue: #89B4FA;
@@ -493,8 +510,13 @@
   --you-bg: #313244;
   --you-fg: #CDD6F4;
   --bubble: #181825;
-  --code-bg: #11111B;
-  --code-fg: #CDD6F4;
+  --code-bg: #202033;
+  --code-fg: #E6E9FF;
+  --code-inline-bg: #313244;
+  --code-inline-fg: #E6E9FF;
+  --code-inline-border: 1px solid rgba(205, 214, 244, 0.28);
+  --strong-fg: #E6E9FF;
+  --strong-weight: 800;
 }
 
 * { box-sizing: border-box; }
@@ -1631,96 +1653,8 @@ button { font-family: inherit; cursor: pointer; }
   border-color: var(--rule);
   color: var(--ink);
 }
-.msg-row.you .msg-bubble .md,
-.msg-row.you .msg-bubble .md p,
-.msg-row.you .msg-bubble .md li,
-.msg-row.you .msg-bubble .md strong { color: var(--ink); }
-.msg-row.you .msg-bubble .md code {
-  color: var(--ink);
-  background: var(--paper-3);
-  border-color: var(--rule);
-}
-
 /* compact follow-on messages: hide gutter avatar, indent body, lighter bubble */
 .msg-row.compact .msg-bubble { background: var(--paper-2); }
-
-/* ─── markdown ─── */
-.md p { margin: 0 0 8px; }
-.md p:last-child { margin-bottom: 0; }
-.md strong { font-weight: 700; }
-.md em { font-style: italic; }
-.md ul, .md ol { margin: 4px 0 8px 0; padding-left: 22px; }
-.md ul li, .md ol li { margin-bottom: 3px; }
-.md ul { list-style: none; padding-left: 4px; }
-.md ul li { position: relative; padding-left: 16px; }
-.md ul li::before {
-  content: "▸";
-  position: absolute;
-  left: 0;
-  color: var(--ink);
-  font-weight: 900;
-}
-.md code {
-  font-family: var(--font-mono);
-  background: var(--paper-3);
-  border: var(--line-xs);
-  padding: 0 5px;
-  border-radius: var(--radius-xs);
-  font-size: var(--text-scale-code-inline);
-}
-.md pre {
-  background: var(--code-bg);
-  color: var(--code-fg);
-  border: var(--line-2);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  margin: 8px 0;
-  overflow-x: auto;
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-12-5);
-  line-height: 1.55;
-}
-.md pre code {
-  background: transparent;
-  border: var(--line-none);
-  padding: 0;
-  color: inherit;
-  font-size: inherit;
-}
-.md blockquote {
-  margin: 8px 0;
-  padding: 8px 14px;
-  background: var(--paper);
-  border-left: 5px solid var(--pink);
-  border-top: var(--line-sm);
-  border-right: var(--line-sm);
-  border-bottom: var(--line-sm);
-  font-style: italic;
-}
-.md table {
-  border-collapse: separate;
-  border-spacing: 0;
-  margin: 8px 0;
-  border: var(--line-md);
-  background: var(--paper);
-  font-size: var(--text-12-5);
-}
-.md th, .md td {
-  padding: 5px 10px;
-  border-bottom: var(--line-sm);
-  border-right: var(--line-sm);
-  text-align: left;
-}
-.md th:last-child, .md td:last-child { border-right: none; }
-.md tr:last-child td { border-bottom: none; }
-.md th {
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-sm);
-}
-.md a { color: var(--blue); text-decoration: underline; text-decoration-thickness: 2px; }
 
 .mention {
   display: inline-block;
@@ -3924,8 +3858,8 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-sm);
   margin-left: 40px;
 }
-.thread-parent-bubble .md p { margin: 0 0 6px; }
-.thread-parent-bubble .md p:last-child { margin-bottom: 0; }
+.thread-parent-bubble .markdown p { margin: 0 0 6px; }
+.thread-parent-bubble .markdown p:last-child { margin-bottom: 0; }
 .thread-parent-bubble .poll { margin-top: 8px; }
 
 /* divider between parent and replies — same DNA as .day-divider but quieter */
@@ -3984,8 +3918,8 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
-.thread-reply-bubble .md p { margin: 0 0 4px; }
-.thread-reply-bubble .md p:last-child { margin-bottom: 0; }
+.thread-reply-bubble .markdown p { margin: 0 0 4px; }
+.thread-reply-bubble .markdown p:last-child { margin-bottom: 0; }
 .thread-reply.you .thread-reply-bubble {
   background: var(--muted);
 }
