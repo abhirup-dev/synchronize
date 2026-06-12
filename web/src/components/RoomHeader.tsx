@@ -3,6 +3,8 @@ import type { Room } from "../data/types.ts";
 import { Avatar, IdentityBadge } from "./primitives.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 import type { Agent } from "../data/types.ts";
+import { useContextMenu } from "./ContextMenu.tsx";
+import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
 
 export type RoomTab = "chat" | "board" | "artifacts";
 
@@ -15,6 +17,8 @@ interface RoomHeaderProps {
   onToggleTheme(shiftKey: boolean): void;
   skin: "brutal" | "glass";
   onToggleSkin(): void;
+  chatBg: string;
+  onChatBg(id: string): void;
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
   threadBanner?: {
@@ -32,11 +36,14 @@ export function RoomHeader({
   onToggleTheme,
   skin,
   onToggleSkin,
+  chatBg,
+  onChatBg,
   showAgentsButton = false,
   onOpenAgents,
   threadBanner,
 }: RoomHeaderProps) {
   const agents = useAgents();
+  const openMenu = useContextMenu();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
   const working = members.filter((m) => m.status === "busy").length;
@@ -84,6 +91,22 @@ export function RoomHeader({
             aria-label="toggle theme"
           >
             {themeIcon}
+          </button>
+          <button
+            className="icon-btn chat-bg-toggle"
+            onClick={(event) =>
+              openMenu(
+                event,
+                CHAT_BACKGROUNDS.map((preset) => ({
+                  label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
+                  onSelect: () => onChatBg(preset.id),
+                })),
+              )
+            }
+            title="chat background"
+            aria-label="choose chat background"
+          >
+            🖼
           </button>
           <button
             className="icon-btn skin-toggle"

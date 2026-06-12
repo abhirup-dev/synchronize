@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
+import { chatBackgroundById } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
@@ -200,6 +201,21 @@ function Shell() {
   const [skin, setSkin] = useState<"brutal" | "glass">(() =>
     localStorage.getItem("synchronize.skin") === "glass" ? "glass" : "brutal",
   );
+  const [chatBg, setChatBg] = useState<string>(() => localStorage.getItem("synchronize.chatbg") ?? "none");
+  useEffect(() => {
+    const preset = chatBackgroundById(chatBg);
+    const style = document.documentElement.style;
+    if (preset.image) {
+      style.setProperty("--chat-bg-image", preset.image);
+      style.setProperty("--chat-bg-size", preset.size);
+      style.setProperty("--chat-bg-repeat", preset.repeat);
+    } else {
+      style.removeProperty("--chat-bg-image");
+      style.removeProperty("--chat-bg-size");
+      style.removeProperty("--chat-bg-repeat");
+    }
+    localStorage.setItem("synchronize.chatbg", preset.id);
+  }, [chatBg]);
   useEffect(() => {
     // Skin = aesthetic system (border/shadow/radius language), orthogonal to
     // theme (palette). "brutal" is the original look; "glass" is the
@@ -329,6 +345,8 @@ function Shell() {
               onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
               skin={skin}
               onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
+              chatBg={chatBg}
+              onChatBg={setChatBg}
               showAgentsButton={rosterPanelAvailable}
               onOpenAgents={() => {
                 rememberOverlayOpener();

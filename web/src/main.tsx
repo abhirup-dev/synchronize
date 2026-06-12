@@ -5,6 +5,7 @@ import "./tw.css";
 import "./styles.css";
 import "./components/extra.css";
 import "./components/activity.css";
+import "./chat-bg.css";
 import "./skin-glass.css";
 import "highlight.js/styles/github-dark.css";
 
