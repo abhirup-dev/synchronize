@@ -65,60 +65,10 @@
 .chat-list.autoscroll            { --scroll-bg: var(--paper); }
 .thread-pane-body.autoscroll     { --scroll-bg: var(--paper); }
 
-/* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────── */
-.scroll-controls {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  z-index: var(--z-scroll-controls);
-  pointer-events: none; /* let underlying content receive clicks unless on a button */
-}
-.scroll-ctrl {
-  pointer-events: auto;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  background: var(--paper-2);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 160ms ease, transform 80ms ease, box-shadow 80ms ease;
-}
-.scroll-ctrl:hover:not(:disabled) {
-  opacity: 1;
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-}
-.scroll-ctrl.has-new-items {
-  opacity: 1;
-  background: var(--lime);
-  animation: new-message-pop 900ms ease-out infinite;
-}
-:root[data-theme="dark"] .scroll-ctrl.has-new-items,
-:root[data-theme="kanagawa-wave"] .scroll-ctrl.has-new-items,
-:root[data-theme="catppuccin-mocha"] .scroll-ctrl.has-new-items {
-  background: var(--paper-3);
-  color: var(--ink);
-  border-color: var(--rule);
-  animation: none;
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--lime);
-}
-.scroll-ctrl:disabled {
-  opacity: 0.18;
-  cursor: default;
-}
-
+/* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────
+   Rules migrated to Tailwind utilities in ScrollControls.tsx. Only the
+   keyframes remain here (keyframes are not ported during the migration);
+   the component references them via animate-[new-message-pop_...]. */
 @keyframes new-message-pop {
   0% {
     transform: translateY(0) scale(1);

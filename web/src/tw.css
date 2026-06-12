@@ -13,6 +13,15 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
+/* Dark-palette themes (legacy CSS targeted these three `data-theme` values
+ * together). Use `theme-dark:` for any utility that must override per dark
+ * palette, mirroring the old `:root[data-theme=...]` selector lists. */
+@custom-variant theme-dark (&:where(
+  [data-theme="dark"] *,
+  [data-theme="kanagawa-wave"] *,
+  [data-theme="catppuccin-mocha"] *
+));
+
 @theme inline {
   /* -- color -------------------------------------------------------- */
   --color-paper: var(--paper);
