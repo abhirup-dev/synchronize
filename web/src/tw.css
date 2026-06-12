@@ -1,0 +1,63 @@
+/* Tailwind v4 entry — theme + utilities only (no preflight while the legacy
+ * stylesheets still own the base look; revisit once the migration completes).
+ *
+ * All theme values are *references* to the existing token contract in
+ * styles.css (`:root` / `:root[data-theme="dark"]`), so utilities like
+ * `bg-paper` or `shadow-md` track the live theme and any future
+ * `data-skin` automatically. `@theme inline` makes utilities inline the
+ * var() reference instead of pointing at Tailwind's own emitted variable;
+ * the layered emission below always loses to the unlayered styles.css
+ * declarations, so the legacy tokens stay authoritative.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  /* -- color -------------------------------------------------------- */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-yellow: var(--yellow);
+  --color-pink: var(--pink);
+  --color-blue: var(--blue);
+  --color-lime: var(--lime);
+  --color-tangerine: var(--tangerine);
+  --color-lilac: var(--lilac);
+  --color-teal: var(--teal);
+  --color-red: var(--red);
+  --color-muted: var(--muted);
+  --color-on-ink: var(--on-ink);
+  --color-on-accent: var(--on-accent);
+  --color-bubble: var(--bubble);
+  --color-you-bg: var(--you-bg);
+  --color-you-fg: var(--you-fg);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-accent: var(--accent);
+
+  /* -- typography ---------------------------------------------------- */
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-mono: var(--font-mono);
+
+  /* -- borders / shadows / radii ------------------------------------- */
+  --shadow-xxs: var(--shadow-xxs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-chip: var(--shadow-chip);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-hover: var(--shadow-hover);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-pill: var(--radius-pill);
+}

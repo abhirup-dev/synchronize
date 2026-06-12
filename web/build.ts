@@ -12,6 +12,7 @@
 //   bun run web/build.ts --watch    # rebuild on change (poor man's HMR via reload)
 
 import { rm, writeFile, readFile, mkdir } from "node:fs/promises";
+import tailwind from "bun-plugin-tailwind";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
@@ -30,6 +31,7 @@ async function build(): Promise<void> {
     entrypoints: [join(SRC, "main.tsx")],
     outdir: DIST,
     target: "browser",
+    plugins: [tailwind],
     format: "esm",
     splitting: true,
     minify: !WATCH,
