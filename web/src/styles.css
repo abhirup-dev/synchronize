@@ -191,6 +191,43 @@
        glow/blur) on dark backgrounds, especially for users with astigmatism. A
        slightly heavier weight closes the perceptual gap without changing the
        typeface character. */
+/* === Skin contract — semantic role tokens =================================
+   The aesthetic-switching layer. Components migrated to the new system consume
+   these ROLE tokens (never the primitives above); a future skin (e.g. a
+   minimal/modern look) overrides only this block under its own
+   :root[data-skin="…"] selector. Roles reference primitives via var(), so
+   every data-theme variant flows through unchanged. App.tsx sets data-skin
+   on <html> next to data-theme. */
+:root,
+:root[data-skin="brutal"] {
+  /* surfaces & foreground */
+  --surface: var(--paper);
+  --surface-raised: var(--paper-2);
+  --surface-sunken: var(--paper-3);
+  --fg: var(--ink);
+  --fg-soft: var(--ink-soft);
+  --fg-faint: var(--ink-faint);
+
+  /* cards: message bubbles, panels, list tiles */
+  --card-border: var(--line-2);
+  --card-shadow: var(--shadow-sm);
+  --card-radius: var(--radius-lg);
+
+  /* controls: buttons, inputs, chips, tabs */
+  --control-border: var(--line-sm);
+  --control-shadow: var(--shadow-chip);
+  --control-shadow-hover: var(--shadow-hover-sm);
+  --control-radius: var(--radius-md);
+
+  /* overlays: menus, dialogs, popovers, toasts */
+  --overlay-border: var(--line);
+  --overlay-shadow: var(--shadow-lg);
+  --overlay-radius: var(--radius-lg);
+
+  /* keyboard focus */
+  --focus-ring: 0 0 0 2px var(--pink);
+}
+
 :root[data-theme="dark"] {
   --paper: #1B1815;
   --paper-2: #25221D;     /* +6% L step — surface ladder does the elevation work */

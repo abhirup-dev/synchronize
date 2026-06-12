@@ -197,6 +197,13 @@ function Shell() {
     localStorage.setItem("synchronize.theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    // Skin = aesthetic system (border/shadow/radius language), orthogonal to
+    // theme (palette). Only "brutal" exists today; see the skin contract block
+    // in styles.css before adding another.
+    document.documentElement.dataset["skin"] = localStorage.getItem("synchronize.skin") ?? "brutal";
+  }, []);
+
   const room = rooms.find((r) => r.id === activeId) ?? rooms[0];
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();

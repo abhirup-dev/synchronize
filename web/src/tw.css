@@ -60,4 +60,20 @@
   --radius-xl: var(--radius-xl);
   --radius-2xl: var(--radius-2xl);
   --radius-pill: var(--radius-pill);
+
+  /* -- semantic roles (skin contract — see styles.css) ---------------- */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-fg-faint: var(--fg-faint);
+  --shadow-card: var(--card-shadow);
+  --shadow-control: var(--control-shadow);
+  --shadow-control-hover: var(--control-shadow-hover);
+  --shadow-overlay: var(--overlay-shadow);
+  --shadow-focus-ring: var(--focus-ring);
+  --radius-card: var(--card-radius);
+  --radius-control: var(--control-radius);
+  --radius-overlay: var(--overlay-radius);
 }
