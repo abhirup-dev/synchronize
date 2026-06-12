@@ -197,12 +197,16 @@ function Shell() {
     localStorage.setItem("synchronize.theme", theme);
   }, [theme]);
 
+  const [skin, setSkin] = useState<"brutal" | "glass">(() =>
+    localStorage.getItem("synchronize.skin") === "glass" ? "glass" : "brutal",
+  );
   useEffect(() => {
     // Skin = aesthetic system (border/shadow/radius language), orthogonal to
-    // theme (palette). Only "brutal" exists today; see the skin contract block
-    // in styles.css before adding another.
-    document.documentElement.dataset["skin"] = localStorage.getItem("synchronize.skin") ?? "brutal";
-  }, []);
+    // theme (palette). "brutal" is the original look; "glass" is the
+    // liquid-glass skin (skin-glass.css). See the skin contract in styles.css.
+    document.documentElement.dataset["skin"] = skin;
+    localStorage.setItem("synchronize.skin", skin);
+  }, [skin]);
 
   const room = rooms.find((r) => r.id === activeId) ?? rooms[0];
   const roomMessages = useMessages(room?.id ?? "");
@@ -323,6 +327,8 @@ function Shell() {
               theme={theme}
               themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
               onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
+              skin={skin}
+              onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
               showAgentsButton={rosterPanelAvailable}
               onOpenAgents={() => {
                 rememberOverlayOpener();

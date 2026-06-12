@@ -13,6 +13,8 @@ interface RoomHeaderProps {
   theme: string;
   themeIcon: string;
   onToggleTheme(shiftKey: boolean): void;
+  skin: "brutal" | "glass";
+  onToggleSkin(): void;
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
   threadBanner?: {
@@ -28,6 +30,8 @@ export function RoomHeader({
   theme,
   themeIcon,
   onToggleTheme,
+  skin,
+  onToggleSkin,
   showAgentsButton = false,
   onOpenAgents,
   threadBanner,
@@ -80,6 +84,14 @@ export function RoomHeader({
             aria-label="toggle theme"
           >
             {themeIcon}
+          </button>
+          <button
+            className="icon-btn skin-toggle"
+            onClick={onToggleSkin}
+            title={`${skin} skin · click to switch to ${skin === "brutal" ? "glass" : "brutal"}`}
+            aria-label="toggle skin"
+          >
+            {skin === "brutal" ? "🫧" : "🧱"}
           </button>
           <button className="icon-btn" aria-label="pin">📌</button>
           <button className="icon-btn" aria-label="search">🔍</button>
