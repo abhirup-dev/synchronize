@@ -2,6 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "webui-revamp-dev",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "/Users/abhirupdas/Codes/Personal/synchronize-worktrees/feat-web-ui-professionalize/src/daemon.ts"],
+      "port": 7790,
+      "env": {
+        "SYNCHRONIZE_PORT": "7790",
+        "SYNCHRONIZE_HOME": "/Users/abhirupdas/.synchronize-webui-dev",
+        "SYNCHRONIZE_WEB_DIST": "/Users/abhirupdas/Codes/Personal/synchronize-worktrees/feat-web-ui-professionalize/web/dist",
+        "SYNCHRONIZE_LEASE_MS": "315360000000"
+      }
+    },
+    {
       "name": "synchronize-real",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "src/daemon.ts"],
