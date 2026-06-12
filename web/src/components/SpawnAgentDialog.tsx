@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Dialog } from "@base-ui-components/react/dialog";
 import { useSpawnAgent } from "../data/context.tsx";
 import type { AgentLaunchTool, Room } from "../data/types.ts";
 import { useToast } from "./Toast.tsx";
@@ -65,14 +66,6 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
     nameRef.current?.focus();
     nameRef.current?.select();
   }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   useEffect(() => {
     if (!nameTouched) setName(defaultAgentName(tool, room));
@@ -146,17 +139,25 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <form
-        className="spawn-agent-dialog"
-        aria-label={title}
-        onSubmit={submit}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Backdrop
+          className="modal-backdrop"
+          style={{ userSelect: "auto", WebkitUserSelect: "auto" }}
+        >
+          <Dialog.Popup
+            initialFocus={nameRef}
+            render={<form className="spawn-agent-dialog" onSubmit={submit} />}
+          >
         <div className="spawn-agent-head">
           <div>
             <div className="spawn-agent-kicker">agent</div>
-            <h2>{title}</h2>
+            <Dialog.Title render={<h2 />}>{title}</Dialog.Title>
           </div>
           <button type="button" className="spawn-agent-close" aria-label="close" onClick={onClose}>x</button>
         </div>
@@ -257,8 +258,10 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
             {submitting ? "Spawning..." : "Spawn"}
           </button>
         </div>
-      </form>
-    </div>
+          </Dialog.Popup>
+        </Dialog.Backdrop>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

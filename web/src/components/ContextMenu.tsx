@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Menu } from "@base-ui-components/react/menu";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 export interface MenuItem {
   label: string;
@@ -38,61 +39,74 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const close = () => setState(null);
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      close();
-    };
     window.addEventListener(OVERLAY_CLOSE_EVENT, close);
-    document.addEventListener("keydown", onEscape, true);
-    document.addEventListener("keyup", onEscape, true);
     return () => {
       window.removeEventListener(OVERLAY_CLOSE_EVENT, close);
-      document.removeEventListener("keydown", onEscape, true);
-      document.removeEventListener("keyup", onEscape, true);
     };
   }, []);
 
   useEffect(() => {
     if (!state) return;
     const close = () => setState(null);
-    window.addEventListener("click", close);
     window.addEventListener("scroll", close, true);
     return () => {
-      window.removeEventListener("click", close);
       window.removeEventListener("scroll", close, true);
+    };
+  }, [state]);
+
+  // Zero-size virtual anchor at the pointer position so the popup's top-left
+  // lands exactly where the original fixed-position menu rendered.
+  const anchor = useMemo(() => {
+    if (!state) return null;
+    const { x, y } = state;
+    return {
+      getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
     };
   }, [state]);
 
   return (
     <ContextMenuCtx.Provider value={{ open }}>
       {children}
-      {state && (
-        <div
-          className="ctx-menu"
-          style={{ left: state.x, top: state.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {state.items.map((it, i) =>
-            "divider" in it ? (
-              <div key={i} className="ctx-divider" />
-            ) : (
-              <button
-                key={i}
-                className={`ctx-item${it.danger ? " ctx-danger" : ""}`}
-                disabled={it.disabled}
-                onClick={() => {
-                  if (it.disabled) return;
-                  void Promise.resolve(it.onSelect()).finally(() => setState(null));
-                }}
-              >
-                <span>{it.label}</span>
-                {it.shortcut && <span className="ctx-shortcut">{it.shortcut}</span>}
-              </button>
-            ),
-          )}
-        </div>
-      )}
+      <Menu.Root
+        open={state !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setState(null);
+        }}
+        modal={false}
+      >
+        <Menu.Portal>
+          <Menu.Positioner
+            anchor={anchor}
+            side="bottom"
+            align="start"
+            sideOffset={0}
+            style={{ zIndex: "var(--z-context-menu)" }}
+          >
+            <Menu.Popup className="ctx-menu">
+              {(state?.items ?? []).map((it, i) =>
+                "divider" in it ? (
+                  <Menu.Separator key={i} className="ctx-divider" />
+                ) : (
+                  <Menu.Item
+                    key={i}
+                    className={`ctx-item${it.danger ? " ctx-danger" : ""}`}
+                    disabled={it.disabled ?? false}
+                    nativeButton
+                    render={<button type="button" disabled={it.disabled ?? false} />}
+                    onClick={() => {
+                      if (it.disabled) return;
+                      void Promise.resolve(it.onSelect());
+                    }}
+                  >
+                    <span>{it.label}</span>
+                    {it.shortcut && <span className="ctx-shortcut">{it.shortcut}</span>}
+                  </Menu.Item>
+                ),
+              )}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
     </ContextMenuCtx.Provider>
   );
 }

@@ -1544,14 +1544,16 @@
   border-radius: var(--radius-xs);
   cursor: pointer;
 }
-.ctx-item:hover { background: var(--paper-2); }
+.ctx-item:hover,
+.ctx-item[data-highlighted] { background: var(--paper-2); }
 .ctx-item:disabled {
   opacity: 0.46;
   cursor: default;
 }
 .ctx-item:disabled:hover { background: transparent; }
 .ctx-item.ctx-danger { color: var(--pink); }
-.ctx-item.ctx-danger:hover { background: color-mix(in srgb, var(--pink) 18%, transparent); }
+.ctx-item.ctx-danger:hover,
+.ctx-item.ctx-danger[data-highlighted] { background: color-mix(in srgb, var(--pink) 18%, transparent); }
 .ctx-shortcut {
   font-size: var(--text-11);
   color: var(--ink-soft);

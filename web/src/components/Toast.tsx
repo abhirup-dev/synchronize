@@ -1,14 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { Toast } from "@base-ui-components/react/toast";
 
 export type ToastKind = "info" | "warn" | "error" | "success";
-
-interface ToastItem {
-  id: string;
-  message: string;
-  kind: ToastKind;
-  /** ms before auto-dismiss; 0 means sticky (requires manual close). */
-  duration: number;
-}
 
 interface Ctx {
   show(message: string, opts?: { kind?: ToastKind; duration?: number }): string;
@@ -17,58 +10,69 @@ interface Ctx {
 
 const ToastCtx = createContext<Ctx | null>(null);
 
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const timersRef = useRef<Map<string, number>>(new Map());
+const DEFAULT_DURATION_MS = 3000;
 
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-    const t = timersRef.current.get(id);
-    if (t !== undefined) {
-      window.clearTimeout(t);
-      timersRef.current.delete(id);
-    }
-  }, []);
+/**
+ * Toast surface built on Base UI's Toast (provider + manager), wrapped behind
+ * the original `useToast().show/dismiss` API so call sites stay unchanged.
+ * Reuses the existing `.toast-stack` / `.toast` CSS; Base UI adds
+ * screen-reader announcements, F6 viewport focus, and hover timer pausing.
+ */
+export function ToastProvider({ children }: { children: ReactNode }) {
+  return (
+    <Toast.Provider timeout={DEFAULT_DURATION_MS} limit={Number.MAX_SAFE_INTEGER}>
+      <ToastBridge>{children}</ToastBridge>
+    </Toast.Provider>
+  );
+}
+
+function ToastBridge({ children }: { children: ReactNode }) {
+  const manager = Toast.useToastManager();
 
   const show = useCallback(
-    (message: string, opts?: { kind?: ToastKind; duration?: number }) => {
-      const id = `t_${Math.random().toString(36).slice(2)}`;
-      const duration = opts?.duration ?? 3000;
-      setToasts((prev) => [...prev, { id, message, kind: opts?.kind ?? "info", duration }]);
-      if (duration > 0) {
-        const timer = window.setTimeout(() => dismiss(id), duration);
-        timersRef.current.set(id, timer);
-      }
-      return id;
-    },
-    [dismiss],
+    (message: string, opts?: { kind?: ToastKind; duration?: number }) =>
+      manager.add({
+        title: message,
+        type: opts?.kind ?? "info",
+        // 0 means sticky (requires manual close) — same contract as before.
+        timeout: opts?.duration ?? DEFAULT_DURATION_MS,
+      }),
+    [manager],
   );
 
-  useEffect(
-    () => () => {
-      timersRef.current.forEach((t) => window.clearTimeout(t));
-      timersRef.current.clear();
-    },
-    [],
-  );
+  const dismiss = useCallback((id: string) => manager.close(id), [manager]);
+
+  const value = useMemo<Ctx>(() => ({ show, dismiss }), [show, dismiss]);
 
   return (
-    <ToastCtx.Provider value={{ show, dismiss }}>
+    <ToastCtx.Provider value={value}>
       {children}
-      <div className="toast-stack" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`toast toast-${t.kind}`}
-            onClick={() => dismiss(t.id)}
-            title="dismiss"
-          >
-            {t.message}
-          </button>
-        ))}
-      </div>
+      <Toast.Viewport className="toast-stack">
+        <ToastItems />
+      </Toast.Viewport>
     </ToastCtx.Provider>
+  );
+}
+
+function ToastItems() {
+  const { toasts, close } = Toast.useToastManager();
+  // Base UI prepends new toasts; the original stack appended them (newest at
+  // the bottom), so reverse to keep the visual order identical.
+  return (
+    <>
+      {[...toasts].reverse().map((t) => (
+        <Toast.Root
+          key={t.id}
+          toast={t}
+          className={`toast toast-${t.type ?? "info"}`}
+          render={<button type="button" />}
+          title="dismiss"
+          onClick={() => close(t.id)}
+        >
+          <Toast.Title render={<span />}>{t.title}</Toast.Title>
+        </Toast.Root>
+      ))}
+    </>
   );
 }
 
