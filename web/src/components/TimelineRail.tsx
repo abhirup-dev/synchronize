@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { Tooltip } from "@base-ui-components/react/tooltip";
 import { useAgents, useRooms, useTimeline } from "../data/context.tsx";
 import type { TimelineEvent, TimelineEventType } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
@@ -36,19 +37,12 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-interface HoverState {
-  ev: TimelineEvent;
-  x: number;
-  y: number;
-}
-
 export function TimelineRail({ roomId }: TimelineRailProps) {
   const events = useTimeline(roomId);
   const agents = useAgents();
   const rooms = useRooms();
   const room = rooms.find((candidate) => candidate.id === roomId);
   const displayAgents = useMemo(() => room ? roomAgents(agents, room) : agents, [agents, room]);
-  const [hover, setHover] = useState<HoverState | null>(null);
 
   const sorted = useMemo(
     () => [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -82,38 +76,21 @@ export function TimelineRail({ roomId }: TimelineRailProps) {
         <span className="timeline-head-label">TIMELINE</span>
         <span className="timeline-head-count">{sorted.length}</span>
       </div>
-      <div className="timeline-track">
-        {sorted.map((ev, i) => (
-          <Node
-            key={ev.id}
-            ev={ev}
-            isFirst={i === 0}
-            isLast={i === sorted.length - 1}
-            onHover={(rect) => {
-              if (rect) setHover({ ev, x: rect.right + 12, y: rect.top + rect.height / 2 });
-              else setHover((s) => (s?.ev.id === ev.id ? null : s));
-            }}
-            onClick={() => scrollToMessage(ev.messageId)}
-          />
-        ))}
-      </div>
-      {hover && (
-        <div
-          className="timeline-tooltip"
-          style={{
-            position: "fixed",
-            left: hover.x,
-            top: hover.y,
-            transform: "translateY(-50%)",
-          }}
-        >
-          <Tooltip
-            ev={hover.ev}
-            authorName={displayAgents.find((a) => a.id === hover.ev.agentId)?.name ?? hover.ev.agentId}
-            authorRole={displayAgents.find((a) => a.id === hover.ev.agentId)?.role ?? ""}
-          />
+      <Tooltip.Provider>
+        <div className="timeline-track">
+          {sorted.map((ev, i) => (
+            <Node
+              key={ev.id}
+              ev={ev}
+              isFirst={i === 0}
+              isLast={i === sorted.length - 1}
+              authorName={displayAgents.find((a) => a.id === ev.agentId)?.name ?? ev.agentId}
+              authorRole={displayAgents.find((a) => a.id === ev.agentId)?.role ?? ""}
+              onClick={() => scrollToMessage(ev.messageId)}
+            />
+          ))}
         </div>
-      )}
+      </Tooltip.Provider>
     </aside>
   );
 }
@@ -122,46 +99,60 @@ interface NodeProps {
   ev: TimelineEvent;
   isFirst: boolean;
   isLast: boolean;
-  onHover(rect: DOMRect | null): void;
+  authorName: string;
+  authorRole: string;
   onClick(): void;
 }
 
-function Node({ ev, isFirst, isLast, onHover, onClick }: NodeProps) {
+function Node({ ev, isFirst, isLast, authorName, authorRole, onClick }: NodeProps) {
   const bg = TYPE_COLOR[ev.type];
   const glyph = TYPE_GLYPH[ev.type];
   return (
-    <div
-      className="timeline-node"
-      role="button"
-      tabIndex={0}
-      onMouseEnter={(e) => onHover((e.currentTarget as HTMLElement).getBoundingClientRect())}
-      onMouseLeave={() => onHover(null)}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        delay={0}
+        closeDelay={0}
+        render={
+          <div
+            className="timeline-node"
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }}
+            style={{ cursor: ev.messageId ? "pointer" : "default" }}
+          />
         }
-      }}
-      style={{ cursor: ev.messageId ? "pointer" : "default" }}
-    >
-      <div
-        className="timeline-line-segment top"
-        data-edge={isFirst ? "first" : undefined}
-      />
-      <div className="timeline-marker" style={{ background: bg }} aria-hidden>
-        <span className="timeline-marker-glyph">{glyph}</span>
-      </div>
-      <span className="timeline-time">{formatTime(ev.createdAt)}</span>
-      <div
-        className="timeline-line-segment bot"
-        data-edge={isLast ? "last" : undefined}
-      />
-    </div>
+      >
+        <div
+          className="timeline-line-segment top"
+          data-edge={isFirst ? "first" : undefined}
+        />
+        <div className="timeline-marker" style={{ background: bg }} aria-hidden>
+          <span className="timeline-marker-glyph">{glyph}</span>
+        </div>
+        <span className="timeline-time">{formatTime(ev.createdAt)}</span>
+        <div
+          className="timeline-line-segment bot"
+          data-edge={isLast ? "last" : undefined}
+        />
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner side="right" align="center" sideOffset={12}>
+          <Tooltip.Popup className="timeline-tooltip">
+            <TooltipContent ev={ev} authorName={authorName} authorRole={authorRole} />
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
   );
 }
 
-function Tooltip({ ev, authorName, authorRole }: { ev: TimelineEvent; authorName: string; authorRole: string }) {
+function TooltipContent({ ev, authorName, authorRole }: { ev: TimelineEvent; authorName: string; authorRole: string }) {
   const bg = TYPE_COLOR[ev.type];
   return (
     <>

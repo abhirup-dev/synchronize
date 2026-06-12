@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
 import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
@@ -21,6 +21,18 @@ interface ComposerProps {
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
 type SkillRuntimeFilter = "all" | AgentLaunchTool;
+
+const SR_ONLY_STYLE: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
 
 function filesFromClipboard(data: DataTransfer): File[] {
   const files = Array.from(data.files ?? []);
@@ -105,6 +117,10 @@ export function Composer({
   const [addingAttachments, setAddingAttachments] = useState(false);
   const [popRect, setPopRect] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [collapsed, setCollapsed] = useState(collapsedDefault);
+  const [mentionAnnouncement, setMentionAnnouncement] = useState("");
+  const mentionBaseId = useId();
+  const mentionListboxId = `${mentionBaseId}-mention-listbox`;
+  const mentionOptionId = (agentId: string) => `${mentionBaseId}-mention-opt-${agentId}`;
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -146,6 +162,17 @@ export function Composer({
     const q = mentionQuery.toLowerCase();
     return mentionAgents.filter((a) => a.id !== me.id && (q === "" || a.handle.toLowerCase().startsWith(q))).slice(0, 6);
   }, [mentionQuery, mentionAgents, me.id]);
+
+  const mentionOpen = mentionQuery !== null && candidates.length > 0;
+
+  useEffect(() => {
+    if (candidates.length > 0 && mentionIdx >= candidates.length) setMentionIdx(0);
+  }, [candidates.length, mentionIdx]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    setMentionAnnouncement(`${candidates.length} mention suggestion${candidates.length === 1 ? "" : "s"} available`);
+  }, [mentionOpen, candidates.length]);
 
   const skillCandidates = useMemo(() => {
     return skillCatalog
@@ -271,6 +298,7 @@ export function Composer({
     const next = before + after;
     setValue(next);
     setMentionQuery(null);
+    setMentionAnnouncement(`@${a.handle} mention added`);
     queueMicrotask(() => {
       ta.focus();
       const pos = before.length;
@@ -287,7 +315,7 @@ export function Composer({
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionQuery !== null && candidates.length > 0) {
+    if (mentionOpen) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx((i) => (i + 1) % candidates.length); return; }
       if (e.key === "ArrowUp")   { e.preventDefault(); setMentionIdx((i) => (i - 1 + candidates.length) % candidates.length); return; }
       if (e.key === "Enter" || e.key === "Tab") {
@@ -296,7 +324,7 @@ export function Composer({
         if (picked) commitMention(picked);
         return;
       }
-      if (e.key === "Escape") { setMentionQuery(null); return; }
+      if (e.key === "Escape") { e.preventDefault(); setMentionQuery(null); return; }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -430,11 +458,22 @@ export function Composer({
           onKeyDown={handleKey}
           onPaste={handlePaste}
           rows={3}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={mentionOpen}
+          aria-controls={mentionOpen ? mentionListboxId : undefined}
+          aria-activedescendant={mentionOpen && candidates[mentionIdx] ? mentionOptionId(candidates[mentionIdx].id) : undefined}
         />
       </div>
-      {mentionQuery !== null && candidates.length > 0 && popRect && (
+      <div aria-live="polite" role="status" style={SR_ONLY_STYLE}>
+        {mentionAnnouncement}
+      </div>
+      {mentionOpen && popRect && (
         <div
+          id={mentionListboxId}
           className="mention-pop"
+          role="listbox"
+          aria-label="mention suggestions"
           style={{
             position: "fixed",
             left: popRect.left,
@@ -445,8 +484,13 @@ export function Composer({
           {candidates.map((a, i) => (
             <button
               key={a.id}
+              id={mentionOptionId(a.id)}
               type="button"
+              role="option"
+              aria-selected={i === mentionIdx}
+              tabIndex={-1}
               className={`mention-row${i === mentionIdx ? " focused" : ""}`}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => commitMention(a)}
               onMouseEnter={() => setMentionIdx(i)}
             >

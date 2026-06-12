@@ -2767,6 +2767,7 @@ button { font-family: inherit; cursor: pointer; }
 /* tooltip ----------------------------------------------------------------- */
 
 .timeline-tooltip {
+  position: relative; /* containing block for the ::after arrow (popup is portaled by Base UI) */
   width: 260px;
   background: var(--paper);
   border: var(--line-md);
@@ -2779,8 +2780,9 @@ button { font-family: inherit; cursor: pointer; }
   animation: tooltip-in 140ms ease;
 }
 @keyframes tooltip-in {
-  from { transform: translate(8px, -50%); opacity: 0; }
-  to   { transform: translate(0, -50%); opacity: 1; }
+  /* vertical centering is handled by the Base UI positioner, not a transform */
+  from { transform: translateX(8px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }
 /* arrow that points from tooltip toward the marker, vertically centered */
 .timeline-tooltip::after {
