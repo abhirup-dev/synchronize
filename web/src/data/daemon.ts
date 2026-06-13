@@ -30,6 +30,22 @@ import type {
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
 
+// crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
+// The daemon UI is often reached over plain HTTP on a tailnet IP, where it is
+// undefined — calling it there threw and aborted sends before any request fired.
+function randomId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  if (c && typeof c.getRandomValues === "function") {
+    const b = c.getRandomValues(new Uint8Array(16));
+    b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+    b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, "0"));
+    return `${h.slice(0, 4).join("")}-${h.slice(4, 6).join("")}-${h.slice(6, 8).join("")}-${h.slice(8, 10).join("")}-${h.slice(10, 16).join("")}`;
+  }
+  return `${Date.now().toString(16)}-${Math.floor(Math.random() * 0xffffffff).toString(16)}`;
+}
+
 export interface DaemonDataSourceOptions {
   baseUrl?: string;
   token?: string;
@@ -921,7 +937,7 @@ export class DaemonDataSource implements DataSource {
 
   private addOptimisticMessage(input: SendMessageInput, body: string): Message {
     const message: Message = {
-      id: `optimistic:${crypto.randomUUID()}`,
+      id: `optimistic:${randomId()}`,
       roomId: input.roomId,
       authorId: this.peerId,
       body,
