@@ -237,6 +237,24 @@
   background: rgba(233, 237, 250, 0.10);
 }
 
+/* Message bubbles from OTHER agents need a more opaque fill than other glass
+   surfaces: they sit directly over the (optionally busy) chat background, and
+   at the base --bubble (~0.55) the artwork bleeds through and hurts readability.
+   Raise the base `.bubble` fill so text stays legible while keeping a hint of
+   translucency. The more-specific `.is-you .bubble` (accent --you-bg) and
+   `.is-web-author .bubble` (opaque) rules out-specify this, so only other-agent
+   bubbles are affected. Deliberately NO per-bubble backdrop-filter — blurring
+   dozens of bubbles during scroll would reintroduce the jank we just removed;
+   opacity is the cheap, scroll-safe lever. */
+:root[data-skin="glass"] .bubble {
+  background: rgba(255, 255, 255, 0.86);
+}
+:root[data-skin="glass"][data-theme="dark"] .bubble,
+:root[data-skin="glass"][data-theme="kanagawa-wave"] .bubble,
+:root[data-skin="glass"][data-theme="catppuccin-mocha"] .bubble {
+  background: rgba(34, 40, 62, 0.84);
+}
+
 /* -- brutal flourishes, retired under glass ------------------------------- */
 [data-skin="glass"] :is(.brand-mark, .section-head, .placeholder-stamp, .room-tab, .roster-head, .act-nav-icon, .act-title-mark) {
   transform: none;
