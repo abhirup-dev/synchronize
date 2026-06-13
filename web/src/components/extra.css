@@ -151,11 +151,10 @@
   color: var(--ink);
 }
 
-/* ─── Theme toggle ───────────────────────────────────────────────────────── */
-.theme-toggle {
-  font-size: var(--text-17);
-}
-.theme-toggle:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+/* ─── Theme toggle ─────────────────────────────────────────────────────────
+   Base (font-size) migrated to a Tailwind utility on the button in
+   RoomHeader.tsx; the :hover parity is already covered by .icon-btn:hover. The
+   theme-toggle hook className stays for skin-glass.css. */
 
 /* ─── Placeholder tab content ────────────────────────────────────────────── */
 .placeholder {
@@ -537,119 +536,17 @@
   .skill-runtimes { justify-self: start; }
 }
 
-/* ─── Room header (extras) ───────────────────────────────────────────────── */
-.room-header {
-  border-bottom: var(--line);
-}
-.room-header-top {
-  gap: var(--space-16);
-  padding: 16px 22px 12px;
-}
-.room-id-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.room-id {
-  flex: 1 1 520px;
-  min-width: 0;
-}
-.room-id-icon {
-  width: 46px;
-  height: 46px;
-  min-width: 46px;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-22);
-}
-.room-title {
-  font-family: var(--font-display);
-  font-size: var(--text-22);
-  display: flex;
-  align-items: center;
-  gap: var(--space-0);
-  line-height: 1.1;
-  min-width: 0;
-}
-.room-title-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.room-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-  margin-top: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-10);
-}
-.busy-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-  color: var(--ink);
-  font-weight: 800;
-}
-.busy-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: var(--radius-pill);
-  background: var(--pink);
-  border: var(--line-sm);
-  box-shadow: var(--shadow-xs);
-}
-.room-topic {
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-  margin-top: 5px;
-  max-width: min(72ch, 100%);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.room-header-summary {
-  flex: 0 0 auto;
-  min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  text-align: right;
-}
-.member-pile { display: flex; align-items: center; }
-.member-pile-item {
-  display: inline-block;
-  margin-left: var(--space-0);
-}
-.member-pile-item + .member-pile-item {
-  margin-left: calc(var(--space-8) * -1);
-}
-.room-header-actions { display: flex; gap: 6px; }
-
-.room-tabs {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: 12px 22px 14px;
-  border-top: var(--line-2);
-}
-.room-tab {
-  background: transparent;
-  border: var(--line-transparent);
-  padding: 5px 10px;
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-lg);
-  color: var(--ink-soft);
-  transform: rotate(-1deg);
-}
+/* ─── Room header (extras) ───────────────────────────────────────────────
+   .room-header, .room-header-top, .room-id(-text/-icon), .room-title(-name),
+   .room-meta, .busy-inline, .busy-dot, .room-topic, .room-header-summary,
+   .member-pile(-item), .room-header-actions, .room-tabs, .room-tab base, and
+   the .room-thread-* / .room-activity / .activity-spark rules migrated to
+   Tailwind utilities (+ roomTab() CVA) in RoomHeader.tsx. Hook/ancestor classes
+   (room-header, room-id, room-id-icon, room-title, room-meta, member-pile,
+   room-header-actions, room-tabs, room-activity, room-tab) keep their className
+   so skin-glass.css, the .shell-compact descendant rules, and the .room-tab
+   .active + [data-theme] overrides below still bind. Shared classes
+   (author-name, thread-pane-*) are untouched. */
 .room-tab.active {
   color: var(--ink);
   background: var(--yellow);
@@ -669,59 +566,6 @@
   border-color: var(--rule);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--yellow);
 }
-.room-activity {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-.activity-spark { letter-spacing: var(--tracking-pixel); color: var(--ink); }
-.room-thread-banner {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(var(--thread-pane-width, 420px), 46vw);
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: 0 22px;
-  font-family: var(--font-mono);
-  color: var(--ink-soft);
-}
-.room-thread-title {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-.room-thread-title strong {
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-  color: var(--ink);
-}
-.room-thread-author {
-  min-width: 0;
-  max-width: min(220px, 34vw);
-  padding: var(--space-thread-author-chip-pad);
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.room-thread-close {
-  flex: 0 0 auto;
-}
-
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
 .chat-view {
   display: flex;
@@ -1198,28 +1042,8 @@
     var(--shadow-sm);
 }
 
-/* ─── Vim mode chip (rides above the user bubble) ────────────────────────── */
-.vim-mode-chip {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-display);
-  font-size: var(--text-8);
-  letter-spacing: var(--tracking-lg);
-  padding: var(--space-chip-pad-sm);
-  border: var(--line-xs-ink);
-  border-radius: var(--radius-pill);
-  pointer-events: none;
-}
-.vim-mode-chip.vim-mode-navigate {
-  background: var(--tangerine);
-  color: var(--ink);
-}
-.vim-mode-chip.vim-mode-typing {
-  background: var(--lime);
-  color: var(--ink);
-}
+/* ─── Vim mode chip (rides above the user bubble) ─────────────────────────
+   Migrated to the vimModeChip() CVA in Sidebar.tsx (navigate/typing variants). */
 
 /* ─── Flash highlight when scrolled to via timeline ──────────────────────── */
 /* Three-cycle throb with a soft yellow glow ring, plus an opacity pulse on the
