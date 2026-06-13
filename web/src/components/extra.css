@@ -1261,53 +1261,10 @@
 }
 
 /* ─── Context menu ──────────────────────────────────────────────────────── */
-.ctx-menu {
-  position: fixed;
-  z-index: var(--z-context-menu);
-  min-width: 220px;
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-lg);
-  box-shadow: 4px 4px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-family: var(--font-mono);
-}
-.ctx-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: 7px 10px;
-  background: transparent;
-  border: var(--line-none);
-  text-align: left;
-  font-size: var(--text-13);
-  color: var(--ink);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-}
-.ctx-item:hover,
-.ctx-item[data-highlighted] { background: var(--paper-2); }
-.ctx-item:disabled {
-  opacity: 0.46;
-  cursor: default;
-}
-.ctx-item:disabled:hover { background: transparent; }
-.ctx-item.ctx-danger { color: var(--pink); }
-.ctx-item.ctx-danger:hover,
-.ctx-item.ctx-danger[data-highlighted] { background: color-mix(in srgb, var(--pink) 18%, transparent); }
-.ctx-shortcut {
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
-.ctx-divider {
-  height: 1.5px;
-  background: var(--ink-faint);
-  margin: 3px 4px;
-}
+/* Migrated to Tailwind utilities in ContextMenu.tsx (sync-mzy3). `.ctx-menu` is
+ * kept ONLY as a skin hook (skin-glass.css backdrop-filter); all visual rules
+ * — ctx-menu / ctx-item / ctx-danger / ctx-shortcut / ctx-divider — now live
+ * inline on the component. */
 
 /* ─── Thread badge under message ─────────────────────────────────────────── */
 .thread-badge {
@@ -1447,127 +1404,12 @@
 }
 
 /* ─── Poll widget ────────────────────────────────────────────────────────── */
-.poll-widget {
-  margin-top: 10px;
-  border: var(--line-sm);
-  border-radius: var(--radius-xl);
-  background: var(--paper-2);
-  padding: var(--space-12);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-10);
-  box-shadow: var(--shadow-sm);
-}
-.poll-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-}
-.poll-label {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-lg);
-  background: var(--ink);
-  color: var(--on-ink);
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-}
-.poll-question {
-  font-family: var(--font-display);
-  font-size: var(--text-14);
-  color: var(--ink);
-}
-.poll-options {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-.poll-option {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: var(--space-10);
-  padding: 8px 10px;
-  border: var(--line-sm);
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  overflow: hidden;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: var(--text-12);
-  color: var(--ink);
-}
-.poll-option:hover { background: var(--paper-3); }
-/* Brutalist rule: borders are always --ink. Picked-state communicates via the
-   fill (the `.poll-option-fill` lime wash) plus a thicker shadow — not a
-   colored border. */
-.poll-option.picked {
-  border-color: var(--rule);
-  box-shadow: var(--shadow-hover);
-}
-.poll-option-icon {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: var(--line-xs);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  z-index: var(--z-local-base);
-}
-.poll-option-label {
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  letter-spacing: var(--tracking-sm);
-  z-index: var(--z-local-base);
-}
-.poll-option-fill {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--lime) 35%, transparent);
-  transition: width 240ms ease;
-  z-index: var(--z-local-floor);
-  pointer-events: none;
-}
-.poll-option.picked .poll-option-fill {
-  background: color-mix(in srgb, var(--lime) 55%, transparent);
-}
-.poll-option-count {
-  z-index: var(--z-local-base);
-  font-weight: 700;
-}
-.poll-option-voters {
-  display: inline-flex;
-  z-index: var(--z-local-base);
-}
-.poll-voter {
-  width: 18px;
-  height: 18px;
-  border: var(--line-xs);
-  border-radius: var(--radius-xs);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-9);
-  margin-left: -4px;
-  box-shadow: var(--shadow-xs);
-}
-.poll-voter:first-child { margin-left: 0; }
-.poll-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  border-top: var(--line-dashed-faint);
-  padding-top: var(--space-8);
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
-.poll-foot strong { color: var(--ink); }
-.poll-sep { color: var(--ink-faint); }
+/* Migrated to Tailwind utilities in PollWidget.tsx (sync-mzy3). The full
+ * .poll-widget/.poll-head/.poll-label/.poll-question/.poll-options/.poll-option
+ * (+ .picked) /.poll-option-icon/-label/-fill/-count/-voters/.poll-voter/
+ * .poll-foot/.poll-sep family now lives inline on the component. The unrelated
+ * legacy `.poll` / `.poll-opt*` block in styles.css (different, unused markup)
+ * is intentionally untouched. */
 
 .connection-error {
   min-height: 100vh;

@@ -1,5 +1,39 @@
 import { Menu } from "@base-ui-components/react/menu";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn";
+
+/**
+ * Context-menu styling migrated off styles.css/extra.css into Tailwind
+ * utilities. The active look came from extra.css (it imports after styles.css,
+ * so its `.ctx-menu`/`.ctx-item`/`.ctx-shortcut` rules won at equal
+ * specificity); those exact values are reproduced here. `.ctx-menu` is KEPT on
+ * the popup element because skin-glass.css hooks it for the backdrop-filter
+ * glass surface. Positioning + z-index are owned by Base UI's Positioner, so
+ * the legacy `position: fixed` / `z-index` are intentionally dropped.
+ */
+const ctxItem = cva(
+  [
+    "flex w-full items-center justify-between gap-[var(--space-16)] px-[10px] py-[7px]",
+    "bg-transparent [border:var(--line-none)] text-left text-[length:var(--text-13)] text-ink",
+    "rounded-xs cursor-pointer",
+    "hover:enabled:bg-paper-2 enabled:data-[highlighted]:bg-paper-2",
+    "disabled:opacity-[0.46] disabled:cursor-default",
+  ],
+  {
+    variants: {
+      danger: {
+        true: [
+          "text-pink",
+          "hover:enabled:bg-[color-mix(in_srgb,var(--pink)_18%,transparent)]",
+          "enabled:data-[highlighted]:bg-[color-mix(in_srgb,var(--pink)_18%,transparent)]",
+        ],
+        false: null,
+      },
+    },
+    defaultVariants: { danger: false },
+  },
+);
 
 export interface MenuItem {
   label: string;
@@ -82,14 +116,24 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
             sideOffset={0}
             style={{ zIndex: "var(--z-context-menu)" }}
           >
-            <Menu.Popup className="ctx-menu">
+            <Menu.Popup
+              className={cn(
+                "ctx-menu",
+                "flex min-w-[220px] flex-col gap-[var(--space-1)] p-[var(--space-4)]",
+                "bg-paper [border:var(--line-md)] rounded-lg font-mono",
+                "shadow-[4px_4px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72))]",
+              )}
+            >
               {(state?.items ?? []).map((it, i) =>
                 "divider" in it ? (
-                  <Menu.Separator key={i} className="ctx-divider" />
+                  <Menu.Separator
+                    key={i}
+                    className="my-[3px] mx-[4px] h-[1.5px] bg-ink-faint"
+                  />
                 ) : (
                   <Menu.Item
                     key={i}
-                    className={`ctx-item${it.danger ? " ctx-danger" : ""}`}
+                    className={cn(ctxItem({ danger: it.danger ?? false }))}
                     disabled={it.disabled ?? false}
                     nativeButton
                     render={<button type="button" disabled={it.disabled ?? false} />}
@@ -99,7 +143,11 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                     }}
                   >
                     <span>{it.label}</span>
-                    {it.shortcut && <span className="ctx-shortcut">{it.shortcut}</span>}
+                    {it.shortcut && (
+                      <span className="text-[length:var(--text-11)] text-ink-soft">
+                        {it.shortcut}
+                      </span>
+                    )}
                   </Menu.Item>
                 ),
               )}
