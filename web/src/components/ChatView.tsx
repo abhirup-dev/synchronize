@@ -75,17 +75,71 @@ export function ChatView({
       return { m, author, grouped, hasFollowup };
     });
   }, [messages, agentById]);
+  // Content-aware size estimate. The chat holds very long markdown bubbles, so a
+  // flat estimate produces large deltas the first time a row is measured — which
+  // is exactly what reads as a "choppy" shift when a row enters the window.
+  // Estimating from body length + the row's adornments keeps unmeasured rows
+  // close to their real height, so the layout barely moves on first measure.
+  const estimateRowHeight = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (!row) return 140;
+      const body = row.m.body ?? "";
+      const CHARS_PER_LINE = 72;
+      const LINE_HEIGHT = 22;
+      const textLines = body
+        .split("\n")
+        .reduce((n, line) => n + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+      let h = textLines * LINE_HEIGHT + 26; // text + bubble padding
+      if (!row.grouped) h += 26; // author header line
+      if (row.m.reactions.length) h += 30;
+      if (row.m.poll) h += 60 + row.m.poll.options.length * 34;
+      if (row.m.attachments?.length) h += 180;
+      if (row.m.threadReplyCount) h += 30; // thread badge
+      h += row.hasFollowup ? 6 : 16; // .message-virtual-row padding-bottom
+      return Math.max(row.grouped ? 56 : 84, h);
+    },
+    [rows],
+  );
+
+  // Large overscan = the "always-loaded buffer" — rows well outside the viewport
+  // are mounted and measured ahead of time in BOTH directions, so by the time the
+  // user scrolls to them they already have their real height and never reflow.
+  // Trades memory (more mounted DOM/markdown) for scroll smoothness, by design.
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => listRef.current,
-    estimateSize: (index) => rows[index]?.grouped ? 112 : 170,
-    overscan: 8,
+    estimateSize: estimateRowHeight,
+    overscan: 28,
+    // Key by message id so the measurement cache survives list growth and
+    // older-message prepends — and so cached sizes stay attached to the right
+    // bubble rather than to a shifting index.
+    getItemKey: (index) => rows[index]?.m.id ?? index,
+    // Don't re-measure rows while scrolling UP. TanStack's default remeasures
+    // backward-entering rows and rewrites scrollTop to compensate, which is the
+    // visible "jump"/stutter on up-scroll (TanStack/virtual#659). Once a row has
+    // a cached size, trust it on the way back up; only measure forward/first-seen
+    // rows. Combined with shouldAdjustScrollPositionOnItemSizeChange=false below,
+    // up-scroll has nothing to correct.
+    measureElement: (element, _entry, instance) => {
+      const measured = Math.round(element.getBoundingClientRect().height);
+      const inst = instance as unknown as {
+        scrollDirection: "forward" | "backward" | null;
+        itemSizeCache: Map<string | number, number>;
+        options: { getItemKey: (i: number) => string | number };
+      };
+      if (inst.scrollDirection === "backward") {
+        const dataIndex = Number((element as HTMLElement).dataset["index"]);
+        if (Number.isFinite(dataIndex)) {
+          const cached = inst.itemSizeCache.get(inst.options.getItemKey(dataIndex));
+          if (cached != null) return cached;
+        }
+      }
+      return measured;
+    },
   });
-  // The chat list is full of variable-height markdown bubbles. TanStack
-  // Virtual's default measurement correction may write scrollTop when rows
-  // above the viewport resize, which can reverse a user's mouse/trackpad scroll.
-  // Keep measurement for accurate layout, but never let size changes drive the
-  // scroll position.
+  // Never let a size change drive scrollTop (belt-and-suspenders with the
+  // backward measureElement cache above).
   (virtualizer as ResizeAdjustmentVirtualizer).shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   // ── Thread Summary panel support ──────────────────────────────────────────
