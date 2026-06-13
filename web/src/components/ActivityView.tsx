@@ -24,6 +24,7 @@ import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
 import { Avatar, IdentityBadge } from "./primitives.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
+import { useIsCompact } from "../shell-mode.tsx";
 
 type Filter = "all" | "awaits" | "mentions";
 type TimelineEntry =
@@ -543,17 +544,25 @@ function RoomFilterBar({
   onClear(): void;
   compact?: boolean;
 }) {
+  // In the compact shell the rail is a plain horizontally-scrollable row of ALL
+  // room chips — NOT the desktop measure-and-fit layout. That measure-and-fit
+  // path is a ResizeObserver feedback loop on a narrow screen: rail width →
+  // pills that fit → whether the "›" overflow button renders → rail width …
+  // which thrashes endlessly. Skipping the observer (railW stays 0 → visN =
+  // all → every pill rendered → CSS scrolls them) removes the loop entirely.
+  const isCompactShell = useIsCompact();
   const railRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const [railW, setRailW] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
+    if (isCompactShell) return undefined;
     if (!railRef.current) return undefined;
     const ro = new ResizeObserver((entries) => setRailW(entries[0]?.contentRect.width ?? 0));
     ro.observe(railRef.current);
     return () => ro.disconnect();
-  }, []);
+  }, [isCompactShell]);
 
   useEffect(() => {
     if (!panelOpen) return undefined;
@@ -576,7 +585,7 @@ function RoomFilterBar({
     return 40 + name.length * 7.4;
   };
   let visN = ordered.length;
-  if (railW > 0) {
+  if (!isCompactShell && railW > 0) {
     let avail = railW;
     visN = 0;
     for (const r of ordered) {

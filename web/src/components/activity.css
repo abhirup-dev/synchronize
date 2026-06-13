@@ -1645,3 +1645,73 @@
     1px 1px 0 rgba(5, 6, 12, 0.72),
     2.5px 2.5px 0 color-mix(in srgb, var(--ink) 28%, transparent);
 }
+
+/* ═══════════════ compact (mobile) Activity ═══════════════
+   The desktop header is one non-wrapping flex row (title-block + actions) over
+   a non-wrapping filter bar; both overflow and visibly overlap at phone width.
+   Reflow for compact (shellMode gates this to <780px — desktop/medium keep the
+   single-row layout): title on its own row, the view/live/mark-all controls
+   wrap to a second row, and a stacked filter bar whose chip rows scroll
+   horizontally instead of clipping. */
+.shell-compact .act-header-top {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 12px 14px 10px;
+}
+/* Force the title to claim the full first row so the action controls always
+   wrap cleanly beneath it (they never fit beside the title at phone width). */
+.shell-compact .act-title-block { flex: 1 1 100%; gap: 10px; min-width: 0; }
+.shell-compact .act-title-mark { width: 36px; height: 36px; transform: rotate(-2deg); }
+.shell-compact .act-title-mark svg { width: 18px; height: 18px; }
+.shell-compact .act-title { font-size: 17px; }
+.shell-compact .act-title-sub { font-size: 10px; gap: 6px; margin-top: 2px; }
+.shell-compact .act-header-actions {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.shell-compact .act-live,
+.shell-compact .act-view-switch { min-height: 34px; font-size: 10px; padding: 0 10px; }
+.shell-compact .act-markall { width: 34px; min-width: 34px; min-height: 34px; }
+
+.shell-compact .act-filterbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 14px 12px;
+}
+/* Primary filters: a single row that scrolls horizontally rather than clipping
+   the last chip. */
+.shell-compact .act-filters {
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+}
+.shell-compact .act-filters::-webkit-scrollbar { height: 0; }
+.shell-compact .act-filter { white-space: nowrap; flex: 0 0 auto; }
+
+/* Room sub-filter: the rail's pill-fit logic (RoomFilterBar) measures the rail
+   width with a ResizeObserver. If the rail grows to fit its content, rendering
+   pills changes that width, which re-triggers the observer — an infinite
+   measure→render→measure loop (pills visibly flicker in/out). Constrain the rail
+   to the leftover row space (flex 1 1 0 + min-width:0) so its width is
+   content-independent and the measurement is stable; overflow:hidden lets the
+   "›" more button own the spillover instead of the rail bleeding past the
+   viewport. */
+.shell-compact .act-roombar { min-width: 0; max-width: 100%; padding: 4px 14px 6px; }
+/* All room chips render (no measure-and-fit); the rail is width-constrained to
+   the leftover row space and scrolls horizontally. No ResizeObserver feeds back
+   into layout, so nothing thrashes. */
+.shell-compact .act-roombar-rail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.shell-compact .act-roombar-rail::-webkit-scrollbar { height: 0; }
+
+/* Tighter content gutters reclaim width on a narrow screen. */
+.shell-compact .act-scroll { padding: 14px 12px 20px; }
