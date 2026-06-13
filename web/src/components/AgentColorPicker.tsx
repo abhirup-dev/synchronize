@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { inkFor } from "./primitives.tsx";
+import { cn } from "../lib/cn.ts";
 
 interface AgentColorPickerProps {
   /** Screen coordinates to anchor the popover to (e.g. the right-click point). */
@@ -62,21 +63,24 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
   return (
     <div
       ref={ref}
-      className="agent-color-picker"
+      className="fixed z-[var(--z-agent-color-picker)] w-60 bg-paper [border:var(--line-md)] rounded-xl shadow-[var(--shadow)] p-2.5 flex flex-col gap-2.5 font-mono"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="acp-head">
-        <span className="acp-title">color · {agentName}</span>
+      <div className="flex items-center justify-between">
+        <span className="font-display text-[length:var(--text-11)] tracking-[var(--tracking-sm)] text-ink">color · {agentName}</span>
       </div>
-      <div className="acp-swatches">
+      <div className="grid grid-cols-6 gap-1.5">
         {SWATCHES.map(({ label, hex }) => {
           const isCurrent = hex.toLowerCase() === norm;
           return (
             <button
               key={hex}
               type="button"
-              className={`acp-swatch${isCurrent ? " is-current" : ""}`}
+              className={cn(
+                "w-full aspect-square [border:var(--line-sm)] rounded-md shadow-sm cursor-pointer font-display text-[length:var(--text-12)] grid place-items-center [transition:transform_80ms_ease,box-shadow_80ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:[box-shadow:var(--shadow-hover)]",
+                isCurrent && "outline-2 outline-dashed outline-ink outline-offset-2",
+              )}
               title={label}
               aria-label={label}
               style={{ background: hex, color: inkFor(hex) }}
@@ -87,23 +91,31 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
           );
         })}
       </div>
-      <div className="acp-custom">
-        <label className="acp-custom-row">
+      <div className="[border-top:var(--line-rule-dashed-xs)] pt-2">
+        <label className="flex items-center gap-2.5 text-[length:var(--text-11)] text-ink-soft">
           <span>custom</span>
           <input
             type="color"
+            className="w-[30px] h-[22px] p-0 [border:var(--line-sm)] rounded-sm bg-transparent cursor-pointer"
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             onBlur={() => { if (custom.toLowerCase() !== norm) onPick(custom); }}
           />
-          <span className="acp-custom-hex">{custom.toUpperCase()}</span>
+          <span className="ml-auto font-semibold text-ink">{custom.toUpperCase()}</span>
         </label>
       </div>
-      <div className="acp-foot">
-        <button type="button" className="acp-reset" onClick={onReset}>
+      <div className="flex items-center justify-between [border-top:var(--line-rule-dashed-xs)] pt-2">
+        <button
+          type="button"
+          className="bg-transparent [border:var(--line-xs)] rounded-sm [padding:var(--space-button-pad-sm)] font-[inherit] text-[length:var(--text-10-5)] text-ink cursor-pointer hover:bg-paper-2"
+          onClick={onReset}
+        >
           reset to default
         </button>
-        <span className="acp-default-chip" style={{ background: defaultHex, color: inkFor(defaultHex) }}>
+        <span
+          className="font-mono text-[length:var(--text-10)] px-1.5 py-0.5 [border:var(--line-xs)] rounded-sm"
+          style={{ background: defaultHex, color: inkFor(defaultHex) }}
+        >
           {defaultHex.toUpperCase()}
         </span>
       </div>
