@@ -648,15 +648,8 @@ button { font-family: inherit; cursor: pointer; }
   grid-template-columns: minmax(0, 1fr);
 }
 
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border-left: var(--line);
-  background: var(--paper);
-  /* Anchor for absolute-positioned overlays (e.g. .toast-stack). */
-  position: relative;
-}
+/* .main migrated to inline Tailwind utilities in App.tsx (no skin/theme/JS hook;
+   the toast-stack `relative` anchor is preserved inline). */
 
 .main-body {
   flex: 1;
@@ -675,13 +668,7 @@ button { font-family: inherit; cursor: pointer; }
   grid-template-columns: minmax(0, 1fr);
 }
 
-.tab-content {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+/* .tab-content migrated to inline Tailwind utilities in App.tsx (no hooks). */
 
 /* ───────────────────────── sidebar ───────────────────────── */
 
@@ -1065,32 +1052,12 @@ button { font-family: inherit; cursor: pointer; }
   padding: 5px 8px;
 }
 
-.shell-overlay {
-  position: fixed;
-  z-index: var(--z-modal);
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line);
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.shell-overlay-head {
-  flex: 0 0 auto;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: 10px 14px;
-  border-bottom: var(--line-2);
-  background: var(--paper-2);
-  font-family: var(--font-display);
-  font-size: var(--text-15);
-  letter-spacing: var(--tracking-md);
-}
+/* .shell-overlay base + .shell-overlay-head migrated to inline Tailwind
+   utilities in App.tsx. The `.shell-overlay` class stays on the element: it is a
+   [data-skin="glass"] backdrop hook (skin-glass.css), the parent of the
+   `.shell-overlay .sidebar` / `.agent-roster` descendant rules below, and the
+   base for the `.shell-overlay-community/-agents/-compact/-medium` position +
+   animation variants below (left as CSS — responsive/animation cluster). */
 
 .shell-overlay-close {
   width: 32px;

@@ -510,40 +510,11 @@
    Mount point is `.main` (position: relative is added in styles.css) so toasts
    live OVER the chat content, never over the sidebar or roster. Multiple
    toasts stack vertically with a small gap. Click to dismiss. */
-.toast-stack {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-toast);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  align-items: center;
-  pointer-events: none;
-}
-.toast {
-  pointer-events: auto;
-  max-width: min(560px, 80vw);
-  padding: 8px 16px;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: var(--text-12-5);
-  border: var(--line-sm);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  animation: toast-in 180ms ease;
-  text-align: center;
-}
-.toast:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow);
-}
-.toast-warn  { background: color-mix(in srgb, var(--yellow) 30%, var(--paper)); }
-.toast-error { background: color-mix(in srgb, var(--red) 26%, var(--paper)); }
-.toast-success { background: color-mix(in srgb, var(--lime) 30%, var(--paper)); }
+/* .toast-stack layout + .toast base/hover/-warn/-error/-success migrated to
+   inline Tailwind utilities + the `toast` CVA in components/Toast.tsx. The
+   `.toast-stack` / `.toast` classes stay on the elements: `.toast` is a
+   skin-glass backdrop hook (skin-glass.css), and the keyframe-reset rule below
+   needs both as a descendant selector. The `@keyframes toast-in` stays here. */
 @keyframes toast-in {
   from { transform: translate(-50%, -12px); opacity: 0; }
   to   { transform: translate(-50%, 0);     opacity: 1; }
@@ -720,35 +691,8 @@
   line-height: 1.45;
 }
 
-.empty-main {
-  min-height: 0;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  background: var(--paper);
-  color: var(--ink);
-  border-left: var(--line-2);
-}
-
-.empty-main-box {
-  max-width: 520px;
-  border: var(--line-bold);
-  box-shadow: var(--shadow-lg);
-  background: var(--paper-2);
-  padding: var(--space-24);
-}
-
-.empty-main-box h1 {
-  margin: 16px 0 8px;
-  font-family: var(--font-display);
-  font-size: var(--text-24);
-}
-
-.empty-main-box p {
-  margin: 8px 0 0;
-  font-family: var(--font-ui);
-  line-height: 1.45;
-}
+/* .empty-main / .empty-main-box (+ h1, p) migrated to inline Tailwind utilities
+   in App.tsx. None are skin/theme/JS hooks, so the classes were dropped. */
 
 
 /* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
