@@ -69,7 +69,10 @@ export function ResizeHandle({ width, onChange, min = 320, max = 820 }: ResizeHa
 
   return (
     <div
-      className={`resize-handle${draggingCls ? " is-dragging" : ""}`}
+      // The invisible ::before overlay (inset 0 -3px) that widened the grab
+      // target is reproduced with `before:` utilities below.
+      className="group absolute top-0 bottom-0 right-[calc(var(--thread-pane-width,460px)-3px)] z-[var(--z-local-control)] w-1.5 cursor-col-resize bg-transparent flex items-center justify-center touch-none select-none focus-visible:outline-none before:content-[''] before:absolute before:inset-y-0 before:-inset-x-[3px]"
+      data-dragging={draggingCls ? "true" : undefined}
       role="separator"
       aria-orientation="vertical"
       aria-label="resize thread pane"
@@ -84,7 +87,10 @@ export function ResizeHandle({ width, onChange, min = 320, max = 820 }: ResizeHa
         if (e.key === "ArrowRight") onChange(Math.max(min, width - 16));
       }}
     >
-      <span className="resize-handle-grip" aria-hidden />
+      <span
+        className="block w-0.5 h-9 bg-[color-mix(in_srgb,var(--ink)_22%,transparent)] rounded-pill [transition:background_140ms_ease,height_140ms_ease] group-hover:bg-rule group-hover:h-[60px] group-focus-visible:bg-rule group-focus-visible:h-[60px] group-data-[dragging=true]:bg-rule group-data-[dragging=true]:h-[60px]"
+        aria-hidden
+      />
     </div>
   );
 }

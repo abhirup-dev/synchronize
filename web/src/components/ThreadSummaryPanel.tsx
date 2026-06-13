@@ -20,6 +20,7 @@ import { useThreadSummary } from "../data/context.tsx";
 import { Avatar, IdentityBadge, IdentityText, Sticker } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { computeThreadSummaryLayout, normalizeWheelDelta } from "./threadSummaryLayout.ts";
+import { cn } from "../lib/cn.ts";
 
 interface ThreadSummaryPanelProps {
   messages: Message[];
@@ -128,19 +129,24 @@ export function ThreadSummaryPanel({
 
   return (
     <aside
-      className="thread-summary-panel"
+      className={cn(
+        "relative flex min-h-0 flex-col bg-paper [border-right:var(--line)]",
+        "w-[var(--thread-summary-width,340px)] flex-[0_0_var(--thread-summary-width,340px)]",
+        "min-w-[min(240px,45vw)] max-w-[min(620px,70vw)] [container-type:inline-size]",
+        "animate-[thread-summary-slide-in_200ms_cubic-bezier(0.2,0.8,0.2,1)]",
+      )}
       aria-label="Thread activity"
       style={{ "--thread-summary-width": `${width}px` } as CSSProperties}
     >
       {threadMessages.length === 0 ? (
-        <div className="thread-summary-empty">
+        <div className="flex flex-1 flex-col items-center justify-center gap-[12px] [padding:40px_24px] text-center text-ink-soft">
           <Sticker label="QUIET" color="var(--yellow)" tilt={-2} />
-          <p>No threads in this room yet. Reply to any message to start one.</p>
+          <p className="m-0 max-w-[28ch] font-ui text-[length:var(--text-13)]">No threads in this room yet. Reply to any message to start one.</p>
         </div>
       ) : (
-        <div className="thread-summary-scroll" ref={panelScrollRef} onWheel={onPanelWheel}>
-          <div className="thread-summary-track" ref={trackRef}>
-            <span className="thread-summary-axis" />
+        <div className="relative flex-1 overflow-hidden" ref={panelScrollRef} onWheel={onPanelWheel}>
+          <div className="relative w-full [will-change:transform]" ref={trackRef}>
+            <span className="absolute right-[18px] top-0 bottom-0 w-[2px] opacity-55 [background:repeating-linear-gradient(to_bottom,var(--ink)_0_6px,transparent_6px_12px)]" />
             {threadMessages.map((m) => (
               <ThreadSummaryRow
                 key={m.id}
@@ -219,7 +225,11 @@ function ThreadSummaryResizeHandle({
 
   return (
     <div
-      className={`thread-summary-resize-handle${dragging ? " is-dragging" : ""}`}
+      className={cn(
+        "group absolute top-0 right-[-6px] bottom-0 z-[var(--z-local-control)] flex w-[12px] items-center justify-center",
+        "cursor-col-resize select-none [touch-action:none] focus-visible:outline-none",
+        dragging && "is-dragging",
+      )}
       role="separator"
       aria-orientation="vertical"
       aria-label="resize thread activity panel"
@@ -234,7 +244,16 @@ function ThreadSummaryResizeHandle({
         if (e.key === "ArrowRight") onChange(clampWidth(width + 16));
       }}
     >
-      <span className="thread-summary-resize-grip" aria-hidden />
+      <span
+        className={cn(
+          "h-[42px] w-[2px] rounded-pill opacity-85 [background:color-mix(in_srgb,var(--ink)_32%,transparent)]",
+          "[transition:background_120ms_ease,height_120ms_ease,opacity_120ms_ease]",
+          "group-hover:h-[64px] group-hover:bg-rule group-hover:opacity-100",
+          "group-focus-visible:h-[64px] group-focus-visible:bg-rule group-focus-visible:opacity-100",
+          "group-[.is-dragging]:h-[64px] group-[.is-dragging]:bg-rule group-[.is-dragging]:opacity-100",
+        )}
+        aria-hidden
+      />
     </div>
   );
 }
@@ -299,7 +318,7 @@ function ThreadSummaryRow({
   return (
     <div
       ref={rowRef}
-      className="ts-row"
+      className="group/ts-row absolute left-0 right-0 flex min-w-0 -translate-y-1/2 cursor-pointer items-center gap-0 outline-none"
       style={
         {
           top: "0px", // overridden by the rAF loop
@@ -316,41 +335,48 @@ function ThreadSummaryRow({
         }
       }}
     >
-      <div className="ts-body">
-        <div className="ts-meta">
-          <IdentityText className="ts-author" color={dotColor}>
+      <div className="box-border flex w-[calc(100%-38px)] max-w-[calc(100%-38px)] flex-1 flex-col items-end gap-[6px] text-right [padding:6px_14px_6px_18px] @max-[290px]:[padding-left:10px] @max-[290px]:[padding-right:10px] group-focus-visible/ts-row:[outline:2px_solid_var(--blue)] group-focus-visible/ts-row:[outline-offset:4px]">
+        <div className="inline-flex max-w-full flex-wrap items-baseline justify-end gap-[6px] @max-[290px]:gap-[4px] font-mono text-[length:var(--text-10-5)] tracking-[var(--tracking-xs)] text-ink-faint">
+          <IdentityText className="font-display text-[length:var(--text-11)] uppercase tracking-[var(--tracking-sm)]" color={dotColor}>
             {author?.name ?? "?"}
           </IdentityText>
-          <span className="ts-meta-sep">·</span>
-          <span className="ts-time">{formatTime(msg.createdAt)}</span>
-          <span className="ts-meta-sep">·</span>
-          <span className="ts-replies">
+          <span className="text-ink-faint">·</span>
+          <span className="text-ink-soft">{formatTime(msg.createdAt)}</span>
+          <span className="text-ink-faint">·</span>
+          <span className="text-ink-soft">
             {replyCount} {replyCount === 1 ? "reply" : "replies"}
           </span>
         </div>
         <div
           ref={summaryRef}
-          className={`ts-summary${summaryTruncated ? " is-truncated" : ""}`}
+          className={cn(
+            "ts-summary relative box-border w-[min(38ch,100%)] overflow-hidden font-ui text-[length:var(--text-11-5)] text-ink [line-height:1.32] [text-wrap:pretty] [overflow-wrap:anywhere] [word-break:normal]",
+            "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:var(--ts-summary-lines,3)]",
+            summaryTruncated && "is-truncated [padding-right:1.4ch]",
+          )}
           title={summaryTruncated ? summaryText : undefined}
         >
           <Markdown agents={agents}>{summaryText}</Markdown>
         </div>
-        <div className="ts-foot">
-          <span className="ts-avatars">
+        <div className="mt-[2px] inline-flex max-w-full flex-wrap items-center justify-end gap-[10px] @max-[290px]:gap-[6px] font-mono text-[length:var(--text-10-5)] text-ink-faint">
+          <span className="ts-avatars inline-flex flex-shrink-0 items-center">
             {participants.slice(0, 5).map((p) => (
               <Avatar key={p.id} agent={p} size={18} />
             ))}
             {participants.length > 5 ? (
-              <span className="ts-avatars-more">+{participants.length - 5}</span>
+              <span className="ml-[4px] text-[length:var(--text-10)] text-ink-soft">+{participants.length - 5}</span>
             ) : null}
           </span>
           {msg.threadLastReplyAt ? (
-            <span className="ts-last">last reply {formatTime(msg.threadLastReplyAt)}</span>
+            <span className="whitespace-nowrap text-ink-faint">last reply {formatTime(msg.threadLastReplyAt)}</span>
           ) : null}
         </div>
       </div>
-      <span className="ts-connector" />
-      <IdentityBadge className="ts-dot" color={dotColor} />
+      <span className="h-[2px] w-[12px] flex-shrink-0 self-center bg-ink opacity-65" />
+      <IdentityBadge
+        className="relative z-[1] h-[14px] w-[14px] flex-shrink-0 rounded-full [border:var(--line-md)] shadow-sm [margin-right:11px]"
+        color={dotColor}
+      />
     </div>
   );
 }

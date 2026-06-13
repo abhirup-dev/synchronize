@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
+import { chatBackgroundById } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
@@ -197,6 +198,32 @@ function Shell() {
     localStorage.setItem("synchronize.theme", theme);
   }, [theme]);
 
+  const [skin, setSkin] = useState<"brutal" | "glass">(() =>
+    localStorage.getItem("synchronize.skin") === "glass" ? "glass" : "brutal",
+  );
+  const [chatBg, setChatBg] = useState<string>(() => localStorage.getItem("synchronize.chatbg") ?? "none");
+  useEffect(() => {
+    const preset = chatBackgroundById(chatBg);
+    const style = document.documentElement.style;
+    if (preset.image) {
+      style.setProperty("--chat-bg-image", preset.image);
+      style.setProperty("--chat-bg-size", preset.size);
+      style.setProperty("--chat-bg-repeat", preset.repeat);
+    } else {
+      style.removeProperty("--chat-bg-image");
+      style.removeProperty("--chat-bg-size");
+      style.removeProperty("--chat-bg-repeat");
+    }
+    localStorage.setItem("synchronize.chatbg", preset.id);
+  }, [chatBg]);
+  useEffect(() => {
+    // Skin = aesthetic system (border/shadow/radius language), orthogonal to
+    // theme (palette). "brutal" is the original look; "glass" is the
+    // liquid-glass skin (skin-glass.css). See the skin contract in styles.css.
+    document.documentElement.dataset["skin"] = skin;
+    localStorage.setItem("synchronize.skin", skin);
+  }, [skin]);
+
   const room = rooms.find((r) => r.id === activeId) ?? rooms[0];
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
@@ -302,7 +329,10 @@ function Shell() {
         <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
       <main
-        className="main"
+        // `relative` anchors the absolutely-positioned `.toast-stack` over the
+        // chat region (the old `.main` rule provided this). No skin/theme/JS
+        // hook on `.main`, so the class is dropped.
+        className="flex flex-col min-w-0 [border-left:var(--line)] bg-paper relative"
         style={threadParentId ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
       >
         {isActivity ? (
@@ -316,6 +346,10 @@ function Shell() {
               theme={theme}
               themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
               onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
+              skin={skin}
+              onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
+              chatBg={chatBg}
+              onChatBg={setChatBg}
               showAgentsButton={rosterPanelAvailable}
               onOpenAgents={() => {
                 rememberOverlayOpener();
@@ -336,7 +370,7 @@ function Shell() {
                   : undefined
               }
             >
-              <div className="tab-content">
+              <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
                 {tab === "chat" ? (
                   <ChatView
                     room={room}
@@ -376,18 +410,19 @@ function Shell() {
             </div>
           </>
         ) : (
-          <div className="empty-main">
-            <div className="empty-main-box">
+          <div className="min-h-0 h-full grid place-items-center bg-paper text-ink [border-left:var(--line-2)]">
+            <div className="max-w-[520px] [border:var(--line-bold)] shadow-lg bg-paper-2 p-[var(--space-24)]">
+              {/* `.brand-mark` kept: shared Sidebar hook (skin-glass + [data-theme] override). */}
               <div className="brand-mark">S</div>
-              <h1>No rooms yet</h1>
-              <p>Registered sessions will appear as direct messages. Create or join a group to start a room.</p>
+              <h1 className="mt-[16px] mb-[8px] font-display text-[length:var(--text-24)]">No rooms yet</h1>
+              <p className="mt-[8px] font-ui leading-[1.45]">Registered sessions will appear as direct messages. Create or join a group to start a room.</p>
             </div>
           </div>
         )}
       </main>
       {communityPanelAvailable && communityOpen && (
-        <div className="shell-overlay shell-overlay-community" role="dialog" aria-modal="true" aria-label="communities">
-          <div className="shell-overlay-head">
+        <div className="shell-overlay shell-overlay-community fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="communities">
+          <div className="flex-none min-h-[52px] flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[10px] [border-bottom:var(--line-2)] bg-paper-2 font-display text-[length:var(--text-15)] tracking-[var(--tracking-md)]">
             <span>Communities</span>
             <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close communities">×</button>
           </div>
@@ -396,12 +431,12 @@ function Shell() {
       )}
       {rosterPanelAvailable && agentPanelOpen && room && (
         <div
-          className={`shell-overlay shell-overlay-agents shell-overlay-${shellMode}`}
+          className={`shell-overlay shell-overlay-agents shell-overlay-${shellMode} fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden`}
           role="dialog"
           aria-modal="true"
           aria-label="agents"
         >
-          <div className="shell-overlay-head">
+          <div className="flex-none min-h-[52px] flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[10px] [border-bottom:var(--line-2)] bg-paper-2 font-display text-[length:var(--text-15)] tracking-[var(--tracking-md)]">
             <span>Agents</span>
             <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close agents">×</button>
           </div>

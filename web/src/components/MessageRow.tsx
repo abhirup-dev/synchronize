@@ -1,6 +1,29 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 import type { Agent, Message } from "../data/types.ts";
+
+// Per-theme dark overrides for `.reaction` live in styles.css (data-theme blocks
+// out-specify these single-class utilities), so only the base brutal values move
+// here. `.is-mine` / `.add` legacy state classes stay on the element as the
+// dark-theme selectors still target them.
+const reactionBtn = cva(
+  "reaction inline-flex cursor-pointer items-center gap-[var(--space-4)] rounded-pill bg-paper px-[9px] py-[2px] text-[length:var(--text-12)] leading-tight text-ink shadow-sm [border:var(--line-sm)]",
+  {
+    variants: {
+      mine: {
+        true: "is-mine bg-paper-2 [border-color:color-mix(in_srgb,var(--yellow)_45%,var(--rule))]",
+        false: null,
+      },
+      add: {
+        true: "add min-w-[25px] justify-center font-display text-[length:var(--text-11)]",
+        false: null,
+      },
+    },
+    defaultVariants: { mine: false, add: false },
+  },
+);
 import { Avatar, IdentityBadge, MentionChip } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
@@ -89,7 +112,13 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
       ref={rowRef}
       id={`msg-${message.id}`}
       data-vim-item={`msg-${message.id}`}
-      className={`message-row${isYou ? " is-you" : ""}${isWebAuthor ? " is-web-author" : ""}${groupedWithPrev ? " is-grouped" : ""}${hideAvatar ? " no-avatar" : ""}`}
+      className={cn(
+        "message-row grid grid-cols-[34px_minmax(0,880px)] items-start gap-[var(--space-4)]",
+        isYou && "is-you",
+        isWebAuthor && "is-web-author",
+        groupedWithPrev && "is-grouped",
+        hideAvatar && "no-avatar",
+      )}
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
@@ -104,11 +133,11 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
       }
     >
       {!hideAvatar && !isWebAuthor && (
-        <div className="message-gutter">
+        <div className="message-gutter flex h-[34px] justify-center pt-0">
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
-      <div className="message-body">
+      <div className="message-body flex min-w-0 flex-col gap-[var(--space-2)] pr-[var(--bubble-shadow-gutter,6px)] pb-[var(--bubble-shadow-gutter,6px)]">
         {!groupedWithPrev && !isWebAuthor && (
           <div className="author-chip">
             <IdentityBadge
@@ -131,8 +160,8 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
             </IdentityBadge>
           </div>
         )}
-        <div className="message-stack">
-          <div className="bubble">
+        <div className="message-stack flex min-w-0 max-w-[min(880px,calc(100%_-_var(--bubble-shadow-gutter,6px)))] w-fit flex-col gap-[var(--space-2)]">
+          <div className="bubble min-w-0 max-w-full rounded-xl bg-bubble p-[var(--space-bubble-pad)] [border:var(--message-card-border,var(--line-2))] [border-color:var(--message-card-border-color,var(--rule))] [box-shadow:var(--bubble-shadow-offset,4px)_var(--bubble-shadow-offset,4px)_0_var(--message-card-shadow-color,var(--rule))]">
             {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
             {message.attachments?.length ? (
               <AttachmentPreviewList attachments={message.attachments} mode="message" />
@@ -142,18 +171,21 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
             )}
           </div>
           {(hasThreadBadge || onReact) && (
-            <div className="message-footer">
-              <div className="message-footer-left">
+            <div className="message-footer mt-px flex min-h-[26px] w-full items-center justify-between gap-[var(--space-8)]">
+              <div className="message-footer-left flex min-w-0 flex-[1_1_auto] items-center">
                 {hasThreadBadge && (
-                  <button className="thread-badge" onClick={() => onOpenThread?.(message.id)}>
-                    <span className="thread-badge-avs">
+                  <button
+                    className="thread-badge mt-0 inline-flex w-fit cursor-pointer items-center gap-[var(--space-8)] rounded-pill bg-transparent py-1 pr-2 pl-1 font-mono text-[length:var(--text-11)] text-ink [border:var(--line-none)] hover:bg-paper-2"
+                    onClick={() => onOpenThread?.(message.id)}
+                  >
+                    <span className="thread-badge-avs inline-flex">
                       {(message.threadParticipantIds ?? []).slice(0, 4).map((aid) => {
                         const a = agents.find((x) => x.id === aid);
                         if (!a) return null;
                         return (
                           <IdentityBadge
                             key={aid}
-                            className="thread-badge-av"
+                            className="thread-badge-av -ml-1 grid h-5 w-5 place-items-center rounded-xs font-display text-[length:var(--text-10)] shadow-xs [border:var(--line-xs)] first:ml-0"
                             color={a.color}
                             title={a.name}
                           >
@@ -162,25 +194,25 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                         );
                       })}
                     </span>
-                    <span className="thread-badge-count">
+                    <span className="thread-badge-count font-bold underline decoration-yellow decoration-2 underline-offset-[3px]">
                       {threadReplyCount} {threadReplyCount === 1 ? "reply" : "replies"}
                     </span>
                     {message.threadLastReplyAt && (
-                      <span className="thread-badge-time">
+                      <span className="thread-badge-time text-ink-soft">
                         last {new Date(message.threadLastReplyAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                       </span>
                     )}
                   </button>
                 )}
               </div>
-              <div className="message-footer-right">
-                <div className="reactions" aria-label="message reactions">
+              <div className="message-footer-right ml-auto flex min-w-0 flex-[0_1_auto] items-center justify-end">
+                <div className="reactions flex flex-wrap items-center justify-end gap-[var(--space-6)]" aria-label="message reactions">
                   {message.reactions.map((reaction) => {
                     const mine = reaction.by.includes(me.id);
                     const names = reaction.by.map((id) => agentById.get(id)?.name ?? id);
                     return (
                       <span
-                        className="reaction-wrap"
+                        className="reaction-wrap relative inline-flex"
                         key={reaction.emoji}
                         onMouseEnter={(event) => {
                           window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
@@ -193,7 +225,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                         }}
                       >
                         <button
-                          className={`reaction${mine ? " is-mine" : ""}`}
+                          className={reactionBtn({ mine })}
                           title={names.join(", ")}
                           aria-pressed={mine}
                           aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
@@ -213,18 +245,21 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                           }}
                         >
                           <span>{reaction.emoji}</span>
-                          <span className="rcount">{reaction.by.length}</span>
+                          <span className="rcount font-mono text-[length:var(--text-11)] font-bold">{reaction.by.length}</span>
                         </button>
                         {detailsEmoji === reaction.emoji && createPortal(
                           <div
-                            className={`reaction-popover${detailsStyle ? " is-floating" : ""}`}
+                            className={cn(
+                              "reaction-popover absolute right-0 bottom-[calc(100%+8px)] z-40 min-w-[168px] overflow-hidden rounded-lg bg-paper p-3 text-left text-[length:var(--text-12)] [border:var(--line-md)] [box-shadow:4px_4px_0_var(--message-card-shadow-color,var(--rule))]",
+                              detailsStyle && "is-floating fixed z-[var(--z-context-menu)]",
+                            )}
                             role="dialog"
                             aria-label={`${reaction.emoji} reactions`}
                             style={detailsStyle ?? undefined}
                           >
-                            <div className="reaction-popover-head">{reaction.emoji}</div>
+                            <div className="reaction-popover-head mb-[6px] text-[20px]">{reaction.emoji}</div>
                             {names.map((name, index) => (
-                              <div className="reaction-person" key={`${reaction.emoji}-${reaction.by[index]}`}>{name}</div>
+                              <div className="reaction-person my-[3px] font-display" key={`${reaction.emoji}-${reaction.by[index]}`}>{name}</div>
                             ))}
                           </div>,
                           document.body,
@@ -233,9 +268,9 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                     );
                   })}
                   {onReact && (
-                    <span className="reaction-wrap">
+                    <span className="reaction-wrap relative inline-flex">
                       <button
-                        className="reaction add"
+                        className={reactionBtn({ add: true })}
                         aria-label="add reaction"
                         onClick={(event) => {
                           if (pickerOpen) {
@@ -249,7 +284,10 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                       </button>
                       {pickerOpen && createPortal(
                         <div
-                          className={`reaction-picker${pickerStyle ? " is-floating" : ""}`}
+                          className={cn(
+                            "reaction-picker absolute right-0 bottom-[calc(100%+8px)] z-40 grid grid-cols-[repeat(4,34px)] gap-1 overflow-hidden rounded-lg bg-paper p-[6px] [border:var(--line-md)] [box-shadow:4px_4px_0_var(--message-card-shadow-color,var(--rule))]",
+                            pickerStyle && "is-floating fixed z-[var(--z-context-menu)]",
+                          )}
                           role="menu"
                           aria-label="choose reaction"
                           style={pickerStyle ?? undefined}
@@ -257,7 +295,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                           {QUICK_REACTIONS.map((emoji) => (
                             <button
                               key={emoji}
-                              className="reaction-choice"
+                              className="reaction-choice grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-md bg-paper text-[18px] text-ink [border:var(--line-sm)] hover:bg-paper-3 hover:[box-shadow:2px_2px_0_var(--message-card-shadow-color,var(--rule))]"
                               onClick={() => {
                                 onReact(message.id, emoji);
                                 setPickerOpen(false);

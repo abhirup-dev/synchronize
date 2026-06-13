@@ -1,4 +1,39 @@
-import { createContext, useCallback, useContext, useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { Menu } from "@base-ui-components/react/menu";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn";
+
+/**
+ * Context-menu styling migrated off styles.css/extra.css into Tailwind
+ * utilities. The active look came from extra.css (it imports after styles.css,
+ * so its `.ctx-menu`/`.ctx-item`/`.ctx-shortcut` rules won at equal
+ * specificity); those exact values are reproduced here. `.ctx-menu` is KEPT on
+ * the popup element because skin-glass.css hooks it for the backdrop-filter
+ * glass surface. Positioning + z-index are owned by Base UI's Positioner, so
+ * the legacy `position: fixed` / `z-index` are intentionally dropped.
+ */
+const ctxItem = cva(
+  [
+    "flex w-full items-center justify-between gap-[var(--space-16)] px-[10px] py-[7px]",
+    "bg-transparent [border:var(--line-none)] text-left text-[length:var(--text-13)] text-ink",
+    "rounded-xs cursor-pointer",
+    "hover:enabled:bg-paper-2 enabled:data-[highlighted]:bg-paper-2",
+    "disabled:opacity-[0.46] disabled:cursor-default",
+  ],
+  {
+    variants: {
+      danger: {
+        true: [
+          "text-pink",
+          "hover:enabled:bg-[color-mix(in_srgb,var(--pink)_18%,transparent)]",
+          "enabled:data-[highlighted]:bg-[color-mix(in_srgb,var(--pink)_18%,transparent)]",
+        ],
+        false: null,
+      },
+    },
+    defaultVariants: { danger: false },
+  },
+);
 
 export interface MenuItem {
   label: string;
@@ -38,61 +73,88 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const close = () => setState(null);
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      close();
-    };
     window.addEventListener(OVERLAY_CLOSE_EVENT, close);
-    document.addEventListener("keydown", onEscape, true);
-    document.addEventListener("keyup", onEscape, true);
     return () => {
       window.removeEventListener(OVERLAY_CLOSE_EVENT, close);
-      document.removeEventListener("keydown", onEscape, true);
-      document.removeEventListener("keyup", onEscape, true);
     };
   }, []);
 
   useEffect(() => {
     if (!state) return;
     const close = () => setState(null);
-    window.addEventListener("click", close);
     window.addEventListener("scroll", close, true);
     return () => {
-      window.removeEventListener("click", close);
       window.removeEventListener("scroll", close, true);
+    };
+  }, [state]);
+
+  // Zero-size virtual anchor at the pointer position so the popup's top-left
+  // lands exactly where the original fixed-position menu rendered.
+  const anchor = useMemo(() => {
+    if (!state) return null;
+    const { x, y } = state;
+    return {
+      getBoundingClientRect: () => new DOMRect(x, y, 0, 0),
     };
   }, [state]);
 
   return (
     <ContextMenuCtx.Provider value={{ open }}>
       {children}
-      {state && (
-        <div
-          className="ctx-menu"
-          style={{ left: state.x, top: state.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {state.items.map((it, i) =>
-            "divider" in it ? (
-              <div key={i} className="ctx-divider" />
-            ) : (
-              <button
-                key={i}
-                className={`ctx-item${it.danger ? " ctx-danger" : ""}`}
-                disabled={it.disabled}
-                onClick={() => {
-                  if (it.disabled) return;
-                  void Promise.resolve(it.onSelect()).finally(() => setState(null));
-                }}
-              >
-                <span>{it.label}</span>
-                {it.shortcut && <span className="ctx-shortcut">{it.shortcut}</span>}
-              </button>
-            ),
-          )}
-        </div>
-      )}
+      <Menu.Root
+        open={state !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setState(null);
+        }}
+        modal={false}
+      >
+        <Menu.Portal>
+          <Menu.Positioner
+            anchor={anchor}
+            side="bottom"
+            align="start"
+            sideOffset={0}
+            style={{ zIndex: "var(--z-context-menu)" }}
+          >
+            <Menu.Popup
+              className={cn(
+                "ctx-menu",
+                "flex min-w-[220px] flex-col gap-[var(--space-1)] p-[var(--space-4)]",
+                "bg-paper [border:var(--line-md)] rounded-lg font-mono",
+                "shadow-[4px_4px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72))]",
+              )}
+            >
+              {(state?.items ?? []).map((it, i) =>
+                "divider" in it ? (
+                  <Menu.Separator
+                    key={i}
+                    className="my-[3px] mx-[4px] h-[1.5px] bg-ink-faint"
+                  />
+                ) : (
+                  <Menu.Item
+                    key={i}
+                    className={cn(ctxItem({ danger: it.danger ?? false }))}
+                    disabled={it.disabled ?? false}
+                    nativeButton
+                    render={<button type="button" disabled={it.disabled ?? false} />}
+                    onClick={() => {
+                      if (it.disabled) return;
+                      void Promise.resolve(it.onSelect());
+                    }}
+                  >
+                    <span>{it.label}</span>
+                    {it.shortcut && (
+                      <span className="text-[length:var(--text-11)] text-ink-soft">
+                        {it.shortcut}
+                      </span>
+                    )}
+                  </Menu.Item>
+                ),
+              )}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
     </ContextMenuCtx.Provider>
   );
 }

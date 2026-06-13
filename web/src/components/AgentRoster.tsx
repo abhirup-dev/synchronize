@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 import { useAgents, useSetAgentColor } from "../data/context.tsx";
 import type { Agent, Room } from "../data/types.ts";
 import { Avatar, CountChip } from "./primitives.tsx";
@@ -18,6 +20,45 @@ interface AgentRosterProps {
    *  active room (and toasts when the agent has no messages yet). */
   onAgentDoubleClick?(agentId: string): void;
 }
+
+/**
+ * Roster styling migrated off extra.css/styles.css to inline Tailwind utilities
+ * (tokens bridged through tw.css `@theme inline`). Hooks kept on the elements:
+ * `agent-roster` (styles.css `.shell-overlay .agent-roster` + responsive
+ * `display:none`), `roster-head` (skin-glass backdrop-filter), `roster-card`
+ * (extra.css vim `[data-vim-focused]` ring). The `.roster-card.focused` look
+ * comes from the styles.css declaration that leaks through (ink bg / on-ink fg /
+ * rule border / accent-pink shadow); extra.css only overrode its transform.
+ */
+const rosterSection = cva("flex flex-col gap-[6px]", {
+  variants: {
+    status: {
+      busy: "pl-[6px] [border-left:2px_solid_var(--pink)]",
+      online: null,
+      idle: null,
+      offline: null,
+    },
+  },
+});
+
+const rosterCard = cva(
+  [
+    "relative grid w-full grid-cols-[32px_1fr] items-start gap-[var(--space-10)]",
+    "px-[2px] py-[8px] text-left font-[inherit] text-ink",
+    "cursor-pointer bg-transparent shadow-none [border:var(--line-none)] rounded-none",
+    "[transition:transform_80ms_ease]",
+    "hover:translate-x-px",
+  ],
+  {
+    variants: {
+      focused: {
+        true: "translate-x-px bg-ink text-on-ink [border-color:var(--rule)] shadow-[var(--shadow-accent-pink)]",
+        false: null,
+      },
+    },
+    defaultVariants: { focused: false },
+  },
+);
 
 const GROUPS: Array<{ title: string; status: Agent["status"] }> = [
   { title: "WORKING", status: "busy" },
@@ -40,30 +81,42 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
   );
 
   return (
-    <aside className="agent-roster" data-vim-panel="roster">
-      <div className="roster-head">
+    <aside
+      className={cn(
+        "agent-roster flex min-h-0 flex-col gap-[var(--space-14)] overflow-y-auto",
+        "px-[14px] pt-[14px] pb-[18px] [border-left:var(--line-2)]",
+      )}
+      data-vim-panel="roster"
+    >
+      <div
+        className={cn(
+          "roster-head flex w-fit items-center gap-[var(--space-10)] bg-lime text-on-accent",
+          "mt-0 mr-0 mb-[6px] ml-[4px] px-[14px] py-[8px] font-display text-[length:var(--text-14)]",
+          "tracking-[var(--tracking-lg)] [border:var(--line-md)] rounded-none shadow-md [transform:rotate(-2deg)]",
+        )}
+      >
         <span>AGENTS</span>
         <CountChip n={members.length} />
       </div>
       {focusedAgent && (
-        <div className="focus-banner">
+        <div className="flex items-center justify-between bg-pink px-[8px] py-[6px] font-mono text-[length:var(--text-11)] text-on-accent [border:var(--line-2)] rounded-sm shadow-chip">
           focused on @{displayAgents.find((a) => a.id === focusedAgent)?.handle}
-          <button className="focus-clear" onClick={() => onFocus(null)}>✕</button>
+          <button className="cursor-pointer bg-transparent px-[4px] font-bold text-inherit [border:var(--line-none)]" onClick={() => onFocus(null)}>✕</button>
         </div>
       )}
       {GROUPS.map(({ title, status }) => {
         const inGroup = members.filter((m) => m.status === status);
         if (inGroup.length === 0) return null;
         return (
-          <div key={title} className={`roster-section roster-${status}`}>
-            <div className="roster-section-head">
+          <div key={title} className={cn(rosterSection({ status }))}>
+            <div className="flex items-center gap-[var(--space-6)] font-display text-[length:var(--text-10)] tracking-[var(--tracking-md)] text-ink-soft">
               <span>● {title}</span>
               <CountChip n={inGroup.length} />
             </div>
             {inGroup.map((agent) => (
               <button
                 key={agent.id}
-                className={`roster-card${focusedAgent === agent.id ? " focused" : ""}`}
+                className={cn("roster-card", rosterCard({ focused: focusedAgent === agent.id }))}
                 data-vim-item={`agent-${agent.id}`}
                 onClick={() => onFocus(focusedAgent === agent.id ? null : agent.id)}
                 onDoubleClick={() => onAgentDoubleClick?.(agent.id)}
@@ -109,9 +162,9 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                 }}
               >
                 <Avatar agent={agent} size={32} />
-                <div className="roster-meta">
-                  <div className="roster-name">{agent.name}</div>
-                  <div className="roster-role">
+                <div>
+                  <div className="font-semibold text-[length:var(--text-13)]">{agent.name}</div>
+                  <div className="font-mono text-[length:var(--text-10-5)] text-ink-soft">
                     {agent.role}
                     {agent.statusNote && agent.statusNote !== agent.name ? ` (${agent.statusNote})` : ""}
                   </div>

@@ -8,6 +8,7 @@ import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
+import { cn } from "../lib/cn.ts";
 
 interface ThreadPaneProps {
   room: Room;
@@ -67,10 +68,18 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
   if (!parent || !parentAuthor) return null;
 
   return (
-    <aside className="thread-pane" aria-label="thread" data-vim-panel="thread">
+    <aside
+      className={cn(
+        "thread-pane",
+        "relative flex min-h-0 flex-col overflow-hidden bg-paper [border-left:var(--line-md)]",
+        "animate-[thread-slide-in_200ms_cubic-bezier(0.2,0.8,0.2,1)]",
+      )}
+      aria-label="thread"
+      data-vim-panel="thread"
+    >
       {showHeader && (
-        <header className="thread-pane-head">
-          <div className="thread-pane-title">
+        <header className="flex shrink-0 items-center justify-between gap-[var(--space-12)] bg-paper-2 [border-bottom:var(--line)] [padding:var(--space-button-pad-md)]">
+          <div className="flex min-w-0 items-center gap-[var(--space-6)] font-display text-[length:var(--text-13)]">
             <strong>Thread</strong>
             <span className="thread-pane-sep">·</span>
             <span className="thread-pane-sub">replying to</span>
@@ -93,9 +102,9 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
         </header>
       )}
 
-      <div className="thread-scroll-wrap">
-      <div className="thread-pane-body autoscroll" ref={bodyRef}>
-        <div className="thread-parent">
+      <div className="thread-scroll-wrap relative flex min-h-0 flex-1 flex-col [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
+      <div className="thread-pane-body autoscroll flex flex-1 flex-col gap-[var(--space-20)] overflow-y-auto [padding:12px_12px_4px]" ref={bodyRef}>
+        <div className="thread-parent flex flex-col gap-[var(--space-6)]">
           <MessageRow
             message={parent}
             author={parentAuthor}
@@ -106,19 +115,19 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
           />
         </div>
 
-        <div className="thread-divider">
-          <span className="thread-divider-line" />
+        <div className="thread-divider flex items-center gap-[var(--space-10)] font-mono text-[length:var(--text-10)] tracking-[var(--tracking-md)] text-ink-soft [padding:4px_0]">
+          <span className="h-[1.5px] flex-1 bg-ink-faint" />
           <span className="thread-divider-label">
             {replies.length} {replies.length === 1 ? "reply" : "replies"}
             {participants.length > 0 && ` · ${participants.length} participant${participants.length === 1 ? "" : "s"}`}
           </span>
-          <span className="thread-divider-line" />
+          <span className="h-[1.5px] flex-1 bg-ink-faint" />
         </div>
 
         {replies.length === 0 ? (
-          <div className="thread-empty">no replies yet — start the conversation below.</div>
+          <div className="font-mono text-[length:var(--text-11)] text-ink-soft [padding:18px_8px] text-center">no replies yet — start the conversation below.</div>
         ) : (
-          <div className="thread-replies virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
+          <div className="virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((item) => {
               const r = replies[item.index];
               if (!r) return null;
@@ -127,7 +136,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
               return (
                 <div
                   key={r.id}
-                  className="virtualized-row thread-virtual-row"
+                  className="virtualized-row thread-virtual-row pb-[var(--space-18)]"
                   data-index={item.index}
                   ref={virtualizer.measureElement}
                   style={{ transform: `translateY(${item.start}px)` }}
