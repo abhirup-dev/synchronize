@@ -12,7 +12,7 @@ const DEFAULT_ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 const DEFAULT_MODEL = "zai/glm-4.7";
 const DEFAULT_REMOTE_BASE_URL = "http://localhost:8283";
 
-type LettaBackend = "remote" | "local";
+type LettaBackend = "remote" | "agent" | "local";
 
 interface Args {
   name: string;
@@ -60,7 +60,9 @@ function parseArgs(argv: string[]): Args {
       args.cwd = next;
       index += 1;
     } else if (arg === "--backend" && next) {
-      if (next !== "remote" && next !== "local") throw new Error("--backend must be remote or local");
+      if (next !== "remote" && next !== "agent" && next !== "local") {
+        throw new Error("--backend must be remote, agent, or local");
+      }
       args.backend = next;
       index += 1;
     } else if ((arg === "--server" || arg === "--base-url") && next) {
@@ -91,14 +93,22 @@ function printHelpAndExit(): never {
       "Usage: letta-synchronize [options]",
       "",
       "  --name NAME              synchronize session name (default: letta)",
-      "  --backend remote|local   remote Letta server (default) or local Letta Code SDK",
+      "  --backend remote|agent|local  (default: remote)",
+      "                           remote = memory-only via letta-client (server tools only)",
+      "                           agent  = remote agent brain + LOCAL tools via letta-code-sdk",
+      "                           local  = standalone local letta-code agent",
       "  --delivery interrupt|steer  delivery semantics (default: interrupt)",
       "  --poll-ms MS             inbox poll interval (default: 1000)",
       "",
-      "Remote backend (--backend remote):",
+      "Remote/agent backends (--server, --agent):",
       "  --server URL             Letta server base URL (env LETTA_BASE_URL)",
       "  --agent AGENT_ID         existing agent to drive (env LETTA_AGENT_ID), required",
+      "  --conversation CONV_ID   pin a specific conversation thread",
       "  --api-key KEY            optional bearer (env LETTA_API_KEY / LETTA_SERVER_PASSWORD)",
+      "",
+      "Agent backend runs the agent's client-side tools in --cwd; point --cwd at",
+      "the vault and run where the files live (e.g. the VPS). To join a remote",
+      "synchronize bus, set SYNCHRONIZE_DAEMON_URL (+ SYNCHRONIZE_TOKEN).",
       "",
       "Local backend (--backend local):",
       "  --model MODEL            Letta Code model (default: zai/glm-4.7)",
@@ -125,7 +135,46 @@ async function loadZaiApiKey(): Promise<void> {
 
 async function createLettaSession(args: Args): Promise<LettaSession> {
   if (args.backend === "remote") return createRemoteLettaSession(args);
+  if (args.backend === "agent") return createAgentLettaSession(args);
   return createLocalLettaSession(args);
+}
+
+/**
+ * Tool-capable backend: drive the *remote* Letta agent (e.g. Rocky) via the
+ * Letta Code SDK. The SDK connects to the server (LETTA_BASE_URL) for the
+ * agent's brain/memory, and spawns the local `letta` CLI to execute its
+ * client-side tools (Bash/Read/Write/Edit/Glob/Grep + skills) in `cwd`. Run
+ * this where the files live (e.g. on the VPS, with cwd pointed at the vault).
+ *
+ * Unlike the local backend, this does NOT set LETTA_LOCAL_BACKEND_EXPERIMENTAL
+ * — we want the persistent server-side agent, not a throwaway local one.
+ */
+async function createAgentLettaSession(args: Args): Promise<LettaSession> {
+  if (!args.agentId && !args.conversationId) {
+    throw new Error(
+      "agent backend requires --agent <agent-id> (e.g. Rocky) or --conversation <conv-id>; set LETTA_AGENT_ID",
+    );
+  }
+  await ensureLettaCliPath();
+  // The Letta Code SDK reads the server target from the environment.
+  process.env.LETTA_BASE_URL = args.serverUrl;
+  process.env.LETTA_API_KEY = args.apiKey && args.apiKey !== "" ? args.apiKey : process.env.LETTA_API_KEY || "dummy";
+
+  const sdk = await import("@letta-ai/letta-code-sdk");
+  const options = {
+    cwd: args.cwd,
+    // Headless bot deployment: never block on approval prompts or interactive
+    // tools (the documented cause of stalled non-interactive sessions).
+    permissionMode: "bypassPermissions" as const,
+    disallowedTools: ["AskUserQuestion"],
+    canUseTool: async () => ({ behavior: "allow" as const }),
+    systemInfoReminder: false,
+    maxApprovalRecoveryAttempts: 0,
+  };
+  // resumeSession(agent-xxx) attaches to the agent's default (persistent)
+  // conversation; conv-xxx pins a specific thread.
+  if (args.conversationId) return sdk.resumeSession(args.conversationId, options);
+  return sdk.resumeSession(args.agentId!, options);
 }
 
 function createRemoteLettaSession(args: Args): LettaSession {

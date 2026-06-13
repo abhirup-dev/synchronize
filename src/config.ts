@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import {
   ENV_BIND,
+  ENV_DAEMON_URL,
   ENV_HEALTH_TIMEOUT_MS,
   ENV_LEASE_MS,
   ENV_MCP_HEARTBEAT_MS,
@@ -136,7 +137,7 @@ export function resolveConnection(
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedConnection {
   const profile = resolveProfile(config);
-  const envUrl = env[ENV_REMOTE_URL]?.trim();
+  const envUrl = env[ENV_REMOTE_URL]?.trim() || env[ENV_DAEMON_URL]?.trim();
   const remoteUrl = envUrl || profile?.url || null;
 
   const envToken = env[ENV_TOKEN]?.trim();
