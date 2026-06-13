@@ -9,7 +9,7 @@ import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Paperclip, AtSign, Slash, ArrowUp, PanelLeft } from "lucide-react";
+import { Paperclip, AtSign, Slash, ArrowUp } from "lucide-react";
 
 interface ComposerProps {
   roomId: string;
@@ -626,9 +626,8 @@ export function Composer({
       )}
       {compact ? (
         <div className="flex items-center gap-[var(--space-4)] px-[8px] py-[6px] [border-top:var(--line-rule-dashed-sm)]">
-          {onOpenCommunity ? (
-            <IconButton icon={PanelLeft} label="rooms" onClick={onOpenCommunity} />
-          ) : null}
+          {/* Room switching lives in the bottom nav's Chats tab in compact mode,
+              so the composer stays focused on message actions. */}
           <IconButton icon={Paperclip} label="attach file" onClick={() => fileInputRef.current?.click()} disabled={addingAttachments} />
           <IconButton icon={AtSign} label="mention an agent" onClick={insertMention} />
           <IconButton icon={Slash} label="use skills" active={skillPickerOpen} onClick={() => openSkillPicker()} />

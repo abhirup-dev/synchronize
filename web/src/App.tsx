@@ -13,6 +13,7 @@ import { ContextMenuProvider } from "./components/ContextMenu.tsx";
 import { ThreadPane } from "./components/ThreadPane.tsx";
 import { ResizeHandle } from "./components/ResizeHandle.tsx";
 import { ActivityView } from "./components/ActivityView.tsx";
+import { BottomNav, type BottomNavTab } from "./components/BottomNav.tsx";
 import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
@@ -123,6 +124,9 @@ function Shell() {
   const [communityOpen, setCommunityOpen] = useState(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const overlayRestoreRef = useRef<HTMLElement | null>(null);
+  // Last real room visited, so the compact "Chats" tab can restore a
+  // conversation when leaving the (virtual) Activity destination.
+  const lastRoomIdRef = useRef<string>(rooms[0]?.id ?? "");
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const [threadWidth, setThreadWidth] = useState<number>(() => {
     const stored = Number(localStorage.getItem("synchronize.threadWidth"));
@@ -137,6 +141,7 @@ function Shell() {
   });
 
   const isActivity = activeId === ACTIVITY_ID;
+  if (!isActivity && activeId) lastRoomIdRef.current = activeId;
 
   useEffect(() => {
     // "activity" is a virtual destination, not a room — never reset it away.
@@ -250,6 +255,28 @@ function Shell() {
     setCommunityOpen(false);
   };
 
+  // Compact bottom-nav destinations. Chats = the conversation section: tapping
+  // it opens the room switcher (and first restores a conversation if we were in
+  // Activity). Activity = the virtual cross-room feed. Agents = the roster sheet.
+  const bottomNavTab: BottomNavTab = isActivity ? "activity" : agentPanelOpen ? "agents" : "chats";
+  const onNavChats = () => {
+    setAgentPanelOpen(false);
+    if (isActivity) setActiveId(lastRoomIdRef.current);
+    rememberOverlayOpener();
+    setCommunityOpen(true);
+  };
+  const onNavActivity = () => {
+    setCommunityOpen(false);
+    setAgentPanelOpen(false);
+    setActiveId(ACTIVITY_ID);
+  };
+  const onNavAgents = () => {
+    setCommunityOpen(false);
+    if (isActivity) setActiveId(lastRoomIdRef.current);
+    rememberOverlayOpener();
+    setAgentPanelOpen(true);
+  };
+
   // Jump-to-last-message-by-agent: scrolls to the latest message authored by
   // `agentId` in the active room, flashes it with the throbbing yellow ring.
   // If the agent has no messages in this room, fire a toast.
@@ -351,7 +378,7 @@ function Shell() {
               onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
               chatBg={chatBg}
               onChatBg={setChatBg}
-              showAgentsButton={rosterPanelAvailable}
+              showAgentsButton={rosterPanelAvailable && shellMode !== "compact"}
               onOpenAgents={() => {
                 rememberOverlayOpener();
                 setAgentPanelOpen(true);
@@ -448,6 +475,15 @@ function Shell() {
             onAgentDoubleClick={jumpToAgentLast}
           />
         </div>
+      )}
+      {shellMode === "compact" && (
+        <BottomNav
+          active={bottomNavTab}
+          onChats={onNavChats}
+          onActivity={onNavActivity}
+          onAgents={onNavAgents}
+          agentCount={room?.members.length ?? 0}
+        />
       )}
     </div>
     </ShellModeProvider>

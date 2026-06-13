@@ -645,7 +645,16 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .app-shell.shell-compact {
+  /* Height of the bottom-nav interactive bar (excludes the device safe-area
+     inset, which the nav adds as padding). Overlays inset their bottom by this
+     so the nav stays visible/tappable above the room-list and agents sheets. */
+  --bottom-nav-bar: 56px;
   grid-template-columns: minmax(0, 1fr);
+  /* Row 1: the chat region (scrolls internally). Row 2: the bottom nav.
+     The nav is an in-flow grid row (not fixed), so the composer naturally sits
+     above it with no overlap math. App.tsx renders <BottomNav> only in compact,
+     so medium/desktop are untouched. */
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 /* .main migrated to inline Tailwind utilities in App.tsx (no skin/theme/JS hook;
@@ -1086,9 +1095,11 @@ button { font-family: inherit; cursor: pointer; }
   border: 0;
 }
 
+/* Compact sheets stop short of the bottom nav (room-list / agents), so the nav
+   stays visible and tappable above them — tab-bar persistence à la Slack/iOS. */
 .shell-overlay-community,
 .shell-overlay-compact {
-  inset: 0;
+  inset: 0 0 calc(var(--bottom-nav-bar, 0px) + env(safe-area-inset-bottom)) 0;
   animation: shell-slide-in-left 180ms ease-out;
 }
 
@@ -1101,6 +1112,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .shell-overlay-agents.shell-overlay-compact {
+  inset: 0 0 calc(var(--bottom-nav-bar, 0px) + env(safe-area-inset-bottom)) 0;
   animation-name: shell-slide-in-right;
 }
 
