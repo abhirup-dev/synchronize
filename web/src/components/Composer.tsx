@@ -7,6 +7,9 @@ import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
+import { useIsCompact } from "../shell-mode.tsx";
+import { IconButton } from "./IconButton.tsx";
+import { Paperclip, AtSign, Slash, ArrowUp, PanelLeft } from "lucide-react";
 
 interface ComposerProps {
   roomId: string;
@@ -128,6 +131,7 @@ export function Composer({
   const stageAttachment = useStageAttachment();
   const removeDraftAttachment = useRemoveDraftAttachment();
   const toast = useToast();
+  const compact = useIsCompact();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const skillInputRef = useRef<HTMLInputElement | null>(null);
@@ -335,6 +339,15 @@ export function Composer({
     });
   };
 
+  // Compact @ button: insert "@" at the end and open the mention popup, since
+  // the desktop toolbar @ is typing-driven and has no handler.
+  const insertMention = () => {
+    setValue((prev) => (prev.endsWith("@") ? prev : `${prev}@`));
+    setMentionQuery("");
+    setMentionIdx(0);
+    queueMicrotask(() => taRef.current?.focus());
+  };
+
   const commitSkill = (skill: SkillCatalogEntry) => {
     slashRestorePosRef.current = null;
     setSelectedSkills((prev) => prev.includes(skill.name) ? prev : [...prev, skill.name]);
@@ -452,6 +465,8 @@ export function Composer({
       >
         ▼
       </button>
+      <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
+      {!compact && (
       <div className="flex items-center gap-[var(--space-8)] w-full bg-transparent [border:var(--line-none)] [border-bottom:var(--line-sm)] rounded-none px-[10px] py-[8px] shadow-none">
         <button className={cn(toolbarBtn())} title="bold" disabled>B</button>
         <button className={cn(toolbarBtn())} title="italic" disabled><i>I</i></button>
@@ -460,8 +475,8 @@ export function Composer({
         <button className={cn(toolbarBtn())} title="mention">@</button>
         <button className={cn(toolbarBtn({ active: skillPickerOpen }))} title="use skills" onClick={() => openSkillPicker()}>/</button>
         <button type="button" className={cn(toolbarBtn())} title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
-        <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
       </div>
+      )}
       {selectedSkills.length > 0 && (
         <div className="flex flex-wrap gap-[var(--space-6)] px-[10px] pt-[8px]" aria-label="selected skills">
           {selectedSkills.map((skillName) => (
@@ -485,13 +500,18 @@ export function Composer({
           ref={taRef}
           // `composer-input`: queried by hooks/useVimNav.ts + kanagawa placeholder
           // override in extra.css (:root[data-theme=...]) — class kept.
-          className={cn("composer-input", "w-full resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px] bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint")}
-          placeholder="message the room… use @ to tag an agent"
+          className={cn(
+            "composer-input w-full bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint",
+            compact
+              ? "resize-none min-h-[44px] max-h-[132px] px-[14px] py-[10px]"
+              : "resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px]",
+          )}
+          placeholder={compact ? "Message…" : "message the room… use @ to tag an agent"}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKey}
           onPaste={handlePaste}
-          rows={3}
+          rows={compact ? 1 : 3}
           aria-autocomplete="list"
           aria-haspopup="listbox"
           aria-expanded={mentionOpen}
@@ -604,6 +624,25 @@ export function Composer({
           </div>
         </div>
       )}
+      {compact ? (
+        <div className="flex items-center gap-[var(--space-4)] px-[8px] py-[6px] [border-top:var(--line-rule-dashed-sm)]">
+          {onOpenCommunity ? (
+            <IconButton icon={PanelLeft} label="rooms" onClick={onOpenCommunity} />
+          ) : null}
+          <IconButton icon={Paperclip} label="attach file" onClick={() => fileInputRef.current?.click()} disabled={addingAttachments} />
+          <IconButton icon={AtSign} label="mention an agent" onClick={insertMention} />
+          <IconButton icon={Slash} label="use skills" active={skillPickerOpen} onClick={() => openSkillPicker()} />
+          <span className="flex-1" />
+          <IconButton
+            icon={ArrowUp}
+            label="send message"
+            variant="accent"
+            className="rounded-full"
+            onClick={() => void submit()}
+            disabled={addingAttachments || (!value.trim() && attachments.length === 0)}
+          />
+        </div>
+      ) : (
       <div className="flex items-center gap-[var(--space-12)] justify-between px-[14px] py-[10px] [border-top:var(--line-rule-dashed-sm)]">
         {onOpenCommunity ? (
           <button
@@ -640,6 +679,7 @@ export function Composer({
           <span className="composer-send-icon" aria-hidden />
         </button>
       </div>
+      )}
     </div>
   );
 }

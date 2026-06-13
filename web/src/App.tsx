@@ -17,13 +17,13 @@ import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
+import { ShellModeProvider, type ShellMode } from "./shell-mode.tsx";
 
 const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
 const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
 const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 type ThemeName = (typeof ALL_THEMES)[number];
-type ShellMode = "desktop" | "medium" | "compact";
 
 function shellModeForWidth(width: number): ShellMode {
   if (width < 780) return "compact";
@@ -320,6 +320,7 @@ function Shell() {
   }, [vim]);
 
   return (
+    <ShellModeProvider value={shellMode}>
     <div
       className={`app-shell shell-${shellMode}${threadParentId ? " thread-open" : ""}`}
       data-vim-mode={vim.mode}
@@ -449,6 +450,7 @@ function Shell() {
         </div>
       )}
     </div>
+    </ShellModeProvider>
   );
 }
 
