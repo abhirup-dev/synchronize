@@ -1,4 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 import { useArchiveCommands, useArchivedSessions, useRooms } from "../data/context.tsx";
 import type { Agent, ArchivePreview, ArchivedSession, ResumePreview, Room } from "../data/types.ts";
 import { useToast } from "./Toast.tsx";
@@ -13,6 +15,40 @@ interface ArchiveWorkflow {
 }
 
 const ArchiveWorkflowCtx = createContext<ArchiveWorkflow | null>(null);
+
+/**
+ * Archive console/dialog/details chrome migrated off styles.css `.archive-*`
+ * to inline Tailwind utilities + CVA (tokens bridged via tw.css `@theme
+ * inline`). `modal-backdrop` (skin-glass hook, shared with SpawnAgentDialog)
+ * and `shell-overlay-close` (shared with App.tsx) are left untouched.
+ */
+const dialogShell = cva(
+  [
+    "flex max-h-[min(760px,calc(100vh-40px))] flex-col gap-[14px] overflow-auto",
+    "bg-paper p-[16px] text-ink [border:var(--line-md)] rounded-lg shadow-lg",
+  ],
+  {
+    variants: {
+      variant: {
+        console: "w-[min(980px,calc(100vw-40px))]",
+        dialog: "w-[min(760px,calc(100vw-40px))]",
+        details: "fixed right-[28px] top-1/2 -translate-y-1/2 z-[calc(var(--z-modal)+1)] w-[min(440px,calc(100vw-56px))]",
+      },
+    },
+  },
+);
+
+const archiveHead = "flex items-start justify-between gap-[16px] [border-bottom:var(--line-xs)] pb-[10px]";
+const archiveHeadTitle = "m-0 font-display text-[length:var(--text-22)] tracking-[var(--tracking-xs)]";
+const archiveHeadSub = "mx-0 mb-0 mt-[4px] text-ink-soft text-[length:var(--text-12)]";
+const archiveInput = "min-h-[36px] w-full bg-paper-2 px-[10px] text-ink [border:var(--line-xs)] rounded-sm font-ui";
+const archiveTable = "grid gap-[6px]";
+const archiveRow = "grid grid-cols-[minmax(160px,1.6fr)_minmax(74px,0.55fr)_minmax(92px,0.8fr)_minmax(132px,1fr)] items-center gap-[10px] min-h-[36px] px-[9px] py-[7px] bg-paper-2 [border:var(--line-hair)] rounded-sm text-[length:var(--text-12)]";
+const archiveRowHead = "min-h-[30px] bg-ink text-paper font-display text-[length:var(--text-9)] tracking-[var(--tracking-md)]";
+const archiveBtn = "min-h-[30px] px-[10px] bg-paper text-ink [border:var(--line-xs)] rounded-sm shadow-xs font-ui font-bold";
+const archiveActions = "flex items-center justify-end gap-[8px]";
+const archiveNotice = "p-[16px] bg-paper-2 text-ink-soft [border:var(--line-dashed-xs)] rounded-sm";
+const archiveField = "grid gap-[6px] text-[length:var(--text-12)] text-ink-soft";
 
 type PreviewState =
   | { kind: "archive"; target: "group"; title: string; group: string; reason: string; loading: boolean; preview?: ArchivePreview; error?: string }
@@ -146,23 +182,23 @@ function ArchiveConsole({
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="archive-console" role="dialog" aria-modal="true" aria-label="archive" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="archive-head">
+      <section className={cn(dialogShell({ variant: "console" }))} role="dialog" aria-modal="true" aria-label="archive" onMouseDown={(event) => event.stopPropagation()}>
+        <header className={archiveHead}>
           <div>
-            <h2>ARCHIVE</h2>
-            <p>Archived sessions and reserved group seats</p>
+            <h2 className={archiveHeadTitle}>ARCHIVE</h2>
+            <p className={archiveHeadSub}>Archived sessions and reserved group seats</p>
           </div>
           <button type="button" className="shell-overlay-close" onClick={onClose} aria-label="close archive">×</button>
         </header>
-        <div className="archive-controls">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search archived sessions..." />
-          <select value={tool} onChange={(event) => setTool(event.target.value)} aria-label="tool filter">
+        <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-[10px]">
+          <input className={archiveInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search archived sessions..." />
+          <select className={archiveInput} value={tool} onChange={(event) => setTool(event.target.value)} aria-label="tool filter">
             <option value="all">all tools</option>
             {tools.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-        <div className="archive-table">
-          <div className="archive-row archive-row-head">
+        <div className={archiveTable}>
+          <div className={cn(archiveRow, archiveRowHead)}>
             <span>GROUP / SESSION</span>
             <span>TOOL</span>
             <span>ARCHIVED</span>
@@ -171,28 +207,28 @@ function ArchiveConsole({
           {grouped.map(([group, sessions]) => {
             const room = rooms.find((candidate) => candidate.kind === "group" && candidate.name === group);
             return (
-              <div key={group} className="archive-group-block">
-                <div className="archive-row archive-group-row">
+              <div key={group}>
+                <div className={cn(archiveRow, "bg-yellow font-bold")}>
                   <strong>#{group}</strong>
                   <span>{sessions.length} archived</span>
                   <span />
-                  <button type="button" onClick={() => onResumeGroup(room ?? { id: group, kind: "group", name: group, color: "#111111", members: [], unread: 0 })}>Resume group</button>
+                  <button type="button" className={archiveBtn} onClick={() => onResumeGroup(room ?? { id: group, kind: "group", name: group, color: "#111111", members: [], unread: 0 })}>Resume group</button>
                 </div>
                 {sessions.map((session) => (
-                  <div key={session.peerId} className="archive-row">
+                  <div key={session.peerId} className={archiveRow}>
                     <span>@{session.aliases.find((alias) => alias.group === group)?.alias ?? session.sessionName}</span>
                     <span>{session.tool}</span>
                     <span>{relativeTime(session.archivedAt)}</span>
-                    <span className="archive-actions">
-                      <button type="button" onClick={() => setSelected(session)}>Details</button>
-                      <button type="button" onClick={() => onResumeSession(session)}>Preview</button>
+                    <span className={archiveActions}>
+                      <button type="button" className={archiveBtn} onClick={() => setSelected(session)}>Details</button>
+                      <button type="button" className={archiveBtn} onClick={() => onResumeSession(session)}>Preview</button>
                     </span>
                   </div>
                 ))}
               </div>
             );
           })}
-          {grouped.length === 0 && <div className="archive-empty">No archived sessions match this view.</div>}
+          {grouped.length === 0 && <div className={archiveNotice}>No archived sessions match this view.</div>}
         </div>
       </section>
       {selected && <ArchiveDetails session={selected} onClose={() => setSelected(null)} />}
@@ -217,29 +253,29 @@ function ArchivePreviewDialog({
   const blocked = state.kind === "resume" && rows?.some((row) => row.action === "blocked" && !("forceAvailable" in row && row.forceAvailable));
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="archive-dialog" role="dialog" aria-modal="true" aria-label={state.title} onMouseDown={(event) => event.stopPropagation()}>
-        <header className="archive-head">
+      <section className={cn(dialogShell({ variant: "dialog" }))} role="dialog" aria-modal="true" aria-label={state.title} onMouseDown={(event) => event.stopPropagation()}>
+        <header className={archiveHead}>
           <div>
-            <h2>{state.title}</h2>
-            <p>{state.kind === "archive" ? "Review the dry run before archiving." : "Review the dry run before resuming."}</p>
+            <h2 className={archiveHeadTitle}>{state.title}</h2>
+            <p className={archiveHeadSub}>{state.kind === "archive" ? "Review the dry run before archiving." : "Review the dry run before resuming."}</p>
           </div>
           <button type="button" className="shell-overlay-close" onClick={onClose} aria-label="close preview">×</button>
         </header>
         {state.loading ? (
-          <div className="archive-loading">Loading preview...</div>
+          <div className={archiveNotice}>Loading preview...</div>
         ) : state.error ? (
-          <div className="archive-error">{state.error}</div>
+          <div className={cn(archiveNotice, "text-red")}>{state.error}</div>
         ) : (
           <>
-            <div className="archive-table archive-preview-table">
-              <div className="archive-row archive-row-head">
+            <div className={archiveTable}>
+              <div className={cn(archiveRow, archiveRowHead)}>
                 <span>SESSION</span>
                 <span>TOOL</span>
                 <span>RESULT</span>
                 <span>NOTES</span>
               </div>
               {rows?.map((row) => (
-                <div key={row.peerId} className="archive-row">
+                <div key={row.peerId} className={archiveRow}>
                   <span>{"alias" in row && row.alias ? `@${row.alias}` : row.sessionName ?? row.peerId}</span>
                   <span>{row.tool}</span>
                   <span>{row.action}</span>
@@ -248,22 +284,22 @@ function ArchivePreviewDialog({
               ))}
             </div>
             {state.kind === "archive" && (
-              <label className="archive-field">
+              <label className={archiveField}>
                 <span>Reason</span>
-                <input value={state.reason} onChange={(event) => onReason(event.target.value)} placeholder="optional archive reason" />
+                <input className={archiveInput} value={state.reason} onChange={(event) => onReason(event.target.value)} placeholder="optional archive reason" />
               </label>
             )}
             {state.kind === "resume" && rows?.some((row) => "forceAvailable" in row && row.forceAvailable) && (
-              <label className="archive-check">
+              <label className={cn(archiveField, "grid-cols-[auto_1fr] items-center")}>
                 <input type="checkbox" checked={state.force} onChange={(event) => onForce(event.target.checked)} />
                 <span>Force live blocked sessions</span>
               </label>
             )}
           </>
         )}
-        <footer className="archive-footer">
-          <button type="button" onClick={onClose}>Cancel</button>
-          <button type="button" className="archive-primary" disabled={state.loading || Boolean(state.error) || Boolean(blocked)} onClick={onConfirm}>
+        <footer className={archiveActions}>
+          <button type="button" className={cn(archiveBtn, "disabled:cursor-not-allowed disabled:opacity-50")} onClick={onClose}>Cancel</button>
+          <button type="button" className={cn(archiveBtn, "bg-ink text-paper disabled:cursor-not-allowed disabled:opacity-50")} disabled={state.loading || Boolean(state.error) || Boolean(blocked)} onClick={onConfirm}>
             {state.kind === "archive" ? "Confirm archive" : "Confirm resume"}
           </button>
         </footer>
@@ -274,23 +310,23 @@ function ArchivePreviewDialog({
 
 function ArchiveDetails({ session, onClose }: { session: ArchivedSession; onClose(): void }) {
   return (
-    <section className="archive-details" role="dialog" aria-modal="true" aria-label="archive details" onMouseDown={(event) => event.stopPropagation()}>
-      <header className="archive-head">
+    <section className={cn(dialogShell({ variant: "details" }))} role="dialog" aria-modal="true" aria-label="archive details" onMouseDown={(event) => event.stopPropagation()}>
+      <header className={archiveHead}>
         <div>
-          <h2>{session.sessionName}</h2>
-          <p>{session.tool} archived {relativeTime(session.archivedAt)}</p>
+          <h2 className={archiveHeadTitle}>{session.sessionName}</h2>
+          <p className={archiveHeadSub}>{session.tool} archived {relativeTime(session.archivedAt)}</p>
         </div>
         <button type="button" className="shell-overlay-close" onClick={onClose} aria-label="close details">×</button>
       </header>
-      <dl>
-        <dt>peer_id</dt><dd>{session.peerId}</dd>
-        <dt>reason</dt><dd>{session.archivedReason ?? "none"}</dd>
-        <dt>source</dt><dd>{session.archiveSource ?? "unknown"}</dd>
-        <dt>aliases</dt><dd>{session.aliases.map((alias) => `${alias.group}/@${alias.alias}`).join(", ") || "none"}</dd>
+      <dl className="m-0 grid grid-cols-[112px_minmax(0,1fr)] gap-x-[12px] gap-y-[8px] text-[length:var(--text-12)]">
+        <dt className="font-display text-[length:var(--text-9)] uppercase tracking-[var(--tracking-md)] text-ink-soft">peer_id</dt><dd className="m-0 min-w-0 [overflow-wrap:anywhere] font-mono">{session.peerId}</dd>
+        <dt className="font-display text-[length:var(--text-9)] uppercase tracking-[var(--tracking-md)] text-ink-soft">reason</dt><dd className="m-0 min-w-0 [overflow-wrap:anywhere] font-mono">{session.archivedReason ?? "none"}</dd>
+        <dt className="font-display text-[length:var(--text-9)] uppercase tracking-[var(--tracking-md)] text-ink-soft">source</dt><dd className="m-0 min-w-0 [overflow-wrap:anywhere] font-mono">{session.archiveSource ?? "unknown"}</dd>
+        <dt className="font-display text-[length:var(--text-9)] uppercase tracking-[var(--tracking-md)] text-ink-soft">aliases</dt><dd className="m-0 min-w-0 [overflow-wrap:anywhere] font-mono">{session.aliases.map((alias) => `${alias.group}/@${alias.alias}`).join(", ") || "none"}</dd>
       </dl>
-      <footer className="archive-footer">
-        <button type="button" onClick={() => void copyText(session.peerId)}>Copy peer id</button>
-        <button type="button" onClick={onClose}>Close</button>
+      <footer className={archiveActions}>
+        <button type="button" className={archiveBtn} onClick={() => void copyText(session.peerId)}>Copy peer id</button>
+        <button type="button" className={archiveBtn} onClick={onClose}>Close</button>
       </footer>
     </section>
   );

@@ -489,84 +489,10 @@
 .markdown del { color: var(--ink-faint); }
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */
-.agent-roster {
-  border-left: var(--line-2);
-  padding: 14px 14px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-14);
-  overflow-y: auto;
-  min-height: 0;
-}
-.roster-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-family: var(--font-display);
-  font-size: var(--text-14);
-  letter-spacing: var(--tracking-lg);
-  padding: 8px 14px;
-  background: var(--lime);
-  color: var(--on-accent);
-  border: var(--line-md);
-  border-radius: var(--radius-none);
-  box-shadow: var(--shadow-md);
-  transform: rotate(-2deg);
-  width: fit-content;
-  margin: 0 0 6px 4px;
-}
-.focus-banner {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  padding: 6px 8px;
-  background: var(--pink);
-  color: var(--on-accent);
-  border: var(--line-2);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.focus-clear {
-  background: transparent;
-  border: var(--line-none);
-  color: inherit;
-  cursor: pointer;
-  padding: 0 4px;
-  font-weight: 700;
-}
-.roster-section { display: flex; flex-direction: column; gap: 6px; }
-.roster-section-head {
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-md);
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  color: var(--ink-soft);
-}
-.roster-busy { padding-left: 6px; border-left: 2px solid var(--pink); }
-.roster-card {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: var(--space-10);
-  align-items: flex-start;
-  padding: 8px 2px;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-none);
-  text-align: left;
-  cursor: pointer;
-  transition: transform 80ms ease;
-}
-.roster-card:hover { transform: translateX(1px); }
-.roster-card.focused {
-  transform: translateX(1px);
-}
-.roster-name { font-weight: 600; font-size: var(--text-13); }
-.roster-role { font-family: var(--font-mono); font-size: var(--text-10-5); color: var(--ink-soft); }
-.roster-note { font-size: var(--text-11); color: var(--ink-soft); margin-top: 3px; }
+/* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
+ * (sync-9hqo). Hooks kept on the live elements: `agent-roster` (styles.css
+ * `.shell-overlay` + responsive `display:none`), `roster-head` (skin-glass
+ * backdrop-filter), `roster-card` (vim ring below). `.roster-note` was unused. */
 
 /* ─── Timeline rail slot (V0 reserved space) ────────────────────────────── */
 .timeline-rail-slot {
