@@ -2880,15 +2880,11 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--density-compact-pad);
 }
 
-/* ── right-side thread pane: borrows the room-header + chat-list patterns ── */
-.thread-pane {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--paper);
-  animation: thread-slide-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
+/* ── right-side thread pane: borrows the room-header + chat-list patterns ──
+   .thread-pane base rules migrated to inline Tailwind utilities in
+   ThreadPane.tsx (sync-vmre); the class is kept as a hook and the
+   thread-slide-in keyframes + `.chat-view.resizing .thread-pane` animation-kill
+   below stay in CSS. */
 
 /* resize grabber pinned to the LEFT edge of the thread pane.
    Wide enough to grab easily, mostly invisible until hover. */
@@ -2934,21 +2930,8 @@ button { font-family: inherit; cursor: pointer; }
   to   { transform: translateX(0); opacity: 1; }
 }
 
-.thread-pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: 14px 18px 13px;
-  border-bottom: var(--line);
-  flex-shrink: 0;
-}
-.thread-pane-title {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  min-width: 0;
-}
+/* .thread-pane-head / .thread-pane-title base rules migrated to inline Tailwind
+   utilities in ThreadPane.tsx (sync-vmre). */
 .thread-pane-label {
   font-family: var(--font-display);
   font-size: var(--text-14);
@@ -2995,24 +2978,17 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
-.thread-pane-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 18px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-14);
-}
+/* .thread-pane-body base layout migrated to inline Tailwind utilities in
+   ThreadPane.tsx (sync-vmre); the scrollbar pseudo rules below are not inlinable
+   and stay. */
 .thread-pane-body::-webkit-scrollbar { width: 8px; }
 .thread-pane-body::-webkit-scrollbar-thumb { background: var(--ink-faint); }
 .thread-pane-body::-webkit-scrollbar-track { background: var(--paper); }
 
-/* parent message: same visual language as a regular msg row, no extra chrome */
-.thread-parent {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
+/* parent message: same visual language as a regular msg row, no extra chrome.
+   .thread-parent base rules migrated to inline Tailwind utilities in
+   ThreadPane.tsx (sync-vmre); the class is kept as a hook for `.thread-parent
+   .bubble` in extra.css. */
 .thread-parent-head {
   display: flex;
   align-items: center;
@@ -3045,18 +3021,10 @@ button { font-family: inherit; cursor: pointer; }
 .thread-parent-bubble .markdown p:last-child { margin-bottom: 0; }
 .thread-parent-bubble .poll { margin-top: 8px; }
 
-/* divider between parent and replies — same DNA as .day-divider but quieter */
-.thread-divider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  margin: 2px 0;
-}
-.thread-divider-line {
-  flex: 1;
-  height: 0;
-  border-top: var(--line-dashed-faint);
-}
+/* divider between parent and replies — same DNA as .day-divider but quieter.
+   .thread-divider / .thread-divider-line base rules migrated to inline Tailwind
+   utilities in ThreadPane.tsx (sync-vmre); .thread-divider is kept as a hook for
+   `.thread-pane-body .thread-divider` in extra.css. */
 .thread-divider-pill {
   font-family: var(--font-mono);
   font-size: var(--text-10);
