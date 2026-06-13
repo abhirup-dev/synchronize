@@ -14,81 +14,84 @@
    translucent fills + the sheen baked into the shadow tokens.
    ========================================================================= */
 
-/* -- glass-light token overrides ----------------------------------------- */
+/* -- glass-light token overrides — tuned to Rosé Pine Dawn ---------------- */
+/* Warm cream surfaces (not pure white — that read too bright/glary), iris-grey
+   ink, and the Rosé Pine Dawn accent set (rose / gold / pine / foam / iris /
+   love). Applies to the light-family themes under glass. */
 :root[data-skin="glass"] {
-  /* surfaces: translucent whites over the gradient backdrop */
-  --paper: rgba(255, 255, 255, 0.42);
-  --paper-2: rgba(255, 255, 255, 0.55);
-  --paper-3: rgba(255, 255, 255, 0.68);
-  --bubble: rgba(255, 255, 255, 0.55);
-  --ink: #1b1f30;
-  --ink-soft: #4a516b;
-  --ink-faint: #8a91ab;
-  --rule: rgba(27, 31, 48, 0.16);
-  --muted: rgba(27, 31, 48, 0.30);
-  --on-ink: #f6f8ff;
-  --on-accent: #1b1f30;
-  --you-bg: rgba(91, 141, 239, 0.88);
-  --you-fg: #f6f8ff;
+  /* surfaces: translucent warm cream over the dawn backdrop */
+  --paper: rgba(253, 247, 240, 0.52);
+  --paper-2: rgba(253, 247, 240, 0.64);
+  --paper-3: rgba(247, 239, 230, 0.74);
+  --bubble: rgba(253, 247, 240, 0.58);
+  --ink: #575279;
+  --ink-soft: #797593;
+  --ink-faint: #9893a5;
+  --rule: rgba(87, 82, 121, 0.18);
+  --muted: rgba(87, 82, 121, 0.30);
+  --on-ink: #faf4ed;
+  --on-accent: #575279;
+  --you-bg: rgba(87, 82, 121, 0.86);
+  --you-fg: #faf4ed;
   --grain-alpha: 0;
 
-  /* accents: softened, glass-friendly */
-  --yellow: #f2c744;
-  --pink: #f06aae;
-  --blue: #5b8def;
-  --lime: #5fc98e;
-  --tangerine: #f09a63;
-  --lilac: #a78bfa;
-  --teal: #53b8c4;
-  --red: #e5615c;
+  /* accents: Rosé Pine Dawn */
+  --yellow: #ea9d34;   /* gold */
+  --pink: #d7827e;     /* rose */
+  --blue: #286983;     /* pine */
+  --lime: #56949f;     /* foam */
+  --tangerine: #d7827e;/* rose */
+  --lilac: #907aa9;    /* iris */
+  --teal: #56949f;     /* foam */
+  --red: #b4637a;      /* love */
 
-  /* borders: hairlines everywhere */
+  /* borders: hairlines everywhere (tinted to iris ink) */
   --line: 1px solid var(--rule);
   --line-2: 1px solid var(--rule);
-  --line-bold: 1px solid rgba(27, 31, 48, 0.24);
+  --line-bold: 1px solid rgba(87, 82, 121, 0.26);
   --line-md: 1px solid var(--rule);
   --line-sm: 1px solid var(--rule);
   --line-xs: 1px solid var(--rule);
   --line-xxs: 1px solid var(--rule);
   --line-hair: 1px solid var(--rule);
-  --line-xs-ink: 1px solid rgba(27, 31, 48, 0.30);
-  --line-xs-faint: 1px solid rgba(27, 31, 48, 0.12);
-  --line-hair-faint: 1px solid rgba(27, 31, 48, 0.10);
+  --line-xs-ink: 1px solid rgba(87, 82, 121, 0.32);
+  --line-xs-faint: 1px solid rgba(87, 82, 121, 0.14);
+  --line-hair-faint: 1px solid rgba(87, 82, 121, 0.12);
   --line-transparent: 1px solid transparent;
   --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed rgba(27, 31, 48, 0.28);
-  --line-dashed-sm: 1px dashed rgba(27, 31, 48, 0.28);
-  --line-dashed-xs: 1px dashed rgba(27, 31, 48, 0.24);
-  --line-dashed-faint: 1px dashed rgba(27, 31, 48, 0.16);
+  --line-dashed-md: 1px dashed rgba(87, 82, 121, 0.30);
+  --line-dashed-sm: 1px dashed rgba(87, 82, 121, 0.30);
+  --line-dashed-xs: 1px dashed rgba(87, 82, 121, 0.26);
+  --line-dashed-faint: 1px dashed rgba(87, 82, 121, 0.18);
   --line-rule-dashed-sm: 1px dashed var(--rule);
   --line-rule-dashed-xs: 1px dashed var(--rule);
 
   /* depth: soft layered shadows + a top sheen on every raised surface */
   --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   --shadow-none: none;
-  --shadow-xxs: 0 1px 3px rgba(31, 38, 135, 0.08), var(--glass-sheen);
-  --shadow-xs: 0 1px 4px rgba(31, 38, 135, 0.08), var(--glass-sheen);
-  --shadow-chip: 0 2px 6px rgba(31, 38, 135, 0.08), var(--glass-sheen);
-  --shadow-sm: 0 2px 10px rgba(31, 38, 135, 0.10), var(--glass-sheen);
-  --shadow: 0 6px 24px rgba(31, 38, 135, 0.12), var(--glass-sheen);
-  --shadow-md: 0 6px 24px rgba(31, 38, 135, 0.12), var(--glass-sheen);
-  --shadow-lg: 0 14px 44px rgba(31, 38, 135, 0.18), var(--glass-sheen);
-  --shadow-hover: 0 8px 28px rgba(31, 38, 135, 0.16), var(--glass-sheen);
-  --shadow-hover-sm: 0 5px 18px rgba(31, 38, 135, 0.14), var(--glass-sheen);
-  --shadow-accent-pink: 0 4px 18px rgba(240, 106, 174, 0.35);
-  --shadow-accent-pink-strong: 0 6px 24px rgba(240, 106, 174, 0.45);
+  --shadow-xxs: 0 1px 3px rgba(87, 82, 121, 0.08), var(--glass-sheen);
+  --shadow-xs: 0 1px 4px rgba(87, 82, 121, 0.08), var(--glass-sheen);
+  --shadow-chip: 0 2px 6px rgba(87, 82, 121, 0.08), var(--glass-sheen);
+  --shadow-sm: 0 2px 10px rgba(87, 82, 121, 0.10), var(--glass-sheen);
+  --shadow: 0 6px 24px rgba(87, 82, 121, 0.12), var(--glass-sheen);
+  --shadow-md: 0 6px 24px rgba(87, 82, 121, 0.12), var(--glass-sheen);
+  --shadow-lg: 0 14px 44px rgba(87, 82, 121, 0.18), var(--glass-sheen);
+  --shadow-hover: 0 8px 28px rgba(87, 82, 121, 0.16), var(--glass-sheen);
+  --shadow-hover-sm: 0 5px 18px rgba(87, 82, 121, 0.14), var(--glass-sheen);
+  --shadow-accent-pink: 0 4px 18px rgba(215, 130, 126, 0.35);
+  --shadow-accent-pink-strong: 0 6px 24px rgba(215, 130, 126, 0.45);
   --shadow-accent-inset: inset 0 -2px 0 var(--accent);
   --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px rgba(240, 106, 174, 0.35);
+  --shadow-focus-pink: 0 0 0 3px rgba(215, 130, 126, 0.35);
   --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
   --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px rgba(240, 106, 174, 0.45), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 7px rgba(240, 106, 174, 0.25), var(--shadow-sm);
+  --shadow-busy-pulse-start: 0 0 0 4px rgba(215, 130, 126, 0.45), var(--shadow-sm);
+  --shadow-busy-pulse-peak: 0 0 0 7px rgba(215, 130, 126, 0.25), var(--shadow-sm);
   --message-card-shadow-offset: 0px;
   --message-card-border: 1px solid var(--rule);
   --message-card-border-color: var(--rule);
-  --message-card-shadow-color: rgba(31, 38, 135, 0.10);
+  --message-card-shadow-color: rgba(87, 82, 121, 0.10);
 
   /* shape: generous, continuous */
   --radius-hair: 4px;
@@ -107,10 +110,10 @@
   --tracking-pixel: 0.02em;
 
   /* code blocks stay dark per contract, but get glassy */
-  --code-bg: rgba(13, 16, 28, 0.88);
-  --code-inline-bg: rgba(27, 31, 48, 0.08);
-  --code-inline-fg: #1b1f30;
-  --code-inline-border: rgba(27, 31, 48, 0.14);
+  --code-bg: rgba(25, 23, 36, 0.90);
+  --code-inline-bg: rgba(87, 82, 121, 0.10);
+  --code-inline-fg: #575279;
+  --code-inline-border: rgba(87, 82, 121, 0.16);
 
   /* semantic roles → glass values */
   --card-border: var(--line-2);
@@ -123,92 +126,98 @@
   --overlay-border: var(--line);
   --overlay-shadow: var(--shadow-lg);
   --overlay-radius: var(--radius-xl);
-  --focus-ring: 0 0 0 3px rgba(91, 141, 239, 0.40);
+  --focus-ring: 0 0 0 3px rgba(144, 122, 169, 0.48); /* iris */
 }
 
 /* -- glass-dark token overrides ------------------------------------------ */
 :root[data-skin="glass"][data-theme="dark"],
 :root[data-skin="glass"][data-theme="kanagawa-wave"],
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] {
-  --paper: rgba(22, 27, 45, 0.46);
-  --paper-2: rgba(30, 36, 58, 0.55);
-  --paper-3: rgba(40, 47, 74, 0.62);
-  --bubble: rgba(30, 36, 58, 0.55);
-  --ink: #e9edfa;
-  --ink-soft: #aab2cc;
-  --ink-faint: #6d7593;
-  --rule: rgba(233, 237, 250, 0.13);
-  --muted: rgba(233, 237, 250, 0.22);
-  --on-ink: #14182a;
-  --on-accent: #14182a;
-  /* 0.42 was too transparent to read your own messages over the chat
-     background in dark glass; 0.78 keeps the accent tint but stays legible.
-     Token-level so it fixes both .is-you and is-web-author group bubbles
-     (both consume --you-bg) without a specificity war. */
-  --you-bg: rgba(99, 102, 241, 0.78);
-  --you-fg: #e9edfa;
+  /* Tuned to Kanagawa Wave: deep sumi-ink surfaces, warm paper ink, and the
+     Kanagawa accent set (carp-gold / sakura / crystal-blue / spring-green /
+     surimi / oni-violet / wave-aqua). Dimmer than the old generic slate so the
+     skin reads calm, not bright. */
+  --paper: rgba(22, 22, 29, 0.50);    /* sumiInk0 #16161D */
+  --paper-2: rgba(31, 31, 40, 0.58);  /* sumiInk2 #1F1F28 */
+  --paper-3: rgba(42, 42, 55, 0.64);  /* sumiInk3 #2A2A37 */
+  --bubble: rgba(31, 31, 40, 0.58);
+  --ink: #d4ceb0;       /* fujiWhite */
+  --ink-soft: #b6ad86;
+  --ink-faint: #727169;
+  --rule: rgba(212, 206, 176, 0.14);
+  --muted: rgba(212, 206, 176, 0.22);
+  --on-ink: #16161d;
+  --on-accent: #16161d;
+  /* Own messages: a readable translucent crystal-blue, distinct from the
+     neutral sumi other-agent bubbles (consumed by .is-you + is-web-author). */
+  --you-bg: rgba(73, 93, 138, 0.80);
+  --you-fg: #d4ceb0;
 
-  --yellow: #f5d06a;
-  --pink: #f584be;
-  --blue: #7da4f2;
-  --lime: #7bd3a2;
-  --tangerine: #f4af7d;
-  --lilac: #bba5f6;
-  --teal: #74c7d1;
-  --red: #ee7b76;
+  --yellow: #d4b16f;    /* carpYellow */
+  --pink: #c06f8a;      /* sakuraPink */
+  --blue: #718bc4;      /* crystalBlue */
+  --lime: #849f63;      /* springGreen */
+  --tangerine: #d98b5f; /* surimiOrange */
+  --lilac: #8570a4;     /* oniViolet */
+  --teal: #5e857b;      /* waveAqua */
+  --red: #cf5f6c;       /* peachRed */
 
-  --line-bold: 1px solid rgba(233, 237, 250, 0.20);
-  --line-xs-ink: 1px solid rgba(233, 237, 250, 0.26);
-  --line-xs-faint: 1px solid rgba(233, 237, 250, 0.10);
-  --line-hair-faint: 1px solid rgba(233, 237, 250, 0.08);
-  --line-dashed-md: 1px dashed rgba(233, 237, 250, 0.24);
-  --line-dashed-sm: 1px dashed rgba(233, 237, 250, 0.24);
-  --line-dashed-xs: 1px dashed rgba(233, 237, 250, 0.20);
-  --line-dashed-faint: 1px dashed rgba(233, 237, 250, 0.13);
+  --line-bold: 1px solid rgba(212, 206, 176, 0.22);
+  --line-xs-ink: 1px solid rgba(212, 206, 176, 0.28);
+  --line-xs-faint: 1px solid rgba(212, 206, 176, 0.10);
+  --line-hair-faint: 1px solid rgba(212, 206, 176, 0.08);
+  --line-dashed-md: 1px dashed rgba(212, 206, 176, 0.26);
+  --line-dashed-sm: 1px dashed rgba(212, 206, 176, 0.26);
+  --line-dashed-xs: 1px dashed rgba(212, 206, 176, 0.22);
+  --line-dashed-faint: 1px dashed rgba(212, 206, 176, 0.14);
 
-  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  --shadow-xxs: 0 1px 3px rgba(0, 0, 0, 0.30), var(--glass-sheen);
-  --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.30), var(--glass-sheen);
-  --shadow-chip: 0 2px 8px rgba(0, 0, 0, 0.30), var(--glass-sheen);
-  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.32), var(--glass-sheen);
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.38), var(--glass-sheen);
-  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.38), var(--glass-sheen);
-  --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.48), var(--glass-sheen);
-  --shadow-hover: 0 10px 32px rgba(0, 0, 0, 0.42), var(--glass-sheen);
-  --shadow-hover-sm: 0 6px 20px rgba(0, 0, 0, 0.36), var(--glass-sheen);
-  --shadow-accent-pink: 0 4px 18px rgba(245, 132, 190, 0.30);
-  --shadow-accent-pink-strong: 0 6px 24px rgba(245, 132, 190, 0.40);
+  --glass-sheen: inset 0 1px 0 rgba(220, 215, 186, 0.07);
+  --shadow-xxs: 0 1px 3px rgba(0, 0, 0, 0.34), var(--glass-sheen);
+  --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.34), var(--glass-sheen);
+  --shadow-chip: 0 2px 8px rgba(0, 0, 0, 0.34), var(--glass-sheen);
+  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.36), var(--glass-sheen);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.42), var(--glass-sheen);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.42), var(--glass-sheen);
+  --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.52), var(--glass-sheen);
+  --shadow-hover: 0 10px 32px rgba(0, 0, 0, 0.46), var(--glass-sheen);
+  --shadow-hover-sm: 0 6px 20px rgba(0, 0, 0, 0.40), var(--glass-sheen);
+  --shadow-accent-pink: 0 4px 18px rgba(192, 111, 138, 0.32);
+  --shadow-accent-pink-strong: 0 6px 24px rgba(192, 111, 138, 0.42);
   --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px rgba(245, 132, 190, 0.32);
-  --message-card-shadow-color: rgba(0, 0, 0, 0.32);
+  --shadow-focus-pink: 0 0 0 3px rgba(192, 111, 138, 0.34);
+  --message-card-shadow-color: rgba(0, 0, 0, 0.36);
 
-  --code-bg: rgba(9, 12, 24, 0.85);
-  --code-inline-bg: rgba(233, 237, 250, 0.08);
-  --code-inline-fg: #e9edfa;
-  --code-inline-border: rgba(233, 237, 250, 0.12);
+  --code-bg: rgba(16, 16, 22, 0.88);
+  --code-inline-bg: rgba(212, 206, 176, 0.09);
+  --code-inline-fg: #d4ceb0;
+  --code-inline-border: rgba(212, 206, 176, 0.13);
 
-  --focus-ring: 0 0 0 3px rgba(125, 164, 242, 0.38);
+  --focus-ring: 0 0 0 3px rgba(113, 139, 196, 0.42); /* crystalBlue */
 }
 
 /* -- luminous backdrop ----------------------------------------------------
    The translucency needs something behind it. Fixed so scroll feels like
    moving glass over a still scene. */
+/* Light = Rosé Pine Dawn: a soft warm-dawn wash (rose / gold-foam / iris) over
+   warm cream. Glows kept low-alpha so it reads calm, not bright. */
 :root[data-skin="glass"] body {
   background:
-    radial-gradient(1100px 760px at 82% -8%, rgba(99, 102, 241, 0.34), transparent 60%),
-    radial-gradient(950px 680px at -8% 28%, rgba(56, 189, 248, 0.26), transparent 55%),
-    radial-gradient(880px 660px at 52% 112%, rgba(244, 114, 182, 0.22), transparent 60%),
-    linear-gradient(160deg, #e9eefb 0%, #e2e9f8 45%, #e9e2f7 100%);
+    radial-gradient(1100px 760px at 82% -8%, rgba(215, 130, 126, 0.20), transparent 60%),
+    radial-gradient(950px 680px at -8% 28%, rgba(86, 148, 159, 0.16), transparent 55%),
+    radial-gradient(880px 660px at 52% 112%, rgba(144, 122, 169, 0.16), transparent 60%),
+    linear-gradient(160deg, #faf4ed 0%, #f4ebe0 48%, #f2e9e6 100%);
   background-attachment: fixed;
 }
+/* Dark = Kanagawa Wave: a deep sumi night with crystal-blue / wave-aqua /
+   oni-violet glows. Dimmer than the old generic indigo wash. */
 :root[data-skin="glass"][data-theme="dark"] body,
 :root[data-skin="glass"][data-theme="kanagawa-wave"] body,
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] body {
   background:
-    radial-gradient(1100px 760px at 82% -8%, rgba(99, 102, 241, 0.26), transparent 60%),
-    radial-gradient(950px 680px at -8% 28%, rgba(34, 211, 238, 0.14), transparent 55%),
-    radial-gradient(880px 660px at 52% 112%, rgba(217, 70, 239, 0.12), transparent 60%),
-    linear-gradient(160deg, #0a0e1c 0%, #10152a 45%, #151229 100%);
+    radial-gradient(1100px 760px at 82% -8%, rgba(113, 139, 196, 0.20), transparent 60%),
+    radial-gradient(950px 680px at -8% 28%, rgba(106, 149, 137, 0.15), transparent 55%),
+    radial-gradient(880px 660px at 52% 112%, rgba(133, 112, 164, 0.14), transparent 60%),
+    linear-gradient(160deg, #16161d 0%, #1a1a24 48%, #1e1b29 100%);
   background-attachment: fixed;
 }
 
@@ -231,14 +240,14 @@
 /* -- glass-specific component tuning -------------------------------------- */
 /* Active room: dark glass pill instead of the brutal solid-ink block. */
 :root[data-skin="glass"] .room-item.active {
-  background: rgba(27, 31, 48, 0.74);
+  background: rgba(87, 82, 121, 0.82); /* iris (Rosé Pine Dawn) */
   backdrop-filter: blur(12px) saturate(1.3);
   -webkit-backdrop-filter: blur(12px) saturate(1.3);
 }
 :root[data-skin="glass"][data-theme="dark"] .room-item.active,
 :root[data-skin="glass"][data-theme="kanagawa-wave"] .room-item.active,
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] .room-item.active {
-  background: rgba(233, 237, 250, 0.10);
+  background: rgba(212, 206, 176, 0.12); /* fujiWhite veil (Kanagawa) */
 }
 
 /* Message bubbles from OTHER agents need a more opaque fill than other glass
@@ -251,12 +260,12 @@
    dozens of bubbles during scroll would reintroduce the jank we just removed;
    opacity is the cheap, scroll-safe lever. */
 :root[data-skin="glass"] .bubble {
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(253, 247, 240, 0.88); /* warm cream (Rosé Pine Dawn) */
 }
 :root[data-skin="glass"][data-theme="dark"] .bubble,
 :root[data-skin="glass"][data-theme="kanagawa-wave"] .bubble,
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] .bubble {
-  background: rgba(34, 40, 62, 0.84);
+  background: rgba(31, 31, 40, 0.86); /* sumiInk2 (Kanagawa Wave) */
 }
 
 /* -- brutal flourishes, retired under glass ------------------------------- */
@@ -315,14 +324,14 @@
   box-shadow: var(--shadow-hover-sm);
 }
 :root[data-skin="glass"] .act-nav.active {
-  background: rgba(27, 31, 48, 0.74);
+  background: rgba(87, 82, 121, 0.82); /* iris (Rosé Pine Dawn) */
   transform: none;
   box-shadow: var(--shadow-sm);
 }
 :root[data-skin="glass"][data-theme="dark"] .act-nav.active,
 :root[data-skin="glass"][data-theme="kanagawa-wave"] .act-nav.active,
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] .act-nav.active {
-  background: rgba(233, 237, 250, 0.10);
+  background: rgba(212, 206, 176, 0.12); /* fujiWhite veil (Kanagawa) */
   color: var(--ink);
 }
 :root[data-skin="glass"] .act-nav-icon {
