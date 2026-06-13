@@ -84,72 +84,10 @@
   }
 }
 
-/* ─── Composer collapse ──────────────────────────────────────────────────── */
-.composer {
-  position: relative;
-}
-.composer-collapse-btn {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--ink-soft);
-  border: var(--line-none);
-  box-shadow: var(--shadow-none);
-  border-radius: var(--radius-none);
-  padding: 0;
-  font-size: var(--text-11);
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.55;
-  z-index: var(--z-local-control);
-  transition: opacity 140ms ease, color 140ms ease;
-}
-.composer-collapse-btn:hover {
-  opacity: 1;
-  color: var(--ink);
-}
-
-.composer-collapsed {
-  padding: var(--space-button-pad-md);
-}
-.composer-collapsed-stub {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-10);
-  padding: var(--space-button-pad-md);
-  background: var(--paper-2);
-  color: var(--ink-soft);
-  border: var(--line-sm);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  font: inherit;
-  font-size: var(--text-13);
-  cursor: pointer;
-  text-align: left;
-}
-.composer-collapsed-stub:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-  color: var(--ink);
-}
-.composer-collapsed-text {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.composer-collapse-toggle {
-  font-size: var(--text-11);
-  color: var(--ink);
-}
+/* ─── Composer collapse ──────────────────────────────────────────────────────
+   Migrated to inline Tailwind utilities in components/Composer.tsx. Hook classes
+   kept on elements: .composer + .composer-collapsed (skin-glass.css),
+   .composer-collapsed-stub (hooks/useVimNav.ts). Base declarations deleted. */
 
 /* ─── Theme toggle ─────────────────────────────────────────────────────────
    Base (font-size) migrated to a Tailwind utility on the button in
@@ -179,142 +117,18 @@
   transform: rotate(-2deg);
 }
 
-/* ─── Composer (extras the prototype put inline) ─────────────────────────── */
-.composer {
-  border: var(--line-md);
-  border-top: 3.5px solid var(--rule);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  background: var(--paper);
-  margin: 6px 12px 12px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow: hidden;
-  flex-shrink: 0;
-}
+/* ─── Composer (extras the prototype put inline) ─────────────────────────────
+   Base rules migrated to inline Tailwind utilities in components/Composer.tsx
+   (.composer, .composer-toolbar, .ct-btn, .composer-file-input,
+   .composer-skill-chips/-chip, .composer-input-wrap, .composer-input base +
+   ::placeholder, .composer-foot, .community-open-btn, .composer-hint,
+   .composer-send/.thread-scan-btn base). Kept here: the responsive margin
+   override below, the .chat-col/.thread-pane border tweaks, the
+   :root[data-theme="kanagawa-wave"] palette overrides, .thread-scan-btn.active,
+   and the styles.css contextual rules (.shell-compact, .community-icon art). */
 @media (max-width: 920px) {
   .composer { margin: 6px 10px 10px; }
 }
-.composer-toolbar {
-  display: flex;
-  gap: var(--space-8);
-  align-items: center;
-  background: transparent;
-  border: var(--line-none);
-  border-bottom: var(--line-sm);
-  border-radius: var(--radius-none);
-  padding: 8px 10px;
-  width: 100%;
-  box-shadow: var(--shadow-none);
-}
-.ct-btn {
-  background: var(--paper-2);
-  border: var(--line-sm);
-  padding: 6px 9px;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
-  color: var(--ink);
-  font-size: var(--text-13);
-  font-weight: 800;
-}
-.ct-btn:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover-sm); }
-.ct-btn.active {
-  background: var(--yellow);
-  color: var(--ink);
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover-sm);
-}
-.ct-btn:disabled { opacity: 0.4; cursor: default; }
-.composer-file-input {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.composer-skill-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-6);
-  padding: 8px 10px 0;
-}
-.composer-skill-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-  max-width: 220px;
-  background: var(--yellow);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-xs);
-  padding: 4px 8px;
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* AttachmentPreview / AttachmentPreviewList styles migrated to inline Tailwind
-   utilities in components/AttachmentPreview.tsx (no skin/JS/theme refs). */
-
-.composer-input-wrap {
-  position: relative;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-none);
-  box-shadow: var(--shadow-none);
-}
-.composer-input {
-  width: 100%;
-  resize: vertical;
-  min-height: 78px;
-  padding: 14px 18px;
-  background: transparent;
-  color: var(--ink);
-  border: var(--line-none);
-  outline: none;
-  font: inherit;
-  font-size: var(--text-14);
-  line-height: 1.5;
-}
-.composer-input::placeholder { color: var(--ink-faint); }
-
-.composer-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-top: var(--line-rule-dashed-sm);
-}
-.community-open-btn {
-  flex-shrink: 0;
-}
-.composer-hint { font-size: var(--text-10-5); color: var(--ink-soft); }
-.composer-send,
-.thread-scan-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--paper-3);
-  color: var(--ink);
-  border: var(--line-2);
-  border-radius: var(--radius-md);
-  padding: 9px 18px;
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-md);
-  box-shadow: var(--shadow-sm);
-}
-.composer-send:disabled { opacity: 0.52; cursor: default; filter: grayscale(0.35); }
-.composer-send:hover:not(:disabled),
-.thread-scan-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
 
 :root .chat-col > .composer,
 :root .thread-pane > .composer {
@@ -382,154 +196,15 @@
   box-shadow: 2px 2px 0 var(--message-card-shadow-color), inset 0 -3px 0 var(--lilac);
 }
 
-/* ─── Mention popup ──────────────────────────────────────────────────────── */
-.mention-pop {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  z-index: var(--z-mention-overlay);
-  width: 380px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.mention-pop .mention-name { color: var(--ink); }
-.mention-pop .mention-handle { color: var(--ink-soft); }
-.mention-pop .mention-note { color: var(--ink-soft); }
-.mention-row {
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: var(--space-10);
-  align-items: center;
-  padding: 6px 8px;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-sm);
-  text-align: left;
-  cursor: pointer;
-}
-.mention-row.focused, .mention-row:hover { background: var(--paper-2); }
-.mention-av {
-  width: 28px;
-  height: 28px;
-  border: var(--line-sm);
-  border-radius: var(--radius-md);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-  box-shadow: var(--shadow-xs);
-}
-.mention-meta { display: flex; flex-direction: column; min-width: 0; }
-.mention-name { font-weight: 600; font-size: var(--text-13); }
-.mention-handle { font-family: var(--font-mono); font-size: var(--text-11); color: var(--ink-soft); }
-.mention-note { font-size: var(--text-11); color: var(--ink-soft); max-width: 160px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ─── Mention popup ──────────────────────────────────────────────────────────
+   Base rules migrated to inline Tailwind utilities in components/Composer.tsx
+   (.mention-pop hook class kept for skin-glass.css; .mention-row, .mention-av,
+   .mention-meta, .mention-name, .mention-handle, .mention-note all inlined). */
 
-/* ─── Skill picker ──────────────────────────────────────────────────────── */
-.skill-pop {
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  z-index: var(--z-mention-overlay);
-  max-height: 360px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.skill-pop-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-8);
-  align-items: center;
-  padding: var(--space-8);
-  border-bottom: var(--line-sm);
-  background: var(--paper-2);
-}
-.skill-search {
-  min-width: 0;
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  padding: 7px 9px;
-  font: inherit;
-  font-size: var(--text-13);
-  outline: none;
-}
-.skill-search:focus { box-shadow: 0 0 0 2px var(--yellow); }
-.skill-runtime-filter {
-  display: inline-flex;
-  gap: var(--space-4);
-}
-.skill-runtime-filter button {
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-  font-family: var(--font-display);
-  font-size: var(--text-10-5);
-}
-.skill-runtime-filter button.active { background: var(--ink); color: var(--paper); }
-.skill-results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-6);
-  min-height: 0;
-  max-height: 280px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.skill-row {
-  display: grid;
-  grid-template-columns: minmax(92px, 0.7fr) minmax(0, 1fr) auto;
-  gap: var(--space-10);
-  align-items: center;
-  padding: 7px 8px;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  text-align: left;
-}
-.skill-row.focused, .skill-row:hover { background: var(--paper-2); }
-.skill-name {
-  font-family: var(--font-mono);
-  font-size: var(--text-12);
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.skill-desc {
-  color: var(--ink-soft);
-  font-size: var(--text-11);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.skill-runtimes {
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.skill-empty {
-  padding: 16px 10px;
-  color: var(--ink-soft);
-  font-size: var(--text-12);
-  text-align: center;
-}
+/* ─── Skill picker ────────────────────────────────────────────────────────────
+   Base rules migrated to inline Tailwind utilities in components/Composer.tsx.
+   Kept here: the @media(max-width:700px) responsive overrides below, which still
+   target .skill-pop-head, .skill-row and .skill-runtimes (classes retained). */
 @media (max-width: 700px) {
   .skill-pop-head { grid-template-columns: 1fr; }
   .skill-row { grid-template-columns: 1fr; gap: var(--space-4); }

@@ -1432,22 +1432,10 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper-2);
 }
 
-.composer {
-  background: var(--paper);
-  border: var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-
-.composer-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: 6px 8px;
-  border-bottom: var(--line-2);
-  background: var(--paper-2);
-}
+/* .composer / .composer-toolbar base migrated to inline Tailwind utilities in
+   components/Composer.tsx (superseded duplicate; extra.css copy also removed).
+   .composer-wrap above and .cmp-btn/.cmp-sep below are unrelated (unused by the
+   current Composer) and left untouched. */
 
 .cmp-btn {
   width: 28px;
@@ -1472,28 +1460,9 @@ button { font-family: inherit; cursor: pointer; }
   margin: 0 4px;
 }
 
-.composer-input {
-  width: 100%;
-  border: var(--line-none);
-  outline: none;
-  resize: none;
-  padding: 12px 14px;
-  font-family: inherit;
-  font-size: var(--text-14);
-  background: transparent;
-  color: var(--ink);
-  min-height: 56px;
-  max-height: 200px;
-}
-.composer-input::placeholder { color: var(--ink-soft); }
-
-.composer-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 0 0;
-  border-top: var(--line-none);
-}
+/* .composer-input + ::placeholder and .composer-foot base migrated to inline
+   Tailwind utilities in components/Composer.tsx (superseded duplicates; extra.css
+   copies also removed). .hint below is unrelated/unused — left untouched. */
 .hint {
   font-family: var(--font-mono);
   font-size: var(--text-10-5);
@@ -1518,20 +1487,11 @@ button { font-family: inherit; cursor: pointer; }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: var(--shadow-sm); }
 .send-arrow { font-size: var(--text-14); }
 
-/* mention popup */
-.mention-pop {
-  position: absolute;
-  left: 22px;
-  bottom: calc(100% - 8px);
-  background: var(--paper);
-  border: var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
-  width: 360px;
-  z-index: var(--z-mention-pop);
-  overflow: hidden;
-}
-
+/* mention popup — .mention-pop base migrated to inline Tailwind utilities in
+   components/Composer.tsx (.mention-pop hook class kept on the element for
+   skin-glass.css; superseded duplicate removed, extra.css copy also removed).
+   .mention-item* / .mention-role / .mention-all-icon below are unused by the
+   current Composer and left untouched. */
 .mention-item {
   width: 100%;
   display: flex;
@@ -1546,14 +1506,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .mention-item:last-child { border-bottom: none; }
 .mention-item.hover, .mention-item:hover { background: var(--yellow); }
-.mention-meta { flex: 1; min-width: 0; }
-.mention-name { font-weight: 700; font-size: var(--text-13-5); }
-.mention-handle {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  font-weight: 500;
-  color: var(--ink-soft);
-}
+/* .mention-meta / .mention-name / .mention-handle base migrated to inline
+   Tailwind utilities in components/Composer.tsx (superseded duplicates removed). */
 .mention-role {
   font-family: var(--font-mono);
   font-size: var(--text-10-5);
@@ -2095,14 +2049,9 @@ button { font-family: inherit; cursor: pointer; }
 .mention-item {
   position: relative;
 }
-.mention-note {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-  margin-top: 3px;
-  line-height: 1.4;
-}
-.mention-note.status-busy { color: var(--ink); }
+/* .mention-note base + .status-busy migrated to inline Tailwind utilities in
+   components/Composer.tsx (effective font-mono/text-11/ink-soft preserved;
+   superseded styles.css copy removed). */
 .mention-kbd {
   position: absolute;
   right: 10px;
