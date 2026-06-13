@@ -6,9 +6,13 @@ import type { Event } from "../../../src/api/types.ts";
 import { ensureDaemon } from "../../../src/client.ts";
 import { ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../../../src/constants.ts";
 import { LettaSynchronizeRuntime, type LettaDeliveryMode, type LettaSession } from "./runtime.ts";
+import { RemoteLettaSession } from "./remote-session.ts";
 
 const DEFAULT_ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 const DEFAULT_MODEL = "zai/glm-4.7";
+const DEFAULT_REMOTE_BASE_URL = "http://localhost:8283";
+
+type LettaBackend = "remote" | "local";
 
 interface Args {
   name: string;
@@ -16,6 +20,9 @@ interface Args {
   deliveryMode: LettaDeliveryMode;
   pollMs: number;
   cwd: string;
+  backend: LettaBackend;
+  serverUrl: string;
+  apiKey?: string;
   agentId?: string;
   conversationId?: string;
 }
@@ -27,7 +34,12 @@ function parseArgs(argv: string[]): Args {
     deliveryMode: (process.env.SYNCHRONIZE_LETTA_DELIVERY as LettaDeliveryMode | undefined) || "interrupt",
     pollMs: Number(process.env.SYNCHRONIZE_LETTA_POLL_MS || "1000"),
     cwd: process.cwd(),
+    backend: (process.env.LETTA_BACKEND as LettaBackend | undefined) || "remote",
+    serverUrl: process.env.LETTA_BASE_URL || DEFAULT_REMOTE_BASE_URL,
+    ...(process.env.LETTA_AGENT_ID ? { agentId: process.env.LETTA_AGENT_ID } : {}),
   };
+  const envApiKey = process.env.LETTA_API_KEY || process.env.LETTA_SERVER_PASSWORD;
+  if (envApiKey) args.apiKey = envApiKey;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     const next = argv[index + 1];
@@ -47,6 +59,16 @@ function parseArgs(argv: string[]): Args {
     } else if (arg === "--cwd" && next) {
       args.cwd = next;
       index += 1;
+    } else if (arg === "--backend" && next) {
+      if (next !== "remote" && next !== "local") throw new Error("--backend must be remote or local");
+      args.backend = next;
+      index += 1;
+    } else if ((arg === "--server" || arg === "--base-url") && next) {
+      args.serverUrl = next;
+      index += 1;
+    } else if (arg === "--api-key" && next) {
+      args.apiKey = next;
+      index += 1;
     } else if (arg === "--agent" && next) {
       args.agentId = next;
       index += 1;
@@ -64,7 +86,26 @@ function parseArgs(argv: string[]): Args {
 }
 
 function printHelpAndExit(): never {
-  console.log("Usage: letta-synchronize [--name NAME] [--model MODEL] [--delivery interrupt|steer] [--poll-ms MS] [--agent AGENT_ID] [--conversation CONV_ID]");
+  console.log(
+    [
+      "Usage: letta-synchronize [options]",
+      "",
+      "  --name NAME              synchronize session name (default: letta)",
+      "  --backend remote|local   remote Letta server (default) or local Letta Code SDK",
+      "  --delivery interrupt|steer  delivery semantics (default: interrupt)",
+      "  --poll-ms MS             inbox poll interval (default: 1000)",
+      "",
+      "Remote backend (--backend remote):",
+      "  --server URL             Letta server base URL (env LETTA_BASE_URL)",
+      "  --agent AGENT_ID         existing agent to drive (env LETTA_AGENT_ID), required",
+      "  --api-key KEY            optional bearer (env LETTA_API_KEY / LETTA_SERVER_PASSWORD)",
+      "",
+      "Local backend (--backend local):",
+      "  --model MODEL            Letta Code model (default: zai/glm-4.7)",
+      "  --conversation CONV_ID   resume a local conversation",
+      "  --agent AGENT_ID         seed a local agent",
+    ].join("\n"),
+  );
   process.exit(0);
 }
 
@@ -83,6 +124,26 @@ async function loadZaiApiKey(): Promise<void> {
 }
 
 async function createLettaSession(args: Args): Promise<LettaSession> {
+  if (args.backend === "remote") return createRemoteLettaSession(args);
+  return createLocalLettaSession(args);
+}
+
+function createRemoteLettaSession(args: Args): LettaSession {
+  if (!args.agentId) {
+    throw new Error(
+      "remote backend requires an agent id: pass --agent <id> or set LETTA_AGENT_ID (e.g. Rocky's agent id)",
+    );
+  }
+  return new RemoteLettaSession({
+    baseURL: args.serverUrl,
+    agentId: args.agentId,
+    ...(args.apiKey ? { apiKey: args.apiKey } : {}),
+    model: args.model,
+    logger: (line) => console.error(`[letta-synchronize] ${line}`),
+  });
+}
+
+async function createLocalLettaSession(args: Args): Promise<LettaSession> {
   await ensureLettaCliPath();
   process.env.LETTA_LOCAL_BACKEND_EXPERIMENTAL ??= "1";
   process.env.ZAI_CODING_BASE_URL ??= DEFAULT_ZAI_CODING_BASE_URL;

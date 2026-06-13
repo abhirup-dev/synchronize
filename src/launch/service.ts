@@ -260,6 +260,13 @@ const DEFAULT_LETTA_LAUNCH_MODEL = LETTA_LAUNCH_MODELS.glm47;
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const LETTA_LAUNCH_ENV_KEYS = [
   "HOME",
+  // Remote Letta server backend (default).
+  "LETTA_BACKEND",
+  "LETTA_BASE_URL",
+  "LETTA_AGENT_ID",
+  "LETTA_API_KEY",
+  "LETTA_SERVER_PASSWORD",
+  // Local Letta Code SDK backend.
   "LETTA_CLI_PATH",
   "LETTA_LOCAL_BACKEND_DIR",
   "LETTA_LOCAL_BACKEND_EXPERIMENTAL",
