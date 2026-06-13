@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
+import { isSelfAgent } from "../data/identity.ts";
 
 // WCAG-style relative luminance; used to pick black-or-white text on a tinted
 // background so colored chips stay readable across every agent color.
@@ -88,7 +89,9 @@ export function Avatar({
   size?: number;
   showStatus?: boolean;
 }) {
-  const isYou = agent.id === "you";
+  // Self-marker ring uses the centralized identity check (id "you" or a web
+  // client role); `me` isn't needed here since those signals are self-contained.
+  const isYou = isSelfAgent(agent);
   return (
     <IdentityBadge
       as="div"
@@ -176,7 +179,7 @@ export function Sticker({ label, color, tilt = -2 }: { label: string; color?: st
 export function MentionChip({ agent }: { agent: Agent }) {
   return (
     <IdentityBadge
-      className={`mention-chip${agent.handle === "you" ? " mention-chip-self" : ""}`}
+      className={`mention-chip${isSelfAgent(agent) ? " mention-chip-self" : ""}`}
       color={agent.color}
       ink={inkFor(agent.color)}
     >

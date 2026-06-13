@@ -149,7 +149,7 @@
   --on-ink: #16161d;
   --on-accent: #16161d;
   /* Own messages: a readable translucent crystal-blue, distinct from the
-     neutral sumi other-agent bubbles (consumed by .is-you + is-web-author). */
+     neutral sumi other-agent bubbles (consumed by .is-self). */
   --you-bg: rgba(73, 93, 138, 0.80);
   --you-fg: #d4ceb0;
 
@@ -254,9 +254,9 @@
    surfaces: they sit directly over the (optionally busy) chat background, and
    at the base --bubble (~0.55) the artwork bleeds through and hurts readability.
    Raise the base `.bubble` fill so text stays legible while keeping a hint of
-   translucency. The more-specific `.is-you .bubble` (accent --you-bg) and
-   `.is-web-author .bubble` (opaque) rules out-specify this, so only other-agent
-   bubbles are affected. Deliberately NO per-bubble backdrop-filter — blurring
+   translucency. The more-specific `.is-self .bubble` (accent --you-bg) rule
+   out-specifies this, so only other-agent bubbles are affected. Deliberately
+   NO per-bubble backdrop-filter — blurring
    dozens of bubbles during scroll would reintroduce the jank we just removed;
    opacity is the cheap, scroll-safe lever. */
 :root[data-skin="glass"] .bubble {

@@ -292,7 +292,7 @@
 .bubble pre::-webkit-scrollbar { height: 6px; }
 .bubble pre::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: var(--radius-xs); }
 /* .message-row base grid + .message-gutter migrated to inline Tailwind utilities
-   in MessageRow.tsx (sync-q48d). The .is-you/.is-web-author/.no-avatar/.is-grouped
+   in MessageRow.tsx (sync-q48d). The .is-self/.no-avatar/.is-grouped
    STATE overrides below stay in CSS (they out-specify and reorder the grid).
    NOTE: deliberately NO content-visibility/contain-intrinsic-size on the row —
    TanStack Virtual already mounts only visible rows; a second lazy-sizing layer
@@ -300,29 +300,26 @@
    virtualizer's ResizeObserver and shifting content mid-scroll. Containment lives
    on .virtualized-row instead. */
 .message-row.is-grouped { margin-top: 0; }
-.message-row.is-you,
-.message-row.is-web-author {
+/* `.is-self` = the local human / web client (see data/identity.ts, isSelfAgent).
+   Own messages right-align and render bubble-only (no avatar gutter, no name
+   chip), so there is nothing to reorder in the grid. */
+.message-row.is-self {
   justify-self: end;
   grid-template-columns: minmax(0, 880px);
 }
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
    colored author-name pill above the bubble carries the identity instead. */
 .message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
-.message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
-.message-row.is-you .message-gutter { order: 2; }
-.message-row.is-you .message-body,
-.message-row.is-web-author .message-body {
-  order: 1;
+.message-row.no-avatar.is-self { grid-template-columns: minmax(0, 1fr); }
+.message-row.is-self .message-body {
   align-items: flex-end;
 }
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
 /* .message-body / .message-stack base migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). The .is-you/.is-web-author alignment overrides
-   stay in CSS. */
-.message-row.is-you .message-stack,
-.message-row.is-web-author .message-stack {
+   MessageRow.tsx (sync-q48d). The .is-self alignment overrides stay in CSS. */
+.message-row.is-self .message-stack {
   align-self: flex-end;
 }
 
@@ -370,23 +367,10 @@
 /* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
    utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
    skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
-   .is-you / .is-web-author / per-theme overrides below out-specify the base
-   utilities (so they still win — parity preserved). */
-.message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
-.chat-view.is-group-room .message-row.is-web-author .bubble,
-.thread-pane-body .message-row.is-web-author .bubble {
-  background: #BDB9AA;
-  color: var(--ink);
-}
-:root[data-theme="dark"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="dark"] .thread-pane-body .message-row.is-web-author .bubble,
-:root[data-theme="kanagawa-wave"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="kanagawa-wave"] .thread-pane-body .message-row.is-web-author .bubble,
-:root[data-theme="catppuccin-mocha"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="catppuccin-mocha"] .thread-pane-body .message-row.is-web-author .bubble {
-  background: var(--you-bg);
-  color: var(--you-fg);
-}
+   .is-self override below out-specifies the base utilities (so it still wins —
+   parity preserved). Your own / web-client messages get the accent bubble
+   everywhere (DM and group rooms alike) — one identity, one treatment. */
+.message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 .message-status {
   font-family: var(--font-mono);
@@ -640,8 +624,7 @@
    .thread-replies base rules migrated to inline Tailwind utilities in
    ThreadPane.tsx (sync-vmre). `.thread-pane-body` and `.thread-divider` stay as
    class hooks for the descendant overrides below (`.thread-pane-body .bubble`,
-   `.thread-pane-body .thread-divider`, the scrollbar pseudo in styles.css, and
-   the `.message-row.is-web-author .bubble` theme overrides above). */
+   `.thread-pane-body .thread-divider`, and the scrollbar pseudo in styles.css). */
 .thread-parent .bubble {
   background: var(--paper-2);
 }
