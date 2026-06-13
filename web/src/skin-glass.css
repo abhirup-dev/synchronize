@@ -141,7 +141,11 @@
   --muted: rgba(233, 237, 250, 0.22);
   --on-ink: #14182a;
   --on-accent: #14182a;
-  --you-bg: rgba(99, 102, 241, 0.42);
+  /* 0.42 was too transparent to read your own messages over the chat
+     background in dark glass; 0.78 keeps the accent tint but stays legible.
+     Token-level so it fixes both .is-you and is-web-author group bubbles
+     (both consume --you-bg) without a specificity war. */
+  --you-bg: rgba(99, 102, 241, 0.78);
   --you-fg: #e9edfa;
 
   --yellow: #f5d06a;
