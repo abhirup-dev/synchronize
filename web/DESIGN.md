@@ -183,6 +183,14 @@ See YAML front-matter `colors`. Notes:
 
 All static aesthetic decisions in the web UI must go through CSS custom properties. Component code and ordinary selectors should describe structure and state; tokens own the visual values that a future theme may override.
 
+### Skin contract (semantic role layer)
+
+Above the primitive tokens sits a semantic role layer (`--surface`, `--fg`, `--card-border/-shadow/-radius`, `--control-*`, `--overlay-*`, `--focus-ring`) declared under `:root[data-skin="brutal"]` in `styles.css`. `data-skin` is the *aesthetic system* (border/shadow/radius/typography language) and is orthogonal to `data-theme` (palette). Roles reference primitives via `var()`, so every theme flows through automatically.
+
+- New and migrated components consume **role tokens, never primitives** — that is what makes a future skin (e.g. minimal/modern: hairline borders, soft shadows, larger radii) a single-block override instead of a rewrite.
+- Tailwind utilities for the roles live in `tw.css` (`bg-surface`, `text-fg`, `shadow-card`, `rounded-control`, …); prefer them in migrated components.
+- Skin-specific structural flourishes (sticker rotation, hard offset hover translates) must be guarded with `[data-skin="brutal"]` so other skins can opt out.
+
 Rules:
 
 - Static visual values belong in CSS tokens: radii, border widths, shadows, typography, repeated spacing rhythm, surface colors, and accent-aware effects.

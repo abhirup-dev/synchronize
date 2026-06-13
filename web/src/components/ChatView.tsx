@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
+import { cn } from "../lib/cn.ts";
 import type { Room } from "../data/types.ts";
 import { useAgents, useMe, useMessages, useReactToMessage } from "../data/context.tsx";
 import { MessageRow } from "./MessageRow.tsx";
@@ -54,6 +55,13 @@ export function ChatView({
   });
   const agentById = useMemo(() => new Map(displayAgents.map((agent) => [agent.id, agent] as const)), [displayAgents]);
 
+  // Stable identity so the memo()'d MessageRow isn't invalidated on every
+  // scroll-driven re-render of this component (which would re-parse markdown).
+  const handleReact = useCallback(
+    (messageId: string, emoji: string) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" }),
+    [reactToMessage, room.id],
+  );
+
   useEffect(() => {
     localStorage.setItem("synchronize.threadSummaryWidth", String(threadSummaryWidth));
   }, [threadSummaryWidth]);
@@ -68,17 +76,71 @@ export function ChatView({
       return { m, author, grouped, hasFollowup };
     });
   }, [messages, agentById]);
+  // Content-aware size estimate. The chat holds very long markdown bubbles, so a
+  // flat estimate produces large deltas the first time a row is measured — which
+  // is exactly what reads as a "choppy" shift when a row enters the window.
+  // Estimating from body length + the row's adornments keeps unmeasured rows
+  // close to their real height, so the layout barely moves on first measure.
+  const estimateRowHeight = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (!row) return 140;
+      const body = row.m.body ?? "";
+      const CHARS_PER_LINE = 72;
+      const LINE_HEIGHT = 22;
+      const textLines = body
+        .split("\n")
+        .reduce((n, line) => n + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+      let h = textLines * LINE_HEIGHT + 26; // text + bubble padding
+      if (!row.grouped) h += 26; // author header line
+      if (row.m.reactions.length) h += 30;
+      if (row.m.poll) h += 60 + row.m.poll.options.length * 34;
+      if (row.m.attachments?.length) h += 180;
+      if (row.m.threadReplyCount) h += 30; // thread badge
+      h += row.hasFollowup ? 6 : 16; // .message-virtual-row padding-bottom
+      return Math.max(row.grouped ? 56 : 84, h);
+    },
+    [rows],
+  );
+
+  // Large overscan = the "always-loaded buffer" — rows well outside the viewport
+  // are mounted and measured ahead of time in BOTH directions, so by the time the
+  // user scrolls to them they already have their real height and never reflow.
+  // Trades memory (more mounted DOM/markdown) for scroll smoothness, by design.
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => listRef.current,
-    estimateSize: (index) => rows[index]?.grouped ? 112 : 170,
-    overscan: 8,
+    estimateSize: estimateRowHeight,
+    overscan: 28,
+    // Key by message id so the measurement cache survives list growth and
+    // older-message prepends — and so cached sizes stay attached to the right
+    // bubble rather than to a shifting index.
+    getItemKey: (index) => rows[index]?.m.id ?? index,
+    // Don't re-measure rows while scrolling UP. TanStack's default remeasures
+    // backward-entering rows and rewrites scrollTop to compensate, which is the
+    // visible "jump"/stutter on up-scroll (TanStack/virtual#659). Once a row has
+    // a cached size, trust it on the way back up; only measure forward/first-seen
+    // rows. Combined with shouldAdjustScrollPositionOnItemSizeChange=false below,
+    // up-scroll has nothing to correct.
+    measureElement: (element, _entry, instance) => {
+      const measured = Math.round(element.getBoundingClientRect().height);
+      const inst = instance as unknown as {
+        scrollDirection: "forward" | "backward" | null;
+        itemSizeCache: Map<string | number, number>;
+        options: { getItemKey: (i: number) => string | number };
+      };
+      if (inst.scrollDirection === "backward") {
+        const dataIndex = Number((element as HTMLElement).dataset["index"]);
+        if (Number.isFinite(dataIndex)) {
+          const cached = inst.itemSizeCache.get(inst.options.getItemKey(dataIndex));
+          if (cached != null) return cached;
+        }
+      }
+      return measured;
+    },
   });
-  // The chat list is full of variable-height markdown bubbles. TanStack
-  // Virtual's default measurement correction may write scrollTop when rows
-  // above the viewport resize, which can reverse a user's mouse/trackpad scroll.
-  // Keep measurement for accurate layout, but never let size changes drive the
-  // scroll position.
+  // Never let a size change drive scrollTop (belt-and-suspenders with the
+  // backward measureElement cache above).
   (virtualizer as ResizeAdjustmentVirtualizer).shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   // ── Thread Summary panel support ──────────────────────────────────────────
@@ -135,7 +197,14 @@ export function ChatView({
   }, [messages, me.id, virtualizer]);
 
   return (
-    <div className={`chat-view${room.kind === "group" ? " is-group-room" : ""}${threadSummaryOpen ? " has-thread-summary" : ""}`} data-vim-panel="chat">
+    <div
+      className={cn(
+        "chat-view flex h-full min-h-0 flex-col",
+        room.kind === "group" && "is-group-room",
+        threadSummaryOpen && "has-thread-summary",
+      )}
+      data-vim-panel="chat"
+    >
       {threadSummaryOpen && (
         <ThreadSummaryPanel
           messages={messages}
@@ -148,13 +217,19 @@ export function ChatView({
           getContentHeight={getContentHeight}
         />
       )}
-      <div className="chat-col">
+      <div className="chat-col flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Top region: chat scroll area + timeline rail, side by side. The
             composer lives BELOW this region so the timeline ends at the top of
-            the composer rather than running the full height of the panel. */}
-        <div className="chat-region">
-          <div className="chat-scroll-wrap">
-            <div className="chat-list autoscroll virtualized-list" ref={listRef}>
+            the composer rather than running the full height of the panel.
+            `.chat-region` is kept as a hook for chat-bg.css's ::before paint
+            layer and its `:has(.timeline-rail[hidden])` collapse rule. */}
+        <div className="chat-region grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_112px] [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
+          <div className="chat-scroll-wrap relative flex min-h-0 flex-1 flex-col">
+            {/* `.chat-list` keeps its overscroll-behavior + scrollbar rules in
+                styles.css (scroll-perf, not inlinable); `.virtualized-list`
+                resets display:block over the base flex. `.autoscroll` drives the
+                useAutoScrollbar `is-scrolling` hook. */}
+            <div className="chat-list autoscroll virtualized-list block min-h-0 flex-1 overflow-y-auto pt-[18px] pr-6 pb-[10px] pl-[18px]" ref={listRef}>
               <div className="virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualizer.getVirtualItems().map((item) => {
                   const row = rows[item.index];
@@ -162,7 +237,11 @@ export function ChatView({
                   return (
                     <div
                       key={row.m.id}
-                      className={`virtualized-row message-virtual-row${row.grouped ? " is-grouped" : ""}${row.hasFollowup ? " has-followup" : ""}`}
+                      className={cn(
+                        "virtualized-row message-virtual-row",
+                        row.hasFollowup ? "has-followup pb-[var(--space-6)]" : "pb-[var(--space-16)]",
+                        row.grouped && "is-grouped",
+                      )}
                       data-index={item.index}
                       ref={virtualizer.measureElement}
                       style={{ transform: `translateY(${item.start}px)` }}
@@ -172,7 +251,7 @@ export function ChatView({
                         author={row.author}
                         agents={displayAgents}
                         groupedWithPrev={row.grouped}
-                        onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
+                        onReact={handleReact}
                         {...(onOpenThread ? { onOpenThread } : {})}
                       />
                     </div>

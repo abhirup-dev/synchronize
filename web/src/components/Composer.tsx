@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useMemo } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
 import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
@@ -21,6 +23,18 @@ interface ComposerProps {
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
 type SkillRuntimeFilter = "all" | AgentLaunchTool;
+
+const SR_ONLY_STYLE: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
 
 function filesFromClipboard(data: DataTransfer): File[] {
   const files = Array.from(data.files ?? []);
@@ -69,6 +83,33 @@ function skillMatchScore(skill: SkillCatalogEntry, query: string): number | null
   return q.length >= 3 ? fuzzyNameScore(name, q) : null;
 }
 
+// Toolbar buttons (B/I/code/link/mention/slash/attach). Base from extra.css
+// .ct-btn; .active and :disabled states via variants. Kanagawa dark overrides
+// stay in extra.css (:root[data-theme=...]), so no theme-dark: utilities here.
+const toolbarBtn = cva(
+  "[border:var(--line-sm)] rounded-[var(--radius-sm)] bg-paper-2 px-[9px] py-[6px] text-[length:var(--text-13)] font-extrabold text-ink shadow-chip disabled:opacity-40 disabled:cursor-default hover:enabled:translate-x-[-1px] hover:enabled:translate-y-[-1px] hover:enabled:shadow-[var(--shadow-hover-sm)]",
+  {
+    variants: {
+      active: {
+        true: "bg-yellow translate-x-[-1px] translate-y-[-1px] shadow-[var(--shadow-hover-sm)]",
+        false: "",
+      },
+    },
+    defaultVariants: { active: false },
+  },
+);
+
+// .composer-send / .thread-scan-btn shared base from extra.css. Kanagawa dark
+// overrides stay in extra.css.
+const footBtn =
+  "inline-flex items-center justify-center [border:var(--line-2)] rounded-[var(--radius-md)] bg-paper-3 px-[18px] py-[9px] font-display text-[length:var(--text-11)] tracking-[var(--tracking-md)] text-ink shadow-sm hover:enabled:translate-x-[-1px] hover:enabled:translate-y-[-1px] hover:enabled:shadow-[var(--shadow-hover)]";
+
+// .mention-row / .skill-row hover+focused background.
+const popRow = cva("text-left rounded-[var(--radius-sm)] [border:var(--line-none)] bg-transparent cursor-pointer", {
+  variants: { focused: { true: "bg-paper-2", false: "hover:bg-paper-2" } },
+  defaultVariants: { focused: false },
+});
+
 export function Composer({
   roomId,
   parentMessageId,
@@ -105,6 +146,10 @@ export function Composer({
   const [addingAttachments, setAddingAttachments] = useState(false);
   const [popRect, setPopRect] = useState<{ left: number; bottom: number; width: number } | null>(null);
   const [collapsed, setCollapsed] = useState(collapsedDefault);
+  const [mentionAnnouncement, setMentionAnnouncement] = useState("");
+  const mentionBaseId = useId();
+  const mentionListboxId = `${mentionBaseId}-mention-listbox`;
+  const mentionOptionId = (agentId: string) => `${mentionBaseId}-mention-opt-${agentId}`;
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -146,6 +191,17 @@ export function Composer({
     const q = mentionQuery.toLowerCase();
     return mentionAgents.filter((a) => a.id !== me.id && (q === "" || a.handle.toLowerCase().startsWith(q))).slice(0, 6);
   }, [mentionQuery, mentionAgents, me.id]);
+
+  const mentionOpen = mentionQuery !== null && candidates.length > 0;
+
+  useEffect(() => {
+    if (candidates.length > 0 && mentionIdx >= candidates.length) setMentionIdx(0);
+  }, [candidates.length, mentionIdx]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    setMentionAnnouncement(`${candidates.length} mention suggestion${candidates.length === 1 ? "" : "s"} available`);
+  }, [mentionOpen, candidates.length]);
 
   const skillCandidates = useMemo(() => {
     return skillCatalog
@@ -271,6 +327,7 @@ export function Composer({
     const next = before + after;
     setValue(next);
     setMentionQuery(null);
+    setMentionAnnouncement(`@${a.handle} mention added`);
     queueMicrotask(() => {
       ta.focus();
       const pos = before.length;
@@ -287,7 +344,7 @@ export function Composer({
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionQuery !== null && candidates.length > 0) {
+    if (mentionOpen) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx((i) => (i + 1) % candidates.length); return; }
       if (e.key === "ArrowUp")   { e.preventDefault(); setMentionIdx((i) => (i - 1 + candidates.length) % candidates.length); return; }
       if (e.key === "Enter" || e.key === "Tab") {
@@ -296,7 +353,7 @@ export function Composer({
         if (picked) commitMention(picked);
         return;
       }
-      if (e.key === "Escape") { setMentionQuery(null); return; }
+      if (e.key === "Escape") { e.preventDefault(); setMentionQuery(null); return; }
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -361,10 +418,12 @@ export function Composer({
 
   if (collapsed) {
     return (
-      <div className="composer composer-collapsed">
+      // `composer` + `composer-collapsed`: skin-glass.css backdrop-filter hooks — kept.
+      <div className={cn("composer composer-collapsed", "relative flex flex-shrink-0 flex-col overflow-hidden bg-paper [border:var(--line-md)] [border-top:3.5px_solid_var(--rule)] rounded-[var(--radius-xl)] shadow-md mx-[12px] mt-[6px] mb-[12px] p-[var(--space-button-pad-md)]")}>
         <button
           type="button"
-          className="composer-collapsed-stub"
+          // `composer-collapsed-stub`: queried by hooks/useVimNav.ts — kept.
+          className={cn("composer-collapsed-stub", "w-full flex items-center justify-between gap-[var(--space-10)] p-[var(--space-button-pad-md)] bg-paper-2 text-ink-soft [border:var(--line-sm)] rounded-[var(--radius-md)] shadow-sm [font:inherit] text-[length:var(--text-13)] cursor-pointer text-left hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[var(--shadow-hover)] hover:text-ink")}
           onClick={() => {
             setCollapsed(false);
             queueMicrotask(() => taRef.current?.focus());
@@ -372,43 +431,44 @@ export function Composer({
           aria-label="expand composer"
           title="expand composer"
         >
-          <span className="composer-collapsed-text">
+          <span className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
             {value.trim() ? value.trim().slice(0, 80) + (value.length > 80 ? "…" : "") : "message the room… click to expand"}
           </span>
-          <span className="composer-collapse-toggle" aria-hidden>▲</span>
+          <span className="text-[length:var(--text-11)] text-ink" aria-hidden>▲</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="composer">
+    // `composer`: skin-glass.css backdrop-filter hook — kept.
+    <div className={cn("composer", "relative flex flex-shrink-0 flex-col overflow-hidden bg-paper [border:var(--line-md)] [border-top:3.5px_solid_var(--rule)] rounded-[var(--radius-xl)] shadow-md mx-[12px] mt-[6px] mb-[12px]")}>
       <button
         type="button"
-        className="composer-collapse-btn"
+        className="absolute top-[6px] right-[10px] w-[18px] h-[18px] grid place-items-center bg-transparent text-ink-soft [border:var(--line-none)] shadow-none rounded-none p-0 text-[length:var(--text-11)] leading-none cursor-pointer opacity-55 z-[var(--z-local-control)] [transition:opacity_140ms_ease,color_140ms_ease] hover:opacity-100 hover:text-ink"
         onClick={() => setCollapsed(true)}
         aria-label="collapse composer"
         title="collapse composer"
       >
         ▼
       </button>
-      <div className="composer-toolbar">
-        <button className="ct-btn" title="bold" disabled>B</button>
-        <button className="ct-btn" title="italic" disabled><i>I</i></button>
-        <button className="ct-btn" title="code" disabled>{"</>"}</button>
-        <button className="ct-btn" title="link" disabled>↗</button>
-        <button className="ct-btn" title="mention">@</button>
-        <button className={`ct-btn${skillPickerOpen ? " active" : ""}`} title="use skills" onClick={() => openSkillPicker()}>/</button>
-        <button type="button" className="ct-btn" title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
-        <input ref={fileInputRef} className="composer-file-input" type="file" multiple onChange={handleFileInput} />
+      <div className="flex items-center gap-[var(--space-8)] w-full bg-transparent [border:var(--line-none)] [border-bottom:var(--line-sm)] rounded-none px-[10px] py-[8px] shadow-none">
+        <button className={cn(toolbarBtn())} title="bold" disabled>B</button>
+        <button className={cn(toolbarBtn())} title="italic" disabled><i>I</i></button>
+        <button className={cn(toolbarBtn())} title="code" disabled>{"</>"}</button>
+        <button className={cn(toolbarBtn())} title="link" disabled>↗</button>
+        <button className={cn(toolbarBtn())} title="mention">@</button>
+        <button className={cn(toolbarBtn({ active: skillPickerOpen }))} title="use skills" onClick={() => openSkillPicker()}>/</button>
+        <button type="button" className={cn(toolbarBtn())} title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
+        <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
       </div>
       {selectedSkills.length > 0 && (
-        <div className="composer-skill-chips" aria-label="selected skills">
+        <div className="flex flex-wrap gap-[var(--space-6)] px-[10px] pt-[8px]" aria-label="selected skills">
           {selectedSkills.map((skillName) => (
             <button
               key={skillName}
               type="button"
-              className="composer-skill-chip"
+              className="inline-flex items-center gap-[var(--space-4)] max-w-[220px] bg-yellow text-ink [border:var(--line-sm)] rounded-[var(--radius-sm)] shadow-xs px-[8px] py-[4px] font-mono text-[length:var(--text-11)] font-extrabold overflow-hidden text-ellipsis whitespace-nowrap"
               onClick={() => setSelectedSkills((prev) => prev.filter((name) => name !== skillName))}
               title={`remove ${skillName}`}
             >
@@ -420,21 +480,35 @@ export function Composer({
       {attachments.length > 0 && (
         <AttachmentPreviewList attachments={attachments} mode="draft" onRemove={removeAttachment} />
       )}
-      <div className="composer-input-wrap" ref={wrapRef}>
+      <div className="relative bg-transparent [border:var(--line-none)] rounded-none shadow-none" ref={wrapRef}>
         <textarea
           ref={taRef}
-          className="composer-input"
+          // `composer-input`: queried by hooks/useVimNav.ts + kanagawa placeholder
+          // override in extra.css (:root[data-theme=...]) — class kept.
+          className={cn("composer-input", "w-full resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px] bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint")}
           placeholder="message the room… use @ to tag an agent"
           value={value}
           onChange={handleChange}
           onKeyDown={handleKey}
           onPaste={handlePaste}
           rows={3}
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={mentionOpen}
+          aria-controls={mentionOpen ? mentionListboxId : undefined}
+          aria-activedescendant={mentionOpen && candidates[mentionIdx] ? mentionOptionId(candidates[mentionIdx].id) : undefined}
         />
       </div>
-      {mentionQuery !== null && candidates.length > 0 && popRect && (
+      <div aria-live="polite" role="status" style={SR_ONLY_STYLE}>
+        {mentionAnnouncement}
+      </div>
+      {mentionOpen && popRect && (
         <div
-          className="mention-pop"
+          id={mentionListboxId}
+          // `mention-pop`: skin-glass.css backdrop-filter hook — kept.
+          className={cn("mention-pop", "bg-paper [border:var(--line-md)] rounded-[var(--radius-xl)] shadow-md z-[var(--z-mention-overlay)] max-h-[300px] overflow-y-auto p-[var(--space-6)] flex flex-col gap-[var(--space-2)]")}
+          role="listbox"
+          aria-label="mention suggestions"
           style={{
             position: "fixed",
             left: popRect.left,
@@ -445,24 +519,29 @@ export function Composer({
           {candidates.map((a, i) => (
             <button
               key={a.id}
+              id={mentionOptionId(a.id)}
               type="button"
-              className={`mention-row${i === mentionIdx ? " focused" : ""}`}
+              role="option"
+              aria-selected={i === mentionIdx}
+              tabIndex={-1}
+              className={cn(popRow({ focused: i === mentionIdx }), "grid grid-cols-[28px_1fr_auto] gap-[var(--space-10)] items-center px-[8px] py-[6px]")}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => commitMention(a)}
               onMouseEnter={() => setMentionIdx(i)}
             >
-              <IdentityBadge className="mention-av" color={a.color}>{a.avatar}</IdentityBadge>
-              <span className="mention-meta">
-                <span className="mention-name">{a.name}</span>
-                <span className="mention-handle">@{a.handle}</span>
+              <IdentityBadge className="w-[28px] h-[28px] [border:var(--line-sm)] rounded-[var(--radius-md)] grid place-items-center font-display text-[length:var(--text-13)] shadow-xs" color={a.color}>{a.avatar}</IdentityBadge>
+              <span className="flex flex-col min-w-0">
+                <span className="font-semibold text-[length:var(--text-13)] text-ink">{a.name}</span>
+                <span className="font-mono text-[length:var(--text-11)] text-ink-soft">@{a.handle}</span>
               </span>
-              <span className="mention-note">{a.statusNote ?? a.role}</span>
+              <span className="font-mono text-[length:var(--text-11)] text-ink-soft mt-[3px] leading-[1.4] max-w-[160px] text-right overflow-hidden text-ellipsis whitespace-nowrap">{a.statusNote ?? a.role}</span>
             </button>
           ))}
         </div>
       )}
       {skillPickerOpen && popRect && (
         <div
-          className="skill-pop"
+          className="bg-paper [border:var(--line-md)] rounded-[var(--radius-xl)] shadow-md z-[var(--z-mention-overlay)] max-h-[360px] overflow-hidden flex flex-col"
           style={{
             position: "fixed",
             left: popRect.left,
@@ -470,10 +549,11 @@ export function Composer({
             width: Math.min(popRect.width, 520),
           }}
         >
-          <div className="skill-pop-head">
+          {/* `skill-pop-head`: responsive override in extra.css @media(max-width:700px) — class kept. */}
+          <div className="skill-pop-head grid grid-cols-[minmax(0,1fr)_auto] gap-[var(--space-8)] items-center p-[var(--space-8)] [border-bottom:var(--line-sm)] bg-paper-2">
             <input
               ref={skillInputRef}
-              className="skill-search"
+              className="min-w-0 bg-paper text-ink [border:var(--line-sm)] rounded-[var(--radius-sm)] px-[9px] py-[7px] [font:inherit] text-[length:var(--text-13)] outline-none focus:shadow-[0_0_0_2px_var(--yellow)]"
               value={skillQuery}
               onChange={(event) => {
                 setSkillQuery(event.target.value);
@@ -483,12 +563,15 @@ export function Composer({
               placeholder="filter skills"
               aria-label="filter skills"
             />
-            <div className="skill-runtime-filter" role="group" aria-label="skill runtime filter">
+            <div className="inline-flex gap-[var(--space-4)]" role="group" aria-label="skill runtime filter">
               {(["all", "claude", "pi"] as const).map((runtime) => (
                 <button
                   key={runtime}
                   type="button"
-                  className={skillRuntime === runtime ? "active" : ""}
+                  className={cn(
+                    "[border:var(--line-sm)] rounded-[var(--radius-sm)] px-[8px] py-[6px] font-display text-[length:var(--text-10-5)]",
+                    skillRuntime === runtime ? "bg-ink text-paper" : "bg-paper text-ink",
+                  )}
                   onClick={() => {
                     setSkillRuntime(runtime);
                     setSkillIdx(0);
@@ -500,41 +583,45 @@ export function Composer({
               ))}
             </div>
           </div>
-          <div className="skill-results">
+          <div className="flex flex-col gap-[var(--space-2)] p-[var(--space-6)] min-h-0 max-h-[280px] overflow-y-auto overscroll-contain">
             {skillCandidates.length > 0 ? skillCandidates.map((skill, i) => (
               <button
                 key={`${skill.name}:${skill.runtimes.join(",")}`}
                 type="button"
-                className={`skill-row${i === skillIdx ? " focused" : ""}`}
+                // `skill-row`: responsive override in extra.css @media(max-width:700px) — class kept.
+                className={cn(popRow({ focused: i === skillIdx }), "skill-row grid grid-cols-[minmax(92px,0.7fr)_minmax(0,1fr)_auto] gap-[var(--space-10)] items-center px-[8px] py-[7px] text-ink")}
                 onClick={() => commitSkill(skill)}
                 onMouseEnter={() => setSkillIdx(i)}
               >
-                <span className="skill-name">/{skill.name}</span>
-                <span className="skill-desc">{skill.description || "No description"}</span>
-                <span className="skill-runtimes">{skill.runtimes.join(" + ")}</span>
+                <span className="font-mono text-[length:var(--text-12)] font-extrabold overflow-hidden text-ellipsis whitespace-nowrap">/{skill.name}</span>
+                <span className="text-ink-soft text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || "No description"}</span>
+                {/* `skill-runtimes`: responsive override in extra.css @media(max-width:700px) — class kept. */}
+                <span className="skill-runtimes text-ink font-mono text-[length:var(--text-10)] uppercase whitespace-nowrap">{skill.runtimes.join(" + ")}</span>
               </button>
             )) : (
-              <div className="skill-empty">No matching skills</div>
+              <div className="px-[10px] py-[16px] text-ink-soft text-[length:var(--text-12)] text-center">No matching skills</div>
             )}
           </div>
         </div>
       )}
-      <div className="composer-foot">
+      <div className="flex items-center gap-[var(--space-12)] justify-between px-[14px] py-[10px] [border-top:var(--line-rule-dashed-sm)]">
         {onOpenCommunity ? (
           <button
             type="button"
-            className="thread-scan-btn community-open-btn"
+            className={cn(footBtn, "mr-auto gap-[6px] cursor-pointer flex-shrink-0")}
             onClick={onOpenCommunity}
             title="open communities"
             aria-label="open communities"
           >
+            {/* `community-icon`: ::before/::after pseudo-element art in styles.css — class kept. */}
             <span className="community-icon" aria-hidden />
           </button>
         ) : null}
         {onToggleThreadSummary ? (
           <button
             type="button"
-            className={`thread-scan-btn${threadSummaryOpen ? " active" : ""}`}
+            // `thread-scan-btn`: responsive (.shell-compact) + kanagawa .active overrides in CSS — class kept.
+            className={cn("thread-scan-btn", footBtn, "mr-auto gap-[6px] cursor-pointer", threadSummaryOpen && "bg-lilac")}
             onClick={onToggleThreadSummary}
             aria-pressed={threadSummaryOpen}
             title={threadSummaryOpen ? "hide the thread summary panel" : "show thread summaries"}
@@ -542,11 +629,13 @@ export function Composer({
             ☰ {threadSummaryOpen ? "HIDE SUMMARY" : "THREADS"}
           </button>
         ) : null}
-        <span className="composer-hint">
+        <span className="text-[length:var(--text-10-5)] text-ink-soft">
           <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>@</kbd> tag
           {addingAttachments ? " · attaching..." : ""}
         </span>
-        <button className="composer-send" onClick={submit} disabled={addingAttachments || (!value.trim() && attachments.length === 0)} aria-label="send message">
+        {/* `composer-send`: .shell-compact sizing + kanagawa overrides in CSS — class kept. */}
+        <button className={cn("composer-send", footBtn, "disabled:opacity-[0.52] disabled:cursor-default disabled:[filter:grayscale(0.35)]")} onClick={submit} disabled={addingAttachments || (!value.trim() && attachments.length === 0)} aria-label="send message">
+          {/* `composer-send-label` / `composer-send-icon`: toggled by .shell-compact in styles.css — classes kept. */}
           <span className="composer-send-label">SEND</span>
           <span className="composer-send-icon" aria-hidden />
         </button>

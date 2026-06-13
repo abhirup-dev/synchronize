@@ -82,19 +82,20 @@ export function IdentityText({
 export function Avatar({
   agent,
   size = 32,
-  ring = false,
   showStatus = false,
 }: {
   agent: Agent;
   size?: number;
-  ring?: boolean;
   showStatus?: boolean;
 }) {
   const isYou = agent.id === "you";
   return (
     <IdentityBadge
       as="div"
-      className={`avatar identity-icon${ring ? " avatar-ring" : ""}`}
+      // `.identity-icon` is the styled hook (styles.css + [data-theme] overrides;
+      // also targeted by room-icon / ts-avatars). The legacy `.avatar` /
+      // `.avatar-ring` classes carried no CSS in any sheet, so they are dropped.
+      className="identity-icon"
       color={agent.color}
       ink={inkFor(agent.color)}
       self={isYou}
