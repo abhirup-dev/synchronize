@@ -2,6 +2,7 @@
 // strikethrough, autolinks) + sanitized HTML + syntax-highlighted code fences.
 // Trusted-but-not-trusted: agents may quote arbitrary content; we sanitize.
 
+import { memo } from "react";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,7 +38,11 @@ const schema: Schema = {
   ],
 };
 
-export function Markdown({ children, agents }: { children: string; agents?: Agent[] }) {
+// Memoized: react-markdown parsing (remark-gfm + rehype-sanitize + highlight)
+// is expensive, and the virtualized chat list re-renders MessageRow on every
+// scroll frame. With a stable `children` string and `agents` reference, memo
+// skips re-parsing entirely during scroll.
+export const Markdown = memo(function Markdown({ children, agents }: { children: string; agents?: Agent[] }) {
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -64,4 +69,4 @@ export function Markdown({ children, agents }: { children: string; agents?: Agen
       </ReactMarkdown>
     </div>
   );
-}
+});

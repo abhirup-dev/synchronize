@@ -1591,6 +1591,11 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: var(--space-18);
+  /* Keep wheel/trackpad scrolling from chaining to the page (a common source of
+     scroll "catch" at the list edges) and hint the compositor to keep the
+     scroller on its own layer for smooth native scrolling. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .chat-list::-webkit-scrollbar { width: 10px; }
 .chat-list::-webkit-scrollbar-thumb { background: var(--ink); border-radius: var(--radius-none); }

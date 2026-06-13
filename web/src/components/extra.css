@@ -927,8 +927,11 @@
   grid-template-columns: 34px minmax(0, 880px);
   gap: var(--space-4);
   align-items: start;
-  content-visibility: auto;
-  contain-intrinsic-size: 148px;
+  /* No content-visibility/contain-intrinsic-size here: TanStack Virtual already
+     mounts only visible rows, so a second lazy-sizing layer just makes each row
+     resize from its placeholder to real height on scroll-in, firing the
+     virtualizer's ResizeObserver and shifting content mid-scroll (the "sticky"
+     stutter). Containment lives on .virtualized-row instead. */
 }
 .message-gutter {
   display: flex;

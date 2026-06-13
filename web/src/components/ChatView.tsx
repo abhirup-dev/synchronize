@@ -54,6 +54,13 @@ export function ChatView({
   });
   const agentById = useMemo(() => new Map(displayAgents.map((agent) => [agent.id, agent] as const)), [displayAgents]);
 
+  // Stable identity so the memo()'d MessageRow isn't invalidated on every
+  // scroll-driven re-render of this component (which would re-parse markdown).
+  const handleReact = useCallback(
+    (messageId: string, emoji: string) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" }),
+    [reactToMessage, room.id],
+  );
+
   useEffect(() => {
     localStorage.setItem("synchronize.threadSummaryWidth", String(threadSummaryWidth));
   }, [threadSummaryWidth]);
@@ -172,7 +179,7 @@ export function ChatView({
                         author={row.author}
                         agents={displayAgents}
                         groupedWithPrev={row.grouped}
-                        onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
+                        onReact={handleReact}
                         {...(onOpenThread ? { onOpenThread } : {})}
                       />
                     </div>
