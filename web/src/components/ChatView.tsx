@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual";
+import { cn } from "../lib/cn.ts";
 import type { Room } from "../data/types.ts";
 import { useAgents, useMe, useMessages, useReactToMessage } from "../data/context.tsx";
 import { MessageRow } from "./MessageRow.tsx";
@@ -196,7 +197,14 @@ export function ChatView({
   }, [messages, me.id, virtualizer]);
 
   return (
-    <div className={`chat-view${room.kind === "group" ? " is-group-room" : ""}${threadSummaryOpen ? " has-thread-summary" : ""}`} data-vim-panel="chat">
+    <div
+      className={cn(
+        "chat-view flex h-full min-h-0 flex-col",
+        room.kind === "group" && "is-group-room",
+        threadSummaryOpen && "has-thread-summary",
+      )}
+      data-vim-panel="chat"
+    >
       {threadSummaryOpen && (
         <ThreadSummaryPanel
           messages={messages}
@@ -209,13 +217,19 @@ export function ChatView({
           getContentHeight={getContentHeight}
         />
       )}
-      <div className="chat-col">
+      <div className="chat-col flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Top region: chat scroll area + timeline rail, side by side. The
             composer lives BELOW this region so the timeline ends at the top of
-            the composer rather than running the full height of the panel. */}
-        <div className="chat-region">
-          <div className="chat-scroll-wrap">
-            <div className="chat-list autoscroll virtualized-list" ref={listRef}>
+            the composer rather than running the full height of the panel.
+            `.chat-region` is kept as a hook for chat-bg.css's ::before paint
+            layer and its `:has(.timeline-rail[hidden])` collapse rule. */}
+        <div className="chat-region grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_112px] [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
+          <div className="chat-scroll-wrap relative flex min-h-0 flex-1 flex-col">
+            {/* `.chat-list` keeps its overscroll-behavior + scrollbar rules in
+                styles.css (scroll-perf, not inlinable); `.virtualized-list`
+                resets display:block over the base flex. `.autoscroll` drives the
+                useAutoScrollbar `is-scrolling` hook. */}
+            <div className="chat-list autoscroll virtualized-list block min-h-0 flex-1 overflow-y-auto pt-[18px] pr-6 pb-[10px] pl-[18px]" ref={listRef}>
               <div className="virtualized-spacer" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualizer.getVirtualItems().map((item) => {
                   const row = rows[item.index];
@@ -223,7 +237,11 @@ export function ChatView({
                   return (
                     <div
                       key={row.m.id}
-                      className={`virtualized-row message-virtual-row${row.grouped ? " is-grouped" : ""}${row.hasFollowup ? " has-followup" : ""}`}
+                      className={cn(
+                        "virtualized-row message-virtual-row",
+                        row.hasFollowup ? "has-followup pb-[var(--space-6)]" : "pb-[var(--space-16)]",
+                        row.grouped && "is-grouped",
+                      )}
                       data-index={item.index}
                       ref={virtualizer.measureElement}
                       style={{ transform: `translateY(${item.start}px)` }}

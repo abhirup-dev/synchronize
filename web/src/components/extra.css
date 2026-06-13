@@ -567,50 +567,32 @@
   box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--yellow);
 }
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
-.chat-view {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-}
+/* .chat-view base migrated to inline Tailwind utilities in ChatView.tsx
+   (sync-q48d). .chat-view.has-thread-summary / .is-group-room state + descendant
+   rules remain below / elsewhere. */
 /* Top region of the chat column: chat scroll area + timeline rail beside it.
    Sits above the composer; the composer spans the full chat-column width
    below this row, which is why the timeline visually ends at the composer
-   top rather than running the entire panel height. */
-.chat-region {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
-  border-bottom: var(--composer-separator-line, 2px solid var(--rule));
-}
+   top rather than running the entire panel height. .chat-region base migrated
+   to inline utilities in ChatView.tsx; the :has() collapse rule below stays in
+   CSS (Tailwind can't express it), and chat-bg.css paints its ::before. */
 .chat-region:has(.timeline-rail[hidden]),
 .chat-region:not(:has(.timeline-rail)) {
   grid-template-columns: minmax(0, 1fr);
 }
-.chat-scroll-wrap,
+/* .chat-scroll-wrap base migrated to inline utilities in ChatView.tsx; the
+   shared layout for .thread-scroll-wrap (ThreadPane) is retained here. */
 .thread-scroll-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.thread-scroll-wrap {
   border-bottom: var(--composer-separator-line, 2px solid var(--rule));
 }
-.chat-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 18px 24px 10px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-}
-.chat-list.virtualized-list {
-  display: block;
-}
+/* .chat-list base layout + .virtualized-list reset migrated to inline utilities
+   in ChatView.tsx (sync-q48d). overscroll-behavior + scrollbar styling live in
+   styles.css .chat-list (scroll-perf, not inlinable). */
 .virtualized-spacer {
   position: relative;
   width: 100%;
@@ -628,18 +610,9 @@
      offset message shadows at row edges. */
   contain: layout style;
 }
-.message-virtual-row {
-  padding-bottom: var(--space-16);
-}
-.message-virtual-row.has-followup {
-  padding-bottom: var(--space-6);
-}
-.message-virtual-row.is-grouped {
-  padding-bottom: var(--space-16);
-}
-.message-virtual-row.is-grouped.has-followup {
-  padding-bottom: var(--space-6);
-}
+/* .message-virtual-row padding-bottom (base / has-followup / is-grouped) migrated
+   to inline Tailwind utilities in ChatView.tsx (sync-q48d). .virtualized-row
+   above is shared (ActivityView/ThreadPane) and stays. */
 .thread-virtual-row {
   padding-bottom: var(--space-18);
 }
@@ -649,23 +622,14 @@
 }
 .bubble pre::-webkit-scrollbar { height: 6px; }
 .bubble pre::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: var(--radius-xs); }
-.message-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 880px);
-  gap: var(--space-4);
-  align-items: start;
-  /* No content-visibility/contain-intrinsic-size here: TanStack Virtual already
-     mounts only visible rows, so a second lazy-sizing layer just makes each row
-     resize from its placeholder to real height on scroll-in, firing the
-     virtualizer's ResizeObserver and shifting content mid-scroll (the "sticky"
-     stutter). Containment lives on .virtualized-row instead. */
-}
-.message-gutter {
-  display: flex;
-  justify-content: center;
-  padding-top: 0;
-  height: 34px;
-}
+/* .message-row base grid + .message-gutter migrated to inline Tailwind utilities
+   in MessageRow.tsx (sync-q48d). The .is-you/.is-web-author/.no-avatar/.is-grouped
+   STATE overrides below stay in CSS (they out-specify and reorder the grid).
+   NOTE: deliberately NO content-visibility/contain-intrinsic-size on the row —
+   TanStack Virtual already mounts only visible rows; a second lazy-sizing layer
+   would resize rows from placeholder to real height on scroll-in, firing the
+   virtualizer's ResizeObserver and shifting content mid-scroll. Containment lives
+   on .virtualized-row instead. */
 .message-row.is-grouped { margin-top: 0; }
 .message-row.is-you,
 .message-row.is-web-author {
@@ -685,22 +649,9 @@
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
-.message-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-  padding-right: var(--bubble-shadow-gutter, 6px);
-  padding-bottom: var(--bubble-shadow-gutter, 6px);
-}
-.message-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: fit-content;
-  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
-  min-width: 0;
-}
+/* .message-body / .message-stack base migrated to inline Tailwind utilities in
+   MessageRow.tsx (sync-q48d). The .is-you/.is-web-author alignment overrides
+   stay in CSS. */
 .message-row.is-you .message-stack,
 .message-row.is-web-author .message-stack {
   align-self: flex-end;
@@ -747,16 +698,11 @@
   color: var(--ink-soft);
 }
 
-.bubble {
-  background: var(--bubble);
-  border: var(--message-card-border, var(--line-2));
-  border-color: var(--message-card-border-color, var(--rule));
-  border-radius: var(--radius-xl);
-  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--message-card-shadow-color, var(--rule));
-  padding: var(--space-bubble-pad);
-  max-width: 100%;
-  min-width: 0;
-}
+/* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
+   utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
+   skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
+   .is-you / .is-web-author / per-theme overrides below out-specify the base
+   utilities (so they still win — parity preserved). */
 .message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
 .chat-view.is-group-room .message-row.is-web-author .bubble,
 .thread-pane-body .message-row.is-web-author .bubble {
@@ -1091,46 +1037,8 @@
  * inline on the component. */
 
 /* ─── Thread badge under message ─────────────────────────────────────────── */
-.thread-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  margin-top: 1px;
-  padding: 4px 8px 4px 4px;
-  background: transparent;
-  border: var(--line-none);
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink);
-  cursor: pointer;
-  width: fit-content;
-  border-radius: var(--radius-pill);
-}
-.thread-badge:hover { background: var(--paper-2); }
-.thread-badge-avs {
-  display: inline-flex;
-}
-.thread-badge-av {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-xs);
-  border: var(--line-xs);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  box-shadow: var(--shadow-xs);
-  margin-left: -4px;
-}
-.thread-badge-av:first-child { margin-left: 0; }
-.thread-badge-count {
-  font-weight: 700;
-  text-decoration: underline;
-  text-decoration-color: var(--yellow);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
-}
-.thread-badge-time { color: var(--ink-soft); }
+/* .thread-badge family (badge button + :hover, -avs, -av + :first-child, -count,
+   -time) migrated to inline Tailwind utilities in MessageRow.tsx (sync-q48d). */
 
 /* ─── Thread pane (right-side) ───────────────────────────────────────────── */
 /* When a thread is open, App.tsx sets the grid template inline based on the
@@ -1527,13 +1435,8 @@
 
 /* Layout glue: the chat column (messages + composer) and the optional summary
    panel sit side by side inside .chat-view. */
-.chat-col {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
+/* .chat-col base migrated to inline Tailwind utilities in ChatView.tsx
+   (sync-q48d). The .chat-view.has-thread-summary row-flip stays in CSS. */
 .chat-view.has-thread-summary { flex-direction: row; }
 
 .thread-summary-panel {
