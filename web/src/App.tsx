@@ -172,13 +172,16 @@ function Shell() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Reset secondary state when switching rooms.
+  // Reset secondary state when switching rooms. NOTE: agentPanelOpen is
+  // deliberately NOT reset here — the compact "Agents" tab leaves the Activity
+  // feed by setting a room AND opening the roster in the same render, so
+  // clobbering it here would defeat that nav. Closing on an explicit room pick
+  // is handled in selectRoom instead.
   useEffect(() => {
     setTab("chat");
     setFocusedAgent(null);
     setThreadParentId(null);
     setThreadSummaryOpen(false);
-    setAgentPanelOpen(false);
   }, [activeId]);
 
   useEffect(() => {
@@ -253,6 +256,7 @@ function Shell() {
   const selectRoom = (id: string) => {
     setActiveId(id);
     setCommunityOpen(false);
+    setAgentPanelOpen(false);
   };
 
   // Compact bottom-nav destinations. Chats = the conversation section: tapping

@@ -1902,7 +1902,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 @media (max-width: 1100px) {
   .main-body { grid-template-columns: minmax(0, 1fr); }
-  .agent-roster { display: none; }
+  /* Only the PERSISTENT roster (a direct child of .main-body, desktop's 3rd
+     column) collapses on narrow widths — NOT the roster inside the compact
+     agents overlay sheet (.shell-overlay .agent-roster), which is the whole
+     point of that sheet. (This legacy media-query layer predates the JS
+     shellMode system; see MOBILE-UI-AUDIT.md — slated for consolidation.) */
+  .main-body > .agent-roster { display: none; }
 }
 @media (max-width: 760px) {
   .chat-region { grid-template-columns: minmax(0, 1fr); }
