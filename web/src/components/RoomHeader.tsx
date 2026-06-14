@@ -7,9 +7,10 @@ import { roomAgents } from "../data/roomAgents.ts";
 import type { Agent } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
-import { useIsCompact } from "../shell-mode.tsx";
+import { useIsCompact, useShellMode } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Search, MoreVertical } from "lucide-react";
+import { Search, Settings } from "lucide-react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
 
@@ -42,6 +43,7 @@ interface RoomHeaderProps {
   onChatBg(id: string): void;
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
+  onOpenSettings?(event: ReactMouseEvent<HTMLButtonElement>): void;
   threadBanner?: {
     author: Agent;
     onClose(): void;
@@ -61,11 +63,13 @@ export function RoomHeader({
   onChatBg,
   showAgentsButton = false,
   onOpenAgents,
+  onOpenSettings,
   threadBanner,
 }: RoomHeaderProps) {
   const agents = useAgents();
   const openMenu = useContextMenu();
   const compact = useIsCompact();
+  const shellMode = useShellMode();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
   const working = members.filter((m) => m.status === "busy").length;
@@ -91,7 +95,7 @@ export function RoomHeader({
             row. The bottom-nav Agents tab carries member presence on mobile. */}
         {!compact && (
           <>
-            <div className="flex-none min-w-[120px] flex flex-col items-end justify-center text-right">
+            <div className="room-working-meta flex-none min-w-[120px] flex flex-col items-end justify-center text-right">
               <div className="room-meta font-mono text-[length:var(--text-11)] text-ink-soft mt-[3px] flex items-center justify-end gap-[var(--space-10)]">
                 <span className="inline-flex items-center gap-[var(--space-6)] text-ink font-extrabold"><span className="w-[9px] h-[9px] rounded-pill bg-pink [border:var(--line-sm)] shadow-xs" />{working} / {members.length} working</span>
               </div>
@@ -114,11 +118,15 @@ export function RoomHeader({
           <div className="room-header-actions flex items-center gap-[var(--space-2)]">
             <IconButton icon={Search} label="search messages" size={40} iconSize={19} />
             <IconButton
-              icon={MoreVertical}
-              label="more options"
+              icon={Settings}
+              label="open display settings"
               size={40}
               iconSize={19}
-              onClick={(event) =>
+              onClick={(event) => {
+                if (onOpenSettings) {
+                  onOpenSettings(event);
+                  return;
+                }
                 openMenu(event, [
                   { label: `Theme · ${theme}`, onSelect: () => onToggleTheme(false) },
                   { label: `Skin · ${skin === "brutal" ? "brutal → glass" : "glass → brutal"}`, onSelect: onToggleSkin },
@@ -127,8 +135,8 @@ export function RoomHeader({
                     label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
                     onSelect: () => onChatBg(preset.id),
                   })),
-                ])
-              }
+                ]);
+              }}
             />
           </div>
         ) : (
@@ -171,9 +179,13 @@ export function RoomHeader({
             >
               {skin === "brutal" ? "🫧" : "🧱"}
             </button>
-            <button className="icon-btn" aria-label="pin">📌</button>
-            <button className="icon-btn" aria-label="search">🔍</button>
-            <button className="icon-btn" aria-label="more">⋯</button>
+            {shellMode === "desktop" ? (
+              <>
+                <button className="icon-btn" aria-label="pin">📌</button>
+                <button className="icon-btn" aria-label="search">🔍</button>
+                <button className="icon-btn" aria-label="more">⋯</button>
+              </>
+            ) : null}
           </div>
         )}
       </div>

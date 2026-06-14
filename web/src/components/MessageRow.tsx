@@ -42,6 +42,10 @@ interface MessageRowProps {
   /** Hide the avatar gutter (used in ThreadPane to reclaim horizontal space —
    *  the colored author-name pill above the bubble is enough identity there). */
   hideAvatar?: boolean;
+  /** Compact thread headers already carry the parent author. */
+  hideAuthor?: boolean;
+  /** Compact thread rows use the composer/context menu as the primary action surface. */
+  hideReactionAdd?: boolean;
 }
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
@@ -61,7 +65,17 @@ function floatingStyleFor(anchor: HTMLElement, height: number): FloatingStyle {
   };
 }
 
-export const MessageRow = memo(function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, onReact, hideAvatar }: MessageRowProps) {
+export const MessageRow = memo(function MessageRow({
+  message,
+  author,
+  agents,
+  groupedWithPrev,
+  onOpenThread,
+  onReact,
+  hideAvatar,
+  hideAuthor,
+  hideReactionAdd,
+}: MessageRowProps) {
   const openMenu = useContextMenu();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const me = useMe();
@@ -123,7 +137,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
-          { label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) },
+          ...(!hideReactionAdd ? [{ label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) }] : []),
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
           { label: "Copy link", onSelect: () => console.log("link", message.id) },
           { divider: true },
@@ -139,7 +153,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
         </div>
       )}
       <div className="message-body flex min-w-0 flex-col gap-[var(--space-2)] pr-[var(--bubble-shadow-gutter,6px)] pb-[var(--bubble-shadow-gutter,6px)]">
-        {!groupedWithPrev && !isSelf && (
+        {!hideAuthor && !groupedWithPrev && !isSelf && (
           <div className="author-chip">
             <IdentityBadge
               className="author-name"
@@ -268,7 +282,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                       </span>
                     );
                   })}
-                  {onReact && (
+                  {onReact && !hideReactionAdd && (
                     <span className="reaction-wrap relative inline-flex">
                       <button
                         className={reactionBtn({ add: true })}

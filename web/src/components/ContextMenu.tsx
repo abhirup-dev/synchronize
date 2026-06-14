@@ -124,23 +124,30 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                 "shadow-[4px_4px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72))]",
               )}
             >
-              {(state?.items ?? []).map((it, i) =>
-                "divider" in it ? (
+              {(state?.items ?? []).map((it, i) => {
+                if ("divider" in it) {
+                  return (
                   <Menu.Separator
                     key={i}
                     className="my-[3px] mx-[4px] h-[1.5px] bg-ink-faint"
                   />
-                ) : (
+                  );
+                }
+
+                const runItem = () => {
+                  if (it.disabled) return;
+                  setState(null);
+                  void Promise.resolve(it.onSelect());
+                };
+
+                return (
                   <Menu.Item
                     key={i}
                     className={cn(ctxItem({ danger: it.danger ?? false }))}
                     disabled={it.disabled ?? false}
                     nativeButton
-                    render={<button type="button" disabled={it.disabled ?? false} />}
-                    onClick={() => {
-                      if (it.disabled) return;
-                      void Promise.resolve(it.onSelect());
-                    }}
+                    render={<button type="button" disabled={it.disabled ?? false} onClick={runItem} />}
+                    onClick={runItem}
                   >
                     <span>{it.label}</span>
                     {it.shortcut && (
@@ -149,8 +156,8 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                       </span>
                     )}
                   </Menu.Item>
-                ),
-              )}
+                );
+              })}
             </Menu.Popup>
           </Menu.Positioner>
         </Menu.Portal>

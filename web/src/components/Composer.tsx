@@ -9,7 +9,7 @@ import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Paperclip, AtSign, Slash, ArrowUp } from "lucide-react";
+import { Paperclip, AtSign, Slash, ArrowUp, ListTree } from "lucide-react";
 
 interface ComposerProps {
   roomId: string;
@@ -566,11 +566,16 @@ export function Composer({
             position: "fixed",
             left: popRect.left,
             bottom: popRect.bottom + 6,
-            width: Math.min(popRect.width, 520),
+            width: Math.min(popRect.width, compact ? 420 : 520),
           }}
         >
           {/* `skill-pop-head`: responsive override in extra.css @media(max-width:700px) — class kept. */}
-          <div className="skill-pop-head grid grid-cols-[minmax(0,1fr)_auto] gap-[var(--space-8)] items-center p-[var(--space-8)] [border-bottom:var(--line-sm)] bg-paper-2">
+          <div
+            className={cn(
+              "skill-pop-head gap-[var(--space-8)] items-center p-[var(--space-8)] [border-bottom:var(--line-sm)] bg-paper-2",
+              compact ? "flex flex-col items-stretch" : "grid grid-cols-[minmax(0,1fr)_auto]",
+            )}
+          >
             <input
               ref={skillInputRef}
               className="min-w-0 bg-paper text-ink [border:var(--line-sm)] rounded-[var(--radius-sm)] px-[9px] py-[7px] [font:inherit] text-[length:var(--text-13)] outline-none focus:shadow-[0_0_0_2px_var(--yellow)]"
@@ -583,13 +588,14 @@ export function Composer({
               placeholder="filter skills"
               aria-label="filter skills"
             />
-            <div className="inline-flex gap-[var(--space-4)]" role="group" aria-label="skill runtime filter">
+            <div className={cn("inline-flex gap-[var(--space-4)]", compact && "justify-stretch")} role="group" aria-label="skill runtime filter">
               {(["all", "claude", "pi"] as const).map((runtime) => (
                 <button
                   key={runtime}
                   type="button"
                   className={cn(
                     "[border:var(--line-sm)] rounded-[var(--radius-sm)] px-[8px] py-[6px] font-display text-[length:var(--text-10-5)]",
+                    compact && "min-h-[34px] flex-1",
                     skillRuntime === runtime ? "bg-ink text-paper" : "bg-paper text-ink",
                   )}
                   onClick={() => {
@@ -609,14 +615,36 @@ export function Composer({
                 key={`${skill.name}:${skill.runtimes.join(",")}`}
                 type="button"
                 // `skill-row`: responsive override in extra.css @media(max-width:700px) — class kept.
-                className={cn(popRow({ focused: i === skillIdx }), "skill-row grid grid-cols-[minmax(92px,0.7fr)_minmax(0,1fr)_auto] gap-[var(--space-10)] items-center px-[8px] py-[7px] text-ink")}
+                className={cn(
+                  popRow({ focused: i === skillIdx }),
+                  "skill-row grid gap-[var(--space-10)] items-center px-[8px] py-[7px] text-ink",
+                  compact
+                    ? "grid-cols-[minmax(0,1fr)_auto] gap-y-[3px] min-h-[52px]"
+                    : "grid-cols-[minmax(92px,0.7fr)_minmax(0,1fr)_auto]",
+                )}
                 onClick={() => commitSkill(skill)}
                 onMouseEnter={() => setSkillIdx(i)}
               >
                 <span className="font-mono text-[length:var(--text-12)] font-extrabold overflow-hidden text-ellipsis whitespace-nowrap">/{skill.name}</span>
-                <span className="text-ink-soft text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || "No description"}</span>
+                <span
+                  className={cn(
+                    "text-ink-soft text-[length:var(--text-11)] overflow-hidden",
+                    compact
+                      ? "col-span-2 row-start-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-height:1.3]"
+                      : "text-ellipsis whitespace-nowrap",
+                  )}
+                >
+                  {skill.description || "No description"}
+                </span>
                 {/* `skill-runtimes`: responsive override in extra.css @media(max-width:700px) — class kept. */}
-                <span className="skill-runtimes text-ink font-mono text-[length:var(--text-10)] uppercase whitespace-nowrap">{skill.runtimes.join(" + ")}</span>
+                <span
+                  className={cn(
+                    "skill-runtimes text-ink font-mono text-[length:var(--text-10)] uppercase whitespace-nowrap",
+                    compact && "col-start-2 row-start-1 justify-self-end",
+                  )}
+                >
+                  {skill.runtimes.join(" + ")}
+                </span>
               </button>
             )) : (
               <div className="px-[10px] py-[16px] text-ink-soft text-[length:var(--text-12)] text-center">No matching skills</div>
@@ -631,6 +659,14 @@ export function Composer({
           <IconButton icon={Paperclip} label="attach file" onClick={() => fileInputRef.current?.click()} disabled={addingAttachments} />
           <IconButton icon={AtSign} label="mention an agent" onClick={insertMention} />
           <IconButton icon={Slash} label="use skills" active={skillPickerOpen} onClick={() => openSkillPicker()} />
+          {onToggleThreadSummary ? (
+            <IconButton
+              icon={ListTree}
+              label={threadSummaryOpen ? "hide thread summaries" : "show thread summaries"}
+              active={threadSummaryOpen}
+              onClick={onToggleThreadSummary}
+            />
+          ) : null}
           <span className="flex-1" />
           <IconButton
             icon={ArrowUp}

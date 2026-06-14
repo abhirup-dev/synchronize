@@ -677,6 +677,35 @@ button { font-family: inherit; cursor: pointer; }
   grid-template-columns: minmax(0, 1fr);
 }
 
+.shell-medium .main-body.thread-open,
+.shell-compact .main-body.thread-open {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-medium .main-body.thread-open .thread-pane,
+.shell-compact .main-body.thread-open .thread-pane {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-left: 0;
+}
+
+.shell-compact .chat-view.has-thread-summary {
+  flex-direction: column;
+}
+
+.shell-compact .chat-view.has-thread-summary .chat-col {
+  display: none;
+}
+
+.shell-compact .chat-view.has-thread-summary .thread-summary-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: 1 1 auto;
+  border-right: 0;
+}
+
 /* .tab-content migrated to inline Tailwind utilities in App.tsx (no hooks). */
 
 /* ───────────────────────── sidebar ───────────────────────── */
@@ -894,6 +923,48 @@ button { font-family: inherit; cursor: pointer; }
    RoomHeader.tsx. room-agents-btn keeps its className so the .shell-compact
    .room-agents-btn override still binds; room-agents-count was dropped. */
 
+.shell-medium .room-header-top {
+  gap: var(--space-10);
+  padding: 12px 16px 10px;
+}
+
+.shell-medium .room-id {
+  flex-basis: 420px;
+  gap: var(--space-10);
+}
+
+.shell-medium .room-id-icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  font-size: var(--text-20);
+}
+
+.shell-medium .room-title {
+  font-size: var(--text-20);
+}
+
+.shell-medium .member-pile {
+  display: none;
+}
+
+.shell-medium .room-working-meta {
+  display: none;
+}
+
+.shell-medium .room-header-actions {
+  gap: var(--space-4);
+}
+
+.shell-medium .room-agents-btn {
+  min-width: 68px;
+  padding-inline: 7px;
+}
+
+.shell-medium .room-tabs {
+  padding: 10px 16px 12px;
+}
+
 .shell-compact .room-agents-label {
   display: none;
 }
@@ -1088,11 +1159,119 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-hover);
 }
 
+.compact-appbar {
+  min-height: 56px;
+}
+
 .shell-overlay .sidebar,
 .shell-overlay .agent-roster {
   flex: 1 1 auto;
   min-height: 0;
   border: 0;
+}
+
+.shell-overlay-community .sidebar-brand,
+.shell-overlay-community .sidebar-bottom,
+.shell-overlay-community .sidebar-search-shortcut {
+  display: none;
+}
+
+.shell-overlay-community .sidebar {
+  background: var(--paper);
+}
+
+.compact-settings-layer {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.compact-settings-sheet {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.compact-settings-done {
+  min-height: 40px;
+  padding: 0 14px;
+  background: var(--yellow);
+  color: var(--ink);
+  border: var(--line-sm);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+}
+
+.compact-settings-section {
+  padding: 10px 12px 12px;
+  border-bottom: var(--line);
+}
+
+.compact-settings-section:last-child {
+  border-bottom: 0;
+  padding-bottom: 18px;
+}
+
+.compact-settings-row {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: 0 2px;
+  background: transparent;
+  color: var(--ink);
+  border: 0;
+  border-bottom: var(--line-sm);
+  font-family: var(--font-ui);
+  font-size: var(--text-14);
+  text-align: left;
+}
+
+.compact-settings-row:last-child {
+  border-bottom: 0;
+}
+
+.compact-settings-row strong {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 700;
+  text-align: right;
+}
+
+.compact-settings-label {
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+}
+
+.compact-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-settings-choice {
+  min-height: 44px;
+  padding: 0 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: var(--line-sm);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  text-align: left;
+}
+
+.compact-settings-choice.active {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--ink);
 }
 
 /* Compact sheets stop short of the bottom nav (room-list / agents), so the nav
@@ -1895,28 +2074,6 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-chip);
 }
 
-/* responsive */
-@media (max-width: 1280px) {
-  .main-body { grid-template-columns: minmax(0, 1fr) 240px; }
-  .chat-region { grid-template-columns: minmax(0, 1fr) 96px; }
-}
-@media (max-width: 1100px) {
-  .main-body { grid-template-columns: minmax(0, 1fr); }
-  /* Only the PERSISTENT roster (a direct child of .main-body, desktop's 3rd
-     column) collapses on narrow widths — NOT the roster inside the compact
-     agents overlay sheet (.shell-overlay .agent-roster), which is the whole
-     point of that sheet. (This legacy media-query layer predates the JS
-     shellMode system; see MOBILE-UI-AUDIT.md — slated for consolidation.) */
-  .main-body > .agent-roster { display: none; }
-}
-@media (max-width: 760px) {
-  .chat-region { grid-template-columns: minmax(0, 1fr); }
-  .timeline-rail { display: none; }
-}
-@media (max-width: 880px) {
-  .app-shell { grid-template-columns: 250px 1fr; }
-}
-
 /* ───────────────────────── timeline rail ───────────────────────── */
 
 /* Timeline rail base styling (rail/head/track/node/line-segment/marker/time +
@@ -2396,6 +2553,16 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
+.shell-compact .thread-pane-close {
+  width: 40px;
+  height: 40px;
+}
+
+.shell-compact .thread-pane-body .bubble {
+  padding: 12px 14px;
+  line-height: 1.58;
+}
+
 /* .thread-pane-body base layout migrated to inline Tailwind utilities in
    ThreadPane.tsx (sync-vmre); the scrollbar pseudo rules below are not inlinable
    and stay. */
@@ -2503,17 +2670,4 @@ button { font-family: inherit; cursor: pointer; }
 }
 .thread-pane-composer-wrap .composer-wrap {
   padding: 12px 16px 14px;
-}
-
-/* hide thread split on narrow viewports */
-@media (max-width: 1100px) {
-  .chat-view.split {
-    grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
-  }
-}
-@media (max-width: 900px) {
-  .chat-view.split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .chat-view.split .chat-main { display: none; }
 }

@@ -807,14 +807,111 @@
   animation: act-new-flash 2.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* ── activity thread split: reuse thread-pane, hide its resize on narrow ── */
-@media (max-width: 1000px) {
-  .activity-view.split { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); }
+/* ── activity thread split: shellMode owns responsive behavior ── */
+.shell-medium .activity-view.split {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
 }
-@media (max-width: 820px) {
-  .activity-view.split { grid-template-columns: minmax(0, 1fr); }
-  .activity-view.split .activity-main { display: none; }
-  .act-roomfilter { display: none; }
+
+.shell-medium .act-header-top {
+  gap: 10px;
+  padding: 12px 16px 10px;
+}
+
+.shell-medium .act-title-block {
+  gap: 10px;
+}
+
+.shell-medium .act-title-mark {
+  width: 40px;
+  height: 40px;
+}
+
+.shell-medium .act-title {
+  font-size: 22px;
+}
+
+.shell-medium .act-header-actions {
+  gap: 8px;
+}
+
+.shell-medium .act-live {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.shell-medium .act-view-switch {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 10px;
+}
+
+.shell-medium .act-markall {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+
+.shell-medium .act-filterbar {
+  gap: 8px;
+  padding: 9px 16px 10px;
+}
+
+.shell-medium .act-filters {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shell-medium .act-filters::-webkit-scrollbar { height: 0; }
+
+.shell-medium .act-filter {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.shell-medium .act-roombar-menuonly {
+  flex: 0 0 auto;
+  margin-left: 0;
+  padding: 0;
+}
+
+.shell-medium .act-room-filter-trigger {
+  border: 2px dashed var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  border-bottom-width: 2px;
+  box-shadow: 1.5px 1.5px 0 var(--ink);
+}
+
+.shell-medium .act-room-filter-trigger.open {
+  border-style: solid;
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.shell-compact .activity-view.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-compact .activity-view.split .activity-main {
+  display: none;
+}
+
+.shell-compact .activity-view.split .thread-pane {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-left: 0;
 }
 
 /* dark theme: marker icon + chip text use ink-on-color reliably */
@@ -1646,51 +1743,120 @@
     2.5px 2.5px 0 color-mix(in srgb, var(--ink) 28%, transparent);
 }
 
-/* ═══════════════ compact (mobile) Activity ═══════════════
-   The desktop header is one non-wrapping flex row (title-block + actions) over
-   a non-wrapping filter bar; both overflow and visibly overlap at phone width.
-   Reflow for compact (shellMode gates this to <780px — desktop/medium keep the
-   single-row layout): title on its own row, the view/live/mark-all controls
-   wrap to a second row, and a stacked filter bar whose chip rows scroll
-   horizontally instead of clipping. */
-.shell-compact .act-header-top {
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  padding: 12px 14px 10px;
+/* Medium density needs to win after the themed control defaults above, which
+   reset the shared Activity control height to 40px. */
+.shell-medium .activity-view {
+  --activity-control-height: 34px;
 }
-/* Force the title to claim the full first row so the action controls always
-   wrap cleanly beneath it (they never fit beside the title at phone width). */
-.shell-compact .act-title-block { flex: 1 1 100%; gap: 10px; min-width: 0; }
-.shell-compact .act-title-mark { width: 36px; height: 36px; transform: rotate(-2deg); }
-.shell-compact .act-title-mark svg { width: 18px; height: 18px; }
-.shell-compact .act-title { font-size: 17px; }
-.shell-compact .act-title-sub { font-size: 10px; gap: 6px; margin-top: 2px; }
-.shell-compact .act-header-actions {
-  flex: 1 1 100%;
-  flex-wrap: wrap;
+
+.shell-medium .act-header-actions {
   gap: 8px;
-  justify-content: flex-start;
 }
-.shell-compact .act-live,
-.shell-compact .act-view-switch { min-height: 34px; font-size: 10px; padding: 0 10px; }
-.shell-compact .act-markall { width: 34px; min-width: 34px; min-height: 34px; }
+
+.shell-medium .act-live,
+.shell-medium .act-view-switch,
+.shell-medium .act-markall {
+  height: var(--activity-control-height);
+  min-height: var(--activity-control-height);
+}
+
+/* ═══════════════ compact (mobile) Activity ═══════════════
+   Compact uses the same app-bar contract as Chats/Agents: context on the left,
+   global settings and local actions on the right, then filter controls below.
+   Desktop/medium keep the full Activity header. */
+.shell-compact .act-header-top {
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 12px;
+}
+
+.shell-compact .act-title-block {
+  flex: 1 1 auto;
+  gap: 9px;
+  min-width: 0;
+}
+
+.shell-compact .act-title-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  transform: rotate(-2deg);
+}
+
+.shell-compact .act-title-mark svg { width: 17px; height: 17px; }
+.shell-compact .act-title { font-size: 16px; line-height: 1.05; }
+.shell-compact .act-title-sub {
+  font-size: 10px;
+  gap: 6px;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-compact .act-header-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.shell-compact .act-settings-btn {
+  border: var(--line-sm);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.shell-compact .act-live {
+  min-height: 40px;
+  max-width: 82px;
+  font-size: 10px;
+  padding: 0 8px;
+}
+
+.shell-compact .act-live-working,
+.shell-compact .act-live-sep {
+  display: none;
+}
+
+.shell-compact .act-view-switch {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  font-size: 0;
+}
+
+.shell-compact .act-view-switch svg {
+  width: 18px;
+  height: 18px;
+}
+
+.shell-compact .act-markall {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
 
 .shell-compact .act-filterbar {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  padding: 10px 14px 12px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 8px;
 }
 /* Primary filters: a single row that scrolls horizontally rather than clipping
    the last chip. */
 .shell-compact .act-filters {
-  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 5px;
   overflow-x: auto;
   scrollbar-width: none;
-  flex: 0 0 auto;
 }
 .shell-compact .act-filters::-webkit-scrollbar { height: 0; }
 .shell-compact .act-filter { white-space: nowrap; flex: 0 0 auto; }
+.shell-compact .act-room-filter-trigger.open { color: var(--ink); background: var(--paper); border-bottom-color: var(--ink); }
 
 /* Room sub-filter: the rail's pill-fit logic (RoomFilterBar) measures the rail
    width with a ResizeObserver. If the rail grows to fit its content, rendering
@@ -1700,7 +1866,11 @@
    content-independent and the measurement is stable; overflow:hidden lets the
    "›" more button own the spillover instead of the rail bleeding past the
    viewport. */
-.shell-compact .act-roombar { min-width: 0; max-width: 100%; padding: 4px 14px 6px; }
+.shell-compact .act-roombar { min-width: 0; max-width: 100%; padding: 1px 12px 3px; }
+.shell-compact .act-roombar-menuonly {
+  flex: 0 0 auto;
+  padding: 0;
+}
 /* All room chips render (no measure-and-fit); the rail is width-constrained to
    the leftover row space and scrolls horizontally. No ResizeObserver feeds back
    into layout, so nothing thrashes. */
@@ -1715,3 +1885,12 @@
 
 /* Tighter content gutters reclaim width on a narrow screen. */
 .shell-compact .act-scroll { padding: 14px 12px 20px; }
+.shell-compact .act-row {
+  min-height: 56px;
+  height: auto;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.shell-compact .act-roomlist {
+  width: min(290px, calc(100vw - 24px));
+}
