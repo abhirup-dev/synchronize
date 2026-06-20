@@ -12,7 +12,7 @@ CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
-.PHONY: help setup check-deps \
+.PHONY: help setup check-deps check-install test \
         demo demo-up demo-top demo-json demo-clean demo-spawn demo-down demo-profile \
         daemon-kill daemon-relaunch clean-slate \
         dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
@@ -28,8 +28,10 @@ help:
 	@echo "synchronize — make targets"
 	@echo
 	@echo "Setup:"
-	@echo "  setup            Install root + web deps and check tooling (run this first; also bootstraps a fresh worktree)"
+	@echo "  setup            Install root + web deps (frozen lockfiles) and check tooling (run this first; also bootstraps a fresh worktree)"
 	@echo "  check-deps       Report required/optional CLI tools and how to install them"
+	@echo "  check-install    Verify root + web deps are installed (fails fast with a fix hint)"
+	@echo "  test             Run the test suite (guarded by check-install)"
 	@echo "Install agents (writes to your real ~/.claude, ~/.codex, ~/.pi):"
 	@echo "  install-claude | install-codex | install-pi | install-all"
 	@echo "  uninstall-claude | uninstall-codex | uninstall-pi | uninstall-all"
@@ -49,11 +51,25 @@ help:
 
 setup:
 	@echo "==> Installing dependencies (root + web)"
-	@bun install
-	@cd web && bun install
+	@bun install --frozen-lockfile
+	@cd web && bun install --frozen-lockfile
 	@echo "==> Checking tooling"
 	@$(MAKE) --no-print-directory check-deps || true
 	@echo "==> Setup complete. 'make help' lists all targets; 'make install-claude' wires up an agent."
+
+# Guard against the most common worktree mistake: running tests/daemon before
+# `make setup`. Without root node_modules the daemon can't boot and the test
+# suite fails with a cryptic "daemon did not become healthy" cascade instead of
+# a clear message. (web/node_modules is needed for `bun run web/build.ts`.)
+check-install:
+	@test -d node_modules && test -d web/node_modules || { \
+		echo "Dependencies not installed (missing node_modules)."; \
+		echo "Run 'make setup' first."; exit 1; }
+
+# Guarded test entrypoint. `bun test` still works directly; `make test` adds the
+# install precondition so a fresh/unprovisioned worktree fails fast and clearly.
+test: check-install
+	@bun test
 
 # Verify the CLI tooling the project leans on. Required tools fail the check;
 # optional ones (needed only for launch/agent features) are reported, not fatal.
