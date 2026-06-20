@@ -6,7 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 // Tailwind v4 `@import "tailwindcss/..."`, which Bun's plugin compiles but Vite
 // does not — so we add @tailwindcss/vite here to compile the same entry.
 const config: StorybookConfig = {
-  stories: ["../src/**/*.stories.@(ts|tsx)", "../src/**/*.mdx"],
+  stories: ["../src/**/*.stories.@(ts|tsx)"],
   framework: { name: "@storybook/react-vite", options: {} },
   addons: [],
   core: { disableTelemetry: true },
