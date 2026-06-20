@@ -690,8 +690,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Fill the free space in .act-filterbar (.act-filters is flex:0 0 auto) so the
+     rail has a STABLE width to fit pills into. Without grow, this bar shrank to
+     its content, the flex:1 rail then measured its own pills, and the
+     ResizeObserver fed that back into the fit count — the room-pill flicker.
+     Stable bar width + the fixed-width more button (below) compute the fit once. */
+  flex: 1;
+  min-width: 0;
   padding: 12px 22px 13px;
-  border-top: 1.5px dashed var(--ink-faint);
   background: var(--paper-2);
 }
 .act-roombar-inline {
@@ -717,7 +723,13 @@
   gap: 6px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
+  /* Clip horizontally (hide pills that don't fit) WITHOUT clipping the pills'
+     offset shadows vertically. `overflow: hidden` cut the bottom of every chip;
+     overflow-x: clip lets overflow-y stay visible (hidden would force it to auto),
+     and the clip margin gives the shadow room before the right-edge clip. */
+  overflow-x: clip;
+  overflow-y: visible;
+  overflow-clip-margin: 6px;
 }
 .act-roombar-inline .act-roombar-rail {
   justify-content: flex-end;
@@ -726,7 +738,15 @@
 .act-rf-more {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 5px;
+  /* Stable width breaks the room-filter flicker: the label text changes with the
+     hidden count ("+9 more" → "+10 more" → "all rooms"), and since the rail is
+     flex:1 beside this button, a width change here shifted the rail width, which
+     changed how many pills fit, which changed the count, which changed this
+     width again — an endless measure loop. A fixed min-width (covers any realistic
+     count) decouples the rail width from the count, so the fit is computed once. */
+  min-width: 104px;
   background: var(--paper);
   color: var(--ink);
   border: 2px dashed var(--ink);
