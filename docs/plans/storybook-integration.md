@@ -76,7 +76,7 @@ as-built record and supersedes the original phase plan where they differ.
 - **CI.** No CI pipeline exists yet, so the Vitest plugin `storybookScript`/
   `storybookUrl` (failure→story links) were skipped. When CI lands it will also
   need `bunx playwright install chromium` before `test:storybook`.
-- **Standalone Playwright E2E.** Removed as a parallel UI-flow framework.
+- **Parallel full-app E2E flow tooling.** Removed as a UI-flow framework.
   Component-composition flows live in Storybook. Live daemon/`/web` checks should
   stay narrow: production bundle boots, daemon data maps correctly, routing works,
   and SSE updates arrive. They should not duplicate Storybook's curated UI flow
@@ -420,7 +420,7 @@ Acceptance criteria:
 Tests and verification:
 
 - Manual Storybook check across the theme/skin matrix for key stories.
-- Optional Playwright screenshot smoke against Storybook URLs for:
+- Optional visual-regression smoke against Storybook URLs for:
   - desktop shell
   - compact shell
   - message row dark mode
@@ -432,7 +432,7 @@ Risks:
   highest-risk stories; rely on manual toolbar checks for the full matrix until
   visual regression is introduced.
 
-## Phase 4: Story Tests And Playwright-Aligned Quality Gates
+## Phase 4: Story Tests And Browser Quality Gates
 
 Goal: turn high-value stories into executable browser component tests while
 preserving existing daemon/integration tests.
@@ -472,8 +472,8 @@ Acceptance criteria:
 - Story tests run headlessly from the command line.
 - A failing interaction points to a specific story URL and Interaction panel
   repro.
-- Existing Playwright-heavy workflows can target Storybook URLs for isolated
-  component states instead of driving the full daemon app into every state.
+- Browser-level checks should target Storybook URLs for isolated component states
+  instead of driving the full daemon app into every state.
 - At least one tested story exists for each high-risk surface:
   - composer
   - message row

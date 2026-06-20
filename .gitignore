@@ -22,7 +22,6 @@ graphify-out/
 
 # Local UI reference captures
 docs/ui-reference/claude-design-screenshots/
-tools/ui-probe/artifacts/
 
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
