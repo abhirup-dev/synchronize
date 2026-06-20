@@ -44,6 +44,8 @@ help:
 	@echo "  daemon-relaunch  Restart the daemon, preserving state"
 	@echo "  clean-slate      Stop daemon, delete its AOE profile, wipe the runtime"
 	@echo "  dev-daemon-relaunch | dev-clean-slate   Same for the dev runtime ($(DEV_SYNC_HOME))"
+	@echo "Web UI:"
+	@echo "  verify-web       Typecheck + daemon/mobile builds + Playwright smoke (compact/medium/desktop × light/dark)"
 	@echo "Diagnostics:"
 	@echo "  doctor | inspect-daemon | inspect-peers | inspect-groups | inspect-events"
 
@@ -54,6 +56,24 @@ setup:
 	@echo "==> Checking tooling"
 	@$(MAKE) --no-print-directory check-deps || true
 	@echo "==> Setup complete. 'make help' lists all targets; 'make install-claude' wires up an agent."
+
+# Web UI regression gate (sync-imeu.1.23). Cheap-to-expensive: typecheck both
+# packages, build both asset bases (daemon /web/ + mobile /), then a headless
+# Playwright smoke over compact/medium/desktop × light/dark against deterministic
+# mock data (no daemon needed). One-time browser install: cd web && bunx playwright install chromium
+.PHONY: verify-web
+verify-web:
+	@echo "==> Web typecheck"
+	@cd web && bun run typecheck
+	@echo "==> Root typecheck"
+	@bun run typecheck
+	@echo "==> Daemon web build (/web/ asset base)"
+	@cd web && bun run build.ts
+	@echo "==> Mobile web build (/ asset base -> dist-mobile)"
+	@cd web && WEB_ASSET_BASE=/ WEB_DIST_DIR=dist-mobile bun run build.ts
+	@echo "==> UI smoke (Playwright, mock data)"
+	@cd web && bun run verify-ui
+	@echo "==> verify-web OK. Manual matrix lives in web/VERIFY.md"
 
 # Verify the CLI tooling the project leans on. Required tools fail the check;
 # optional ones (needed only for launch/agent features) are reported, not fatal.

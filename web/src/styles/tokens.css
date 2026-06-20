@@ -1,0 +1,569 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKEN CONTRACT (sync-imeu.1.22)
+
+   The single home for CSS custom properties. Two orthogonal axes:
+     • THEME  (palette)   :root[data-theme="…"]  — light, dark, rose-pine-dawn,
+                                                   kanagawa-wave, catppuccin-mocha
+     • SKIN   (aesthetic) :root[data-skin="…"]   — brutal (default), glass
+                                                   (skin-glass.css overrides these)
+
+   Components reference ROLE tokens (never raw hex). Imported BEFORE styles.css so
+   the contract is defined before any component rule consumes it. Keep token
+   DEFINITIONS here; their application (element/component rules) lives in styles.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Light theme (default) — warm cream paper, ink black */
+  --paper: #F4EFE3;
+  --paper-2: #ECE6D2;
+  --paper-3: #E0D9C0;
+  --ink: #111111;
+  --ink-soft: #4A4636;
+  --ink-faint: #8A8268;
+  /* `--rule` is the color used for borders and offset shadows. In light mode
+     it's the same as --ink (full brutalist contrast). In dark mode it gets
+     softened so the heavy black outlines/shadows don't fight the text — see
+     research note in :root[data-theme="dark"] below. */
+  --rule: var(--ink);
+  --line: 3px solid var(--rule);
+  --line-2: 2px solid var(--rule);
+  --shadow: 4px 4px 0 var(--rule);
+  --shadow-sm: 2px 2px 0 var(--rule);
+  --shadow-lg: 6px 6px 0 var(--rule);
+  --shadow-hover: 3px 3px 0 var(--rule);
+  --font-display: "Archivo Black", sans-serif;
+  --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --text-8: 8px;
+  --text-8-5: 8.5px;
+  --text-9: 9px;
+  --text-9-5: 9.5px;
+  --text-10: 10px;
+  --text-10-5: 10.5px;
+  --text-11: 11px;
+  --text-11-5: 11.5px;
+  --text-12: 12px;
+  --text-12-5: 12.5px;
+  --text-13: 13px;
+  --text-13-5: 13.5px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-17: 17px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-24: 24px;
+  --text-26: 26px;
+  --text-28: 28px;
+  --text-scale-kbd: 0.85em;
+  --text-scale-code-inline: 0.88em;
+  --text-scale-mention-inline: 0.92em;
+  --tracking-pixel-tight: -1px;
+  --tracking-pixel: 1px;
+  --tracking-tight: -0.01em;
+  --tracking-none: 0;
+  --tracking-xs: 0.02em;
+  --tracking-sm: 0.04em;
+  --tracking-md: 0.06em;
+  --tracking-lg: 0.08em;
+  --radius-none: 0;
+  --radius-hair: 1px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 10px;
+  --radius-pill: 999px;
+  --radius-panel-top: 6px 6px 0 0;
+  --radius-panel-bottom: 0 0 6px 6px;
+  --line-bold: 3px solid var(--rule);
+  --line-md: 2.5px solid var(--rule);
+  --line-sm: 2px solid var(--rule);
+  --line-xs: 1.5px solid var(--rule);
+  --line-xxs: 1.25px solid var(--rule);
+  --line-hair: 1px solid var(--rule);
+  --line-xs-ink: 1.5px solid var(--ink);
+  --line-xs-faint: 1.5px solid var(--ink-faint);
+  --line-hair-faint: 1px solid var(--ink-faint);
+  --line-none: none;
+  --line-transparent: 2px solid transparent;
+  --line-md-transparent: 2.5px solid transparent;
+  --line-dashed-md: 2.5px dashed var(--ink);
+  --line-dashed-sm: 2px dashed var(--ink);
+  --line-dashed-xs: 1.5px dashed var(--ink);
+  --line-dashed-faint: 1.5px dashed var(--ink-faint);
+  --line-rule-dashed-sm: 2px dashed var(--rule);
+  --line-rule-dashed-xs: 1.5px dashed var(--rule);
+  --shadow-none: none;
+  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
+  --shadow-xs: 1px 1px 0 var(--rule);
+  --shadow-chip: 1.5px 1.5px 0 var(--rule);
+  --shadow-md: 4px 4px 0 var(--rule);
+  --shadow-hover-sm: 2.5px 2.5px 0 var(--rule);
+  --shadow-accent-pink: 2px 2px 0 var(--pink);
+  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--rule);
+  --shadow-accent-inset: inset 0 -2px 0 var(--accent);
+  --shadow-tab-active: inset 0 -4px 0 var(--yellow);
+  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
+  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
+  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
+  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 2px;
+  --message-card-border: var(--line-2);
+  --message-card-border-color: var(--rule);
+  --message-card-shadow-color: var(--rule);
+  --space-0: 0;
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-3: 3px;
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-22: 22px;
+  --space-24: 24px;
+  --space-30: 30px;
+  --space-38: 38px;
+  --space-40: 40px;
+  --space-50: 50px;
+  --space-56: 56px;
+  --space-row-gap: var(--space-14);
+  --space-row-gap-compact: var(--space-10);
+  --space-bubble-pad: 12px 16px;
+  --space-thread-bubble-pad: 7px 11px;
+  --space-chip-pad-xs: 1px 5px;
+  --space-chip-pad-sm: 1px 6px;
+  --space-chip-pad-md: 2px 7px;
+  --space-author-chip-pad: 3px 9px;
+  --space-thread-author-chip-pad: 2px 8px;
+  --space-sticker-pad: 4px 10px;
+  --space-button-pad-sm: 4px 8px;
+  --space-button-pad-md: 8px 12px;
+  --density-cozy-pad: 16px 20px 14px;
+  --density-compact-pad: 10px 16px 12px;
+  --z-context-menu: 2000;
+  --z-agent-color-picker: 2100;
+  --z-local-floor: 0;
+  --z-local-base: 1;
+  --z-local-content: 2;
+  --z-local-hover: 4;
+  --z-local-control: 5;
+  --z-scroll-controls: 20;
+  --z-mention-pop: 30;
+  --z-floating-control: 1000;
+  --z-mention-overlay: 1500;
+  --z-toast: 1800;
+  --z-modal: 2200;
+  --yellow: #FFD23F;
+  --pink: #FF5DA2;
+  --blue: #4D7CFE;
+  --lime: #7BE389;
+  --tangerine: #FF8A3D;
+  --lilac: #B49BFF;
+  --teal: #2EC4B6;
+  --red: #F45B69;
+  --muted: #BFB9A8;
+  --grain-alpha: 0.04;
+  --on-ink: var(--paper);
+  --on-accent: #111111;
+  --you-bg: #111111;
+  --you-fg: #F4EFE3;
+  --bubble: #ECE6D2;
+  --code-bg: #1B1815;
+  --code-fg: #F4EFE3;
+  --code-inline-bg: var(--paper-3);
+  --code-inline-fg: var(--ink);
+  --code-inline-border: var(--line-none);
+  --strong-fg: var(--ink);
+  --strong-weight: 700;
+}
+
+/* Dark theme — warm coffee palette, off-white ink, slightly desaturated accents.
+   Research notes (Atlassian elevation, Material 3 tonal elevation, Muz.li dark-mode
+   guide, accessibilitychecker.org on halation):
+     - Dark mode communicates elevation via SURFACE LIGHTNESS, not via hard offset
+       shadows. A cream shadow on a dark surface reads as a glowing block, not depth.
+     - Heavy ink-color borders (3 px+) in dark mode produce a "billboard" effect:
+       they out-shout the text. Halve border weights, soften their color to ~45%
+       of the text ink — they still delineate but stop competing.
+     - Body text bumped from 400 → 500 weight; thin strokes "halate" (appear to
+       glow/blur) on dark backgrounds, especially for users with astigmatism. A
+       slightly heavier weight closes the perceptual gap without changing the
+       typeface character. */
+/* === Skin contract — semantic role tokens =================================
+   The aesthetic-switching layer. Components migrated to the new system consume
+   these ROLE tokens (never the primitives above); a future skin (e.g. a
+   minimal/modern look) overrides only this block under its own
+   :root[data-skin="…"] selector. Roles reference primitives via var(), so
+   every data-theme variant flows through unchanged. App.tsx sets data-skin
+   on <html> next to data-theme. */
+:root,
+:root[data-skin="brutal"] {
+  /* surfaces & foreground */
+  --surface: var(--paper);
+  --surface-raised: var(--paper-2);
+  --surface-sunken: var(--paper-3);
+  --fg: var(--ink);
+  --fg-soft: var(--ink-soft);
+  --fg-faint: var(--ink-faint);
+
+  /* cards: message bubbles, panels, list tiles */
+  --card-border: var(--line-2);
+  --card-shadow: var(--shadow-sm);
+  --card-radius: var(--radius-lg);
+
+  /* controls: buttons, inputs, chips, tabs */
+  --control-border: var(--line-sm);
+  --control-shadow: var(--shadow-chip);
+  --control-shadow-hover: var(--shadow-hover-sm);
+  --control-radius: var(--radius-md);
+
+  /* overlays: menus, dialogs, popovers, toasts */
+  --overlay-border: var(--line);
+  --overlay-shadow: var(--shadow-lg);
+  --overlay-radius: var(--radius-lg);
+
+  /* keyboard focus */
+  --focus-ring: 0 0 0 2px var(--pink);
+}
+
+:root[data-theme="dark"] {
+  --paper: #1B1815;
+  --paper-2: #25221D;     /* +6% L step — surface ladder does the elevation work */
+  --paper-3: #312D27;     /* +12% L step */
+  --ink: #ECE3CD;
+  --ink-soft: #B5A988;
+  --ink-faint: #756B54;
+  --on-ink: #1B1815;
+  /* Borders + shadows use a softened ink (~45% of full ink luminance) so they
+     read as quiet rules rather than dominant chrome. Text still uses --ink. */
+  --rule: rgba(236, 227, 205, 0.42);
+  --line: 1.5px solid var(--rule);
+  --line-2: 1px solid var(--rule);
+  --shadow: 2px 2px 0 var(--rule);
+  --shadow-sm: 1px 1px 0 var(--rule);
+  --shadow-lg: 3px 3px 0 var(--rule);
+  --shadow-hover: 2px 2px 0 var(--rule);
+  --font-display: "Archivo Black", sans-serif;
+  --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --text-8: 8px;
+  --text-8-5: 8.5px;
+  --text-9: 9px;
+  --text-9-5: 9.5px;
+  --text-10: 10px;
+  --text-10-5: 10.5px;
+  --text-11: 11px;
+  --text-11-5: 11.5px;
+  --text-12: 12px;
+  --text-12-5: 12.5px;
+  --text-13: 13px;
+  --text-13-5: 13.5px;
+  --text-14: 14px;
+  --text-15: 15px;
+  --text-16: 16px;
+  --text-17: 17px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-24: 24px;
+  --text-26: 26px;
+  --text-28: 28px;
+  --tracking-pixel-tight: -1px;
+  --tracking-pixel: 1px;
+  --tracking-tight: -0.01em;
+  --tracking-none: 0;
+  --tracking-xs: 0.02em;
+  --tracking-sm: 0.04em;
+  --tracking-md: 0.06em;
+  --tracking-lg: 0.08em;
+  --radius-none: 0;
+  --radius-hair: 1px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 10px;
+  --radius-pill: 999px;
+  --radius-panel-top: 6px 6px 0 0;
+  --radius-panel-bottom: 0 0 6px 6px;
+  --line-bold: 3px solid var(--rule);
+  --line-md: 2.5px solid var(--rule);
+  --line-sm: 2px solid var(--rule);
+  --line-xs: 1.5px solid var(--rule);
+  --line-xxs: 1.25px solid var(--rule);
+  --line-hair: 1px solid var(--rule);
+  --line-xs-ink: 1.5px solid var(--ink);
+  --line-xs-faint: 1.5px solid var(--ink-faint);
+  --line-hair-faint: 1px solid var(--ink-faint);
+  --line-none: none;
+  --line-transparent: 2px solid transparent;
+  --line-md-transparent: 2.5px solid transparent;
+  --line-dashed-md: 2.5px dashed var(--ink);
+  --line-dashed-sm: 2px dashed var(--ink);
+  --line-dashed-xs: 1.5px dashed var(--ink);
+  --line-dashed-faint: 1.5px dashed var(--ink-faint);
+  --line-rule-dashed-sm: 2px dashed var(--rule);
+  --line-rule-dashed-xs: 1.5px dashed var(--rule);
+  --shadow-none: none;
+  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
+  --shadow-xs: 1px 1px 0 var(--rule);
+  --shadow-chip: 1.5px 1.5px 0 var(--rule);
+  --shadow-md: 4px 4px 0 var(--rule);
+  --shadow-hover-sm: 2.5px 2.5px 0 var(--rule);
+  --shadow-accent-pink: 2px 2px 0 var(--pink);
+  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--rule);
+  --shadow-accent-inset: inset 0 -2px 0 var(--accent);
+  --shadow-tab-active: inset 0 -4px 0 var(--yellow);
+  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
+  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
+  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
+  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 4px;
+  --space-0: 0;
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-3: 3px;
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-22: 22px;
+  --space-24: 24px;
+  --space-30: 30px;
+  --space-38: 38px;
+  --space-40: 40px;
+  --space-50: 50px;
+  --space-56: 56px;
+  --space-row-gap: var(--space-14);
+  --space-row-gap-compact: var(--space-10);
+  --space-bubble-pad: 12px 16px;
+  --space-thread-bubble-pad: 7px 11px;
+  --space-chip-pad-xs: 1px 5px;
+  --space-chip-pad-sm: 1px 6px;
+  --space-chip-pad-md: 2px 7px;
+  --space-author-chip-pad: 3px 9px;
+  --space-thread-author-chip-pad: 2px 8px;
+  --space-sticker-pad: 4px 10px;
+  --space-button-pad-sm: 4px 8px;
+  --space-button-pad-md: 8px 12px;
+  --density-cozy-pad: 16px 20px 14px;
+  --density-compact-pad: 10px 16px 12px;
+  --yellow: #D9B53C;
+  --pink: #D4669A;
+  --blue: #6E90DC;
+  --lime: #82C383;
+  --tangerine: #D17B40;
+  --lilac: #A695DC;
+  --teal: #4CA89C;
+  --red: #D45F69;
+  --muted: #3A352D;
+  --grain-alpha: 0.05;
+  --on-accent: #1B1815;
+  --you-bg: #3A352D;
+  --you-fg: #ECE3CD;
+  --bubble: #23201C;
+  --code-bg: #181512;
+  --code-fg: #F2E8D0;
+  --code-inline-bg: #332E27;
+  --code-inline-fg: #F2E8D0;
+  --code-inline-border: 1px solid rgba(236, 227, 205, 0.28);
+  --strong-fg: #F2E8D0;
+  --strong-weight: 800;
+}
+
+:root[data-theme="rose-pine-dawn"] {
+  --paper: #FAF4ED;
+  --paper-2: #FFF8F0;
+  --paper-3: #F2E9DE;
+  --ink: #575279;
+  --ink-soft: #797593;
+  --ink-faint: #9893A5;
+  --rule: #575279;
+  --yellow: #EA9D34;
+  --pink: #D7827E;
+  --blue: #286983;
+  --lime: #56949F;
+  --tangerine: #D7827E;
+  --lilac: #907AA9;
+  --teal: #56949F;
+  --red: #B4637A;
+  --muted: #DFD8D1;
+  --grain-alpha: 0.03;
+  --on-ink: #FAF4ED;
+  --on-accent: #575279;
+  --you-bg: #575279;
+  --you-fg: #FAF4ED;
+  --bubble: #FFF8F0;
+  --code-bg: #2A273F;
+  --code-fg: #F2E9DE;
+}
+
+:root[data-theme="kanagawa-wave"] {
+  --paper: #16161D;
+  --paper-2: #1F1F28;
+  --paper-3: #2A2A37;
+  --ink: #D4CEB0;
+  --ink-soft: #B6AD86;
+  --ink-faint: #727169;
+  --on-ink: #16161D;
+  --rule: rgba(212, 206, 176, 0.36);
+  --line: 1.5px solid var(--rule);
+  --line-2: 1px solid var(--rule);
+  --line-bold: 2px solid var(--rule);
+  --line-md: 1.5px solid var(--rule);
+  --line-sm: 1px solid var(--rule);
+  --line-xs: 1px solid rgba(212, 206, 176, 0.28);
+  --line-xxs: 1px solid rgba(212, 206, 176, 0.22);
+  --line-hair: 1px solid rgba(212, 206, 176, 0.18);
+  --line-xs-ink: 1px solid rgba(212, 206, 176, 0.5);
+  --line-xs-faint: 1px solid rgba(114, 113, 105, 0.6);
+  --line-hair-faint: 1px solid rgba(114, 113, 105, 0.42);
+  --line-transparent: 1px solid transparent;
+  --line-md-transparent: 1px solid transparent;
+  --line-dashed-md: 1px dashed rgba(212, 206, 176, 0.44);
+  --line-dashed-sm: 1px dashed rgba(212, 206, 176, 0.36);
+  --line-dashed-xs: 1px dashed rgba(212, 206, 176, 0.3);
+  --line-dashed-faint: 1px dashed rgba(114, 113, 105, 0.52);
+  --line-rule-dashed-sm: 1px dashed var(--rule);
+  --line-rule-dashed-xs: 1px dashed var(--rule);
+  --shadow: 2px 2px 0 var(--rule);
+  --shadow-sm: 1px 1px 0 var(--rule);
+  --shadow-lg: 3px 3px 0 var(--rule);
+  --shadow-hover: 2px 2px 0 var(--rule);
+  --shadow-md: 3px 3px 0 var(--rule);
+  --shadow-hover-sm: 1.5px 1.5px 0 var(--rule);
+  --shadow-chip: 1px 1px 0 var(--rule);
+  --shadow-xs: 1px 1px 0 var(--rule);
+  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
+  --shadow-accent-pink: 2px 2px 0 var(--pink);
+  --shadow-accent-pink-strong: 2px 2px 0 var(--pink), 3px 3px 0 var(--rule);
+  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
+  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
+  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
+  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 4px;
+  --message-card-border: var(--line-2);
+  --message-card-border-color: var(--rule);
+  --message-card-shadow-color: var(--rule);
+  --yellow: #D4B16F;
+  --pink: #C06F8A;
+  --blue: #718BC4;
+  --lime: #849F63;
+  --tangerine: #D98B5F;
+  --lilac: #8570A4;
+  --teal: #5E857B;
+  --red: #CF5F6C;
+  --muted: #363646;
+  --grain-alpha: 0.045;
+  --on-accent: #16161D;
+  --you-bg: #3A3A46;
+  --you-fg: #D4CEB0;
+  --bubble: #2A2A37;
+  --message-card-border: 1.5px solid var(--message-card-border-color);
+  --message-card-border-color: #4F4F5F;
+  --message-card-shadow-color: #05060C;
+  --code-bg: #1B1B24;
+  --code-fg: #E4DCBE;
+  --code-inline-bg: #383847;
+  --code-inline-fg: #E8E0C2;
+  --code-inline-border: 1px solid rgba(212, 206, 176, 0.28);
+  --strong-fg: #E8E0C2;
+  --strong-weight: 800;
+}
+
+:root[data-theme="catppuccin-mocha"] {
+  --paper: #1E1E2E;
+  --paper-2: #181825;
+  --paper-3: #313244;
+  --ink: #CDD6F4;
+  --ink-soft: #BAC2DE;
+  --ink-faint: #7F849C;
+  --on-ink: #1E1E2E;
+  --rule: rgba(205, 214, 244, 0.38);
+  --line: 1.5px solid var(--rule);
+  --line-2: 1px solid var(--rule);
+  --line-bold: 2px solid var(--rule);
+  --line-md: 1.5px solid var(--rule);
+  --line-sm: 1px solid var(--rule);
+  --line-xs: 1px solid rgba(205, 214, 244, 0.3);
+  --line-xxs: 1px solid rgba(205, 214, 244, 0.24);
+  --line-hair: 1px solid rgba(205, 214, 244, 0.18);
+  --line-xs-ink: 1px solid rgba(205, 214, 244, 0.56);
+  --line-xs-faint: 1px solid rgba(127, 132, 156, 0.62);
+  --line-hair-faint: 1px solid rgba(127, 132, 156, 0.44);
+  --line-transparent: 1px solid transparent;
+  --line-md-transparent: 1px solid transparent;
+  --line-dashed-md: 1px dashed rgba(205, 214, 244, 0.48);
+  --line-dashed-sm: 1px dashed rgba(205, 214, 244, 0.4);
+  --line-dashed-xs: 1px dashed rgba(205, 214, 244, 0.34);
+  --line-dashed-faint: 1px dashed rgba(127, 132, 156, 0.52);
+  --line-rule-dashed-sm: 1px dashed var(--rule);
+  --line-rule-dashed-xs: 1px dashed var(--rule);
+  --shadow: 2px 2px 0 var(--rule);
+  --shadow-sm: 1px 1px 0 var(--rule);
+  --shadow-lg: 3px 3px 0 var(--rule);
+  --shadow-hover: 2px 2px 0 var(--rule);
+  --shadow-md: 3px 3px 0 var(--rule);
+  --shadow-hover-sm: 1.5px 1.5px 0 var(--rule);
+  --shadow-chip: 1px 1px 0 var(--rule);
+  --shadow-xs: 1px 1px 0 var(--rule);
+  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
+  --shadow-accent-pink: 2px 2px 0 var(--pink);
+  --shadow-accent-pink-strong: 2px 2px 0 var(--pink), 3px 3px 0 var(--rule);
+  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
+  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
+  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
+  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
+  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
+  --message-card-shadow-offset: 4px;
+  --yellow: #F9E2AF;
+  --pink: #F5C2E7;
+  --blue: #89B4FA;
+  --lime: #A6E3A1;
+  --tangerine: #FAB387;
+  --lilac: #CBA6F7;
+  --teal: #94E2D5;
+  --red: #F38BA8;
+  --muted: #313244;
+  --grain-alpha: 0.04;
+  --on-accent: #1E1E2E;
+  --you-bg: #313244;
+  --you-fg: #CDD6F4;
+  --bubble: #181825;
+  --code-bg: #202033;
+  --code-fg: #E6E9FF;
+  --code-inline-bg: #313244;
+  --code-inline-fg: #E6E9FF;
+  --code-inline-border: 1px solid rgba(205, 214, 244, 0.28);
+  --strong-fg: #E6E9FF;
+  --strong-weight: 800;
+}
