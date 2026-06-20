@@ -19,6 +19,22 @@ cd web && bun run storybook:build  # static build (CI / verification)
 The catalog, conventions, and DataSource/provider contract are documented inside
 Storybook under **Overview → Introduction** and **Overview → Authoring Stories**.
 
+## Test split
+
+Each layer owns a distinct slice of verification — don't duplicate daemon truth
+into Storybook:
+
+| Command | Covers |
+| --- | --- |
+| `bun test` (repo root) | daemon, CLI, data adapter, `/web/state` + `/web/events`, route precedence, `DaemonDataSource` mapping, archive/resume, attachment staging — the API/daemon truth source |
+| `cd web && bun run typecheck` | web type safety (incl. story/fixture prop shapes) |
+| `cd web && bun run storybook:build` | stories/docs compile |
+| `cd web && bun run test:storybook` | every story renders headlessly (Playwright Chromium) + `play` interaction tests; failures point to the story |
+
+Accessibility checks (`@storybook/addon-a11y`) run alongside the story tests and
+surface violations in the Storybook **Accessibility** panel; they are
+non-blocking by default.
+
 ## MCP (preview)
 
 While `bun run storybook` is running, an MCP server is exposed at
@@ -32,9 +48,9 @@ While `bun run storybook` is running, an MCP server is exposed at
   it is the source of truth for framework imports and story/test patterns),
   `preview-stories` (call **after** changing a component or story; include every
   returned preview URL in your response so the human can open it).
-- **test** — `run-story-tests`: **not available yet.** It activates once the
-  Storybook test runner lands (`sync-i24s.3`). Until then, verify interactively
-  in the dev server and rely on `bun run typecheck` + `bun run storybook:build`.
+- **test** — `run-story-tests`: runs the story tests (render smoke + `play`
+  interaction tests) headlessly. Backed by the same runner as
+  `cd web && bun run test:storybook`. Call it after changing a component or story.
 
 Register the server (project scope) for this repo. Either run:
 

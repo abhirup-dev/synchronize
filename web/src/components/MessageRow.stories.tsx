@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { userEvent, expect, fn, screen, within } from "storybook/test";
 import { MessageRow } from "./MessageRow.tsx";
 import { AGENTS, MESSAGES } from "../data/seed.ts";
 
@@ -26,4 +27,17 @@ export const RichWithReactions: Story = {
 
 export const GroupedWithPrev: Story = {
   args: { message: msgs[2]!, author: authorOf(msgs[2]!.authorId), groupedWithPrev: true },
+};
+
+// Interaction test: open the quick-reaction picker and pick an emoji, asserting
+// the onReact callback fires with (messageId, emoji). msgs[0] has no existing
+// reactions, so the picker's 👍 is the only one in the DOM.
+export const ReactWithPicker: Story = {
+  args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId), onReact: fn() },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "add reaction" }));
+    await userEvent.click(await screen.findByRole("button", { name: "👍" }));
+    await expect(args.onReact).toHaveBeenCalledWith(msgs[0]!.id, "👍");
+  },
 };

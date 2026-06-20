@@ -11,7 +11,7 @@ const config: StorybookConfig = {
   // addon-mcp (preview) exposes a /mcp endpoint while `storybook dev` runs, so
   // Claude/Codex can query the component glossary and docs. The docs/dev toolsets
   // work today; the test toolset (run-story-tests) lights up with sync-i24s.3.
-  addons: ["@storybook/addon-docs", "@storybook/addon-mcp"],
+  addons: ["@storybook/addon-docs", "@storybook/addon-mcp", "@storybook/addon-vitest", "@storybook/addon-a11y"],
   core: { disableTelemetry: true },
   viteFinal: async (cfg) => {
     cfg.plugins = cfg.plugins ?? [];
