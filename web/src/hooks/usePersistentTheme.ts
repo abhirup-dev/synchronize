@@ -4,11 +4,19 @@ import { chatBackgroundById } from "../data/chatBackgrounds.ts";
 // Theme = palette; skin = aesthetic system (border/shadow/radius language),
 // orthogonal axes. Both persist to localStorage as plain strings and are
 // applied as `data-theme` / `data-skin` on <html> so CSS owns the cascade.
+// Canonical dark theme is Kanagawa Wave (listed first so it is the dark family's
+// default/representative everywhere); plain "dark" remains a cycle option. Keep
+// the DEFAULT_* constants the single source for "which theme does each family
+// open in" — App boot, the family toggle, and the Storybook theme matrix all read
+// them so the default can never drift per call site.
 const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
+const DARK_THEMES = ["kanagawa-wave", "dark", "catppuccin-mocha"] as const;
 const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 export type ThemeName = (typeof ALL_THEMES)[number];
+
+export const DEFAULT_LIGHT_THEME: ThemeName = "light";
+export const DEFAULT_DARK_THEME: ThemeName = "kanagawa-wave";
 
 function isThemeName(value: string | null): value is ThemeName {
   return ALL_THEMES.includes(value as ThemeName);
@@ -25,7 +33,33 @@ export function cycleTheme(theme: ThemeName): ThemeName {
 }
 
 export function toggleThemeFamily(theme: ThemeName): ThemeName {
-  return themeFamily(theme) === "light" ? "kanagawa-wave" : "light";
+  return themeFamily(theme) === "light" ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
+}
+
+// Theme capability contract — the theme analogue of shellLayout(mode). Anything
+// that needs to BEHAVE differently per theme reads a named trait here instead of
+// re-deriving it with `themeFamily(t) === "light"` / `t === "dark"` checks strewn
+// across the UI. The theme itself is CARRIED on <html data-theme> (set identically
+// by the app's usePersistentTheme effect and by Storybook's preview decorator), so
+// CSS and these traits stay in lockstep across both surfaces.
+export interface ThemeTraits {
+  name: ThemeName;
+  family: "light" | "dark";
+  isLight: boolean;
+  isDark: boolean;
+  /** Glyph for the light/dark family toggle (the family you switch TO). */
+  toggleGlyph: string;
+}
+
+export function themeTraits(theme: ThemeName): ThemeTraits {
+  const isLight = themeFamily(theme) === "light";
+  return {
+    name: theme,
+    family: isLight ? "light" : "dark",
+    isLight,
+    isDark: !isLight,
+    toggleGlyph: isLight ? "🌙" : "☀️",
+  };
 }
 
 export interface PersistentTheme {
@@ -45,7 +79,7 @@ export interface PersistentTheme {
 export function usePersistentTheme(): PersistentTheme {
   const [theme, setTheme] = useState<ThemeName>(() => {
     const stored = localStorage.getItem("synchronize.theme");
-    return isThemeName(stored) ? stored : "kanagawa-wave";
+    return isThemeName(stored) ? stored : DEFAULT_DARK_THEME;
   });
   useEffect(() => {
     document.documentElement.dataset["theme"] = theme;

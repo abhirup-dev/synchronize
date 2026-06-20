@@ -15,11 +15,14 @@ export const globalTypes = {
       title: "Theme",
       icon: "paintbrush",
       dynamicTitle: true,
+      // Canonical pair first: Light (default light) + Kanagawa Wave (default
+      // dark, see DEFAULT_DARK_THEME in usePersistentTheme). The rest are extra
+      // palettes that ride the same token contract.
       items: [
         { value: "light", title: "Light" },
-        { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
-        { value: "dark", title: "Dark" },
         { value: "kanagawa-wave", title: "Kanagawa Wave" },
+        { value: "dark", title: "Dark" },
+        { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
         { value: "catppuccin-mocha", title: "Catppuccin Mocha" },
       ],
     },

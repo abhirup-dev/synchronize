@@ -51,8 +51,10 @@ export function IconButton({
         "[transition:background_140ms_ease,color_140ms_ease,transform_120ms_ease]",
         "focus-visible:[box-shadow:0_0_0_2px_var(--yellow)] active:enabled:scale-90",
         "disabled:opacity-40 disabled:cursor-default",
-        active && "bg-yellow text-ink",
         variantClass,
+        // After variantClass so the active fill wins the twMerge bg/text conflict
+        // — otherwise solid's bg-paper-2 overrides it and active looks inert.
+        active && "bg-yellow text-ink",
         className,
       )}
       style={{ width: size, height: size }}

@@ -6,6 +6,16 @@ import { createContext, useContext } from "react";
 // prop-drilling. Desktop/medium behaviour is unchanged when not consumed.
 export type ShellMode = "desktop" | "medium" | "compact";
 
+// Breakpoints: compact <780px, medium <1180px, desktop otherwise. Single source
+// of truth — App.tsx derives the live shell mode from this, and the Storybook
+// shell harness uses the SAME function so a story at a given viewport width
+// mounts in exactly the mode the app would pick. Keep them from drifting.
+export function shellModeForWidth(width: number): ShellMode {
+  if (width < 780) return "compact";
+  if (width < 1180) return "medium";
+  return "desktop";
+}
+
 const ShellModeContext = createContext<ShellMode>("desktop");
 
 export const ShellModeProvider = ShellModeContext.Provider;

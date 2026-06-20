@@ -94,6 +94,19 @@
    RoomHeader.tsx; the :hover parity is already covered by .icon-btn:hover. The
    theme-toggle hook className stays for skin-glass.css. */
 
+/* ─── AGENTS pill (labeled icon-btn) ───────────────────────────────────────
+   The AGENTS button reuses .icon-btn for chrome (border / paper / shadow /
+   hover, incl. the glass-skin overrides) but is a label + count chip, not a
+   square glyph. .icon-btn hardcodes width:32px / padding:0, which wins over the
+   element's Tailwind w-auto on specificity and clips "AGENTS 5". This compound
+   selector (0,2,0) lets it size to its content. Convention: square glyph →
+   plain .icon-btn; labeled button → .icon-btn + a sizing modifier like this. */
+.icon-btn.room-agents-btn {
+  width: auto;
+  min-width: 0;
+  padding: 0 10px;
+}
+
 /* ─── Placeholder tab content ────────────────────────────────────────────── */
 .placeholder {
   flex: 1;
@@ -387,6 +400,10 @@
   border: var(--code-inline-border, var(--line-xs));
   padding: var(--space-chip-pad-xs);
   border-radius: var(--radius-xs);
+  /* Long inline tokens (paths, `flag=value`) must break instead of overflowing
+     the bubble at Android widths. Block code (.markdown pre code) opts back out
+     so it keeps scrolling horizontally via pre's overflow-x:auto. */
+  overflow-wrap: anywhere;
 }
 .markdown pre {
   background: var(--code-bg);
@@ -407,6 +424,7 @@
   color: inherit;
   font-size: inherit;
   line-height: inherit;
+  overflow-wrap: normal;
 }
 .markdown blockquote {
   margin: 8px 0;

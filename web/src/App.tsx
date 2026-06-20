@@ -19,17 +19,12 @@ import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
-import { ShellModeProvider, shellLayout, type ShellMode } from "./shell-mode.tsx";
+import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx";
+import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
-import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { usePersistentTheme, type ThemeName, themeFamily, themeTraits, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
-
-function shellModeForWidth(width: number): ShellMode {
-  if (width < 780) return "compact";
-  if (width < 1180) return "medium";
-  return "desktop";
-}
 
 function titleCase(value: string): string {
   return value
@@ -80,7 +75,8 @@ export function App() {
   );
 }
 
-function ConnectionError({ message }: { message: string }) {
+// Exported for Storybook (Surfaces/ConnectionError). App() is the runtime caller.
+export function ConnectionError({ message }: { message: string }) {
   const authHint = message.toLowerCase().includes("unauthorized") || message.includes("401");
   return (
     <div className="connection-error">
@@ -289,20 +285,11 @@ export function Shell() {
   }, [vim]);
 
   return (
-    <ShellModeProvider value={shellMode}>
-    <div
-      className={`app-shell shell-${shellMode}${threadParentId ? " thread-open" : ""}`}
-      data-vim-mode={vim.mode}
-      data-shell-mode={shellMode}
-    >
+    <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
       {layout.persistentSidebar && (
         <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
-      <main
-        // `relative` anchors the absolutely-positioned `.toast-stack` over the
-        // chat region (the old `.main` rule provided this). No skin/theme/JS
-        // hook on `.main`, so the class is dropped.
-        className="flex flex-col min-w-0 [border-left:var(--line)] bg-paper relative"
+      <ShellMainColumn
         style={threadParentId && layout.threadAsSplit ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
       >
         {isActivity ? (
@@ -315,7 +302,7 @@ export function Shell() {
                 tab={tab}
                 onTab={setTab}
                 theme={theme}
-                themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
+                themeIcon={themeTraits(theme).toggleGlyph}
                 onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
                 skin={skin}
                 onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
@@ -329,8 +316,8 @@ export function Shell() {
                   : {})}
               />
             )}
-            <div
-              className={`main-body${threadParentId ? " thread-open" : ""}`}
+            <ShellMainBody
+              threadOpen={!!threadParentId}
               style={
                 threadParentId
                   && layout.threadAsSplit
@@ -342,7 +329,7 @@ export function Shell() {
               }
             >
               {!pushedThreadOpen ? (
-                <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
+                <ShellChatColumn>
                   {tab === "chat" ? (
                     <ChatView
                       room={room}
@@ -360,7 +347,7 @@ export function Shell() {
                   ) : (
                     <Placeholder label="ARTIFACTS — coming in V2" />
                   )}
-                </div>
+                </ShellChatColumn>
               ) : null}
               {threadParentId ? (
                 <>
@@ -375,7 +362,7 @@ export function Shell() {
                   onAgentDoubleClick={jumpToAgentLast}
                 />
               ) : null}
-            </div>
+            </ShellMainBody>
           </>
         ) : (
           <div className="min-h-0 h-full grid place-items-center bg-paper text-ink [border-left:var(--line-2)]">
@@ -387,7 +374,7 @@ export function Shell() {
             </div>
           </div>
         )}
-      </main>
+      </ShellMainColumn>
       {communityPanelAvailable && communityOpen && (
         <div className="shell-overlay shell-overlay-community fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="chats">
           <CompactAppBar
@@ -442,6 +429,39 @@ export function Shell() {
           onClose={closeCompactSettings}
         />
       )}
+    </AppShellGrid>
+  );
+}
+
+// Exported for Storybook (Navigation/CompactAppBar) — the compact Chats/Agents
+// overlay header. Rendered inline by the overlays below; the export is story-only.
+export function CompactAppBar({
+  title,
+  detail,
+  onSettings,
+  onClose,
+}: {
+  title: string;
+  detail?: string;
+  onSettings(event: ReactMouseEvent): void;
+  onClose(): void;
+}) {
+  return (
+    <div className="compact-appbar flex-none flex items-center justify-between gap-[var(--space-12)] px-[12px] py-[8px] [border-bottom:var(--line)] bg-paper-2">
+      <div className="min-w-0 flex items-center gap-[var(--space-8)]">
+        <IconButton icon={X} label="close" size={40} iconSize={20} onClick={onClose} />
+        <div className="min-w-0 flex flex-col justify-center">
+          <div className="font-display text-[length:var(--text-16)] leading-[1.05] tracking-[var(--tracking-sm)] text-ink truncate">
+            {title}
+          </div>
+          {detail ? (
+            <div className="mt-[3px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft truncate">
+              {detail}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <IconButton icon={Settings} label="open display settings" size={40} iconSize={20} onClick={onSettings} />
     </div>
     </ShellModeProvider>
   );
@@ -557,7 +577,90 @@ function SettingsRow({ label, value, onClick }: { label: string; value: string; 
   );
 }
 
-function Placeholder({ label }: { label: string }) {
+// Exported for Storybook (Surfaces/CompactSettingsSheet) — the compact display
+// settings bottom sheet (theme / skin / chat background).
+export function CompactSettingsSheet({
+  open,
+  theme,
+  skin,
+  chatBg,
+  onToggleAppearance,
+  onCycleTheme,
+  onToggleSkin,
+  onChatBg,
+  onClose,
+}: {
+  open: boolean;
+  theme: ThemeName;
+  skin: "brutal" | "glass";
+  chatBg: string;
+  onToggleAppearance(): void;
+  onCycleTheme(): void;
+  onToggleSkin(): void;
+  onChatBg(id: string): void;
+  onClose(): void;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} ariaLabel="display settings" className="compact-settings-sheet">
+        <div className="compact-settings-head flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[12px] [border-bottom:var(--line)] bg-paper-2">
+          <div className="min-w-0">
+            <div className="font-display text-[length:var(--text-17)] leading-none tracking-[var(--tracking-sm)]">Display</div>
+            <div className="mt-[5px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft">
+              {themeFamily(theme)} · {titleCase(theme)} · {skin}
+            </div>
+          </div>
+          <button type="button" className="compact-settings-done" onClick={onClose}>Done</button>
+        </div>
+
+        <div className="compact-settings-section">
+          <SettingsRow
+            label="Appearance"
+            value={themeFamily(theme) === "light" ? "Light" : "Dark"}
+            onClick={onToggleAppearance}
+          />
+          <SettingsRow
+            label="Theme"
+            value={titleCase(theme)}
+            onClick={onCycleTheme}
+          />
+          <SettingsRow
+            label="Skin"
+            value={skin === "brutal" ? "Brutal" : "Glass"}
+            onClick={onToggleSkin}
+          />
+        </div>
+
+        <div className="compact-settings-section">
+          <div className="compact-settings-label">Chat background</div>
+          <div className="compact-settings-grid">
+            {CHAT_BACKGROUNDS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`compact-settings-choice${preset.id === chatBg ? " active" : ""}`}
+                onClick={() => onChatBg(preset.id)}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        </div>
+    </Sheet>
+  );
+}
+
+// Exported for Storybook (Primitives/SettingsRow).
+export function SettingsRow({ label, value, onClick }: { label: string; value: string; onClick(): void }) {
+  return (
+    <button type="button" className="compact-settings-row" onClick={onClick}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </button>
+  );
+}
+
+// Exported for Storybook (Surfaces/Placeholder) — unimplemented-tab stamp.
+export function Placeholder({ label }: { label: string }) {
   return (
     <div className="placeholder">
       <div className="placeholder-stamp">{label}</div>

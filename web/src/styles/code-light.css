@@ -1,0 +1,58 @@
+/* Light code-block syntax palette.
+ *
+ * The base import (highlight.js github-dark) colours tokens for a dark surface.
+ * In the default light/brutal theme code blocks now sit on a darker-cream surface
+ * (--code-bg = paper-3), so those light pastels lose contrast. Re-map the common
+ * hljs tokens to dark-on-light (github-light-ish) values, scoped to the light
+ * theme only — every dark theme keeps its dark --code-bg and the github-dark
+ * palette untouched. Loaded after github-dark in styles/css.ts so it wins.
+ *
+ * Scope covers both an unset documentElement (raw :root) and the explicit
+ * data-theme="light" the app/Storybook set. */
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown pre code.hljs {
+  color: var(--ink);
+  background: transparent;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-comment,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-keyword,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-doctag,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-built_in,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-meta {
+  color: #d73a49;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-string,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-regexp,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-symbol,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-bullet {
+  color: #032f62;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-number,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-literal,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-variable,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-template-variable,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-attr,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-attribute {
+  color: #005cc5;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-title,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-section,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-name,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-selector-id,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-selector-class {
+  color: #6f42c1;
+}
+
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-type,
+:is(:root:not([data-theme]), :root[data-theme="light"]) .markdown .hljs-class .hljs-title {
+  color: #e36209;
+}
