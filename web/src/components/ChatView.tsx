@@ -32,6 +32,8 @@ export function ChatView({
   onToggleThreadSummary,
   onOpenCommunity,
   showTimeline = true,
+  focusMessageId,
+  onFocusedMessage,
 }: {
   room: Room;
   onOpenThread?(parentId: string): void;
@@ -40,6 +42,8 @@ export function ChatView({
   onToggleThreadSummary?(): void;
   onOpenCommunity?(): void;
   showTimeline?: boolean;
+  focusMessageId?: string;
+  onFocusedMessage?(): void;
 }) {
   const messages = useMessages(room.id);
   const agents = useAgents();
@@ -187,6 +191,17 @@ export function ChatView({
     },
     [indexByMessageId, virtualizer],
   );
+
+  // Deep link / cross-room jump: scroll the virtualized list to the target and
+  // flash it once it has hydrated into `rows`. Reuses handleJumpTo (the same path
+  // the thread-summary panel uses), then signals the parent to clear the target
+  // so a later message arrival doesn't re-trigger the flash.
+  useEffect(() => {
+    if (!focusMessageId) return;
+    if (!indexByMessageId.has(focusMessageId)) return;
+    handleJumpTo(focusMessageId);
+    onFocusedMessage?.();
+  }, [focusMessageId, indexByMessageId, handleJumpTo, onFocusedMessage]);
 
   useEffect(() => {
     const last = messages.at(-1);

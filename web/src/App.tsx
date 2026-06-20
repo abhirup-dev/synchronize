@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { Settings, X } from "lucide-react";
-import type { DataSource } from "./data/types.ts";
-import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
+import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
+import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
+import { deepLinkPath, parseDeepLinkId } from "./deeplinks.ts";
 import { MockDataSource } from "./data/mock.ts";
 import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
@@ -103,10 +104,15 @@ export function Shell() {
   // Land on the first room as before; the sidebar's Activity item is the entry
   // point. Fall back to Activity only when there are no rooms yet (more useful
   // than an empty "no rooms" pane).
+  const ds = useDataSource();
   const [activeId, setActiveId] = useState<string>(rooms[0]?.id ?? ACTIVITY_ID);
   const [tab, setTab] = useState<RoomTab>("chat");
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
+  // Deep-link target waiting to be applied once its room window has hydrated, and
+  // the message id the chat/thread surface should scroll to and flash.
+  const [pendingDeepLink, setPendingDeepLink] = useState<WebDeepLinkTarget | null>(null);
+  const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
   const [shellMode, setShellMode] = useState<ShellMode>(() => shellModeForWidth(window.innerWidth));
   // Last real room visited, so the compact "Chats" tab can restore a
   // conversation when leaving the (virtual) Activity destination.
@@ -169,6 +175,32 @@ export function Shell() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // Read the URL, resolve + hydrate the target, then switch rooms. The actual
+  // focus/thread-open is deferred to the apply effect below, which waits for the
+  // hydrated messages to land. Runs on mount and on browser back/forward.
+  const loadDeepLinkFromUrl = useCallback(async () => {
+    const id = parseDeepLinkId();
+    if (!id) return;
+    try {
+      const target = await ds.resolveDeepLink(id);
+      await ds.hydrateDeepLinkTarget(target);
+      setActiveId(target.roomId);
+      setPendingDeepLink(target);
+    } catch {
+      // Unknown or unauthorized link — leave the user on the default room.
+    }
+  }, [ds]);
+
+  useEffect(() => {
+    void loadDeepLinkFromUrl();
+  }, [loadDeepLinkFromUrl]);
+
+  useEffect(() => {
+    const onPop = () => void loadDeepLinkFromUrl();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [loadDeepLinkFromUrl]);
+
   // Reset secondary state when switching rooms. NOTE: agentPanelOpen is
   // deliberately NOT reset here — the compact "Agents" tab leaves the Activity
   // feed by setting a room AND opening the roster in the same render, so
@@ -179,12 +211,34 @@ export function Shell() {
     setFocusedAgent(null);
     setThreadParentId(null);
     setThreadSummaryOpen(false);
+    setFocusMessageId(null);
   }, [activeId]);
 
   const room = rooms.find((r) => r.id === activeId) ?? rooms[0];
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
   const toast = useToast();
+
+  // Apply a pending deep link once its room is active and the target message has
+  // hydrated. Declared after the room-reset effect so, on the activeId change it
+  // triggers, the reset runs first and this re-applies on top. Waits (re-running
+  // as roomMessages arrive) until the target — or, for a thread, its parent — is
+  // present, so the focus/scroll actually lands.
+  useEffect(() => {
+    const target = pendingDeepLink;
+    if (!target || activeId !== target.roomId) return;
+    if (target.surface === "group-thread" && target.threadParentId) {
+      if (!roomMessages.some((message) => message.id === target.threadParentId)) return;
+      setThreadParentId(target.threadParentId);
+    } else if (!roomMessages.some((message) => message.id === target.focusMessageId)) {
+      return;
+    }
+    setFocusMessageId(target.focusMessageId);
+    setPendingDeepLink(null);
+    // Normalize the address bar to the canonical /web/e/:id form without adding a
+    // history entry, so a refresh re-lands on the same target.
+    window.history.replaceState(null, "", deepLinkPath(target));
+  }, [pendingDeepLink, activeId, roomMessages]);
   const threadParent = threadParentId ? roomMessages.find((message) => message.id === threadParentId) : undefined;
   const threadAuthor = threadParent && room
     ? agents.find((agent) => agent.id === threadParent.authorId)
@@ -338,6 +392,9 @@ export function Shell() {
                       threadSummaryOpen={threadSummaryOpen}
                       onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
                       showTimeline={layout.timeline}
+                      {...(!threadParentId && focusMessageId
+                        ? { focusMessageId, onFocusedMessage: () => setFocusMessageId(null) }
+                        : {})}
                       {...(communityPanelAvailable
                         ? { onOpenCommunity: openCommunity }
                         : {})}
@@ -352,7 +409,13 @@ export function Shell() {
               {threadParentId ? (
                 <>
                   {layout.threadAsSplit && <ResizeHandle width={threadWidth} onChange={setThreadWidth} />}
-                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} showHeader={!layout.threadAsSplit} />
+                  <ThreadPane
+                    room={room}
+                    parentId={threadParentId}
+                    {...(focusMessageId ? { focusMessageId, onFocused: () => setFocusMessageId(null) } : {})}
+                    onClose={() => setThreadParentId(null)}
+                    showHeader={!layout.threadAsSplit}
+                  />
                 </>
               ) : rosterPersistent ? (
                 <AgentRoster

@@ -16,11 +16,23 @@ interface ThreadPaneProps {
   room: Room;
   parentId: string;
   focusMessageId?: string;
+  onFocused?(): void;
   onClose(): void;
   showHeader?: boolean;
 }
 
-export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader = true }: ThreadPaneProps) {
+function flashMessage(id: string): void {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`msg-${id}`);
+      if (!el) return;
+      el.classList.add("flash-highlight");
+      window.setTimeout(() => el.classList.remove("flash-highlight"), 2400);
+    }),
+  );
+}
+
+export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose, showHeader = true }: ThreadPaneProps) {
   const compact = useIsCompact();
   const [parentExpanded, setParentExpanded] = useState(false);
   const messages = useMessages(room.id);
@@ -62,16 +74,24 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
   }, [replies, me.id, virtualizer]);
 
   useEffect(() => {
-    // Activity opens the pane from an arbitrary row, not always from the thread
-    // root. When the clicked row is a reply, center that reply after the
-    // virtualized list materializes so the user lands on the message they chose.
-    if (!focusMessageId || focusMessageId === parentId) return;
+    // Activity and deep links open the pane on an arbitrary row, not always the
+    // thread root. focusMessageId === parentId means "focus the root"; otherwise
+    // center the matching reply once the virtualized list materializes. Flash the
+    // landed row, then signal the parent to clear the target.
+    if (!focusMessageId) return;
+    if (focusMessageId === parentId) {
+      flashMessage(parentId);
+      onFocused?.();
+      return;
+    }
     const index = replies.findIndex((reply) => reply.id === focusMessageId);
     if (index < 0) return;
     requestAnimationFrame(() => {
       virtualizer.scrollToIndex(index, { align: "center" });
     });
-  }, [focusMessageId, parentId, replies, virtualizer]);
+    flashMessage(focusMessageId);
+    onFocused?.();
+  }, [focusMessageId, parentId, replies, virtualizer, onFocused]);
 
   if (!parent || !parentAuthor) return null;
   const parentCollapsible = compact && parent.body.length > 900;
