@@ -328,6 +328,20 @@ export interface ResumePreview {
   members: ResumePreviewMember[];
 }
 
+export type WebDeepLinkSurface = "dm" | "group-main" | "group-thread";
+
+// Resolved destination for a pasteable /web/e/:id link. Adapter-agnostic: the
+// daemon resolves it from SQLite, the mock from seed.ts, but both produce the
+// same web-space shape the Shell navigates to.
+export interface WebDeepLinkTarget {
+  roomId: string;
+  surface: WebDeepLinkSurface;
+  focusMessageId: string; // web message id to scroll to / flash ("e:123" or a mock id)
+  threadParentId: string | null; // set for group-thread, so the pane can open
+  linkId: string; // path segment for /web/e/<linkId> (numeric event id, or mock id)
+  eventId: number; // numeric event id for daemon around-window hydration (0 for mock)
+}
+
 export interface DataSource {
   // queries
   rooms(): Snapshot<Room[]>;
@@ -371,6 +385,12 @@ export interface DataSource {
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */
   setAgentColor(agentId: string, hex: string | null): void;
+
+  // deep links — resolve a /web/e/:id event id into a navigable target, then
+  // hydrate enough room context for the target to render even if it is older
+  // than the latest window. See {@link WebDeepLinkTarget}.
+  resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget>;
+  hydrateDeepLinkTarget(target: WebDeepLinkTarget): Promise<void>;
 
   // lifecycle
   connect(): Promise<void>;
