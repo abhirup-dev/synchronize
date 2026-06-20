@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { within, userEvent, expect } from "storybook/test";
+import { within, expect } from "storybook/test";
 import { useContextMenu, type MenuEntry } from "./ContextMenu.tsx";
 import { AGENTS } from "../data/seed.ts";
 
@@ -15,11 +15,11 @@ const TARGET_STYLE = {
   width: 280,
   height: 120,
   border: "var(--line-md)",
-  borderRadius: "var(--radius-lg, 12px)",
-  background: "var(--paper-2, #1a1a1a)",
-  color: "var(--ink, #eee)",
-  fontFamily: "var(--font-mono, monospace)",
-  fontSize: "var(--text-13, 13px)",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--paper-2)",
+  color: "var(--ink)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--text-13)",
   cursor: "context-menu",
   userSelect: "none",
 } as const;
@@ -60,7 +60,18 @@ export const MessageActions: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const target = canvas.getByText("Right-click me");
-    await userEvent.pointer({ keys: "[MouseRight]", target });
+    // Anchor at the target's real centre. The menu positions off the event's
+    // clientX/clientY (as a real right-click carries); a bare synthetic pointer
+    // can leave those at 0 and open the menu in the viewport corner.
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.round(rect.left + rect.width / 2),
+        clientY: Math.round(rect.top + rect.height / 2),
+      }),
+    );
     // Popup renders in a portal — query the whole document, not just the canvas.
     const menu = within(document.body);
     await expect(await menu.findByText("Reply in thread")).toBeInTheDocument();

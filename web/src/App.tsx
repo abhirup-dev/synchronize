@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { Settings, X } from "lucide-react";
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { MockDataSource } from "./data/mock.ts";
-import { chatBackgroundById } from "./data/chatBackgrounds.ts";
+import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
@@ -13,40 +14,24 @@ import { ContextMenuProvider } from "./components/ContextMenu.tsx";
 import { ThreadPane } from "./components/ThreadPane.tsx";
 import { ResizeHandle } from "./components/ResizeHandle.tsx";
 import { ActivityView } from "./components/ActivityView.tsx";
+import { BottomNav } from "./components/BottomNav.tsx";
 import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
+import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx";
+import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
+import { IconButton } from "./components/IconButton.tsx";
+import { Sheet } from "./ui/Sheet.tsx";
+import { usePersistentTheme, type ThemeName, themeFamily, themeTraits, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { useShellNavigation } from "./hooks/useShellNavigation.ts";
 
-const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-const DARK_THEMES = ["dark", "kanagawa-wave", "catppuccin-mocha"] as const;
-const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
-
-type ThemeName = (typeof ALL_THEMES)[number];
-type ShellMode = "desktop" | "medium" | "compact";
-
-function shellModeForWidth(width: number): ShellMode {
-  if (width < 780) return "compact";
-  if (width < 1180) return "medium";
-  return "desktop";
-}
-
-function isThemeName(value: string | null): value is ThemeName {
-  return ALL_THEMES.includes(value as ThemeName);
-}
-
-function themeFamily(theme: ThemeName): "light" | "dark" {
-  return LIGHT_THEMES.includes(theme as (typeof LIGHT_THEMES)[number]) ? "light" : "dark";
-}
-
-function cycleTheme(theme: ThemeName): ThemeName {
-  const family = themeFamily(theme) === "light" ? LIGHT_THEMES : DARK_THEMES;
-  const index = (family as readonly ThemeName[]).indexOf(theme);
-  return family[(index + 1) % family.length] as ThemeName;
-}
-
-function toggleThemeFamily(theme: ThemeName): ThemeName {
-  return themeFamily(theme) === "light" ? "kanagawa-wave" : "light";
+function titleCase(value: string): string {
+  return value
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function pickDataSource(): DataSource {
@@ -90,7 +75,8 @@ export function App() {
   );
 }
 
-function ConnectionError({ message }: { message: string }) {
+// Exported for Storybook (Surfaces/ConnectionError). App() is the runtime caller.
+export function ConnectionError({ message }: { message: string }) {
   const authHint = message.toLowerCase().includes("unauthorized") || message.includes("401");
   return (
     <div className="connection-error">
@@ -122,9 +108,9 @@ export function Shell() {
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
   const [shellMode, setShellMode] = useState<ShellMode>(() => shellModeForWidth(window.innerWidth));
-  const [communityOpen, setCommunityOpen] = useState(false);
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
-  const overlayRestoreRef = useRef<HTMLElement | null>(null);
+  // Last real room visited, so the compact "Chats" tab can restore a
+  // conversation when leaving the (virtual) Activity destination.
+  const lastRoomIdRef = useRef<string>(rooms[0]?.id ?? "");
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const [threadWidth, setThreadWidth] = useState<number>(() => {
     const stored = Number(localStorage.getItem("synchronize.threadWidth"));
@@ -133,12 +119,26 @@ export function Shell() {
   useEffect(() => {
     localStorage.setItem("synchronize.threadWidth", String(threadWidth));
   }, [threadWidth]);
-  const [theme, setTheme] = useState<ThemeName>(() => {
-    const stored = localStorage.getItem("synchronize.theme");
-    return isThemeName(stored) ? stored : "kanagawa-wave";
-  });
+  const { theme, setTheme, skin, setSkin, chatBg, setChatBg } = usePersistentTheme();
 
   const isActivity = activeId === ACTIVITY_ID;
+  if (!isActivity && activeId) lastRoomIdRef.current = activeId;
+
+  const {
+    communityOpen,
+    agentPanelOpen,
+    compactSettingsOpen,
+    closeOverlays,
+    openCommunity,
+    openAgents,
+    openCompactSettings,
+    closeCompactSettings,
+    selectRoom,
+    onNavChats,
+    onNavActivity,
+    onNavAgents,
+    bottomNavTab,
+  } = useShellNavigation({ shellMode, isActivity, setActiveId, activityId: ACTIVITY_ID, lastRoomIdRef });
 
   useEffect(() => {
     // "activity" is a virtual destination, not a room — never reset it away.
@@ -169,62 +169,17 @@ export function Shell() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Reset secondary state when switching rooms.
+  // Reset secondary state when switching rooms. NOTE: agentPanelOpen is
+  // deliberately NOT reset here — the compact "Agents" tab leaves the Activity
+  // feed by setting a room AND opening the roster in the same render, so
+  // clobbering it here would defeat that nav. Closing on an explicit room pick
+  // is handled in selectRoom instead.
   useEffect(() => {
     setTab("chat");
     setFocusedAgent(null);
     setThreadParentId(null);
     setThreadSummaryOpen(false);
-    setAgentPanelOpen(false);
   }, [activeId]);
-
-  useEffect(() => {
-    if (shellMode !== "compact") setCommunityOpen(false);
-    if (shellMode === "desktop") setAgentPanelOpen(false);
-  }, [shellMode]);
-
-  useEffect(() => {
-    if (!communityOpen && !agentPanelOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setCommunityOpen(false);
-      setAgentPanelOpen(false);
-      queueMicrotask(() => overlayRestoreRef.current?.focus());
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [communityOpen, agentPanelOpen]);
-
-  useEffect(() => {
-    document.documentElement.dataset["theme"] = theme;
-    localStorage.setItem("synchronize.theme", theme);
-  }, [theme]);
-
-  const [skin, setSkin] = useState<"brutal" | "glass">(() =>
-    localStorage.getItem("synchronize.skin") === "glass" ? "glass" : "brutal",
-  );
-  const [chatBg, setChatBg] = useState<string>(() => localStorage.getItem("synchronize.chatbg") ?? "none");
-  useEffect(() => {
-    const preset = chatBackgroundById(chatBg);
-    const style = document.documentElement.style;
-    if (preset.image) {
-      style.setProperty("--chat-bg-image", preset.image);
-      style.setProperty("--chat-bg-size", preset.size);
-      style.setProperty("--chat-bg-repeat", preset.repeat);
-    } else {
-      style.removeProperty("--chat-bg-image");
-      style.removeProperty("--chat-bg-size");
-      style.removeProperty("--chat-bg-repeat");
-    }
-    localStorage.setItem("synchronize.chatbg", preset.id);
-  }, [chatBg]);
-  useEffect(() => {
-    // Skin = aesthetic system (border/shadow/radius language), orthogonal to
-    // theme (palette). "brutal" is the original look; "glass" is the
-    // liquid-glass skin (skin-glass.css). See the skin contract in styles.css.
-    document.documentElement.dataset["skin"] = skin;
-    localStorage.setItem("synchronize.skin", skin);
-  }, [skin]);
 
   const room = rooms.find((r) => r.id === activeId) ?? rooms[0];
   const roomMessages = useMessages(room?.id ?? "");
@@ -235,22 +190,30 @@ export function Shell() {
     ? agents.find((agent) => agent.id === threadParent.authorId)
     : undefined;
   const displayThreadAuthor = threadAuthor && room ? roomAgent(threadAuthor, room) : undefined;
-  const rosterPersistent = shellMode === "desktop" && !threadParentId;
-  const rosterPanelAvailable = shellMode !== "desktop" && !threadParentId;
-  const communityPanelAvailable = shellMode === "compact";
+  const layout = shellLayout(shellMode);
+  const rosterPersistent = layout.rosterColumn && !threadParentId;
+  const rosterPanelAvailable = layout.rosterAsOverlay && !threadParentId;
+  const communityPanelAvailable = layout.communityOverlay;
+  const pushedThreadOpen = Boolean(threadParentId && !layout.threadAsSplit);
 
-  const rememberOverlayOpener = () => {
-    overlayRestoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  };
-  const closeOverlays = () => {
-    setCommunityOpen(false);
-    setAgentPanelOpen(false);
-    queueMicrotask(() => overlayRestoreRef.current?.focus());
-  };
-  const selectRoom = (id: string) => {
-    setActiveId(id);
-    setCommunityOpen(false);
-  };
+  // Android hardware Back: close the top open surface before letting the OS
+  // exit the app. Reaches Capacitor's runtime via its injected global so the
+  // shared web bundle needs no @capacitor/app dependency — inert in the browser
+  // (the plugin is absent), active only inside the Capacitor WebView (APK).
+  useEffect(() => {
+    const cap = (window as unknown as {
+      Capacitor?: { Plugins?: { App?: { addListener?(e: string, cb: () => void): Promise<{ remove(): void }>; exitApp?(): void } } };
+    }).Capacitor;
+    const app = cap?.Plugins?.App;
+    if (!app?.addListener) return;
+    const sub = app.addListener("backButton", () => {
+      if (compactSettingsOpen) closeCompactSettings();
+      else if (agentPanelOpen || communityOpen) closeOverlays();
+      else if (threadParentId) setThreadParentId(null);
+      else app.exitApp?.();
+    });
+    return () => { void sub.then((handle) => handle.remove()); };
+  }, [compactSettingsOpen, agentPanelOpen, communityOpen, threadParentId]);
 
   // Jump-to-last-message-by-agent: scrolls to the latest message authored by
   // `agentId` in the active room, flashes it with the throbbing yellow ring.
@@ -322,49 +285,42 @@ export function Shell() {
   }, [vim]);
 
   return (
-    <div
-      className={`app-shell shell-${shellMode}${threadParentId ? " thread-open" : ""}`}
-      data-vim-mode={vim.mode}
-      data-shell-mode={shellMode}
-    >
-      {shellMode !== "compact" && (
+    <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
+      {layout.persistentSidebar && (
         <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
-      <main
-        // `relative` anchors the absolutely-positioned `.toast-stack` over the
-        // chat region (the old `.main` rule provided this). No skin/theme/JS
-        // hook on `.main`, so the class is dropped.
-        className="flex flex-col min-w-0 [border-left:var(--line)] bg-paper relative"
-        style={threadParentId ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
+      <ShellMainColumn
+        style={threadParentId && layout.threadAsSplit ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
       >
         {isActivity ? (
-          <ActivityView onJumpToRoom={jumpToRoom} threadWidth={threadWidth} onThreadWidth={setThreadWidth} />
+          <ActivityView onJumpToRoom={jumpToRoom} threadWidth={threadWidth} onThreadWidth={setThreadWidth} onOpenSettings={openCompactSettings} />
         ) : room ? (
           <>
-            <RoomHeader
-              room={room}
-              tab={tab}
-              onTab={setTab}
-              theme={theme}
-              themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
-              onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
-              skin={skin}
-              onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
-              chatBg={chatBg}
-              onChatBg={setChatBg}
-              showAgentsButton={rosterPanelAvailable}
-              onOpenAgents={() => {
-                rememberOverlayOpener();
-                setAgentPanelOpen(true);
-              }}
-              {...(displayThreadAuthor
-                ? { threadBanner: { author: displayThreadAuthor, onClose: () => setThreadParentId(null) } }
-                : {})}
-            />
-            <div
-              className={`main-body${threadParentId ? " thread-open" : ""}`}
+            {!pushedThreadOpen && (
+              <RoomHeader
+                room={room}
+                tab={tab}
+                onTab={setTab}
+                theme={theme}
+                themeIcon={themeTraits(theme).toggleGlyph}
+                onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
+                skin={skin}
+                onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
+                chatBg={chatBg}
+                onChatBg={setChatBg}
+                showAgentsButton={rosterPanelAvailable && layout.persistentSidebar}
+                onOpenAgents={openAgents}
+                onOpenSettings={openCompactSettings}
+                {...(displayThreadAuthor && layout.threadAsSplit
+                  ? { threadBanner: { author: displayThreadAuthor, onClose: () => setThreadParentId(null) } }
+                  : {})}
+              />
+            )}
+            <ShellMainBody
+              threadOpen={!!threadParentId}
               style={
                 threadParentId
+                  && layout.threadAsSplit
                   ? ({
                       gridTemplateColumns: `minmax(0, 1fr) ${threadWidth}px`,
                       "--thread-pane-width": `${threadWidth}px`,
@@ -372,34 +328,31 @@ export function Shell() {
                   : undefined
               }
             >
-              <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
-                {tab === "chat" ? (
-                  <ChatView
-                    room={room}
-                    onOpenThread={setThreadParentId}
-                    isThreadOpen={!!threadParentId}
-                    threadSummaryOpen={threadSummaryOpen}
-                    onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
-                    showTimeline={shellMode !== "compact"}
-                    {...(communityPanelAvailable
-                      ? {
-                          onOpenCommunity: () => {
-                            rememberOverlayOpener();
-                            setCommunityOpen(true);
-                          },
-                        }
-                      : {})}
-                  />
-                ) : tab === "board" ? (
-                  <BoardView roomId={room.id} />
-                ) : (
-                  <Placeholder label="ARTIFACTS — coming in V2" />
-                )}
-              </div>
+              {!pushedThreadOpen ? (
+                <ShellChatColumn>
+                  {tab === "chat" ? (
+                    <ChatView
+                      room={room}
+                      onOpenThread={setThreadParentId}
+                      isThreadOpen={!!threadParentId}
+                      threadSummaryOpen={threadSummaryOpen}
+                      onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
+                      showTimeline={layout.timeline}
+                      {...(communityPanelAvailable
+                        ? { onOpenCommunity: openCommunity }
+                        : {})}
+                    />
+                  ) : tab === "board" ? (
+                    <BoardView roomId={room.id} />
+                  ) : (
+                    <Placeholder label="ARTIFACTS — coming in V2" />
+                  )}
+                </ShellChatColumn>
+              ) : null}
               {threadParentId ? (
                 <>
-                  <ResizeHandle width={threadWidth} onChange={setThreadWidth} />
-                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} showHeader={false} />
+                  {layout.threadAsSplit && <ResizeHandle width={threadWidth} onChange={setThreadWidth} />}
+                  <ThreadPane room={room} parentId={threadParentId} onClose={() => setThreadParentId(null)} showHeader={!layout.threadAsSplit} />
                 </>
               ) : rosterPersistent ? (
                 <AgentRoster
@@ -409,7 +362,7 @@ export function Shell() {
                   onAgentDoubleClick={jumpToAgentLast}
                 />
               ) : null}
-            </div>
+            </ShellMainBody>
           </>
         ) : (
           <div className="min-h-0 h-full grid place-items-center bg-paper text-ink [border-left:var(--line-2)]">
@@ -421,13 +374,15 @@ export function Shell() {
             </div>
           </div>
         )}
-      </main>
+      </ShellMainColumn>
       {communityPanelAvailable && communityOpen && (
-        <div className="shell-overlay shell-overlay-community fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="communities">
-          <div className="flex-none min-h-[52px] flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[10px] [border-bottom:var(--line-2)] bg-paper-2 font-display text-[length:var(--text-15)] tracking-[var(--tracking-md)]">
-            <span>Communities</span>
-            <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close communities">×</button>
-          </div>
+        <div className="shell-overlay shell-overlay-community fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="chats">
+          <CompactAppBar
+            title="Chats"
+            detail={`${rooms.length} rooms`}
+            onSettings={openCompactSettings}
+            onClose={closeOverlays}
+          />
           <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} mode={vim.mode} />
         </div>
       )}
@@ -438,10 +393,12 @@ export function Shell() {
           aria-modal="true"
           aria-label="agents"
         >
-          <div className="flex-none min-h-[52px] flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[10px] [border-bottom:var(--line-2)] bg-paper-2 font-display text-[length:var(--text-15)] tracking-[var(--tracking-md)]">
-            <span>Agents</span>
-            <button type="button" className="shell-overlay-close" onClick={closeOverlays} aria-label="close agents">×</button>
-          </div>
+          <CompactAppBar
+            title="Agents"
+            detail={`${room.members.length} in ${room.kind === "group" ? `#${room.name}` : room.name}`}
+            onSettings={openCompactSettings}
+            onClose={closeOverlays}
+          />
           <AgentRoster
             room={room}
             focusedAgent={focusedAgent}
@@ -450,11 +407,149 @@ export function Shell() {
           />
         </div>
       )}
+      {layout.bottomNav && (
+        <BottomNav
+          active={bottomNavTab}
+          onChats={onNavChats}
+          onActivity={onNavActivity}
+          onAgents={onNavAgents}
+          agentCount={room?.members.length ?? 0}
+        />
+      )}
+      {layout.settingsSheet && (
+        <CompactSettingsSheet
+          open={compactSettingsOpen}
+          theme={theme}
+          skin={skin}
+          chatBg={chatBg}
+          onToggleAppearance={() => setTheme((current) => toggleThemeFamily(current))}
+          onCycleTheme={() => setTheme((current) => cycleTheme(current))}
+          onToggleSkin={() => setSkin((current) => (current === "brutal" ? "glass" : "brutal"))}
+          onChatBg={setChatBg}
+          onClose={closeCompactSettings}
+        />
+      )}
+    </AppShellGrid>
+  );
+}
+
+// Exported for Storybook (Navigation/CompactAppBar) — the compact Chats/Agents
+// overlay header. Rendered inline by the overlays below; the export is story-only.
+export function CompactAppBar({
+  title,
+  detail,
+  onSettings,
+  onClose,
+}: {
+  title: string;
+  detail?: string;
+  onSettings(event: ReactMouseEvent): void;
+  onClose(): void;
+}) {
+  return (
+    <div className="compact-appbar flex-none flex items-center justify-between gap-[var(--space-12)] px-[12px] py-[8px] [border-bottom:var(--line)] bg-paper-2">
+      <div className="min-w-0 flex items-center gap-[var(--space-8)]">
+        <IconButton icon={X} label="close" size={40} iconSize={20} onClick={onClose} />
+        <div className="min-w-0 flex flex-col justify-center">
+          <div className="font-display text-[length:var(--text-16)] leading-[1.05] tracking-[var(--tracking-sm)] text-ink truncate">
+            {title}
+          </div>
+          {detail ? (
+            <div className="mt-[3px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft truncate">
+              {detail}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <IconButton icon={Settings} label="open display settings" size={40} iconSize={20} onClick={onSettings} />
     </div>
   );
 }
 
-function Placeholder({ label }: { label: string }) {
+// Exported for Storybook (Surfaces/CompactSettingsSheet) — the compact display
+// settings bottom sheet (theme / skin / chat background).
+export function CompactSettingsSheet({
+  open,
+  theme,
+  skin,
+  chatBg,
+  onToggleAppearance,
+  onCycleTheme,
+  onToggleSkin,
+  onChatBg,
+  onClose,
+}: {
+  open: boolean;
+  theme: ThemeName;
+  skin: "brutal" | "glass";
+  chatBg: string;
+  onToggleAppearance(): void;
+  onCycleTheme(): void;
+  onToggleSkin(): void;
+  onChatBg(id: string): void;
+  onClose(): void;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} ariaLabel="display settings" className="compact-settings-sheet">
+        <div className="compact-settings-head flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[12px] [border-bottom:var(--line)] bg-paper-2">
+          <div className="min-w-0">
+            <div className="font-display text-[length:var(--text-17)] leading-none tracking-[var(--tracking-sm)]">Display</div>
+            <div className="mt-[5px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft">
+              {themeFamily(theme)} · {titleCase(theme)} · {skin}
+            </div>
+          </div>
+          <button type="button" className="compact-settings-done" onClick={onClose}>Done</button>
+        </div>
+
+        <div className="compact-settings-section">
+          <SettingsRow
+            label="Appearance"
+            value={themeFamily(theme) === "light" ? "Light" : "Dark"}
+            onClick={onToggleAppearance}
+          />
+          <SettingsRow
+            label="Theme"
+            value={titleCase(theme)}
+            onClick={onCycleTheme}
+          />
+          <SettingsRow
+            label="Skin"
+            value={skin === "brutal" ? "Brutal" : "Glass"}
+            onClick={onToggleSkin}
+          />
+        </div>
+
+        <div className="compact-settings-section">
+          <div className="compact-settings-label">Chat background</div>
+          <div className="compact-settings-grid">
+            {CHAT_BACKGROUNDS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`compact-settings-choice${preset.id === chatBg ? " active" : ""}`}
+                onClick={() => onChatBg(preset.id)}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        </div>
+    </Sheet>
+  );
+}
+
+// Exported for Storybook (Primitives/SettingsRow).
+export function SettingsRow({ label, value, onClick }: { label: string; value: string; onClick(): void }) {
+  return (
+    <button type="button" className="compact-settings-row" onClick={onClick}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </button>
+  );
+}
+
+// Exported for Storybook (Surfaces/Placeholder) — unimplemented-tab stamp.
+export function Placeholder({ label }: { label: string }) {
   return (
     <div className="placeholder">
       <div className="placeholder-stamp">{label}</div>

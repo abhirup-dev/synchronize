@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { RoomHeader } from "./RoomHeader.tsx";
 import { AGENTS, GROUPS, DMS } from "../data/seed.ts";
+import { inMainColumn } from "../storybook/shellFrames.tsx";
 
 // Provider-backed: RoomHeader reads agents via useAgents() and opens the chat-bg
 // menu via useContextMenu() — both supplied by the global StorybookProviders
@@ -21,6 +22,9 @@ const meta = {
   title: "Navigation/RoomHeader",
   component: RoomHeader,
   parameters: { layout: "fullscreen" },
+  // Mount in the main column with real shell context so the compact story
+  // actually exercises RoomHeader's compact branch (the Settings sheet button).
+  decorators: [inMainColumn],
   args: {
     tab: "chat",
     onTab: noop,
@@ -66,4 +70,11 @@ export const WithThreadBanner: Story = {
 // Glass skin + board tab selected — alternate visual state of the toggles/tabs.
 export const GlassSkinBoardTab: Story = {
   args: { room: group, skin: "glass", tab: "board", themeIcon: "🌙", theme: "ink" },
+};
+
+// Compact (mobile-narrow, 390): title truncation, member-pile collapse, and the
+// tab row at a thumb width — the Android header state.
+export const Compact: Story = {
+  args: { room: group, showAgentsButton: true, onOpenAgents: noop },
+  globals: { viewport: { value: "mobileNarrow", isRotated: false } },
 };

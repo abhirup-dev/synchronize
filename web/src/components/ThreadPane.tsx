@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAgents, useMe, useMessages, useReactToMessage, useThreadReplies } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
@@ -9,6 +10,7 @@ import { ScrollControls } from "./ScrollControls.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
 import { cn } from "../lib/cn.ts";
+import { useIsCompact } from "../shell-mode.tsx";
 
 interface ThreadPaneProps {
   room: Room;
@@ -19,6 +21,8 @@ interface ThreadPaneProps {
 }
 
 export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader = true }: ThreadPaneProps) {
+  const compact = useIsCompact();
+  const [parentExpanded, setParentExpanded] = useState(false);
   const messages = useMessages(room.id);
   const replies = useThreadReplies(parentId);
   const agents = useAgents();
@@ -41,6 +45,10 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
     estimateSize: () => 150,
     overscan: 6,
   });
+
+  useEffect(() => {
+    setParentExpanded(false);
+  }, [parentId]);
 
   useEffect(() => {
     const last = replies.at(-1);
@@ -66,6 +74,8 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
   }, [focusMessageId, parentId, replies, virtualizer]);
 
   if (!parent || !parentAuthor) return null;
+  const parentCollapsible = compact && parent.body.length > 900;
+  const parentCollapsed = parentCollapsible && !parentExpanded;
 
   return (
     <aside
@@ -78,11 +88,24 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
       data-vim-panel="thread"
     >
       {showHeader && (
-        <header className="flex shrink-0 items-center justify-between gap-[var(--space-12)] bg-paper-2 [border-bottom:var(--line)] [padding:var(--space-button-pad-md)]">
+        <header className={cn(
+          "flex shrink-0 items-center gap-[var(--space-12)] bg-paper-2 [border-bottom:var(--line)] [padding:var(--space-button-pad-md)]",
+          compact ? "justify-start" : "justify-between",
+          compact && "min-h-[56px] gap-[var(--space-8)] px-[8px] py-[8px]",
+        )}>
+          {compact && (
+            <button className="thread-pane-close" onClick={onClose} aria-label="back to activity">
+              <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
+            </button>
+          )}
           <div className="flex min-w-0 items-center gap-[var(--space-6)] font-display text-[length:var(--text-13)]">
             <strong>Thread</strong>
-            <span className="thread-pane-sep">·</span>
-            <span className="thread-pane-sub">replying to</span>
+            {!compact && (
+              <>
+                <span className="thread-pane-sep">·</span>
+                <span className="thread-pane-sub">replying to</span>
+              </>
+            )}
             <IdentityBadge
               className="author-name"
               color={parentAuthor.color}
@@ -98,24 +121,40 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
               {parentAuthor.name}
             </IdentityBadge>
           </div>
-          <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>
+          {!compact && <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>}
         </header>
       )}
 
       <div className="thread-scroll-wrap relative flex min-h-0 flex-1 flex-col [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
       <div className="thread-pane-body autoscroll flex flex-1 flex-col gap-[var(--space-20)] overflow-y-auto [padding:12px_12px_4px]" ref={bodyRef}>
-        <div className="thread-parent flex flex-col gap-[var(--space-6)]">
-          <MessageRow
-            message={parent}
-            author={parentAuthor}
-            agents={displayAgents}
-            groupedWithPrev={false}
-            onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
-            hideAvatar
-          />
+        <div className="thread-parent flex flex-col gap-[var(--space-8)]">
+          <div className={cn("relative", parentCollapsed && "max-h-[310px] overflow-hidden")}>
+            <MessageRow
+              message={parent}
+              author={parentAuthor}
+              agents={displayAgents}
+              groupedWithPrev={false}
+              onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
+              hideAvatar
+              hideAuthor={compact}
+              hideReactionAdd={compact}
+            />
+          </div>
+          {parentCollapsible && (
+            <button
+              className="min-h-[44px] self-center rounded-pill bg-paper-2 px-[16px] py-[8px] font-mono text-[length:var(--text-10)] font-bold text-ink-soft [border:var(--line-sm)] hover:text-ink"
+              type="button"
+              onClick={() => setParentExpanded((open) => !open)}
+            >
+              {parentExpanded ? "show less parent" : "show full parent"}
+            </button>
+          )}
         </div>
 
-        <div className="thread-divider flex items-center gap-[var(--space-10)] font-mono text-[length:var(--text-10)] tracking-[var(--tracking-md)] text-ink-soft [padding:4px_0]">
+        <div className={cn(
+          "thread-divider flex items-center gap-[var(--space-10)] font-mono text-[length:var(--text-10)] tracking-[var(--tracking-md)] text-ink-soft [padding:4px_0]",
+          compact && "mt-[4px]",
+        )}>
           <span className="h-[1.5px] flex-1 bg-ink-faint" />
           <span className="thread-divider-label">
             {replies.length} {replies.length === 1 ? "reply" : "replies"}
@@ -148,6 +187,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onClose, showHeader
                     groupedWithPrev={false}
                     onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
                     hideAvatar
+                    hideReactionAdd={compact}
                   />
                 </div>
               );

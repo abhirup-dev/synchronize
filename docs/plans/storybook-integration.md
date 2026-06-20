@@ -39,10 +39,10 @@ as-built record and supersedes the original phase plan where they differ.
   toolsets incl. `run-story-tests`, and `list-all-documentation` returns the full
   glossary. Agent loop documented in `docs/agents/storybook-ui.md` (CLAUDE.md
   points to it).
-- **Cross-component flow sample (extensible).** `Flows/Activity to Thread` mounts
-  the real app `Shell` and drives Activity → click row → thread opens → scroll to
-  bottom via one `play` function with `step()` phases. This is the template for
-  further multi-component workflows.
+- **Cross-component flow suite.** `Flows/Synchronize UI` mounts the real app
+  `Shell` and drives multi-component journeys such as Activity → thread →
+  scroll, chat thread traversal, and spawn-agent entrypoint discovery via
+  `play` functions with `step()` phases.
 - **Install hardening (repo hygiene).** `make check-install` + guarded `make test`
   + `bun install --frozen-lockfile` in `make setup`; worktrunk `.config/wt.toml`
   `post-create = "make setup"` so new worktrees self-provision. Fixes the cryptic
@@ -76,22 +76,21 @@ as-built record and supersedes the original phase plan where they differ.
 - **CI.** No CI pipeline exists yet, so the Vitest plugin `storybookScript`/
   `storybookUrl` (failure→story links) were skipped. When CI lands it will also
   need `bunx playwright install chromium` before `test:storybook`.
-- **Standalone Playwright E2E.** Component-composition flows live in Storybook
-  (above). True full-app E2E against the live daemon/`/web` (real SSE, routing)
-  belongs to the real-data UI probe pipeline (sync-rycd), not here. Storybook
-  stories can be reused there via portable stories (`composeStories`); inside
-  stories, advanced browser control is available via `@vitest/browser/context`
-  (`page`/`commands`, Playwright under the hood).
+- **Parallel full-app E2E flow tooling.** Removed as a UI-flow framework.
+  Component-composition flows live in Storybook. Live daemon/`/web` checks should
+  stay narrow: production bundle boots, daemon data maps correctly, routing works,
+  and SSE updates arrive. They should not duplicate Storybook's curated UI flow
+  contracts.
 
 ### Extending with complex cross-component flows
 
 Multi-step journeys that cross components (open a view → click → navigate →
 assert) are **interaction tests over a composed mount**, not isolated component
-stories. The first one — `Flows/Activity to Thread` — is the template.
+stories. `web/src/flows/SynchronizeFlows.stories.tsx` is the current template.
 
-**Where they live:** `web/src/components/*.stories.tsx` under the `Flows/*`
-title family. One file per flow area is fine; group related journeys in the
-same file when they share fixtures/helpers.
+**Where they live:** `web/src/flows/*.stories.tsx` under the `Flows/*` title
+family. One file per flow area is fine; group related journeys in the same file
+when they share fixtures/helpers.
 
 **How to add one:**
 
@@ -115,15 +114,16 @@ same file when they share fixtures/helpers.
    top-opening thread needs a non-`you` last reply.
 6. **Optional watchable demo.** Add a paced twin (`pauseMs` + smooth scroll)
    that shares one flow helper with the real test, tagged `tags: ['!test']` so
-   it is excluded from `test:storybook` (no CI slowdown/flake). See
-   `OpenThreadFromActivityDemo`.
+   it is excluded from `test:storybook` (no CI slowdown/flake). See the `*Demo`
+   stories in `web/src/flows/SynchronizeFlows.stories.tsx`.
 7. **Verify:** `cd web && bun run test:storybook` (or the MCP `run-story-tests`)
    + screenshot the end state.
 
 **Stay inside the boundary.** These run against `MockDataSource` in a real
-browser — they verify UI wiring, not the daemon. If a flow needs real daemon
-state, SSE, or routing, it belongs to sync-rycd, not Storybook. Debugging
-detail and the MCP catalog: `docs/debugging/storybook.md`.
+browser. They are the canonical home for UI flow contracts. If a check needs
+real daemon state, SSE, or routing, keep it as a narrow Bun/live `/web`
+integration smoke instead of a second flow framework. Debugging detail and the
+MCP catalog: `docs/debugging/storybook.md`.
 
 
 ## Goal
@@ -420,7 +420,7 @@ Acceptance criteria:
 Tests and verification:
 
 - Manual Storybook check across the theme/skin matrix for key stories.
-- Optional Playwright screenshot smoke against Storybook URLs for:
+- Optional visual-regression smoke against Storybook URLs for:
   - desktop shell
   - compact shell
   - message row dark mode
@@ -432,7 +432,7 @@ Risks:
   highest-risk stories; rely on manual toolbar checks for the full matrix until
   visual regression is introduced.
 
-## Phase 4: Story Tests And Playwright-Aligned Quality Gates
+## Phase 4: Story Tests And Browser Quality Gates
 
 Goal: turn high-value stories into executable browser component tests while
 preserving existing daemon/integration tests.
@@ -472,8 +472,8 @@ Acceptance criteria:
 - Story tests run headlessly from the command line.
 - A failing interaction points to a specific story URL and Interaction panel
   repro.
-- Existing Playwright-heavy workflows can target Storybook URLs for isolated
-  component states instead of driving the full daemon app into every state.
+- Browser-level checks should target Storybook URLs for isolated component states
+  instead of driving the full daemon app into every state.
 - At least one tested story exists for each high-risk surface:
   - composer
   - message row

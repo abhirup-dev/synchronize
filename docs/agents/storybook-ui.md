@@ -5,9 +5,9 @@ web UI (`web/`). Use it so you reuse existing Synchronize components and pattern
 instead of inventing new props, variants, or local themes.
 
 It does **not** replace the live `/web` app or the Bun integration tests. Storybook
-verifies *component states in isolation*; daemon behavior, SSE, route precedence,
-`DaemonDataSource` mapping, and archive/resume stay in the Bun tests and live
-`/web` smoke checks.
+verifies component states and composed UI flows; daemon behavior, SSE, route
+precedence, `DaemonDataSource` mapping, and archive/resume stay in the Bun tests
+and live `/web` smoke checks.
 
 ## Running it
 
@@ -58,7 +58,8 @@ Storybook Docs and `test:storybook` even if the preview-stage MCP is down.
    those; never fork a Storybook-only variant.
 3. **Capture state** — add/extend a `*.stories.tsx` for the new or changed state,
    following **Authoring Stories** (real component import, `seed.ts`/`MockDataSource`
-   data, the global provider decorator, product-vocabulary `title`). Call
+   data, the global provider decorator, product-vocabulary `title`). Put composed
+   shell journeys under `web/src/flows/*.stories.tsx`. Call
    `get-storybook-story-instructions` first.
 4. **Behavior** — for interactive changes, add a `play` test
    (`import { within, userEvent, expect } from "storybook/test"`).
@@ -75,3 +76,64 @@ accepted states → `play` tests capture interactive expectations → live `/web
 checks prove daemon integration. Every meaningful UI feature ships with at least
 one story; every interactive UI feature ships with at least one `play` test (or an
 explicit note that it is covered by a Bun/integration test instead).
+
+## Wiring conventions (read before adding/changing a component or its states)
+
+These exist because a story that mounts a component *differently* than the app
+produces false positives (a "bug" that isn't real) and, worse, false negatives (a
+real bug hidden behind a divergent mount). The rule is one shared mount + one
+trait vocabulary, so "passes in Storybook" means "works in the app".
+
+1. **Mount through the shared shell cells — never re-wire per story.** The app
+   composes the shell from `web/src/shell-layout.tsx` (`AppShellGrid`,
+   `ShellMainColumn`, `ShellMainBody`, `ShellChatColumn`). Shell-resident stories
+   mount through the SAME cells via the composable decorators in
+   `web/src/storybook/shellFrames.tsx` (`inChatSurface`, `inSidebarColumn`,
+   `inRosterColumn`, `inMainColumn`, `inBottomNavRow`). Do **not** drop a
+   shell-resident component into a bare `layout: fullscreen` canvas — that is what
+   made Sidebar collapse into strips, BottomNav float at the top, and the chat
+   surface keep its timeline rail in compact.
+
+2. **Traits/capabilities, never mode/theme if-else in components.** Shell-mode
+   behaviour reads the `shellLayout(mode)` capability contract (`shell-mode.tsx`);
+   theme behaviour reads `themeTraits(theme)` (`hooks/usePersistentTheme.ts`).
+   Never branch on `mode === "compact"` or `themeFamily(t) === "light"` inside a
+   component — add/READ a named capability instead (`layout.timeline`,
+   `themeTraits(t).toggleGlyph`). New behaviour that varies by mode/theme is a new
+   field on the contract, defined once.
+
+3. **Theme & skin are global toolbar traits — do NOT duplicate stories per theme.**
+   They are carried on `<html data-theme>` / `<html data-skin>`, set identically by
+   the app (`usePersistentTheme` effect) and Storybook (the preview decorator).
+   Sweep palettes from the toolbar; the Vitest matrix snapshots across themes.
+   Pin a theme on a single story only when the state is theme-specific
+   (`globals: { theme: "kanagawa-wave" }`). **Kanagawa Wave is the canonical dark**
+   (`DEFAULT_DARK_THEME`) — never hardcode `"dark"` as the dark default.
+
+4. **Stories declare STATE (args), not mounting.** State variants (empty / error /
+   long-title / with-reactions) are hand-authored `args` selecting REAL `seed.ts`
+   data — not faked props, and not a parallel layout. If a state needs a fixture
+   that does not exist, add it to the seed. (ThreadSummaryPanel "empty" silently
+   stopped being empty when its room gained a thread; MessageRow reactions vanished
+   only because the story under-passed the handlers the app always passes.)
+
+5. **Light-mode surfaces stay warm.** Inverted/elevated surfaces (self bubble, code
+   block, roster focus) use `--paper-3` cream + `--ink` text in light/brutal, never
+   black; the secondary line on an inverted surface mirrors
+   `.room-item.active .room-preview` (on-ink @ ~0.65). Light code blocks use the
+   scoped light hljs palette in `styles/code-light.css`; dark themes keep
+   github-dark.
+
+6. **Conditional Tailwind variant overrides come AFTER the base variant class.**
+   `cn()` is `twMerge(clsx(...))`, which keeps the LAST conflicting utility. Put
+   `active && "bg-yellow ..."` after `variantClass`, or the variant wins and the
+   state looks inert (the IconButton bug).
+
+7. **Compact widths must not overflow.** Inline code wraps (`overflow-wrap`); block
+   code scrolls. Verify shell-resident components at 390/412 through the compact
+   shell mode the frame provides, not just a narrow bare canvas.
+
+8. **Validate after every change.** `cd web && bun run test:storybook` runs every
+   story (render + `play`) headlessly. It is only trustworthy *because* stories now
+   mount like the app — keep it green, and never "fix" a story by diverging its
+   mount from production.

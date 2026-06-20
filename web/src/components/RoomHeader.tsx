@@ -7,6 +7,10 @@ import { roomAgents } from "../data/roomAgents.ts";
 import type { Agent } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
+import { useIsCompact } from "../shell-mode.tsx";
+import { IconButton } from "./IconButton.tsx";
+import { Settings } from "lucide-react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
 
@@ -39,6 +43,7 @@ interface RoomHeaderProps {
   onChatBg(id: string): void;
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
+  onOpenSettings?(event: ReactMouseEvent<HTMLButtonElement>): void;
   threadBanner?: {
     author: Agent;
     onClose(): void;
@@ -58,10 +63,12 @@ export function RoomHeader({
   onChatBg,
   showAgentsButton = false,
   onOpenAgents,
+  onOpenSettings,
   threadBanner,
 }: RoomHeaderProps) {
   const agents = useAgents();
   const openMenu = useContextMenu();
+  const compact = useIsCompact();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
   const working = members.filter((m) => m.status === "busy").length;
@@ -81,63 +88,97 @@ export function RoomHeader({
           </div>
         </div>
 
-        <div className="flex-none min-w-[120px] flex flex-col items-end justify-center text-right">
-          <div className="room-meta font-mono text-[length:var(--text-11)] text-ink-soft mt-[3px] flex items-center justify-end gap-[var(--space-10)]">
-            <span className="inline-flex items-center gap-[var(--space-6)] text-ink font-extrabold"><span className="w-[9px] h-[9px] rounded-pill bg-pink [border:var(--line-sm)] shadow-xs" />{working} / {members.length} working</span>
+        {/* The working-count meta and the member pile are desktop/medium chrome.
+            Gate them OUT of the DOM in compact (not just display:none) — an empty
+            wrapper would still claim a grid cell and bump the actions to a 2nd
+            row. The bottom-nav Agents tab carries member presence on mobile. */}
+        {!compact && (
+          <>
+            <div className="room-working-meta flex-none min-w-[120px] flex flex-col items-end justify-center text-right">
+              <div className="room-meta font-mono text-[length:var(--text-11)] text-ink-soft mt-[3px] flex items-center justify-end gap-[var(--space-10)]">
+                <span className="inline-flex items-center gap-[var(--space-6)] text-ink font-extrabold"><span className="w-[9px] h-[9px] rounded-pill bg-pink [border:var(--line-sm)] shadow-xs" />{working} / {members.length} working</span>
+              </div>
+            </div>
+
+            <div className="member-pile flex items-center">
+              {members.slice(0, 6).map((a, i) => (
+                <span key={a.id} className="inline-block ml-[var(--space-0)] [&+span]:ml-[calc(var(--space-8)*-1)]" style={{ zIndex: members.length - i }}>
+                  <Avatar agent={a} size={28} />
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+
+        {compact ? (
+          // Compact: a single thumb-sized Lucide button. The settings-y toggles
+          // (theme/skin/chat-bg) fold into an overflow menu so the header bar
+          // stays to a single tight row beside the title.
+          <div className="room-header-actions flex items-center gap-[var(--space-2)]">
+            <IconButton
+              icon={Settings}
+              label="open display settings"
+              size={40}
+              iconSize={19}
+              onClick={(event) => {
+                if (onOpenSettings) {
+                  onOpenSettings(event);
+                  return;
+                }
+                openMenu(event, [
+                  { label: `Theme · ${theme}`, onSelect: () => onToggleTheme(false) },
+                  { label: `Skin · ${skin === "brutal" ? "brutal → glass" : "glass → brutal"}`, onSelect: onToggleSkin },
+                  { divider: true },
+                  ...CHAT_BACKGROUNDS.map((preset) => ({
+                    label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
+                    onSelect: () => onChatBg(preset.id),
+                  })),
+                ]);
+              }}
+            />
           </div>
-        </div>
-
-        <div className="member-pile flex items-center">
-          {members.slice(0, 6).map((a, i) => (
-            <span key={a.id} className="inline-block ml-[var(--space-0)] [&+span]:ml-[calc(var(--space-8)*-1)]" style={{ zIndex: members.length - i }}>
-              <Avatar agent={a} size={28} />
-            </span>
-          ))}
-        </div>
-
-        <div className="room-header-actions flex gap-[6px]">
-          {showAgentsButton && (
-            <button className="icon-btn room-agents-btn w-auto min-w-[58px] inline-flex items-center justify-center gap-[var(--space-6)] px-[8px] font-display text-[length:var(--text-10)] tracking-[var(--tracking-sm)]" aria-label="open agents" onClick={onOpenAgents}>
-              <span className="room-agents-label">AGENTS</span>
-              <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
+        ) : (
+          <div className="room-header-actions flex gap-[6px]">
+            {showAgentsButton && (
+              <button className="icon-btn room-agents-btn inline-flex items-center justify-center gap-[var(--space-6)] font-display text-[length:var(--text-10)] tracking-[var(--tracking-sm)]" aria-label="open agents" onClick={onOpenAgents}>
+                <span className="room-agents-label">AGENTS</span>
+                <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
+              </button>
+            )}
+            <button
+              className="icon-btn theme-toggle text-[length:var(--text-17)]"
+              onClick={(event) => onToggleTheme(event.shiftKey)}
+              title={`${theme} · click toggles light/dark, shift-click cycles variants`}
+              aria-label="toggle theme"
+            >
+              {themeIcon}
             </button>
-          )}
-          <button
-            className="icon-btn theme-toggle text-[length:var(--text-17)]"
-            onClick={(event) => onToggleTheme(event.shiftKey)}
-            title={`${theme} · click toggles light/dark, shift-click cycles variants`}
-            aria-label="toggle theme"
-          >
-            {themeIcon}
-          </button>
-          <button
-            className="icon-btn chat-bg-toggle"
-            onClick={(event) =>
-              openMenu(
-                event,
-                CHAT_BACKGROUNDS.map((preset) => ({
-                  label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
-                  onSelect: () => onChatBg(preset.id),
-                })),
-              )
-            }
-            title="chat background"
-            aria-label="choose chat background"
-          >
-            🖼
-          </button>
-          <button
-            className="icon-btn skin-toggle"
-            onClick={onToggleSkin}
-            title={`${skin} skin · click to switch to ${skin === "brutal" ? "glass" : "brutal"}`}
-            aria-label="toggle skin"
-          >
-            {skin === "brutal" ? "🫧" : "🧱"}
-          </button>
-          <button className="icon-btn" aria-label="pin">📌</button>
-          <button className="icon-btn" aria-label="search">🔍</button>
-          <button className="icon-btn" aria-label="more">⋯</button>
-        </div>
+            <button
+              className="icon-btn chat-bg-toggle"
+              onClick={(event) =>
+                openMenu(
+                  event,
+                  CHAT_BACKGROUNDS.map((preset) => ({
+                    label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
+                    onSelect: () => onChatBg(preset.id),
+                  })),
+                )
+              }
+              title="chat background"
+              aria-label="choose chat background"
+            >
+              🖼
+            </button>
+            <button
+              className="icon-btn skin-toggle"
+              onClick={onToggleSkin}
+              title={`${skin} skin · click to switch to ${skin === "brutal" ? "glass" : "brutal"}`}
+              aria-label="toggle skin"
+            >
+              {skin === "brutal" ? "🫧" : "🧱"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="room-tabs relative flex items-center gap-[var(--space-8)] pt-[12px] px-[22px] pb-[14px] [border-top:var(--line-2)]">
