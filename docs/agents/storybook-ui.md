@@ -5,9 +5,9 @@ web UI (`web/`). Use it so you reuse existing Synchronize components and pattern
 instead of inventing new props, variants, or local themes.
 
 It does **not** replace the live `/web` app or the Bun integration tests. Storybook
-verifies *component states in isolation*; daemon behavior, SSE, route precedence,
-`DaemonDataSource` mapping, and archive/resume stay in the Bun tests and live
-`/web` smoke checks.
+verifies component states and composed UI flows; daemon behavior, SSE, route
+precedence, `DaemonDataSource` mapping, and archive/resume stay in the Bun tests
+and live `/web` smoke checks.
 
 ## Running it
 
@@ -58,7 +58,8 @@ Storybook Docs and `test:storybook` even if the preview-stage MCP is down.
    those; never fork a Storybook-only variant.
 3. **Capture state** — add/extend a `*.stories.tsx` for the new or changed state,
    following **Authoring Stories** (real component import, `seed.ts`/`MockDataSource`
-   data, the global provider decorator, product-vocabulary `title`). Call
+   data, the global provider decorator, product-vocabulary `title`). Put composed
+   shell journeys under `web/src/flows/*.stories.tsx`. Call
    `get-storybook-story-instructions` first.
 4. **Behavior** — for interactive changes, add a `play` test
    (`import { within, userEvent, expect } from "storybook/test"`).
