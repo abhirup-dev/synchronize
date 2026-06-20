@@ -250,6 +250,12 @@ If the user asks "what did we plan for X?", point them at the file by name
 first. Read it only if they confirm or if the current code genuinely
 doesn't answer the question.
 
+### Integration plans
+
+| File | Topic |
+|---|---|
+| `docs/plans/letta-native-integration.md` | Letta ↔ synchronize native channel integration — decision log: topology, tool-access model, the three PoCs (remote/agent/channel) and why the channel won, problems solved (crypto-over-HTTP, turn-stuck, version pins), polling-vs-push tradeoff, assumptions. Forward work under bd epic `sync-fi9l`. |
+
 ## See also
 
 - `glossary.md` — current code locations for every concept these plans
