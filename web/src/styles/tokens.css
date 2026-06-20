@@ -179,11 +179,15 @@
   --grain-alpha: 0.04;
   --on-ink: var(--paper);
   --on-accent: #111111;
-  --you-bg: #111111;
-  --you-fg: #F4EFE3;
+  /* Light/brutal: self bubble + code blocks ride a darker-cream surface (paper-3)
+     with ink text rather than stark black — keeps the palette warm and matches
+     the roster focused-card treatment. Dark themes override these below. The
+     light code-syntax palette lives in styles/code-light.css (after github-dark). */
+  --you-bg: var(--paper-3);
+  --you-fg: var(--ink);
   --bubble: #ECE6D2;
-  --code-bg: #1B1815;
-  --code-fg: #F4EFE3;
+  --code-bg: var(--paper-3);
+  --code-fg: var(--ink);
   --code-inline-bg: var(--paper-3);
   --code-inline-fg: var(--ink);
   --code-inline-border: var(--line-none);

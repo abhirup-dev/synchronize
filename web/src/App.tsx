@@ -19,17 +19,12 @@ import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
-import { ShellModeProvider, shellLayout, type ShellMode } from "./shell-mode.tsx";
+import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx";
+import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
-import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { usePersistentTheme, type ThemeName, themeFamily, themeTraits, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
-
-function shellModeForWidth(width: number): ShellMode {
-  if (width < 780) return "compact";
-  if (width < 1180) return "medium";
-  return "desktop";
-}
 
 function titleCase(value: string): string {
   return value
@@ -290,20 +285,11 @@ export function Shell() {
   }, [vim]);
 
   return (
-    <ShellModeProvider value={shellMode}>
-    <div
-      className={`app-shell shell-${shellMode}${threadParentId ? " thread-open" : ""}`}
-      data-vim-mode={vim.mode}
-      data-shell-mode={shellMode}
-    >
+    <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
       {layout.persistentSidebar && (
         <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
       )}
-      <main
-        // `relative` anchors the absolutely-positioned `.toast-stack` over the
-        // chat region (the old `.main` rule provided this). No skin/theme/JS
-        // hook on `.main`, so the class is dropped.
-        className="flex flex-col min-w-0 [border-left:var(--line)] bg-paper relative"
+      <ShellMainColumn
         style={threadParentId && layout.threadAsSplit ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
       >
         {isActivity ? (
@@ -316,7 +302,7 @@ export function Shell() {
                 tab={tab}
                 onTab={setTab}
                 theme={theme}
-                themeIcon={themeFamily(theme) === "light" ? "🌙" : "☀️"}
+                themeIcon={themeTraits(theme).toggleGlyph}
                 onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
                 skin={skin}
                 onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
@@ -330,8 +316,8 @@ export function Shell() {
                   : {})}
               />
             )}
-            <div
-              className={`main-body${threadParentId ? " thread-open" : ""}`}
+            <ShellMainBody
+              threadOpen={!!threadParentId}
               style={
                 threadParentId
                   && layout.threadAsSplit
@@ -343,7 +329,7 @@ export function Shell() {
               }
             >
               {!pushedThreadOpen ? (
-                <div className="min-w-0 min-h-0 flex flex-col overflow-hidden">
+                <ShellChatColumn>
                   {tab === "chat" ? (
                     <ChatView
                       room={room}
@@ -361,7 +347,7 @@ export function Shell() {
                   ) : (
                     <Placeholder label="ARTIFACTS — coming in V2" />
                   )}
-                </div>
+                </ShellChatColumn>
               ) : null}
               {threadParentId ? (
                 <>
@@ -376,7 +362,7 @@ export function Shell() {
                   onAgentDoubleClick={jumpToAgentLast}
                 />
               ) : null}
-            </div>
+            </ShellMainBody>
           </>
         ) : (
           <div className="min-h-0 h-full grid place-items-center bg-paper text-ink [border-left:var(--line-2)]">
@@ -388,7 +374,7 @@ export function Shell() {
             </div>
           </div>
         )}
-      </main>
+      </ShellMainColumn>
       {communityPanelAvailable && communityOpen && (
         <div className="shell-overlay shell-overlay-community fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden" role="dialog" aria-modal="true" aria-label="chats">
           <CompactAppBar
@@ -443,8 +429,7 @@ export function Shell() {
           onClose={closeCompactSettings}
         />
       )}
-    </div>
-    </ShellModeProvider>
+    </AppShellGrid>
   );
 }
 

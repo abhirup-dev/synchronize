@@ -20,9 +20,11 @@ export const Plain: Story = {
 };
 
 // m2 carries markdown, a fenced SQL block, reactions, and a thread reply count —
-// the busiest single-row state.
+// the busiest single-row state. Wire onReact + onOpenThread because the real
+// mount (ChatView/ThreadPane) always passes them: that surfaces the add-reaction
+// affordance and the clickable reply badge, not just the reactions themselves.
 export const RichWithReactions: Story = {
-  args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId) },
+  args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId), onReact: fn(), onOpenThread: fn() },
 };
 
 export const GroupedWithPrev: Story = {

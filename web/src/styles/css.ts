@@ -12,3 +12,4 @@ import "../components/activity.css";
 import "../chat-bg.css";
 import "../skin-glass.css";
 import "highlight.js/styles/github-dark.css";
+import "./code-light.css";

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { userEvent, within, expect, fn } from "storybook/test";
 import { BottomNav } from "./BottomNav.tsx";
+import { inBottomNavRow } from "../storybook/shellFrames.tsx";
 
 // Compact-only root chrome (rendered only when shellMode === "compact"). These
 // stories pin the Android/mobile-narrow viewport so the bar reads at its real
@@ -9,6 +10,9 @@ const meta = {
   title: "Navigation/BottomNav",
   component: BottomNav,
   parameters: { layout: "fullscreen" },
+  // Anchor in the compact shell's bottom grid row (rows are `1fr auto`) so the
+  // bar sits at the bottom like the app, not floating at the top of the canvas.
+  decorators: [inBottomNavRow],
   globals: { viewport: { value: "mobileNarrow", isRotated: false } },
   args: { active: "chats", onChats: fn(), onActivity: fn(), onAgents: fn() },
 } satisfies Meta<typeof BottomNav>;
