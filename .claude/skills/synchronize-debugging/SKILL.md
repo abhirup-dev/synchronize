@@ -50,6 +50,7 @@ the operator explicitly asks.
 | DM/group/thread/mention/media/inbox/push issue | `delivery-forensics.md` |
 | Exact reply target vs thread root | `reply-target-forensics.md` |
 | web/ UI render/visual/story/play-test/theme/responsive | `ui-forensics.md` |
+| Qualitative Storybook component sweep with screenshots | `storybook-visual-audit.md` |
 | Raw SQL recipes | `docs/debugging/sql-queries.md` |
 | Code ownership/file locations | `glossary.md` |
 | Historical plans | `reference-v0-plans.md` (gated) |
@@ -61,6 +62,7 @@ the operator explicitly asks.
 | Config/env/profile details | `docs/configuration/README.md` |
 | Heavy debugging recipes | `docs/debugging/README.md` |
 | Storybook/UI heavy recipes + MCP catalog | `docs/debugging/storybook.md` |
+| Repeatable Storybook visual audit protocol | `storybook-visual-audit.md` |
 | Current code map | `glossary.md` |
 
 ```text

@@ -31,6 +31,16 @@ truth source. `bun test` and targeted live `/web` smoke checks own that.
 Do not edit production components to fit a story. Fix the real bug; match the
 existing layout/precedent.
 
+## Visual Audit Sweeps
+
+For qualitative Storybook sweeps across many components, load
+`storybook-visual-audit.md`. It contains the repeatable protocol for reading
+story intent, judging final stable states, avoiding screenshot false positives,
+and saving only confirmed failure screenshots.
+
+Use this route when the task is not just "debug one UI bug", but "inspect all
+Storybook components and collect visual failures".
+
 ## Decision Tree
 
 ```text
