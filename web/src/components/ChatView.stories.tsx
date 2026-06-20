@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChatView } from "./ChatView.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
+import { inChatSurface } from "../storybook/shellFrames.tsx";
 
 const group = GROUPS.find((r) => r.id === "checkout-revamp")!;
 const pollRoom = GROUPS.find((r) => r.id === "heartbeat-checks")!;
@@ -14,6 +15,9 @@ const meta = {
   title: "Surfaces/ChatView",
   component: ChatView,
   parameters: { layout: "fullscreen" },
+  // Mount through the real chat-surface cells so timeline/composer/compact track
+  // the shell mode the viewport width implies — same as the app.
+  decorators: [inChatSurface],
   args: { room: group, onOpenThread: () => {}, onToggleThreadSummary: () => {}, onOpenCommunity: () => {} },
 } satisfies Meta<typeof ChatView>;
 
