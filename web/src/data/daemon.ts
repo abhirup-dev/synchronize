@@ -24,6 +24,8 @@ import type {
   ThreadSummary,
   TimelineEvent,
   TimelineEventType,
+  WebDeepLinkSurface,
+  WebDeepLinkTarget,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
@@ -159,6 +161,19 @@ interface DaemonSkillCatalogEntry {
   description: string;
   runtimes: Array<"claude" | "pi">;
   source_path?: string;
+}
+
+interface DaemonResolveResponse {
+  target: {
+    event_id: number;
+    room_id: string;
+    surface: WebDeepLinkSurface;
+    group_id: number | null;
+    parent_event_id: number | null;
+    focus_event_id: number;
+  };
+  event: unknown;
+  root_event: unknown;
 }
 
 interface WebStateResponse {
@@ -870,6 +885,32 @@ export class DaemonDataSource implements DataSource {
     if (hex) localStorage.setItem(key, hex);
     else localStorage.removeItem(key);
     this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, color: colorForPeer(agentId) } : agent));
+  }
+
+  async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
+    if (this.peerId === PENDING_WEB_PEER_ID) await this.registerWebPeer();
+    const res = await this.request<DaemonResolveResponse>(
+      `/web/resolve?event_id=${encodeURIComponent(eventId)}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    const t = res.target;
+    return {
+      roomId: t.room_id,
+      surface: t.surface,
+      focusMessageId: messageId(t.focus_event_id),
+      threadParentId: t.parent_event_id != null ? messageId(t.parent_event_id) : null,
+      linkId: String(t.event_id),
+      eventId: t.event_id,
+    };
+  }
+
+  async hydrateDeepLinkTarget(target: WebDeepLinkTarget): Promise<void> {
+    this.messages(target.roomId); // ensure the room snapshot exists
+    const state = await this.request<WebStateResponse>(
+      `/web/state?room=${encodeURIComponent(target.roomId)}&around_event_id=${target.eventId}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    // Merge the around-window into whatever is already loaded so both the latest
+    // tail and the old target stay present.
+    this.applyRoomState(target.roomId, state, { append: true });
   }
 
   private async registerWebPeer(): Promise<void> {

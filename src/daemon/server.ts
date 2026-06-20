@@ -476,6 +476,9 @@ interface WebStateResponse {
   events: WebEventRow[];
   media: MediaRow[];
   skill_catalog: SkillCatalogEntry[];
+  // Present only when hydrating around a deep-link target (around_event_id). Lets
+  // the client know whether the exact target made it into the bounded window.
+  target?: { event_id: number; included: boolean; before_count: number; after_count: number };
 }
 
 type WebLaunchLifecycleRow = Pick<
@@ -540,6 +543,8 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const since = parseCursor(url.searchParams.get("since"));
   const room = url.searchParams.get("room");
   const webPeerId = url.searchParams.get("peer_id");
+  const aroundRaw = Number(url.searchParams.get("around_event_id"));
+  const aroundEventId = Number.isInteger(aroundRaw) && aroundRaw >= 1 ? aroundRaw : null;
   const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
   const aoeProfile = aoeProfileName(ctx.paths.home);
   const launchLifecycle = ctx.db
@@ -614,8 +619,16 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        ORDER BY last_event_id DESC, g.name ASC`,
     )
     .all();
-  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId });
+  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId, aroundEventId });
   const media = readWebRoomMedia(ctx, { room, limit });
+  const target = aroundEventId === null
+    ? undefined
+    : {
+        event_id: aroundEventId,
+        included: events.some((event) => event.event_id === aroundEventId),
+        before_count: events.filter((event) => event.event_id < aroundEventId).length,
+        after_count: events.filter((event) => event.event_id > aroundEventId).length,
+      };
   // A soft-deleted (evicted / lease-lapsed) peer can still be the author of
   // historical events. The active `peers` directory above excludes deleted peers
   // (correct for the live roster), but the web client resolves an event's sender
@@ -664,6 +677,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     events,
     media,
     skill_catalog: ctx.skillCatalog,
+    ...(target ? { target } : {}),
   };
 }
 
@@ -794,15 +808,26 @@ function webEventSelectSql(where: string): string {
           LIMIT ?`;
 }
 
+// Deep links must open to events outside the latest room window, so target
+// hydration fetches a bounded context window centred on around_event_id instead
+// of the newest slice. Conservative bounds keep an old link from loading an
+// unbounded transcript. ponytail: fixed 40/40; widen if context proves too thin.
+const DEEP_LINK_WINDOW_BEFORE = 40;
+const DEEP_LINK_WINDOW_AFTER = 40;
+
 export function readWebRoomEvents(
   ctx: DaemonContext,
-  input: { room: string | null; since: number; limit: number; webPeerId: string | null },
+  input: { room: string | null; since: number; limit: number; webPeerId: string | null; aroundEventId?: number | null },
 ): WebEventRow[] {
   if (!input.room) return [];
+  const around = input.aroundEventId ?? null;
   if (input.room.startsWith("group:")) {
     const groupId = Number.parseInt(input.room.slice("group:".length), 10);
     if (!Number.isInteger(groupId) || groupId < 1) {
       throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+    }
+    if (around !== null) {
+      return readGroupAroundWindow(ctx, groupId, around);
     }
     const rows = ctx.db
       .query<WebEventRow, [number, number, number]>(
@@ -817,20 +842,46 @@ export function readWebRoomEvents(
     const otherPeerId = input.room.slice("dm:".length);
     ensurePeer(ctx.db, input.webPeerId);
     ensurePeer(ctx.db, otherPeerId);
-    const rows = ctx.db
-      .query<WebEventRow, [string, string, string, string, number, number]>(
-        webEventSelectSql(
-          `WHERE e.type = 'dm'
+    const dmWhere = `WHERE e.type = 'dm'
              AND ((e.sender_peer_id = ? AND e.recipient_peer_id = ?)
-               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))
-             AND e.event_id > ?`,
-        ),
-      )
+               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))`;
+    if (around !== null) {
+      const before = ctx.db
+        .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id <= ?`))
+        .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, around, DEEP_LINK_WINDOW_BEFORE + 1);
+      const after = ctx.db
+        .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id > ?`))
+        .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, around, DEEP_LINK_WINDOW_AFTER);
+      return attachReactions(ctx.db, [...after, ...before].reverse());
+    }
+    const rows = ctx.db
+      .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id > ?`))
       .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, input.since, input.limit)
       .reverse();
     return attachReactions(ctx.db, rows);
   }
   throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+}
+
+// Bounded window of group events centred on a target event id. When the target
+// is a thread reply whose root falls outside the window, the root is added so the
+// thread parent still renders without a second round trip.
+function readGroupAroundWindow(ctx: DaemonContext, groupId: number, around: number): WebEventRow[] {
+  const before = ctx.db
+    .query<WebEventRow, [number, number, number]>(webEventSelectSql("WHERE e.group_id = ? AND e.event_id <= ?"))
+    .all(groupId, around, DEEP_LINK_WINDOW_BEFORE + 1);
+  const after = ctx.db
+    .query<WebEventRow, [number, number, number]>(webEventSelectSql("WHERE e.group_id = ? AND e.event_id > ?"))
+    .all(groupId, around, DEEP_LINK_WINDOW_AFTER);
+  const rows = [...after, ...before].reverse();
+  const targetRow = rows.find((row) => row.event_id === around);
+  if (targetRow?.parent_event_id != null && !rows.some((row) => row.event_id === targetRow.parent_event_id)) {
+    const root = ctx.db
+      .query<WebEventRow, [number, number]>(webEventSelectSql("WHERE e.event_id = ?"))
+      .get(targetRow.parent_event_id, 1);
+    if (root) rows.unshift(root);
+  }
+  return attachReactions(ctx.db, rows);
 }
 
 function readWebRoomMedia(ctx: DaemonContext, input: { room: string | null; limit: number }): MediaRow[] {
