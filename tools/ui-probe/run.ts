@@ -48,12 +48,18 @@ interface CommandResult {
   stderr: string;
 }
 
+type ProbeMode = "offline" | "demo";
+type DemoTarget = "chrome" | "codex-iab";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const artifactDir = join(repoRoot, "tools/ui-probe/artifacts/latest");
 const snapshotHome = join(artifactDir, "snapshot-home");
-const args = new Set(Bun.argv.slice(2));
+const rawArgs = Bun.argv.slice(2);
+const args = new Set(rawArgs);
+const mode = readMode(rawArgs);
+const demoTarget = readDemoTarget(rawArgs);
 const runAdapters = !args.has("--no-adapters");
-const keepDaemon = args.has("--keep-daemon");
+const keepDaemon = args.has("--keep-daemon") || (mode === "demo" && demoTarget === "codex-iab");
 
 async function main(): Promise<void> {
   await rm(artifactDir, { recursive: true, force: true });
@@ -78,23 +84,44 @@ async function main(): Promise<void> {
     state = await fetchProbeState(daemon.status.base_url);
     await writeFile(join(artifactDir, "web-state.json"), JSON.stringify(state, null, 2));
 
-    playwright = await run("bunx", ["playwright", "test", "-c", "tools/ui-probe/playwright.config.ts"], {
-      cwd: repoRoot,
-      env: {
-        UI_PROBE_BASE_URL: daemon.status.base_url,
-        UI_PROBE_STATE_JSON: join(artifactDir, "web-state.json"),
-        UI_PROBE_ARTIFACT_DIR: artifactDir,
-      },
-      label: "playwright probes",
-      allowFailure: true,
-    });
+    if (mode === "demo" && demoTarget === "codex-iab") {
+      const session = {
+        mode,
+        target: demoTarget,
+        baseUrl: daemon.status.base_url,
+        statePath: join(artifactDir, "web-state.json"),
+        artifactDir,
+        daemonPid: daemon.status.pid,
+      };
+      await writeFile(join(artifactDir, "in-app-demo-session.json"), JSON.stringify(session, null, 2));
+      playwright = {
+        code: 0,
+        stdout: `Codex in-app demo session prepared at ${join(artifactDir, "in-app-demo-session.json")}\n`,
+        stderr: "",
+      };
+      await writeFile(join(artifactDir, "playwright-probes.log"), renderCommandLog("codex-iab", ["prepared"], playwright));
+    } else {
+      playwright = await run("bunx", playwrightArgs(), {
+        cwd: repoRoot,
+        env: {
+          UI_PROBE_BASE_URL: daemon.status.base_url,
+          UI_PROBE_STATE_JSON: join(artifactDir, "web-state.json"),
+          UI_PROBE_ARTIFACT_DIR: artifactDir,
+          UI_PROBE_MODE: mode,
+        },
+        label: "playwright probes",
+        allowFailure: true,
+      });
+    }
   } finally {
-    if (!keepDaemon) await daemon.stop();
+    if (keepDaemon) daemon.detach();
+    else await daemon.stop();
   }
 
   const summary = {
     generatedAt: new Date().toISOString(),
-    mode: "real-data-snapshot",
+    mode: `real-data-snapshot:${mode}`,
+    demoTarget: mode === "demo" ? demoTarget : null,
     sourceDaemon: source,
     probeDaemon: daemon.status,
     artifactDir,
@@ -110,6 +137,34 @@ async function main(): Promise<void> {
   if (!playwright || playwright.code !== 0) {
     process.exitCode = playwright?.code ?? 1;
   }
+}
+
+function readMode(values: string[]): ProbeMode {
+  if (values.includes("--demo")) return "demo";
+  const index = values.indexOf("--mode");
+  const value = index >= 0 ? values[index + 1] : "offline";
+  if (value === "offline" || value === "demo") return value;
+  throw new Error(`Unsupported ui probe mode ${JSON.stringify(value)}. Use --mode offline or --mode demo.`);
+}
+
+function readDemoTarget(values: string[]): DemoTarget {
+  const index = values.indexOf("--target");
+  const value = index >= 0 ? values[index + 1] : "chrome";
+  if (value === "chrome" || value === "codex-iab") return value;
+  throw new Error(`Unsupported ui probe demo target ${JSON.stringify(value)}. Use --target chrome or --target codex-iab.`);
+}
+
+function playwrightArgs(): string[] {
+  const base = ["playwright", "test", "-c", "tools/ui-probe/playwright.config.ts"];
+  if (mode !== "demo") return base;
+  return [
+    ...base,
+    "--project=desktop",
+    "--headed",
+    "--workers=1",
+    "--grep",
+    "flow chat.top-thread-traversal.scroll-bottom",
+  ];
 }
 
 async function discoverDaemon(): Promise<DaemonStatus> {
@@ -128,7 +183,8 @@ async function prepareSnapshot(source: DaemonStatus): Promise<void> {
   }
 }
 
-async function startSnapshotDaemon(): Promise<{ status: DaemonStatus; stop: () => Promise<void> }> {
+async function startSnapshotDaemon(): Promise<{ status: DaemonStatus; detach: () => void; stop: () => Promise<void> }> {
+  const persistent = keepDaemon;
   const child = spawn("bun", ["run", "src/daemon.ts"], {
     cwd: repoRoot,
     env: {
@@ -137,8 +193,10 @@ async function startSnapshotDaemon(): Promise<{ status: DaemonStatus; stop: () =
       SYNCHRONIZE_BIND: "127.0.0.1",
       SYNCHRONIZE_PORT: "0",
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    detached: persistent,
+    stdio: persistent ? ["ignore", "ignore", "ignore"] : ["ignore", "pipe", "pipe"],
   });
+  if (persistent) child.unref();
 
   let stdout = "";
   let stderr = "";
@@ -156,13 +214,22 @@ async function startSnapshotDaemon(): Promise<{ status: DaemonStatus; stop: () =
     if (existsSync(daemonJson)) {
       const status = normalizeDaemonJson(JSON.parse(await readFile(daemonJson, "utf8")) as DaemonJson);
       await waitForHttp(`${status.base_url}/web`);
-      await writeFile(join(artifactDir, "snapshot-daemon.log"), stdout + stderr);
+      await writeFile(
+        join(artifactDir, "snapshot-daemon.log"),
+        persistent ? `detached snapshot daemon pid=${status.pid} url=${status.base_url}\n` : stdout + stderr,
+      );
       return {
         status: {
           ...status,
           home: snapshotHome,
           db_path: join(snapshotHome, "synchronize.db"),
           media_path: join(snapshotHome, "media"),
+        },
+        detach: () => {
+          if (persistent) return;
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          child.unref();
         },
         stop: async () => {
           if (child.exitCode !== null) return;
@@ -334,6 +401,7 @@ function summarizeState(state: unknown): Record<string, number> {
 function renderSummary(summary: {
   generatedAt: string;
   mode: string;
+  demoTarget: DemoTarget | null;
   sourceDaemon: DaemonStatus;
   probeDaemon: DaemonStatus;
   artifactDir: string;
@@ -367,6 +435,7 @@ Mode: ${summary.mode}
 
 ## Probe Result
 
+- Demo target: ${summary.demoTarget ?? "n/a"}
 - Playwright exit code: ${summary.playwright?.code ?? "not-run"}
 - Snapshot daemon stopped: ${summary.cleanup.snapshotDaemonStopped}
 

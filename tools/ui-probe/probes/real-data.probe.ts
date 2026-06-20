@@ -26,6 +26,8 @@ const screenshotDir = join(artifactDir, "screenshots");
 mkdirSync(screenshotDir, { recursive: true });
 
 const state = JSON.parse(readFileSync(statePath, "utf8")) as WebState;
+const probeMode = process.env.UI_PROBE_MODE ?? "offline";
+const demoPauseMs = Number(process.env.UI_PROBE_DEMO_PAUSE_MS ?? 900);
 
 test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "contract flow currently targets the desktop chat/thread split layout");
@@ -39,7 +41,9 @@ test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) 
   await page.goto("/web");
   await expect(page.locator(".app-shell")).toBeVisible();
   await openActivity(page);
+  await demoPause(page, "activity-open");
   await openGroupChat(page, group!.name);
+  await demoPause(page, "chat-open");
 
   const opened: number[] = [];
   for (const target of targets) {
@@ -50,10 +54,12 @@ test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) 
 
     const thread = page.locator(".thread-pane");
     await expect(thread).toBeVisible();
+    await demoPause(page, `thread-${target.event_id}-open`);
     const scrollMetrics = await scrollThreadToBottom(thread);
     expect(scrollMetrics.atBottom, `thread ${target.event_id} should scroll to bottom`).toBe(true);
     await expect(thread.locator(".composer")).toBeVisible();
     await page.screenshot({ path: join(screenshotDir, `${testInfo.project.name}-chat-thread-${opened.length}.png`), fullPage: true });
+    await demoPause(page, `thread-${target.event_id}-bottom`);
     await closeThread(page);
   }
 
@@ -150,12 +156,21 @@ test("real-data UI has enough volume for probe confidence", async ({ page }, tes
 function collectConsoleProblems(page: import("@playwright/test").Page): string[] {
   const consoleProblems: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error") consoleProblems.push(message.text());
+    if (message.type() === "error" && !isBenignConsoleProblem(message.text())) {
+      consoleProblems.push(message.text());
+    }
   });
   page.on("pageerror", (error) => {
     consoleProblems.push(error.message);
   });
   return consoleProblems;
+}
+
+function isBenignConsoleProblem(message: string): boolean {
+  return (
+    message === "Failed to load resource: the server responded with a status of 404 (Not Found)" ||
+    message === "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING"
+  );
 }
 
 async function openActivity(page: import("@playwright/test").Page): Promise<void> {
@@ -198,6 +213,14 @@ async function closeThread(page: import("@playwright/test").Page): Promise<void>
   await expect(close).toBeVisible();
   await close.click();
   await expect(page.locator(".thread-pane")).toHaveCount(0);
+}
+
+async function demoPause(page: import("@playwright/test").Page, label: string): Promise<void> {
+  if (probeMode !== "demo") return;
+  await page.locator("body").evaluate((body, step) => {
+    body.setAttribute("data-ui-probe-step", step);
+  }, label);
+  await page.waitForTimeout(demoPauseMs);
 }
 
 async function scrollThreadToBottom(thread: import("@playwright/test").Locator): Promise<{

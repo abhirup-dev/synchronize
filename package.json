@@ -12,6 +12,9 @@
     "mcp": "bun run src/mcp.ts",
     "synchronize": "bun run src/cli.ts",
     "ui:probe": "bun run tools/ui-probe/run.ts",
+    "ui:probe:demo": "bun run tools/ui-probe/run.ts --mode demo --target chrome",
+    "ui:probe:demo:chrome": "bun run tools/ui-probe/run.ts --mode demo --target chrome",
+    "ui:probe:demo:iab:prepare": "bun run tools/ui-probe/run.ts --mode demo --target codex-iab --keep-daemon",
     "ui:probe:flows": "bun run tools/ui-probe/flowbook.ts check",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
