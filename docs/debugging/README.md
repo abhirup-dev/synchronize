@@ -9,6 +9,7 @@ SQL snippets, or configuration tables.
 | Need | Document |
 |---|---|
 | Raw read-only SQLite/Event SQL recipes | `sql-queries.md` |
+| Storybook/UI component debugging + MCP capability catalog | `storybook.md` |
 | Runtime, env vars, config.toml, remote profiles, test harnesses | `../configuration/README.md` |
 | Agent-facing symptom routing | `.claude/skills/synchronize-debugging/SKILL.md` |
 

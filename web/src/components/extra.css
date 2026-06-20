@@ -309,7 +309,6 @@
    colored author-name pill above the bubble carries the identity instead. */
 .message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
 .message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
-.message-row.is-you .message-gutter { order: 2; }
 .message-row.is-you .message-body,
 .message-row.is-web-author .message-body {
   order: 1;

@@ -132,7 +132,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
         ])
       }
     >
-      {!hideAvatar && !isWebAuthor && (
+      {!hideAvatar && !isWebAuthor && !isYou && (
         <div className="message-gutter flex h-[34px] justify-center pt-0">
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
