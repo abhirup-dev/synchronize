@@ -4,10 +4,12 @@ import { expect, test } from "@playwright/test";
 
 interface WebState {
   peers: unknown[];
-  groups: Array<{ name: string }>;
+  groups: Array<{ group_id: number; name: string }>;
   events: Array<{
     event_id: number;
     type: string;
+    group_id: number | null;
+    group_name?: string;
     body: string | null;
     parent_event_id: number | null;
     reply_count: number;
@@ -24,6 +26,45 @@ const screenshotDir = join(artifactDir, "screenshots");
 mkdirSync(screenshotDir, { recursive: true });
 
 const state = JSON.parse(readFileSync(statePath, "utf8")) as WebState;
+
+test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "contract flow currently targets the desktop chat/thread split layout");
+
+  const consoleProblems = collectConsoleProblems(page);
+  const group = state.groups.find((candidate) => topThreadRoots(candidate.group_id).length >= 2);
+  expect(group, "real data should include a group with at least two top-five thread roots").toBeTruthy();
+  const targets = topThreadRoots(group!.group_id).slice(0, 5);
+  expect(targets.length, "top-five candidate set should include at least two threads").toBeGreaterThanOrEqual(2);
+
+  await page.goto("/web");
+  await expect(page.locator(".app-shell")).toBeVisible();
+  await openGroupChat(page, group!.name);
+
+  const opened: number[] = [];
+  for (const target of targets) {
+    if (opened.length >= 2) break;
+    const openedThread = await openThreadFromChat(page, target);
+    if (!openedThread) continue;
+    opened.push(target.event_id);
+
+    const thread = page.locator(".thread-pane");
+    await expect(thread).toBeVisible();
+    const threadBody = thread.locator(".thread-pane-body");
+    await expect(threadBody).toBeVisible();
+    const atBottom = await threadBody.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 2;
+    });
+    expect(atBottom, `thread ${target.event_id} should scroll to bottom`).toBe(true);
+    await expect(thread.locator(".composer")).toBeVisible();
+    await page.screenshot({ path: join(screenshotDir, `${testInfo.project.name}-chat-thread-${opened.length}.png`), fullPage: true });
+    await closeThread(page);
+  }
+
+  expect(opened, `expected to open two different threads from top-five candidates ${targets.map((target) => target.event_id).join(", ")}`).toHaveLength(2);
+  expect(new Set(opened).size, "opened thread ids should be distinct").toBe(2);
+  expect(consoleProblems).toEqual([]);
+});
 
 test("flow activity.thread-row.open-scroll-emoji", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "contract flow currently targets the desktop Activity split-pane layout");
@@ -131,6 +172,54 @@ async function openActivity(page: import("@playwright/test").Page): Promise<void
   await expect(page.locator(".activity-view")).toBeVisible();
 }
 
+async function openGroupChat(page: import("@playwright/test").Page, groupName: string): Promise<void> {
+  const room = page.locator(".room-item").filter({ hasText: `#${groupName}` }).first();
+  await expect(room, `expected #${groupName} in the sidebar`).toBeVisible();
+  await room.click();
+  await expect(page.locator(".chat-view")).toBeVisible();
+}
+
+async function openThreadFromChat(page: import("@playwright/test").Page, target: WebState["events"][number]): Promise<boolean> {
+  const needle = snippet(target.body ?? "");
+  const chatList = page.locator(".chat-list");
+  await expect(chatList).toBeVisible();
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const row = page.locator(".message-virtual-row").filter({ hasText: needle }).first();
+    if (await row.isVisible().catch(() => false)) {
+      const badge = row.locator(".thread-badge").first();
+      if (await badge.isVisible().catch(() => false)) {
+        await badge.click();
+        return true;
+      }
+    }
+    await chatList.evaluate((element) => {
+      element.scrollTop = Math.max(0, element.scrollTop - Math.max(320, element.clientHeight * 0.75));
+    });
+  }
+  return false;
+}
+
+async function closeThread(page: import("@playwright/test").Page): Promise<void> {
+  const close = page.getByRole("button", { name: "close thread" });
+  await expect(close).toBeVisible();
+  await close.click();
+  await expect(page.locator(".thread-pane")).toHaveCount(0);
+}
+
 function snippet(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 48);
+}
+
+function topThreadRoots(groupId: number): WebState["events"] {
+  return state.events
+    .filter((event) =>
+      event.type === "group_message" &&
+      event.group_id === groupId &&
+      event.parent_event_id === null &&
+      event.reply_count > 1 &&
+      Boolean(event.body?.trim()),
+    )
+    .sort((a, b) => b.event_id - a.event_id)
+    .slice(0, 5);
 }

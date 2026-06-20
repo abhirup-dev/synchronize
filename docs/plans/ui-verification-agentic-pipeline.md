@@ -75,6 +75,19 @@ Each flow records `id`, `status`, `tier`, `determinism`, `owner`, `entry`, `prec
 
 This is intentionally precise. It verifies navigation, real data matching, split-pane behavior, scroll behavior, rich glyph rendering, and accessibility metadata in one reproducible contract.
 
+`chat.top-thread-traversal.scroll-bottom` is the second active contract. It encodes the chat traversal invariant:
+
+1. Open `/web`.
+2. Open a group chat from the sidebar.
+3. Build the candidate set from real snapshot root messages with `reply_count > 1`.
+4. Consider at most the five newest candidates in that group.
+5. Open two different thread badges from that top-five set.
+6. Scroll each opened thread body to the bottom.
+7. Verify the thread pane and composer stay mounted for each traversal.
+8. Capture one screenshot per opened thread.
+
+This verifies normal chat navigation rather than Activity navigation: room selection, virtualized chat rows, thread badge affordances, split-pane thread lifecycle, close/reopen behavior, and thread scroll behavior across two different thread roots.
+
 `agents.spawn-entrypoint.adaptive` is the first planned adaptive flow. Its invariant is not button position; the invariant is that a user or agent can discover the spawn-agent affordance by meaning. It should use accessible names first, then glossary ownership, then app-native semantic hooks, and finally Stagehand/Libretto observation as a discovery assist. It should not gate until it can run in dry-run or snapshot-only mode.
 
 Additional high-value contracts to add next:

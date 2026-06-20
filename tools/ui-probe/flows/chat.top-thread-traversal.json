@@ -1,0 +1,56 @@
+{
+  "id": "chat.top-thread-traversal.scroll-bottom",
+  "status": "active",
+  "tier": "contract",
+  "determinism": "deterministic",
+  "owner": "web",
+  "description": "Open a group chat, consider at most the five newest root messages with more than one reply, open two different thread badges from that set, and scroll each thread pane to the bottom.",
+  "entry": {
+    "route": "/web",
+    "surface": "chat",
+    "trigger": "sidebar group room"
+  },
+  "preconditions": [
+    "The real snapshot contains a group with at least two root group_message events where reply_count > 1.",
+    "The probe only considers the five newest qualifying thread roots in the selected group.",
+    "The probe runs in the desktop viewport because split chat/thread layout is the invariant under test."
+  ],
+  "components": [
+    "app-shell",
+    "chat-view",
+    "room-header",
+    "message-row",
+    "thread-pane",
+    "scroll-controls",
+    "composer"
+  ],
+  "steps": [
+    "Navigate to /web and wait for the app shell.",
+    "Open the selected group chat from the sidebar.",
+    "Build the top-five candidate set from real snapshot root messages with reply_count > 1.",
+    "Find and click a thread badge for the first candidate.",
+    "Wait for the thread pane to mount and scroll the thread body to the bottom.",
+    "Close the thread pane.",
+    "Repeat for a second, different candidate from the same top-five set."
+  ],
+  "assertions": [
+    ".chat-view is visible for the selected group.",
+    "At least two top-five thread candidates can be opened.",
+    "Each opened .thread-pane is visible and contains a .thread-pane-body.",
+    "Each thread body can be scrolled to the bottom.",
+    "The composer remains visible after each thread scroll."
+  ],
+  "staleIf": [
+    "Group room buttons no longer open the chat surface.",
+    "Chat thread badges no longer use stable .thread-badge hooks.",
+    "ThreadPane no longer exposes .thread-pane-body for scrolling.",
+    "The real-data query cannot find two qualifying top-five thread roots.",
+    "The referenced glossary components or active probe file disappear."
+  ],
+  "probeFile": "tools/ui-probe/probes/real-data.probe.ts",
+  "artifacts": [
+    "screenshots/desktop-chat-thread-1.png",
+    "screenshots/desktop-chat-thread-2.png",
+    "playwright trace on retry"
+  ]
+}

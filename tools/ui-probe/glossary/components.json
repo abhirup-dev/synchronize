@@ -38,11 +38,29 @@
       "staleChecks": ["file-exists", "symbol-present", "selector-covered"]
     },
     {
+      "id": "chat-view",
+      "label": "Chat view",
+      "files": ["web/src/components/ChatView.tsx"],
+      "symbols": ["ChatView"],
+      "selectors": [".chat-view", ".chat-list", ".message-virtual-row"],
+      "surfaces": ["chat"],
+      "staleChecks": ["file-exists", "symbol-present", "selector-covered"]
+    },
+    {
+      "id": "room-header",
+      "label": "Room header",
+      "files": ["web/src/components/RoomHeader.tsx"],
+      "symbols": ["RoomHeader"],
+      "selectors": [".room-header", ".thread-pane-close"],
+      "surfaces": ["chat", "thread"],
+      "staleChecks": ["file-exists", "symbol-present"]
+    },
+    {
       "id": "message-row",
       "label": "Message row",
       "files": ["web/src/components/MessageRow.tsx"],
       "symbols": ["MessageRow"],
-      "selectors": [".message-row", ".bubble", ".reactions", ".reaction"],
+      "selectors": [".message-row", ".bubble", ".thread-badge", ".reactions", ".reaction"],
       "surfaces": ["chat", "thread"],
       "staleChecks": ["file-exists", "symbol-present", "selector-covered"]
     },
