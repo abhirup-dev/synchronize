@@ -185,7 +185,11 @@ export const MessageRow = memo(function MessageRow({
               <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
             )}
           </div>
-          {(hasThreadBadge || onReact) && (
+          {/* Reactions are DATA — show them whenever the message has any, not only
+              when an onReact handler happens to be wired. (Footer also appears for
+              an interactive add-reaction affordance or a thread badge.) Decoupling
+              display from handlers keeps read-only mounts and stories truthful. */}
+          {(hasThreadBadge || onReact || message.reactions.length > 0) && (
             <div className="message-footer mt-px flex min-h-[26px] w-full items-center justify-between gap-[var(--space-8)]">
               <div className="message-footer-left flex min-w-0 flex-[1_1_auto] items-center">
                 {hasThreadBadge && (

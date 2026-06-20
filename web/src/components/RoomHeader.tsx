@@ -140,7 +140,7 @@ export function RoomHeader({
         ) : (
           <div className="room-header-actions flex gap-[6px]">
             {showAgentsButton && (
-              <button className="icon-btn room-agents-btn w-auto min-w-[58px] inline-flex items-center justify-center gap-[var(--space-6)] px-[8px] font-display text-[length:var(--text-10)] tracking-[var(--tracking-sm)]" aria-label="open agents" onClick={onOpenAgents}>
+              <button className="icon-btn room-agents-btn inline-flex items-center justify-center gap-[var(--space-6)] font-display text-[length:var(--text-10)] tracking-[var(--tracking-sm)]" aria-label="open agents" onClick={onOpenAgents}>
                 <span className="room-agents-label">AGENTS</span>
                 <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
               </button>

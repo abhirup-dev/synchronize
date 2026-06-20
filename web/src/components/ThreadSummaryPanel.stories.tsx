@@ -67,7 +67,9 @@ export const SingleThread: Story = {
   render: () => <PanelHarness messages={MESSAGES["heartbeat-checks"]!} />,
 };
 
-// ml-ranking has no threaded messages — exercises the empty "no threads" state.
+// infra-oncall has messages but zero threaded roots — the faithful empty
+// "no threads" state. (ml-ranking is NOT empty: its `ml-deepdive` root carries
+// threadReplyCount 14 — the prior pick silently stopped exercising this state.)
 export const Empty: Story = {
-  render: () => <PanelHarness messages={MESSAGES["ml-ranking"]!} />,
+  render: () => <PanelHarness messages={MESSAGES["infra-oncall"]!} />,
 };
