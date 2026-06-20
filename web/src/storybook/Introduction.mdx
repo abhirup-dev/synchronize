@@ -1,0 +1,45 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Overview/Introduction" />
+
+# Synchronize Web UI — Component Glossary
+
+This Storybook is the **component-level catalog** for the synchronize web chat UI.
+Every story renders a *real* production component (imported straight from
+`src/components/`) in isolation, against realistic data from `src/data/seed.ts`
+via `MockDataSource`. There are no Storybook-only forks of components.
+
+It complements — and does **not** replace — the live `/web` app and the
+real-daemon UI probe pipeline. Storybook owns **isolated component states**;
+integrated flows and daemon behavior are verified against the running app.
+
+## How the catalog is organized
+
+Stories are grouped by product vocabulary, not by file layout:
+
+- **Primitives** — identity badges, avatars, status dots, resize handle.
+- **Messages** — `MessageRow`, `Markdown`, `PollWidget`.
+- **Composer** — `Composer` (with a type-and-send interaction test) and
+  `AttachmentPreview`.
+- **Navigation** — `Sidebar`, `RoomHeader`, `AgentRoster`.
+- **Surfaces** — `ChatView`, `BoardView`, `ThreadPane`, `ThreadSummaryPanel`,
+  `TimelineRail`, `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
+- **Activity** — `ActivityItem`, `ActivityView`.
+- **Agent States** — `SpawnAgentDialog`, `AgentColorPicker`.
+
+Each component also has an auto-generated **Docs** page listing its props
+(args/argTypes) — use it to answer "what does this component take?" without
+opening source.
+
+## Tokens, themes, and skins
+
+All visual values flow through CSS custom properties. The authoritative token
+contract — palette, the `data-theme` palettes (light, dark, rose-pine-dawn,
+kanagawa-wave, catppuccin-mocha) and the `data-skin` aesthetic layer
+(brutal / glass) — lives in `web/DESIGN.md` and `web/src/styles.css`. Use the
+toolbar **Theme** and **Skin** controls to view any story across them.
+
+## Authoring new stories
+
+See **Overview → Authoring Stories** for the DataSource contract and the
+provider requirements every story relies on.

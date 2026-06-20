@@ -12,6 +12,10 @@ import "../src/skin-glass.css";
 import "highlight.js/styles/github-dark.css";
 
 const preview: Preview = {
+  // Every component gets an auto-generated Docs page (args/argTypes table) so the
+  // catalog answers "what UI pieces exist and what props do they take" with no
+  // per-component doc writing.
+  tags: ["autodocs"],
   parameters: {
     layout: "centered",
   },
