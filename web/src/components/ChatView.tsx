@@ -10,6 +10,7 @@ import { ScrollControls } from "./ScrollControls.tsx";
 import { TimelineRail } from "./TimelineRail.tsx";
 import { ThreadSummaryPanel } from "./ThreadSummaryPanel.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
+import { useShellMode } from "../shell-mode.tsx";
 
 const THREAD_SUMMARY_DEFAULT_WIDTH = 340;
 const THREAD_SUMMARY_MIN_WIDTH = 240;
@@ -45,6 +46,7 @@ export function ChatView({
   const me = useMe();
   const reactToMessage = useReactToMessage();
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
+  const shellMode = useShellMode();
   const listRef = useAutoScrollbar<HTMLDivElement>();
   const lastSeenMessageId = useRef<string | null>(null);
   const [threadSummaryWidth, setThreadSummaryWidth] = useState(() => {
@@ -210,8 +212,10 @@ export function ChatView({
           messages={messages}
           agents={displayAgents}
           onJumpTo={handleJumpTo}
+          {...(onOpenThread ? { onOpenThread } : {})}
           width={threadSummaryWidth}
           onWidthChange={setThreadSummaryWidth}
+          {...(onToggleThreadSummary ? { onClose: onToggleThreadSummary } : {})}
           chatListRef={listRef}
           getAnchorTop={getAnchorTop}
           getContentHeight={getContentHeight}
@@ -261,12 +265,12 @@ export function ChatView({
             </div>
             <ScrollControls targetRef={listRef} newItemsKey={messages.at(-1)?.id ?? null} />
           </div>
-          {showTimeline && !isThreadOpen && <TimelineRail roomId={room.id} />}
+          {showTimeline && !isThreadOpen && !(threadSummaryOpen && shellMode !== "desktop") && <TimelineRail roomId={room.id} />}
         </div>
         <Composer
           key={isThreadOpen ? "thread-open" : "thread-closed"}
           roomId={room.id}
-          collapsedDefault={isThreadOpen}
+          collapsedDefault={isThreadOpen && shellMode === "compact"}
           {...(onToggleThreadSummary ? { threadSummaryOpen, onToggleThreadSummary } : {})}
           {...(onOpenCommunity ? { onOpenCommunity } : {})}
         />

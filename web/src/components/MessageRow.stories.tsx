@@ -29,13 +29,13 @@ export const GroupedWithPrev: Story = {
   args: { message: msgs[2]!, author: authorOf(msgs[2]!.authorId), groupedWithPrev: true },
 };
 
-// Self ("You") message: shows the "You" name pill but NO avatar gutter — the
-// .is-you row is single-column. Regression guard for the stray centered avatar
-// bug (gutter was rendered into the 1-col grid and floated mid-pane).
+// Self message: NO avatar gutter — the .is-self row is single-column. Regression
+// guard for the stray centered avatar bug (gutter was rendered into the 1-col grid
+// and floated mid-pane). The refactor unified is-you/is-web-author into is-self.
 export const SelfMessage: Story = {
   args: { message: msgs[3]!, author: authorOf(msgs[3]!.authorId) },
   play: async ({ canvasElement }) => {
-    const row = canvasElement.querySelector(".message-row.is-you");
+    const row = canvasElement.querySelector(".message-row.is-self");
     await expect(row).toBeTruthy();
     await expect(row!.querySelector(".message-gutter")).toBeNull();
   },

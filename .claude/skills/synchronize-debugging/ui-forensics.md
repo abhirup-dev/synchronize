@@ -12,11 +12,11 @@ Heavy detail (integration map, MCP catalog, full recipe) lives in
 ```text
 component render / single state ──> Storybook story  (MockDataSource, real browser)
 interaction / multi-step flow   ──> Storybook play() + step()  (one mounted tree)
-daemon / SSE / routing / E2E    ──> live /web + bun test + UI probe pipeline (sync-rycd)
+daemon / SSE / routing          ──> live /web smoke + bun integration tests
 ```
 
 Storybook proves component states against mocked data; it is not the daemon/API
-truth source. `bun test` and sync-rycd own that.
+truth source. `bun test` and targeted live `/web` smoke checks own that.
 
 ## First Checks
 
@@ -42,7 +42,7 @@ UI looks/behaves wrong
   |
   +-- multi-component journey? -------> Flows.stories.tsx (mounts real Shell)
   |
-  +-- needs real daemon/SSE/routing? -> NOT Storybook -> live /web + sync-rycd
+  +-- needs real daemon/SSE/routing? -> NOT Storybook -> live /web + bun tests
 ```
 
 ## See Also

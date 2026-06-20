@@ -122,13 +122,11 @@
    (.composer, .composer-toolbar, .ct-btn, .composer-file-input,
    .composer-skill-chips/-chip, .composer-input-wrap, .composer-input base +
    ::placeholder, .composer-foot, .community-open-btn, .composer-hint,
-   .composer-send/.thread-scan-btn base). Kept here: the responsive margin
+   .composer-send/.thread-scan-btn base). Kept here: the compact shell margin
    override below, the .chat-col/.thread-pane border tweaks, the
    :root[data-theme="kanagawa-wave"] palette overrides, .thread-scan-btn.active,
    and the styles.css contextual rules (.shell-compact, .community-icon art). */
-@media (max-width: 920px) {
-  .composer { margin: 6px 10px 10px; }
-}
+.shell-compact .composer { margin: 6px 10px 10px; }
 
 :root .chat-col > .composer,
 :root .thread-pane > .composer {
@@ -148,9 +146,6 @@
 :root[data-theme="kanagawa-wave"] .thread-scroll-wrap {
   --composer-separator-line: 2px solid #5E5D66;
 }
-:root[data-theme="kanagawa-wave"] .composer-toolbar {
-  border-bottom-color: #424250;
-}
 :root[data-theme="kanagawa-wave"] .ct-btn {
   background: #1F1F28;
   color: var(--ink);
@@ -168,12 +163,6 @@
 }
 :root[data-theme="kanagawa-wave"] .composer-input::placeholder {
   color: #8F8D9A;
-}
-:root[data-theme="kanagawa-wave"] .composer-foot {
-  border-top-color: #424250;
-}
-:root[data-theme="kanagawa-wave"] .composer-hint {
-  color: #AFA78D;
 }
 :root[data-theme="kanagawa-wave"] .composer-send,
 :root[data-theme="kanagawa-wave"] .thread-scan-btn {
@@ -202,14 +191,8 @@
    .mention-meta, .mention-name, .mention-handle, .mention-note all inlined). */
 
 /* ─── Skill picker ────────────────────────────────────────────────────────────
-   Base rules migrated to inline Tailwind utilities in components/Composer.tsx.
-   Kept here: the @media(max-width:700px) responsive overrides below, which still
-   target .skill-pop-head, .skill-row and .skill-runtimes (classes retained). */
-@media (max-width: 700px) {
-  .skill-pop-head { grid-template-columns: 1fr; }
-  .skill-row { grid-template-columns: 1fr; gap: var(--space-4); }
-  .skill-runtimes { justify-self: start; }
-}
+   Base + compact layout rules migrated to inline Tailwind utilities in
+   components/Composer.tsx. Hook classes remain for skin overrides. */
 
 /* ─── Room header (extras) ───────────────────────────────────────────────
    .room-header, .room-header-top, .room-id(-text/-icon), .room-title(-name),
@@ -292,7 +275,7 @@
 .bubble pre::-webkit-scrollbar { height: 6px; }
 .bubble pre::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: var(--radius-xs); }
 /* .message-row base grid + .message-gutter migrated to inline Tailwind utilities
-   in MessageRow.tsx (sync-q48d). The .is-you/.is-web-author/.no-avatar/.is-grouped
+   in MessageRow.tsx (sync-q48d). The .is-self/.no-avatar/.is-grouped
    STATE overrides below stay in CSS (they out-specify and reorder the grid).
    NOTE: deliberately NO content-visibility/contain-intrinsic-size on the row —
    TanStack Virtual already mounts only visible rows; a second lazy-sizing layer
@@ -300,28 +283,26 @@
    virtualizer's ResizeObserver and shifting content mid-scroll. Containment lives
    on .virtualized-row instead. */
 .message-row.is-grouped { margin-top: 0; }
-.message-row.is-you,
-.message-row.is-web-author {
+/* `.is-self` = the local human / web client (see data/identity.ts, isSelfAgent).
+   Own messages right-align and render bubble-only (no avatar gutter, no name
+   chip), so there is nothing to reorder in the grid. */
+.message-row.is-self {
   justify-self: end;
   grid-template-columns: minmax(0, 880px);
 }
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
    colored author-name pill above the bubble carries the identity instead. */
 .message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
-.message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
-.message-row.is-you .message-body,
-.message-row.is-web-author .message-body {
-  order: 1;
+.message-row.no-avatar.is-self { grid-template-columns: minmax(0, 1fr); }
+.message-row.is-self .message-body {
   align-items: flex-end;
 }
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
 /* .message-body / .message-stack base migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). The .is-you/.is-web-author alignment overrides
-   stay in CSS. */
-.message-row.is-you .message-stack,
-.message-row.is-web-author .message-stack {
+   MessageRow.tsx (sync-q48d). The .is-self alignment overrides stay in CSS. */
+.message-row.is-self .message-stack {
   align-self: flex-end;
 }
 
@@ -360,38 +341,14 @@
 .mention-chip-self {
   box-shadow: var(--shadow-xs);
 }
-.author-role {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
 
 /* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
    utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
    skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
-   .is-you / .is-web-author / per-theme overrides below out-specify the base
-   utilities (so they still win — parity preserved). */
-.message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
-.chat-view.is-group-room .message-row.is-web-author .bubble,
-.thread-pane-body .message-row.is-web-author .bubble {
-  background: #BDB9AA;
-  color: var(--ink);
-}
-:root[data-theme="dark"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="dark"] .thread-pane-body .message-row.is-web-author .bubble,
-:root[data-theme="kanagawa-wave"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="kanagawa-wave"] .thread-pane-body .message-row.is-web-author .bubble,
-:root[data-theme="catppuccin-mocha"] .chat-view.is-group-room .message-row.is-web-author .bubble,
-:root[data-theme="catppuccin-mocha"] .thread-pane-body .message-row.is-web-author .bubble {
-  background: var(--you-bg);
-  color: var(--you-fg);
-}
-
-.message-status {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-}
+   .is-self override below out-specifies the base utilities (so it still wins —
+   parity preserved). Your own / web-client messages get the accent bubble
+   everywhere (DM and group rooms alike) — one identity, one treatment. */
+.message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
 .markdown > * { margin: 0 0 8px; }
@@ -639,8 +596,7 @@
    .thread-replies base rules migrated to inline Tailwind utilities in
    ThreadPane.tsx (sync-vmre). `.thread-pane-body` and `.thread-divider` stay as
    class hooks for the descendant overrides below (`.thread-pane-body .bubble`,
-   `.thread-pane-body .thread-divider`, the scrollbar pseudo in styles.css, and
-   the `.message-row.is-web-author .bubble` theme overrides above). */
+   `.thread-pane-body .thread-divider`, and the scrollbar pseudo in styles.css). */
 .thread-parent .bubble {
   background: var(--paper-2);
 }
@@ -692,7 +648,6 @@
 
 /* .empty-main / .empty-main-box (+ h1, p) migrated to inline Tailwind utilities
    in App.tsx. None are skin/theme/JS hooks, so the classes were dropped. */
-
 
 /* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
 /* Ported from the Claude Design prototype (board.jsx); colors/fonts/borders
@@ -918,6 +873,53 @@
 }
 .add-card:hover { background: var(--paper); color: var(--ink); }
 
+.shell-compact .board-header {
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+.shell-compact .board-title {
+  display: none;
+}
+.shell-compact .board-sub {
+  display: none;
+}
+.shell-compact .board-filters {
+  width: 100%;
+  margin-left: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding-bottom: 2px;
+  overscroll-behavior-x: contain;
+}
+.shell-compact .board-filters .filter-chip {
+  flex: 0 0 auto;
+  min-height: 32px;
+}
+.shell-compact .board-cols {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(300px, 86vw, 520px);
+  gap: 12px;
+  padding: 14px 14px 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 14px;
+}
+.shell-compact .board-col {
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.shell-compact .board-col-head {
+  min-height: 42px;
+}
+.shell-compact .board-col-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 /* ═══════════════════ Thread Summary panel (CHAT tab) ═══════════════════ */
 /* Slides in from the left of the chat column; dots are aligned to each thread's
