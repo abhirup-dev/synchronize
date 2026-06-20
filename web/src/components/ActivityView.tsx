@@ -25,6 +25,7 @@ import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
 import { Avatar, IdentityBadge } from "./primitives.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
+import { useActivityPreferences } from "../hooks/useActivityPreferences.ts";
 import { useIsCompact, useShellMode } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
 
@@ -32,26 +33,6 @@ type Filter = "all" | "awaits" | "mentions";
 type TimelineEntry =
   | { kind: "bucket"; id: string; label: string; count: number }
   | { kind: "item"; id: string; item: ActivityItemModel };
-
-const ACTIVITY_VIEW_MODE_KEY = "synchronize.activity.viewMode";
-const ACTIVITY_LIVE_ONLY_KEY = "synchronize.activity.liveOnly";
-
-function readActivityPreference(key: string): string | null {
-  try {
-    return globalThis.localStorage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function writeActivityPreference(key: string, value: string) {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    // Private/restricted browser contexts can deny storage; Activity still works
-    // with in-memory React state for the current route in that case.
-  }
-}
 
 interface ActivityViewProps {
   onJumpToRoom(roomId: string, msgId?: string): void;
@@ -70,14 +51,9 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
   const ackAll = useAckAllActivity();
   const loadMore = useLoadMoreActivity();
 
+  const { cluster, setCluster, aliveOnly, setAliveOnly } = useActivityPreferences();
   const [filter, setFilter] = useState<Filter>("all");
   const [roomSel, setRoomSel] = useState<Set<string>>(() => new Set());
-  const [cluster, setCluster] = useState(() => {
-    return readActivityPreference(ACTIVITY_VIEW_MODE_KEY) !== "timeline";
-  });
-  const [aliveOnly, setAliveOnly] = useState(() => {
-    return readActivityPreference(ACTIVITY_LIVE_ONLY_KEY) === "1";
-  });
   const [reacted, setReacted] = useState<Set<number>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState<{ roomId: string; parentId: string; focusMessageId: string } | null>(null);
@@ -89,15 +65,6 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
   const shellMode = useShellMode();
   const roomFilterMenuOnly = compact || shellMode === "medium";
 
-  useEffect(() => {
-    // Keep the user's Activity controls stable across reloads and route changes;
-    // these are local view preferences, not daemon state.
-    writeActivityPreference(ACTIVITY_VIEW_MODE_KEY, cluster ? "grouped" : "timeline");
-  }, [cluster]);
-
-  useEffect(() => {
-    writeActivityPreference(ACTIVITY_LIVE_ONLY_KEY, aliveOnly ? "1" : "0");
-  }, [aliveOnly]);
 
   const onReact = (item: ActivityItemModel) => {
     setReacted((prev) => {

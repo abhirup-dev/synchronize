@@ -1590,103 +1590,12 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper-2);
 }
 
-/* .composer / .composer-toolbar base migrated to inline Tailwind utilities in
-   components/Composer.tsx (superseded duplicate; extra.css copy also removed).
-   .composer-wrap above and .cmp-btn/.cmp-sep below are unrelated (unused by the
-   current Composer) and left untouched. */
+/* Composer toolbar/send/input styles are inline Tailwind in components/Composer.tsx.
+   Legacy dead hooks (.cmp-btn, .cmp-sep, .hint, .send-btn, .send-arrow) removed — sync-imeu.1.19. */
 
-.cmp-btn {
-  width: 28px;
-  height: 28px;
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  padding: 0;
-  display: grid;
-  place-items: center;
-}
-.cmp-btn:hover { background: var(--yellow); color: var(--on-accent); }
-.cmp-btn.italic { font-style: italic; font-family: var(--font-ui); font-weight: 700; }
-.cmp-btn.code { font-family: var(--font-mono); font-size: var(--text-9); }
-.cmp-sep {
-  width: 2px;
-  height: 16px;
-  background: var(--ink);
-  margin: 0 4px;
-}
-
-/* .composer-input + ::placeholder and .composer-foot base migrated to inline
-   Tailwind utilities in components/Composer.tsx (superseded duplicates; extra.css
-   copies also removed). .hint below is unrelated/unused — left untouched. */
-.hint {
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  color: var(--ink-soft);
-}
-
-.send-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  background: var(--ink);
-  color: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-md);
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  letter-spacing: var(--tracking-md);
-  padding: 7px 14px;
-  box-shadow: var(--shadow-sm);
-}
-.send-btn:hover { background: var(--pink); color: var(--ink); transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
-.send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: var(--shadow-sm); }
-.send-arrow { font-size: var(--text-14); }
-
-/* mention popup — .mention-pop base migrated to inline Tailwind utilities in
-   components/Composer.tsx (.mention-pop hook class kept on the element for
-   skin-glass.css; superseded duplicate removed, extra.css copy also removed).
-   .mention-item* / .mention-role / .mention-all-icon below are unused by the
-   current Composer and left untouched. */
-.mention-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  padding: 8px 10px;
-  background: transparent;
-  border: var(--line-none);
-  border-bottom: 1.5px solid var(--paper-3);
-  text-align: left;
-  color: var(--ink);
-}
-.mention-item:last-child { border-bottom: none; }
-.mention-item.hover, .mention-item:hover { background: var(--yellow); }
-/* .mention-meta / .mention-name / .mention-handle base migrated to inline
-   Tailwind utilities in components/Composer.tsx (superseded duplicates removed). */
-.mention-role {
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  color: var(--ink-soft);
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: 2px;
-}
-.mention-all-icon {
-  width: 28px;
-  height: 28px;
-  background: var(--pink);
-  border: var(--line-md);
-  border-radius: var(--radius-lg);
-  font-family: var(--font-display);
-  display: grid;
-  place-items: center;
-  font-size: var(--text-14);
-  flex-shrink: 0;
-}
+/* Mention popup styles are inline Tailwind in components/Composer.tsx
+   (.mention-pop hook class kept on the element for skin-glass.css).
+   Legacy dead hooks (.mention-item*, .mention-role, .mention-all-icon) removed — sync-imeu.1.19. */
 
 /* ───────────────────────── board / kanban ───────────────────────── */
 
@@ -2003,12 +1912,6 @@ button { font-family: inherit; cursor: pointer; }
  * `.busy-pulse`, `.focus-badge`, `.roster-foot` — none referenced in any TSX)
  * was removed. Skin hook `.roster-head` lives in skin-glass.css; the vim ring
  * `.roster-card[data-vim-focused]` lives in components/extra.css. */
-
-/* density: compact */
-[data-density="compact"] .chat-list { gap: 10px; padding: 14px 20px 12px; }
-[data-density="compact"] .room-item { padding: 7px 9px; }
-[data-density="compact"] .roster-card { padding: 7px 9px; }
-[data-density="compact"] .board-cols, [data-density="compact"] .media-grid { padding: 12px 16px 16px; }
 
 /* ───────────────────────── message status (queued / delivered / read) ───────────────────────── */
 

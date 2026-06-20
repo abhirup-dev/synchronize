@@ -241,9 +241,9 @@ function RoomItem({
             ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
             : []),
           ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
-          { label: "Mark as read", onSelect: () => console.log("read", room.id) },
-          { label: room.pinned ? "Unpin" : "Pin to top", onSelect: () => console.log("pin", room.id) },
-          { label: "Mute notifications", onSelect: () => console.log("mute", room.id) },
+          { label: "Mark as read (soon)", disabled: true, onSelect: () => {} },
+          { label: `${room.pinned ? "Unpin" : "Pin to top"} (soon)`, disabled: true, onSelect: () => {} },
+          { label: "Mute notifications (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
           ...(room.kind === "group"
             ? [
@@ -254,7 +254,7 @@ function RoomItem({
             : []),
           { label: "Copy room id", onSelect: () => navigator.clipboard?.writeText(room.id) },
           { divider: true },
-          { label: room.kind === "group" ? "Leave group" : "Close DM", danger: true, onSelect: () => console.log("leave", room.id) },
+          { label: `${room.kind === "group" ? "Leave group" : "Close DM"} (soon)`, danger: true, disabled: true, onSelect: () => {} },
         ])
       }
     >

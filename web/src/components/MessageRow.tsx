@@ -139,11 +139,11 @@ export const MessageRow = memo(function MessageRow({
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
           ...(!hideReactionAdd ? [{ label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) }] : []),
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
-          { label: "Copy link", onSelect: () => console.log("link", message.id) },
+          { label: "Copy link (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
-          { label: "Pin to room", onSelect: () => console.log("pin", message.id) },
+          { label: "Pin to room (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
-          { label: "Delete", danger: true, onSelect: () => console.log("delete", message.id) },
+          { label: "Delete (soon)", danger: true, disabled: true, onSelect: () => {} },
         ])
       }
     >

@@ -7,9 +7,9 @@ import { roomAgents } from "../data/roomAgents.ts";
 import type { Agent } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
-import { useIsCompact, useShellMode } from "../shell-mode.tsx";
+import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Search, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
@@ -69,7 +69,6 @@ export function RoomHeader({
   const agents = useAgents();
   const openMenu = useContextMenu();
   const compact = useIsCompact();
-  const shellMode = useShellMode();
   const displayAgents = roomAgents(agents, room);
   const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
   const working = members.filter((m) => m.status === "busy").length;
@@ -112,11 +111,10 @@ export function RoomHeader({
         )}
 
         {compact ? (
-          // Compact: two thumb-sized Lucide buttons. Search stays primary; the
-          // settings-y toggles (theme/skin/chat-bg) fold into an overflow menu
-          // so the header bar stays to a single tight row beside the title.
+          // Compact: a single thumb-sized Lucide button. The settings-y toggles
+          // (theme/skin/chat-bg) fold into an overflow menu so the header bar
+          // stays to a single tight row beside the title.
           <div className="room-header-actions flex items-center gap-[var(--space-2)]">
-            <IconButton icon={Search} label="search messages" size={40} iconSize={19} />
             <IconButton
               icon={Settings}
               label="open display settings"
@@ -179,13 +177,6 @@ export function RoomHeader({
             >
               {skin === "brutal" ? "🫧" : "🧱"}
             </button>
-            {shellMode === "desktop" ? (
-              <>
-                <button className="icon-btn" aria-label="pin">📌</button>
-                <button className="icon-btn" aria-label="search">🔍</button>
-                <button className="icon-btn" aria-label="more">⋯</button>
-              </>
-            ) : null}
           </div>
         )}
       </div>
