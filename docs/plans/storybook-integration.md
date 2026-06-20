@@ -1,7 +1,88 @@
 # Storybook Integration For Web UI
 
-Status: implementation plan (2026-06-20)
+Status: IMPLEMENTED (2026-06-20). Epic sync-i24s closed; 5/6 children done, the
+Android packaging smoke moved to the Android epic (sync-imeu). The sections below
+from "## Goal" onward are the original design rationale; the section immediately
+following captures what was actually built and the decisions taken on top of it.
 Owner: abhirup
+
+## Implementation Outcome & Decisions (2026-06-20)
+
+Delivered on branch `codex/storybook-integration-plan`. This section is the
+as-built record and supersedes the original phase plan where they differ.
+
+### What shipped
+
+- **Foundation (sync-4cnw).** `@storybook/react-vite` on its own Vite pipeline;
+  production `/web` Bun build untouched (verified: identical bundle hash before/
+  after). `web/src/storybook/StorybookProviders.tsx` wraps every story in the
+  App.tsx provider stack (DataSource → ContextMenu → Toast → ArchiveRecovery)
+  with a **fresh `MockDataSource` per mount**. Full production CSS stack imported
+  in `preview.tsx`.
+- **Glossary (sync-s7a2).** 87 stories across 20 components, organized by product
+  family. `@storybook/addon-docs` with **global autodocs** (every component gets
+  a props/preview Docs page). MDX overview pages: `Overview/Introduction` and
+  `Overview/Authoring Stories` (DataSource contract, provider rules, conventions).
+  Web fonts loaded via `.storybook/preview-head.html` for type fidelity.
+- **Theme/skin + responsive matrix (sync-i24s.4).** Toolbar globals for Theme
+  (light, rose-pine-dawn, dark, kanagawa-wave, catppuccin-mocha) and Skin
+  (brutal, glass), mapped onto `documentElement.dataset.theme/.skin`. Viewport
+  presets incl. Android-class 390/412. `Layouts/Chat Surface` stories verified
+  no horizontal overflow at mobile widths.
+- **Test runner (sync-i24s.3).** `@storybook/addon-vitest` (Vitest browser mode,
+  Playwright Chromium) + `@storybook/addon-a11y`. Scripts: `test:storybook`
+  (headless/CI), `test:storybook:headed` (visible browser, watch), and
+  `test:storybook:ui` (`@vitest/ui` live dashboard). 94 tests passing. Play tests
+  on Composer, MessageRow (reaction picker), Toast, ScrollControls.
+- **MCP + agent workflow (sync-i24s.1).** `@storybook/addon-mcp` (preview) exposes
+  `/mcp` on :6006; verified end-to-end — `tools/list` returns docs + dev + test
+  toolsets incl. `run-story-tests`, and `list-all-documentation` returns the full
+  glossary. Agent loop documented in `docs/agents/storybook-ui.md` (CLAUDE.md
+  points to it).
+- **Cross-component flow sample (extensible).** `Flows/Activity to Thread` mounts
+  the real app `Shell` and drives Activity → click row → thread opens → scroll to
+  bottom via one `play` function with `step()` phases. This is the template for
+  further multi-component workflows.
+- **Install hardening (repo hygiene).** `make check-install` + guarded `make test`
+  + `bun install --frozen-lockfile` in `make setup`; worktrunk `.config/wt.toml`
+  `post-create = "make setup"` so new worktrees self-provision. Fixes the cryptic
+  "daemon did not become healthy" failure caused by a worktree missing root deps.
+
+### Decisions taken on top of the original plan
+
+- **Tailwind-via-Vite is mandatory, not a fallback.** `tw.css` (Tailwind v4
+  `@import "tailwindcss/..."`) does not compile through Storybook's Vite without
+  `@tailwindcss/vite`, so it is wired from the start. Bun's `bun-plugin-tailwind`
+  still owns the production path.
+- **No `fixtures.ts` extraction.** Phase 2 proposed shared fixture builders;
+  stories already reuse `seed.ts`/`MockDataSource` with no duplication, so there
+  was nothing to extract. Skipped to avoid churn.
+- **One production change: `export function Shell()`** in `App.tsx`, so the flow
+  sample can mount the real shell. Caveat: `Shell` self-manages `data-theme`/
+  `data-skin`, so it overrides the Theme/Skin toolbar in that one story.
+- **Visual tooling = test widget + `@vitest/ui`, not Chromatic.** "See tests as
+  they run" is served by addon-vitest's sidebar Test widget (+ Interactions
+  panel) and the optional `@vitest/ui` dashboard. Visual-regression (Chromatic)
+  stays deferred per the original "prove the catalog first" guidance.
+- **No prod/dev install split.** Dev vs release deps are already correctly
+  declared (Storybook/Vite/Vitest/Playwright are `web` devDependencies; the
+  production bundle and daemon pull only runtime deps) and there is no release/
+  deploy pipeline, so a `--production` install mode would be solving a non-problem.
+- **Android packaging smoke (sync-i24s.2) moved to the Android epic (sync-imeu).**
+  It validates the real Capacitor bundle path, not Storybook.
+
+### Deferred / not done
+
+- **CI.** No CI pipeline exists yet, so the Vitest plugin `storybookScript`/
+  `storybookUrl` (failure→story links) were skipped. When CI lands it will also
+  need `bunx playwright install chromium` before `test:storybook`.
+- **Standalone Playwright E2E.** Component-composition flows live in Storybook
+  (above). True full-app E2E against the live daemon/`/web` (real SSE, routing)
+  belongs to the real-data UI probe pipeline (sync-rycd), not here. Storybook
+  stories can be reused there via portable stories (`composeStories`); inside
+  stories, advanced browser control is available via `@vitest/browser/context`
+  (`page`/`commands`, Playwright under the hood).
+
 
 ## Goal
 

@@ -11,6 +11,8 @@ router, not an architecture narrative. Prefer canonical docs/source for detail.
 | Runtime config, env vars, remote profiles, env files, test harnesses | `docs/configuration/README.md` |
 | Raw SQL recipes for daemon state | `docs/debugging/sql-queries.md` |
 | Group alias/membership semantics | `docs/group-sync-integrity.md` |
+| Storybook/UI debugging + MCP catalog | `docs/debugging/storybook.md` |
+| Building UI / authoring stories | `docs/agents/storybook-ui.md` |
 | Historical plans and handoffs | `reference-v0-plans.md` |
 | High-level agent orientation | `.serena/memories/*.md` |
 
@@ -33,6 +35,12 @@ router, not an architecture narrative. Prefer canonical docs/source for detail.
 | Archive/resume | `src/daemon/routes/archive.ts`, `src/daemon/repo/archive.ts`, `src/daemon/services/archive.ts`, `src/api/{archive,resume}.ts` |
 | Launch lifecycle | `src/launch/*`, `src/daemon/repo/launch.ts`, `src/mcp/tools/launch.ts` |
 | Web UI state/events | `src/daemon/routes/web.ts`, `src/daemon/services/web-events.ts`, `web/src/data/daemon.ts` |
+| Storybook config + addons | `web/.storybook/{main.ts,preview.tsx,preview-head.html}` |
+| Storybook providers (fresh MockDataSource) | `web/src/storybook/StorybookProviders.tsx` |
+| Story data contract (mock = daemon contract) | `web/src/data/{seed.ts,mock.ts,types.ts}` |
+| Component stories + glossary MDX | `web/src/components/*.stories.tsx`, `web/src/storybook/*.mdx` |
+| Cross-component flow sample (real Shell) | `web/src/components/Flows.stories.tsx`, exported `Shell` in `web/src/App.tsx` |
+| Storybook test runner | `web/vitest.config.ts`, `web/package.json` (`test:storybook*`) |
 | Event constants and schema coupling | `src/constants.ts`, `src/db.ts` |
 | Runtime and remote config | `src/config.ts`, `docs/configuration/` |
 | Remote profile doctor/status rendering | `src/cli/commands/remote.ts`, `src/remote/status.ts` |
@@ -70,4 +78,8 @@ router, not an architecture narrative. Prefer canonical docs/source for detail.
 | Where is the heartbeat cadence? | `src/constants.ts` (`MCP_HEARTBEAT_MS`), with config caveats in `docs/configuration/runtime.md` |
 | Where are lease/retention values resolved? | `src/config.ts` and `ctx.config.daemon.*` consumers |
 | Where does web fetch daemon state? | `web/src/data/daemon.ts` |
+| Where do stories get their data? | `MockDataSource` (`web/src/data/mock.ts`) seeded from `seed.ts`, via the global decorator in `web/.storybook/preview.tsx` |
+| How to debug a UI/component render bug? | `ui-forensics.md` → `docs/debugging/storybook.md` |
+| How to test a cross-component UI flow? | `web/src/components/Flows.stories.tsx` (mounts the real `Shell`) |
+| What can the Storybook MCP do? | `docs/debugging/storybook.md` (capability catalog) |
 | Which Make targets inspect runtime? | `Makefile` + `scripts/doctor.sh` |

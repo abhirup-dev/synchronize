@@ -29,6 +29,18 @@ export const GroupedWithPrev: Story = {
   args: { message: msgs[2]!, author: authorOf(msgs[2]!.authorId), groupedWithPrev: true },
 };
 
+// Self ("You") message: shows the "You" name pill but NO avatar gutter — the
+// .is-you row is single-column. Regression guard for the stray centered avatar
+// bug (gutter was rendered into the 1-col grid and floated mid-pane).
+export const SelfMessage: Story = {
+  args: { message: msgs[3]!, author: authorOf(msgs[3]!.authorId) },
+  play: async ({ canvasElement }) => {
+    const row = canvasElement.querySelector(".message-row.is-you");
+    await expect(row).toBeTruthy();
+    await expect(row!.querySelector(".message-gutter")).toBeNull();
+  },
+};
+
 // Interaction test: open the quick-reaction picker and pick an emoji, asserting
 // the onReact callback fires with (messageId, emoji). msgs[0] has no existing
 // reactions, so the picker's 👍 is the only one in the DOM.

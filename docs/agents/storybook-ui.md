@@ -37,40 +37,18 @@ non-blocking by default.
 
 ## MCP (preview)
 
-While `bun run storybook` is running, an MCP server is exposed at
-`http://localhost:6006/mcp` (`@storybook/addon-mcp`). Available tools:
+While `bun run storybook` is running, `@storybook/addon-mcp` exposes an MCP
+server at `http://localhost:6006/mcp` (dev-time only; not a daemon). For the
+authoring loop, the tools you'll use are: **docs** (`list-all-documentation`,
+`get-documentation`) to check the real prop contract **before** editing a
+component; **dev** (`get-storybook-story-instructions` before writing a story,
+`preview-stories` after — share the returned URLs); **test** (`run-story-tests`
+after changes).
 
-- **docs** — `list-all-documentation`, `get-documentation`,
-  `get-documentation-for-story`: list every documented component and fetch its
-  usage/props. Query these **before** editing or creating a component so you use
-  the real prop contract instead of guessing.
-- **dev** — `get-storybook-story-instructions` (call **before** writing a story —
-  it is the source of truth for framework imports and story/test patterns),
-  `preview-stories` (call **after** changing a component or story; include every
-  returned preview URL in your response so the human can open it).
-- **test** — `run-story-tests`: runs the story tests (render smoke + `play`
-  interaction tests) headlessly. Backed by the same runner as
-  `cd web && bun run test:storybook`. Call it after changing a component or story.
-
-Register the server (project scope) for this repo. Either run:
-
-```bash
-npx mcp-add --type http --url "http://localhost:6006/mcp" --scope project
-```
-
-or add to the project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "storybook": { "type": "http", "url": "http://localhost:6006/mcp" }
-  }
-}
-```
-
-The server only responds while `storybook dev` is running — it is a dev-time
-convenience, not a daemon. The workflow below stays useful through Storybook Docs
-and the CLI even if the preview-stage MCP is unavailable.
+The **canonical MCP capability catalog** (all six tools, registration via
+`.mcp.json` / `mcp-add`, the JSON-RPC fallback, and what the MCP does/doesn't
+do) lives in `docs/debugging/storybook.md`. The loop below stays useful through
+Storybook Docs and `test:storybook` even if the preview-stage MCP is down.
 
 ## The UI-work loop
 
