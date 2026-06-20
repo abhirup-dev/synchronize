@@ -83,6 +83,7 @@
 | `docs/plans/web-archive-recovery-console.md` | 427 | Web archive recovery console plan for contextual archive/resume preview-confirm flows plus a bottom-left archived sessions recovery console, derived from backend lifecycle state and scoped by epic sync-4trr. |
 | `docs/plans/cli-completion-carapace-v0.md` | 555 | CLI completion Carapace V0 plan for schema-first command metadata, generated Carapace specs, daemon-safe dynamic candidates, and raw zsh forward compatibility (sync-x7q1). |
 | `docs/plans/daemon-modularization-v2.md` | 1322 | Current master daemon modularization plan for a strictly structural, phase-wise refactor with pre-refactor route precedence, validation, and response-shape snapshot tests first (sync-mkj, sync-mkj.12, sync-mkj.13). |
+| `docs/plans/web-url-deep-links.md` | 407 | Web URL deep-link plan for derivable instance-local `/web/e/:eventId` links, bounded target hydration, app-shell focus routing, Storybook flow coverage, and live `/web` verification (sync-vbd6). |
 | `docs/agentmemory-scope-repair.md` | 101 | Local AgentMemory project-scope repair and repeatable restore process for preserving sessions, observations, memories, lessons, crystals, and summaries while clearing polluted derived scopes (sync-815x). |
 
 ### Per-extension READMEs
