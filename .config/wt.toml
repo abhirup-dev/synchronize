@@ -1,0 +1,9 @@
+# Worktrunk project hooks (team-wide, checked in).
+# https://worktrunk.dev — `wt switch --create <branch>` runs these.
+
+# Provision a freshly-created worktree: install root + web dependencies so the
+# daemon/test suite and the web build work immediately. Without this, a new
+# worktree has no node_modules and `bun test` fails with a cryptic "daemon did
+# not become healthy" cascade. post-create is blocking (must finish before the
+# worktree is considered ready), which is what we want for dependencies.
+post-create = "make setup"

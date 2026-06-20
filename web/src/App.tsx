@@ -100,7 +100,9 @@ function ConnectionError({ message }: { message: string }) {
 
 const ACTIVITY_ID = "activity";
 
-function Shell() {
+// Exported so Storybook can mount the full app shell for cross-component flow
+// tests (e.g. activity → open thread → scroll). App() is the only other caller.
+export function Shell() {
   const rooms = useRooms();
   // Land on the first room as before; the sidebar's Activity item is the entry
   // point. Fall back to Activity only when there are no rooms yet (more useful
