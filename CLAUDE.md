@@ -72,6 +72,12 @@ Use the default Matt Pocock skill triage labels as Beads labels. See `docs/agent
 
 This is a single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
 
+### Web UI / Storybook
+
+Before editing or adding `web/` components, use the Storybook component glossary
+(MCP at `http://localhost:6006/mcp` while `cd web && bun run storybook` runs) to
+reuse existing components and patterns. See `docs/agents/storybook-ui.md`.
+
 ## Environment
 
 ```text
