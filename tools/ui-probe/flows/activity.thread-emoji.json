@@ -46,7 +46,7 @@
     "The real-data query cannot find a thread with reactions.",
     "The referenced glossary components or active probe file disappear."
   ],
-  "probeFile": "tools/ui-probe/probes/real-data.probe.ts",
+  "probeFile": "tools/ui-probe/probes/activity-thread-emoji.probe.ts",
   "artifacts": [
     "screenshots/desktop-activity-thread-emoji.png",
     "playwright trace on retry"

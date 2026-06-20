@@ -49,7 +49,7 @@
     "The real-data query cannot find two qualifying top-five thread roots.",
     "The referenced glossary components or active probe file disappear."
   ],
-  "probeFile": "tools/ui-probe/probes/real-data.probe.ts",
+  "probeFile": "tools/ui-probe/probes/chat-top-thread-traversal.probe.ts",
   "artifacts": [
     "screenshots/desktop-chat-thread-1.png",
     "screenshots/desktop-chat-thread-2.png",
