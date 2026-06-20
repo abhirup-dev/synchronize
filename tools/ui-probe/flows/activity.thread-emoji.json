@@ -1,0 +1,54 @@
+{
+  "id": "activity.thread-row.open-scroll-emoji",
+  "status": "active",
+  "tier": "contract",
+  "determinism": "deterministic",
+  "owner": "web",
+  "description": "Open the Activity board, choose a real-data activity row with thread replies and reactions, open the in-place thread pane, scroll to the bottom, and verify reaction emoji glyphs render correctly.",
+  "entry": {
+    "route": "/web",
+    "surface": "activity",
+    "trigger": "button[accessibleName=Activity]"
+  },
+  "preconditions": [
+    "The real snapshot contains at least one group_message with reply_count > 0.",
+    "The selected event has at least one reaction so the probe can assert emoji glyph rendering.",
+    "The probe runs in the desktop viewport because compact shell navigation is a separate contract."
+  ],
+  "components": [
+    "app-shell",
+    "activity-view",
+    "activity-row",
+    "thread-pane",
+    "message-row",
+    "scroll-controls",
+    "composer"
+  ],
+  "steps": [
+    "Navigate to /web and wait for the app shell.",
+    "Open the Activity board.",
+    "Find the activity row whose preview matches the selected real event body.",
+    "Click the row and wait for the thread pane to mount.",
+    "Scroll the thread body to the bottom.",
+    "Assert the composer remains available and at least one reaction button is visible.",
+    "Assert the expected emoji appears in both the reaction button text and accessible label without replacement characters."
+  ],
+  "assertions": [
+    "ACTIVITY heading is visible.",
+    ".act-row matching real event text is visible.",
+    ".thread-pane and .thread-pane-body are visible after row click.",
+    ".composer is visible after scrolling.",
+    "Reaction emoji text is present and not rendered as tofu or U+FFFD."
+  ],
+  "staleIf": [
+    "Activity rows no longer open ThreadPane in place.",
+    "ThreadPane no longer renders MessageRow reaction buttons.",
+    "The real-data query cannot find a thread with reactions.",
+    "The referenced glossary components or active probe file disappear."
+  ],
+  "probeFile": "tools/ui-probe/probes/real-data.probe.ts",
+  "artifacts": [
+    "screenshots/desktop-activity-thread-emoji.png",
+    "playwright trace on retry"
+  ]
+}

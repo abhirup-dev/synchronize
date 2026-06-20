@@ -1,0 +1,41 @@
+{
+  "id": "agents.spawn-entrypoint.adaptive",
+  "status": "planned",
+  "tier": "adaptive",
+  "determinism": "adaptive",
+  "owner": "web",
+  "description": "Find and open the agent-spawn entrypoint even if the visible button moves between shell regions, then verify the spawn affordance can be discovered without mutating live daemon state.",
+  "entry": {
+    "route": "/web",
+    "surface": "agents",
+    "trigger": "semantic:spawn-agent"
+  },
+  "preconditions": [
+    "The probe runs against a snapshot daemon or read-only dry-run spawn endpoint.",
+    "The adaptive locator may use accessible names, glossary components, app-native semantic hooks, and Stagehand observe output."
+  ],
+  "components": [
+    "app-shell",
+    "agent-roster"
+  ],
+  "steps": [
+    "Inventory shell and roster controls.",
+    "Locate the spawn-agent affordance by semantic role rather than screen position.",
+    "Open the dialog or panel in dry-run mode.",
+    "Capture the chosen locator path for promotion or review."
+  ],
+  "assertions": [
+    "The spawn affordance is discoverable by meaning, not fixed coordinates.",
+    "The probe writes locator evidence and a fragility score.",
+    "No real agent is spawned during verification."
+  ],
+  "staleIf": [
+    "No glossary component owns the spawn affordance.",
+    "The adaptive probe repeatedly falls back to text-only or coordinate-only selection.",
+    "The worktree changes spawn-related components without updating this flow."
+  ],
+  "artifacts": [
+    "flow-journal agents.spawn-entrypoint.adaptive",
+    "locator candidates and screenshots"
+  ]
+}
