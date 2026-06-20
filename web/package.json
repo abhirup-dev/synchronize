@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p .",
     "storybook": "storybook dev -p 6006 --no-open",
     "storybook:build": "storybook build",
-    "test:storybook": "vitest run --project storybook"
+    "test:storybook": "vitest run --project storybook",
+    "test:storybook:headed": "vitest --project storybook --browser.headless=false"
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-rc.0",
