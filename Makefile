@@ -46,6 +46,8 @@ help:
 	@echo "  daemon-relaunch  Restart the daemon, preserving state"
 	@echo "  clean-slate      Stop daemon, delete its AOE profile, wipe the runtime"
 	@echo "  dev-daemon-relaunch | dev-clean-slate   Same for the dev runtime ($(DEV_SYNC_HOME))"
+	@echo "Web UI:"
+	@echo "  verify-web       Typecheck + daemon/mobile builds + Playwright smoke (compact/medium/desktop × light/dark)"
 	@echo "Diagnostics:"
 	@echo "  doctor | inspect-daemon | inspect-peers | inspect-groups | inspect-events"
 
@@ -70,6 +72,25 @@ check-install:
 # install precondition so a fresh/unprovisioned worktree fails fast and clearly.
 test: check-install
 	@bun test
+
+# Web UI regression gate (sync-imeu.1.23). Cheap-to-expensive: typecheck both
+# packages, build both asset bases (daemon /web/ + mobile /), then the Storybook
+# story + play tests (headless Playwright Chromium via Vitest) over the component
+# glossary and the App Shell breakpoint matrix. One-time browser install:
+# cd web && bunx playwright install chromium
+.PHONY: verify-web
+verify-web:
+	@echo "==> Web typecheck"
+	@cd web && bun run typecheck
+	@echo "==> Root typecheck"
+	@bun run typecheck
+	@echo "==> Daemon web build (/web/ asset base)"
+	@cd web && bun run build.ts
+	@echo "==> Mobile web build (/ asset base -> dist-mobile)"
+	@cd web && WEB_ASSET_BASE=/ WEB_DIST_DIR=dist-mobile bun run build.ts
+	@echo "==> UI tests (Storybook stories + play tests)"
+	@cd web && bun run test:storybook
+	@echo "==> verify-web OK. Manual matrix lives in web/VERIFY.md"
 
 # Verify the CLI tooling the project leans on. Required tools fail the check;
 # optional ones (needed only for launch/agent features) are reported, not fatal.

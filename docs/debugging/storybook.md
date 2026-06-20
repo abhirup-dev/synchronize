@@ -20,7 +20,7 @@ not replace the production build and forks no components.
 | Story data | `web/src/data/seed.ts`, `web/src/data/mock.ts` | `MockDataSource implements DataSource` — same contract as the live `DaemonDataSource`; stories never import the daemon source |
 | Stories | `web/src/components/*.stories.tsx` | one per component, by product family |
 | Glossary docs | `web/src/storybook/*.mdx` | `Overview/Introduction`, `Overview/Authoring Stories`; global autodocs gives every component a props page |
-| Cross-component flow sample | `web/src/components/Flows.stories.tsx` | mounts the **real exported `Shell`** (`web/src/App.tsx`) and drives activity → thread → scroll via `play` + `step()` |
+| Cross-component flows | `web/src/flows/SynchronizeFlows.stories.tsx` | mounts the **real exported `Shell`** (`web/src/App.tsx`) and drives composed journeys via `play` + `step()` |
 | Test runner | `web/vitest.config.ts` | Vitest browser mode, Playwright Chromium |
 | Scripts | `web/package.json` | `storybook`, `storybook:build`, `test:storybook`, `test:storybook:headed`, `test:storybook:ui` |
 
@@ -33,12 +33,12 @@ bundle hash is unaffected by anything here.
 ```text
 component render / single state ──> Storybook story (MockDataSource, real browser)
 interaction / multi-step flow   ──> Storybook play() + step()  (one mounted tree only)
-daemon / SSE / routing / E2E    ──> live /web + Bun tests + the UI probe pipeline (sync-rycd)
+daemon / SSE / routing          ──> live /web smoke + Bun integration tests
 ```
 
 Storybook proves component states and composed-tree workflows against mocked
-data. It is NOT the daemon/API truth source — that stays in `bun test`. Full
-real-daemon E2E belongs to sync-rycd, not here.
+data. It is NOT the daemon/API truth source — that stays in `bun test` and
+targeted live `/web` smoke checks.
 
 ## MCP capability catalog (canonical)
 

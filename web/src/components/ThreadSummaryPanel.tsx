@@ -14,6 +14,7 @@
 // generated headline.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ListTree, MessageSquare } from "lucide-react";
 import type { CSSProperties, PointerEvent } from "react";
 import type { Agent, Message } from "../data/types.ts";
 import { useThreadSummary } from "../data/context.tsx";
@@ -21,6 +22,7 @@ import { Avatar, IdentityBadge, IdentityText, Sticker } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { computeThreadSummaryLayout, normalizeWheelDelta } from "./threadSummaryLayout.ts";
 import { cn } from "../lib/cn.ts";
+import { useIsCompact } from "../shell-mode.tsx";
 
 interface ThreadSummaryPanelProps {
   messages: Message[];
@@ -28,6 +30,8 @@ interface ThreadSummaryPanelProps {
   width: number;
   onWidthChange(width: number): void;
   onJumpTo(messageId: string): void;
+  onOpenThread?(messageId: string): void;
+  onClose?(): void;
   /** The chat list's scroll element (for scroll sync). */
   chatListRef: React.RefObject<HTMLDivElement | null>;
   /** A threaded message's vertical center in chat-content coordinates, or null
@@ -50,10 +54,13 @@ export function ThreadSummaryPanel({
   width,
   onWidthChange,
   onJumpTo,
+  onOpenThread,
+  onClose,
   chatListRef,
   getAnchorTop,
   getContentHeight,
 }: ThreadSummaryPanelProps) {
+  const compact = useIsCompact();
   const threadMessages = messages.filter((m) => (m.threadReplyCount ?? 0) > 0);
 
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
@@ -127,9 +134,60 @@ export function ThreadSummaryPanel({
     list.scrollBy({ top: delta, left: 0, behavior: "auto" });
   };
 
+  if (compact) {
+    return (
+      <aside
+        className="thread-summary-panel relative flex min-h-0 flex-col bg-paper"
+        aria-label="Thread activity"
+      >
+        <header className="flex min-h-[56px] shrink-0 items-center gap-[var(--space-8)] bg-paper-2 px-[8px] py-[8px] [border-bottom:var(--line)]">
+          <button className="thread-pane-close" onClick={onClose} aria-label="back to room">
+            <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
+          </button>
+          <div className="min-w-0 font-display text-[length:var(--text-14)] leading-none">Thread summaries</div>
+          <span className="rounded-pill bg-paper px-[8px] py-[2px] font-mono text-[length:var(--text-10)] text-ink-soft [border:var(--line-sm)]">
+            {threadMessages.length}
+          </span>
+        </header>
+        {threadMessages.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-[12px] [padding:40px_24px] text-center text-ink-soft">
+            <Sticker label="QUIET" color="var(--yellow)" tilt={-2} />
+            <p className="m-0 max-w-[28ch] font-ui text-[length:var(--text-13)]">No threads in this room yet. Reply to any message to start one.</p>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col gap-[12px] overflow-y-auto px-[12px] py-[14px]">
+            {threadMessages.map((m) => (
+              <ThreadSummaryRow
+                key={m.id}
+                msg={m}
+                agents={agents}
+                rowRef={() => undefined}
+                width={Math.min(420, Math.max(320, width))}
+                onJump={() => {
+                  onJumpTo(m.id);
+                  onClose?.();
+                }}
+                {...(onOpenThread
+                  ? {
+                      onOpenThread: () => {
+                        onClose?.();
+                        onOpenThread(m.id);
+                      },
+                    }
+                  : {})}
+                compact
+              />
+            ))}
+          </div>
+        )}
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={cn(
+        "thread-summary-panel",
         "relative flex min-h-0 flex-col bg-paper [border-right:var(--line)]",
         "w-[var(--thread-summary-width,340px)] flex-[0_0_var(--thread-summary-width,340px)]",
         "min-w-[min(240px,45vw)] max-w-[min(620px,70vw)] [container-type:inline-size]",
@@ -264,12 +322,16 @@ function ThreadSummaryRow({
   rowRef,
   width,
   onJump,
+  onOpenThread,
+  compact = false,
 }: {
   msg: Message;
   agents: Agent[];
   rowRef: (el: HTMLDivElement | null) => void;
   width: number;
   onJump(): void;
+  onOpenThread?(): void;
+  compact?: boolean;
 }) {
   const summary = useThreadSummary(msg.id);
   const author = agents.find((a) => a.id === msg.authorId);
@@ -314,6 +376,84 @@ function ThreadSummaryRow({
       observer?.disconnect();
     };
   }, [summaryText, summaryLines, width]);
+
+  if (compact) {
+    return (
+      <div
+        ref={rowRef}
+        className="group/ts-row flex min-w-0 cursor-pointer items-stretch gap-[10px] rounded-md bg-paper-2 px-[12px] py-[11px] text-left outline-none [border:var(--line-sm)] [box-shadow:var(--shadow-xs)]"
+        onClick={onJump}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onJump();
+          }
+        }}
+      >
+        <div className="flex min-w-0 flex-1 flex-col gap-[8px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-[6px] font-mono text-[length:var(--text-10-5)] tracking-[var(--tracking-xs)] text-ink-faint">
+            <IdentityText className="font-display text-[length:var(--text-11)] uppercase tracking-[var(--tracking-sm)]" color={dotColor}>
+              {author?.name ?? "?"}
+            </IdentityText>
+            <span className="text-ink-faint">·</span>
+            <span className="text-ink-soft">{formatTime(msg.createdAt)}</span>
+            <span className="text-ink-faint">·</span>
+            <span className="font-bold text-ink-soft">
+              {replyCount} {replyCount === 1 ? "reply" : "replies"}
+            </span>
+          </div>
+          <div
+            ref={summaryRef}
+            className={cn(
+              "ts-summary relative box-border overflow-hidden font-ui text-[length:var(--text-12)] text-ink [line-height:1.36] [text-wrap:pretty] [overflow-wrap:anywhere] [word-break:normal]",
+              "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]",
+              summaryTruncated && "is-truncated [padding-right:1.4ch]",
+            )}
+            title={summaryTruncated ? summaryText : undefined}
+          >
+            <Markdown agents={agents}>{summaryText}</Markdown>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-[8px] font-mono text-[length:var(--text-10-5)] text-ink-faint">
+            <span className="ts-avatars inline-flex flex-shrink-0 items-center">
+              {participants.slice(0, 5).map((p) => (
+                <Avatar key={p.id} agent={p} size={18} />
+              ))}
+              {participants.length > 5 ? (
+                <span className="ml-[4px] text-[length:var(--text-10)] text-ink-soft">+{participants.length - 5}</span>
+              ) : null}
+            </span>
+            {msg.threadLastReplyAt ? (
+              <span className="whitespace-nowrap text-ink-faint">last {formatTime(msg.threadLastReplyAt)}</span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex w-[44px] shrink-0 flex-col gap-[6px]" onClick={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className="flex min-h-[44px] flex-1 items-center justify-center rounded-md bg-paper text-ink-soft [border:var(--line-sm)]"
+            onClick={onJump}
+            aria-label="go to original message"
+            title="Go to original message"
+          >
+            <MessageSquare size={17} strokeWidth={2.3} aria-hidden />
+          </button>
+          {onOpenThread ? (
+            <button
+              type="button"
+              className="flex min-h-[44px] flex-1 items-center justify-center rounded-md bg-paper text-ink-soft [border:var(--line-sm)]"
+              onClick={onOpenThread}
+              aria-label="open thread"
+              title="Open thread"
+            >
+              <ListTree size={17} strokeWidth={2.3} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

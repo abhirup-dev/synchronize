@@ -39,7 +39,7 @@ router, not an architecture narrative. Prefer canonical docs/source for detail.
 | Storybook providers (fresh MockDataSource) | `web/src/storybook/StorybookProviders.tsx` |
 | Story data contract (mock = daemon contract) | `web/src/data/{seed.ts,mock.ts,types.ts}` |
 | Component stories + glossary MDX | `web/src/components/*.stories.tsx`, `web/src/storybook/*.mdx` |
-| Cross-component flow sample (real Shell) | `web/src/components/Flows.stories.tsx`, exported `Shell` in `web/src/App.tsx` |
+| Cross-component flows (real Shell) | `web/src/flows/SynchronizeFlows.stories.tsx`, exported `Shell` in `web/src/App.tsx` |
 | Storybook test runner | `web/vitest.config.ts`, `web/package.json` (`test:storybook*`) |
 | Event constants and schema coupling | `src/constants.ts`, `src/db.ts` |
 | Runtime and remote config | `src/config.ts`, `docs/configuration/` |
@@ -80,6 +80,6 @@ router, not an architecture narrative. Prefer canonical docs/source for detail.
 | Where does web fetch daemon state? | `web/src/data/daemon.ts` |
 | Where do stories get their data? | `MockDataSource` (`web/src/data/mock.ts`) seeded from `seed.ts`, via the global decorator in `web/.storybook/preview.tsx` |
 | How to debug a UI/component render bug? | `ui-forensics.md` → `docs/debugging/storybook.md` |
-| How to test a cross-component UI flow? | `web/src/components/Flows.stories.tsx` (mounts the real `Shell`) |
+| How to test a cross-component UI flow? | `web/src/flows/SynchronizeFlows.stories.tsx` (mounts the real `Shell`) |
 | What can the Storybook MCP do? | `docs/debugging/storybook.md` (capability catalog) |
 | Which Make targets inspect runtime? | `Makefile` + `scripts/doctor.sh` |

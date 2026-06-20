@@ -1,15 +1,9 @@
 import type { Preview } from "@storybook/react-vite";
 import { StorybookProviders } from "../src/storybook/StorybookProviders.tsx";
 
-// Same CSS stack as src/main.tsx, in the same order, so stories render with the
-// real production styling instead of unstyled HTML.
-import "../src/tw.css";
-import "../src/styles.css";
-import "../src/components/extra.css";
-import "../src/components/activity.css";
-import "../src/chat-bg.css";
-import "../src/skin-glass.css";
-import "highlight.js/styles/github-dark.css";
+// Exact same CSS stack as the app — both import the one shared list so they can
+// never drift (a previous hand-kept copy here silently lost tokens.css).
+import "../src/styles/css.ts";
 
 // Product themes (palette) and skins (aesthetic layer) — the SAME contract the
 // app uses (App.tsx writes documentElement.dataset.theme / .skin; styles.css owns
@@ -21,11 +15,14 @@ export const globalTypes = {
       title: "Theme",
       icon: "paintbrush",
       dynamicTitle: true,
+      // Canonical pair first: Light (default light) + Kanagawa Wave (default
+      // dark, see DEFAULT_DARK_THEME in usePersistentTheme). The rest are extra
+      // palettes that ride the same token contract.
       items: [
         { value: "light", title: "Light" },
-        { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
-        { value: "dark", title: "Dark" },
         { value: "kanagawa-wave", title: "Kanagawa Wave" },
+        { value: "dark", title: "Dark" },
+        { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
         { value: "catppuccin-mocha", title: "Catppuccin Mocha" },
       ],
     },

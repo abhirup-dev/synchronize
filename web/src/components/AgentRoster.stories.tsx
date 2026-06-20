@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { AgentRoster } from "./AgentRoster.tsx";
 import { GROUPS } from "../data/seed.ts";
+import { inRosterColumn } from "../storybook/shellFrames.tsx";
 
 // Provider-backed: AgentRoster reads the agent set through useAgents() off the
 // MockDataSource supplied by the global StorybookProviders decorator. The story
@@ -15,6 +16,9 @@ const meta = {
   title: "Navigation/AgentRoster",
   component: AgentRoster,
   parameters: { layout: "fullscreen" },
+  // Mount in the real 260px roster column so the focused card stays within the
+  // roster width instead of stretching into a full-bleed band.
+  decorators: [inRosterColumn],
   args: { focusedAgent: null, onFocus: () => {} },
 } satisfies Meta<typeof AgentRoster>;
 

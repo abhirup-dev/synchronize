@@ -29,6 +29,7 @@ import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { PollWidget } from "./PollWidget.tsx";
 import { useMe } from "../data/context.tsx";
+import { isSelfAgent } from "../data/identity.ts";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 
 interface MessageRowProps {
@@ -41,6 +42,10 @@ interface MessageRowProps {
   /** Hide the avatar gutter (used in ThreadPane to reclaim horizontal space —
    *  the colored author-name pill above the bubble is enough identity there). */
   hideAvatar?: boolean;
+  /** Compact thread headers already carry the parent author. */
+  hideAuthor?: boolean;
+  /** Compact thread rows use the composer/context menu as the primary action surface. */
+  hideReactionAdd?: boolean;
 }
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
@@ -60,12 +65,23 @@ function floatingStyleFor(anchor: HTMLElement, height: number): FloatingStyle {
   };
 }
 
-export const MessageRow = memo(function MessageRow({ message, author, agents, groupedWithPrev, onOpenThread, onReact, hideAvatar }: MessageRowProps) {
+export const MessageRow = memo(function MessageRow({
+  message,
+  author,
+  agents,
+  groupedWithPrev,
+  onOpenThread,
+  onReact,
+  hideAvatar,
+  hideAuthor,
+  hideReactionAdd,
+}: MessageRowProps) {
   const openMenu = useContextMenu();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const me = useMe();
-  const isYou = author.id === me.id || author.id === "you";
-  const isWebAuthor = author.role === "web";
+  // "You" / web-client messages: right-aligned accent bubble, no avatar or name
+  // chip. Single source of truth — see data/identity.ts.
+  const isSelf = isSelfAgent(author, me);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerStyle, setPickerStyle] = useState<FloatingStyle | null>(null);
   const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null);
@@ -114,31 +130,30 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
       data-vim-item={`msg-${message.id}`}
       className={cn(
         "message-row grid grid-cols-[34px_minmax(0,880px)] items-start gap-[var(--space-4)]",
-        isYou && "is-you",
-        isWebAuthor && "is-web-author",
+        isSelf && "is-self",
         groupedWithPrev && "is-grouped",
         hideAvatar && "no-avatar",
       )}
       onContextMenu={(e) =>
         openMenu(e, [
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
-          { label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) },
+          ...(!hideReactionAdd ? [{ label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) }] : []),
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
-          { label: "Copy link", onSelect: () => console.log("link", message.id) },
+          { label: "Copy link (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
-          { label: "Pin to room", onSelect: () => console.log("pin", message.id) },
+          { label: "Pin to room (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
-          { label: "Delete", danger: true, onSelect: () => console.log("delete", message.id) },
+          { label: "Delete (soon)", danger: true, disabled: true, onSelect: () => {} },
         ])
       }
     >
-      {!hideAvatar && !isWebAuthor && !isYou && (
+      {!hideAvatar && !isSelf && (
         <div className="message-gutter flex h-[34px] justify-center pt-0">
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
       <div className="message-body flex min-w-0 flex-col gap-[var(--space-2)] pr-[var(--bubble-shadow-gutter,6px)] pb-[var(--bubble-shadow-gutter,6px)]">
-        {!groupedWithPrev && !isWebAuthor && (
+        {!hideAuthor && !groupedWithPrev && !isSelf && (
           <div className="author-chip">
             <IdentityBadge
               className="author-name"
@@ -170,7 +185,11 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
               <PollWidget poll={message.poll} me={me.id} agents={agents} onVote={(opt) => console.log("vote", message.id, opt)} />
             )}
           </div>
-          {(hasThreadBadge || onReact) && (
+          {/* Reactions are DATA — show them whenever the message has any, not only
+              when an onReact handler happens to be wired. (Footer also appears for
+              an interactive add-reaction affordance or a thread badge.) Decoupling
+              display from handlers keeps read-only mounts and stories truthful. */}
+          {(hasThreadBadge || onReact || message.reactions.length > 0) && (
             <div className="message-footer mt-px flex min-h-[26px] w-full items-center justify-between gap-[var(--space-8)]">
               <div className="message-footer-left flex min-w-0 flex-[1_1_auto] items-center">
                 {hasThreadBadge && (
@@ -267,7 +286,7 @@ export const MessageRow = memo(function MessageRow({ message, author, agents, gr
                       </span>
                     );
                   })}
-                  {onReact && (
+                  {onReact && !hideReactionAdd && (
                     <span className="reaction-wrap relative inline-flex">
                       <button
                         className={reactionBtn({ add: true })}

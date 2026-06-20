@@ -78,6 +78,15 @@ Before editing or adding `web/` components, use the Storybook component glossary
 (MCP at `http://localhost:6006/mcp` while `cd web && bun run storybook` runs) to
 reuse existing components and patterns. See `docs/agents/storybook-ui.md`.
 
+**If you are adding or modifying any `web/` component OR its states/variants, you
+MUST first read the "Wiring conventions" section of `docs/agents/storybook-ui.md`.**
+It is the gated contract for how stories mount through shared shell cells, how
+mode/theme behaviour is expressed as traits (`shellLayout`/`themeTraits`) instead
+of if-else, and why theme/skin are global toolbar traits (never duplicate stories
+per theme). Wiring a story differently than the app mounts the component is the
+single biggest source of false-positive UI findings — the conventions exist to
+prevent it.
+
 ## Environment
 
 ```text

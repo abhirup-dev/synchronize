@@ -23,7 +23,7 @@ function PaneSplit({
           position: "relative",
           display: "flex",
           height: "100%",
-          background: "var(--bg, #0e0e10)",
+          background: "var(--paper)",
           "--thread-pane-width": `${width}px`,
         } as React.CSSProperties
       }
@@ -33,7 +33,7 @@ function PaneSplit({
           flex: 1,
           minWidth: 0,
           padding: 24,
-          color: "var(--ink, #e8e8ea)",
+          color: "var(--ink)",
           fontSize: 13,
           lineHeight: 1.6,
         }}
@@ -48,11 +48,11 @@ function PaneSplit({
         style={{
           width,
           flexShrink: 0,
-          borderLeft: "1px solid var(--rule, #2a2a2e)",
+          borderLeft: "1px solid var(--rule)",
           padding: 24,
-          color: "var(--ink, #e8e8ea)",
+          color: "var(--ink)",
           fontSize: 13,
-          background: "color-mix(in srgb, var(--ink, #e8e8ea) 4%, transparent)",
+          background: "color-mix(in srgb, var(--ink) 4%, transparent)",
         }}
       >
         <strong>Thread pane</strong>

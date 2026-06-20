@@ -19,17 +19,23 @@ interface HarnessProps {
   newItemsKey?: number | null;
   // Start scrolled to the bottom (atBottom => nothing to jump to going down).
   startAtBottom?: boolean;
+  // Scroll the surface to this offset (px) on mount. Setting scrollTop fires a
+  // real scroll event, which is how ScrollControls learns the direction — the
+  // down pill only shows once a downward scroll has registered `dir = "down"`
+  // (matching the app: the pill is direction-aware, not just is-scrolling-aware).
+  scrollTopPx?: number;
 }
 
-function Harness({ forceScrolling = false, newItemsKey = null, startAtBottom = false }: HarnessProps) {
+function Harness({ forceScrolling = false, newItemsKey = null, startAtBottom = false, scrollTopPx }: HarnessProps) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     if (startAtBottom) el.scrollTop = el.scrollHeight - el.clientHeight;
+    else if (scrollTopPx !== undefined) el.scrollTop = scrollTopPx;
     el.classList.toggle("is-scrolling", forceScrolling);
-  }, [forceScrolling, startAtBottom]);
+  }, [forceScrolling, startAtBottom, scrollTopPx]);
 
   return (
     <div style={{ position: "relative", height: 420, width: 360, margin: "0 auto" }}>
@@ -64,10 +70,10 @@ export const Hidden: Story = {
   render: () => <Harness />,
 };
 
-// Active scroll near the top: `.is-scrolling` is held on and the surface can
-// still scroll down, so the down (↓) jump pill is shown.
+// Active downward scroll away from the top: a real downward scroll registers
+// `dir = "down"` and `.is-scrolling` is held on, so the down (↓) jump pill shows.
 export const ScrollingDown: Story = {
-  render: () => <Harness forceScrolling />,
+  render: () => <Harness forceScrolling scrollTopPx={120} />,
 };
 
 // Fresh message arrived while the user is scrolled up — the lime "new items

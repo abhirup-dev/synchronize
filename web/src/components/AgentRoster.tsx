@@ -52,7 +52,11 @@ const rosterCard = cva(
   {
     variants: {
       focused: {
-        true: "translate-x-px bg-ink text-on-ink [border-color:var(--rule)] shadow-[var(--shadow-accent-pink)]",
+        // Darker-cream surface (paper-3) rather than a full bg-ink black band —
+        // the black read as harsh against the cream palette and forced the
+        // secondary line onto on-ink. paper-3 keeps normal ink text readable in
+        // every theme; emphasis comes from the rule border + accent-pink shadow.
+        true: "translate-x-px bg-paper-3 [border-color:var(--rule)] shadow-[var(--shadow-accent-pink)]",
         false: null,
       },
     },

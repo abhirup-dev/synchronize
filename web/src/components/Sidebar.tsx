@@ -93,7 +93,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       className={cn("sidebar", "flex flex-col overflow-hidden relative bg-paper-2")}
       data-vim-panel="sidebar"
     >
-      <div className="flex items-center gap-[var(--space-12)] px-[16px] pt-[18px] pb-[14px] [border-bottom:var(--line)]">
+      <div className="sidebar-brand flex items-center gap-[var(--space-12)] px-[16px] pt-[18px] pb-[14px] [border-bottom:var(--line)]">
         <div className={cn("brand-mark", "w-[42px] h-[42px] bg-yellow [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm rotate-[-3deg]")}>
           S
         </div>
@@ -111,7 +111,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <span className="absolute right-[8px] top-1/2 -translate-y-1/2 font-mono text-[length:var(--text-10)] bg-paper-3 [border:var(--line-xs)] p-[var(--space-chip-pad-xs)] rounded-xs">⌘K</span>
+        <span className="sidebar-search-shortcut absolute right-[8px] top-1/2 -translate-y-1/2 font-mono text-[length:var(--text-10)] bg-paper-3 [border:var(--line-xs)] p-[var(--space-chip-pad-xs)] rounded-xs">⌘K</span>
       </div>
 
       <section className="sidebar-section">
@@ -241,9 +241,9 @@ function RoomItem({
             ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
             : []),
           ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
-          { label: "Mark as read", onSelect: () => console.log("read", room.id) },
-          { label: room.pinned ? "Unpin" : "Pin to top", onSelect: () => console.log("pin", room.id) },
-          { label: "Mute notifications", onSelect: () => console.log("mute", room.id) },
+          { label: "Mark as read (soon)", disabled: true, onSelect: () => {} },
+          { label: `${room.pinned ? "Unpin" : "Pin to top"} (soon)`, disabled: true, onSelect: () => {} },
+          { label: "Mute notifications (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
           ...(room.kind === "group"
             ? [
@@ -254,7 +254,7 @@ function RoomItem({
             : []),
           { label: "Copy room id", onSelect: () => navigator.clipboard?.writeText(room.id) },
           { divider: true },
-          { label: room.kind === "group" ? "Leave group" : "Close DM", danger: true, onSelect: () => console.log("leave", room.id) },
+          { label: `${room.kind === "group" ? "Leave group" : "Close DM"} (soon)`, danger: true, disabled: true, onSelect: () => {} },
         ])
       }
     >

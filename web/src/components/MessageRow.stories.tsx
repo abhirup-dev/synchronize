@@ -20,22 +20,24 @@ export const Plain: Story = {
 };
 
 // m2 carries markdown, a fenced SQL block, reactions, and a thread reply count —
-// the busiest single-row state.
+// the busiest single-row state. Wire onReact + onOpenThread because the real
+// mount (ChatView/ThreadPane) always passes them: that surfaces the add-reaction
+// affordance and the clickable reply badge, not just the reactions themselves.
 export const RichWithReactions: Story = {
-  args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId) },
+  args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId), onReact: fn(), onOpenThread: fn() },
 };
 
 export const GroupedWithPrev: Story = {
   args: { message: msgs[2]!, author: authorOf(msgs[2]!.authorId), groupedWithPrev: true },
 };
 
-// Self ("You") message: shows the "You" name pill but NO avatar gutter — the
-// .is-you row is single-column. Regression guard for the stray centered avatar
-// bug (gutter was rendered into the 1-col grid and floated mid-pane).
+// Self message: NO avatar gutter — the .is-self row is single-column. Regression
+// guard for the stray centered avatar bug (gutter was rendered into the 1-col grid
+// and floated mid-pane). The refactor unified is-you/is-web-author into is-self.
 export const SelfMessage: Story = {
   args: { message: msgs[3]!, author: authorOf(msgs[3]!.authorId) },
   play: async ({ canvasElement }) => {
-    const row = canvasElement.querySelector(".message-row.is-you");
+    const row = canvasElement.querySelector(".message-row.is-self");
     await expect(row).toBeTruthy();
     await expect(row!.querySelector(".message-gutter")).toBeNull();
   },

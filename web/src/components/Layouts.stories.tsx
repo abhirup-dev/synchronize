@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChatView } from "./ChatView.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
+import { inChatSurface } from "../storybook/shellFrames.tsx";
 
 // Responsive matrix (sync-i24s.4): the real chat surface pinned to specific
 // viewport presets. Use the toolbar Theme/Skin controls to sweep these across
@@ -14,6 +15,9 @@ const meta = {
   title: "Layouts/Chat Surface",
   component: ChatView,
   parameters: { layout: "fullscreen" },
+  // Mount through the real chat-surface cells so shell mode (derived from the
+  // viewport width) drives timeline/composer/compact exactly as the app does.
+  decorators: [inChatSurface],
   args: { room: group },
 } satisfies Meta<typeof ChatView>;
 

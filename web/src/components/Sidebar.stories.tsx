@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Sidebar } from "./Sidebar.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
+import { inSidebarColumn } from "../storybook/shellFrames.tsx";
 
 // Provider-backed shell: Sidebar reads the room list, identity, agents, and the
 // activity awaiting-count through hooks (useRooms / useMe / useAgents /
@@ -10,6 +11,9 @@ const meta = {
   title: "Navigation/Sidebar",
   component: Sidebar,
   parameters: { layout: "fullscreen" },
+  // Mount in the real fixed-width sidebar grid column instead of full-bleed —
+  // otherwise the room sections collapse into unreadable horizontal strips.
+  decorators: [inSidebarColumn],
   args: { onSelect: () => {}, mode: "navigate" },
 } satisfies Meta<typeof Sidebar>;
 

@@ -18,7 +18,13 @@ import { join, dirname } from "node:path";
 
 const ROOT = dirname(new URL(import.meta.url).pathname);
 const SRC = join(ROOT, "src");
-const DIST = join(ROOT, "dist");
+// Output dir + asset base are env-overridable so the SAME pipeline can emit both
+// the daemon bundle (served under /web/) and the Capacitor app bundle (served at
+// the WebView root, https://localhost/). No duplicated build script or sources.
+//   daemon (default): WEB_DIST_DIR=dist         WEB_ASSET_BASE=/web/
+//   android app:      WEB_DIST_DIR=dist-mobile   WEB_ASSET_BASE=/
+const DIST = join(ROOT, process.env["WEB_DIST_DIR"] ?? "dist");
+const ASSET_BASE = (process.env["WEB_ASSET_BASE"] ?? "/web/").replace(/\/?$/, "/");
 const HTML_IN = join(ROOT, "index.html");
 const WATCH = process.argv.includes("--watch");
 
@@ -60,13 +66,14 @@ async function build(): Promise<void> {
   const jsHref = jsEntry.path.split("/").pop()!;
   const cssHref = cssEntry?.path.split("/").pop();
 
-  // Use absolute /web/ paths so the bundle loads correctly whether the URL is
-  // /web, /web/, or /web/index.html — relative ./ paths break the first form.
+  // Absolute ASSET_BASE paths so the bundle loads regardless of trailing slash.
+  // Daemon uses /web/ (handles /web, /web/, /web/index.html); the Capacitor app
+  // uses / (WebView root). Relative ./ paths break the daemon's /web form.
   const html = (await readFile(HTML_IN, "utf8"))
-    .replace("__JS_BUNDLE__", `/web/${jsHref}`)
+    .replace("__JS_BUNDLE__", `${ASSET_BASE}${jsHref}`)
     .replace(
       "__CSS_BUNDLE__",
-      cssHref ? `<link rel="stylesheet" href="/web/${cssHref}" />` : "",
+      cssHref ? `<link rel="stylesheet" href="${ASSET_BASE}${cssHref}" />` : "",
     );
   await writeFile(join(DIST, "index.html"), html, "utf8");
 

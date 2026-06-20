@@ -7,6 +7,9 @@ import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
+import { useIsCompact } from "../shell-mode.tsx";
+import { IconButton } from "./IconButton.tsx";
+import { Paperclip, AtSign, Slash, ArrowUp, ListTree } from "lucide-react";
 
 interface ComposerProps {
   roomId: string;
@@ -128,6 +131,7 @@ export function Composer({
   const stageAttachment = useStageAttachment();
   const removeDraftAttachment = useRemoveDraftAttachment();
   const toast = useToast();
+  const compact = useIsCompact();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const skillInputRef = useRef<HTMLInputElement | null>(null);
@@ -335,6 +339,15 @@ export function Composer({
     });
   };
 
+  // Compact @ button: insert "@" at the end and open the mention popup, since
+  // the desktop toolbar @ is typing-driven and has no handler.
+  const insertMention = () => {
+    setValue((prev) => (prev.endsWith("@") ? prev : `${prev}@`));
+    setMentionQuery("");
+    setMentionIdx(0);
+    queueMicrotask(() => taRef.current?.focus());
+  };
+
   const commitSkill = (skill: SkillCatalogEntry) => {
     slashRestorePosRef.current = null;
     setSelectedSkills((prev) => prev.includes(skill.name) ? prev : [...prev, skill.name]);
@@ -452,6 +465,8 @@ export function Composer({
       >
         ▼
       </button>
+      <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
+      {!compact && (
       <div className="flex items-center gap-[var(--space-8)] w-full bg-transparent [border:var(--line-none)] [border-bottom:var(--line-sm)] rounded-none px-[10px] py-[8px] shadow-none">
         <button className={cn(toolbarBtn())} title="bold" disabled>B</button>
         <button className={cn(toolbarBtn())} title="italic" disabled><i>I</i></button>
@@ -460,8 +475,8 @@ export function Composer({
         <button className={cn(toolbarBtn())} title="mention">@</button>
         <button className={cn(toolbarBtn({ active: skillPickerOpen }))} title="use skills" onClick={() => openSkillPicker()}>/</button>
         <button type="button" className={cn(toolbarBtn())} title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
-        <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
       </div>
+      )}
       {selectedSkills.length > 0 && (
         <div className="flex flex-wrap gap-[var(--space-6)] px-[10px] pt-[8px]" aria-label="selected skills">
           {selectedSkills.map((skillName) => (
@@ -485,13 +500,18 @@ export function Composer({
           ref={taRef}
           // `composer-input`: queried by hooks/useVimNav.ts + kanagawa placeholder
           // override in extra.css (:root[data-theme=...]) — class kept.
-          className={cn("composer-input", "w-full resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px] bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint")}
-          placeholder="message the room… use @ to tag an agent"
+          className={cn(
+            "composer-input w-full bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint",
+            compact
+              ? "resize-none min-h-[44px] max-h-[132px] px-[14px] py-[10px]"
+              : "resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px]",
+          )}
+          placeholder={compact ? "Message…" : "message the room… use @ to tag an agent"}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKey}
           onPaste={handlePaste}
-          rows={3}
+          rows={compact ? 1 : 3}
           aria-autocomplete="list"
           aria-haspopup="listbox"
           aria-expanded={mentionOpen}
@@ -546,11 +566,16 @@ export function Composer({
             position: "fixed",
             left: popRect.left,
             bottom: popRect.bottom + 6,
-            width: Math.min(popRect.width, 520),
+            width: Math.min(popRect.width, compact ? 420 : 520),
           }}
         >
           {/* `skill-pop-head`: responsive override in extra.css @media(max-width:700px) — class kept. */}
-          <div className="skill-pop-head grid grid-cols-[minmax(0,1fr)_auto] gap-[var(--space-8)] items-center p-[var(--space-8)] [border-bottom:var(--line-sm)] bg-paper-2">
+          <div
+            className={cn(
+              "skill-pop-head gap-[var(--space-8)] items-center p-[var(--space-8)] [border-bottom:var(--line-sm)] bg-paper-2",
+              compact ? "flex flex-col items-stretch" : "grid grid-cols-[minmax(0,1fr)_auto]",
+            )}
+          >
             <input
               ref={skillInputRef}
               className="min-w-0 bg-paper text-ink [border:var(--line-sm)] rounded-[var(--radius-sm)] px-[9px] py-[7px] [font:inherit] text-[length:var(--text-13)] outline-none focus:shadow-[0_0_0_2px_var(--yellow)]"
@@ -563,13 +588,14 @@ export function Composer({
               placeholder="filter skills"
               aria-label="filter skills"
             />
-            <div className="inline-flex gap-[var(--space-4)]" role="group" aria-label="skill runtime filter">
+            <div className={cn("inline-flex gap-[var(--space-4)]", compact && "justify-stretch")} role="group" aria-label="skill runtime filter">
               {(["all", "claude", "pi"] as const).map((runtime) => (
                 <button
                   key={runtime}
                   type="button"
                   className={cn(
                     "[border:var(--line-sm)] rounded-[var(--radius-sm)] px-[8px] py-[6px] font-display text-[length:var(--text-10-5)]",
+                    compact && "min-h-[34px] flex-1",
                     skillRuntime === runtime ? "bg-ink text-paper" : "bg-paper text-ink",
                   )}
                   onClick={() => {
@@ -589,14 +615,36 @@ export function Composer({
                 key={`${skill.name}:${skill.runtimes.join(",")}`}
                 type="button"
                 // `skill-row`: responsive override in extra.css @media(max-width:700px) — class kept.
-                className={cn(popRow({ focused: i === skillIdx }), "skill-row grid grid-cols-[minmax(92px,0.7fr)_minmax(0,1fr)_auto] gap-[var(--space-10)] items-center px-[8px] py-[7px] text-ink")}
+                className={cn(
+                  popRow({ focused: i === skillIdx }),
+                  "skill-row grid gap-[var(--space-10)] items-center px-[8px] py-[7px] text-ink",
+                  compact
+                    ? "grid-cols-[minmax(0,1fr)_auto] gap-y-[3px] min-h-[52px]"
+                    : "grid-cols-[minmax(92px,0.7fr)_minmax(0,1fr)_auto]",
+                )}
                 onClick={() => commitSkill(skill)}
                 onMouseEnter={() => setSkillIdx(i)}
               >
                 <span className="font-mono text-[length:var(--text-12)] font-extrabold overflow-hidden text-ellipsis whitespace-nowrap">/{skill.name}</span>
-                <span className="text-ink-soft text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap">{skill.description || "No description"}</span>
+                <span
+                  className={cn(
+                    "text-ink-soft text-[length:var(--text-11)] overflow-hidden",
+                    compact
+                      ? "col-span-2 row-start-2 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-height:1.3]"
+                      : "text-ellipsis whitespace-nowrap",
+                  )}
+                >
+                  {skill.description || "No description"}
+                </span>
                 {/* `skill-runtimes`: responsive override in extra.css @media(max-width:700px) — class kept. */}
-                <span className="skill-runtimes text-ink font-mono text-[length:var(--text-10)] uppercase whitespace-nowrap">{skill.runtimes.join(" + ")}</span>
+                <span
+                  className={cn(
+                    "skill-runtimes text-ink font-mono text-[length:var(--text-10)] uppercase whitespace-nowrap",
+                    compact && "col-start-2 row-start-1 justify-self-end",
+                  )}
+                >
+                  {skill.runtimes.join(" + ")}
+                </span>
               </button>
             )) : (
               <div className="px-[10px] py-[16px] text-ink-soft text-[length:var(--text-12)] text-center">No matching skills</div>
@@ -604,6 +652,32 @@ export function Composer({
           </div>
         </div>
       )}
+      {compact ? (
+        <div className="flex items-center gap-[var(--space-4)] px-[8px] py-[6px] [border-top:var(--line-rule-dashed-sm)]">
+          {/* Room switching lives in the bottom nav's Chats tab in compact mode,
+              so the composer stays focused on message actions. */}
+          <IconButton icon={Paperclip} label="attach file" onClick={() => fileInputRef.current?.click()} disabled={addingAttachments} />
+          <IconButton icon={AtSign} label="mention an agent" onClick={insertMention} />
+          <IconButton icon={Slash} label="use skills" active={skillPickerOpen} onClick={() => openSkillPicker()} />
+          {onToggleThreadSummary ? (
+            <IconButton
+              icon={ListTree}
+              label={threadSummaryOpen ? "hide thread summaries" : "show thread summaries"}
+              active={threadSummaryOpen}
+              onClick={onToggleThreadSummary}
+            />
+          ) : null}
+          <span className="flex-1" />
+          <IconButton
+            icon={ArrowUp}
+            label="send message"
+            variant="accent"
+            className="rounded-full"
+            onClick={() => void submit()}
+            disabled={addingAttachments || (!value.trim() && attachments.length === 0)}
+          />
+        </div>
+      ) : (
       <div className="flex items-center gap-[var(--space-12)] justify-between px-[14px] py-[10px] [border-top:var(--line-rule-dashed-sm)]">
         {onOpenCommunity ? (
           <button
@@ -640,6 +714,7 @@ export function Composer({
           <span className="composer-send-icon" aria-hidden />
         </button>
       </div>
+      )}
     </div>
   );
 }
