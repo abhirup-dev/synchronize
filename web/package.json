@@ -8,7 +8,6 @@
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p .",
-    "verify-ui": "bun run scripts/verify-ui.mjs",
     "storybook": "storybook dev -p 6006 --no-open",
     "storybook:build": "storybook build",
     "test:storybook": "vitest run --project storybook",

@@ -6,7 +6,7 @@ bundled into the Android app via Capacitor). See `sync-imeu.1.23`.
 ## Automated (run before every push)
 
 ```bash
-make verify-web        # typecheck (web+root) + both asset-base builds + Playwright smoke
+make verify-web        # typecheck (web+root) + both asset-base builds + Storybook tests
 # one-time browser install:
 cd web && bunx playwright install chromium
 ```
@@ -16,17 +16,18 @@ cd web && bunx playwright install chromium
 1. `tsc --noEmit` for `web/` and the root package
 2. daemon bundle build (`/web/` asset base → `dist/`)
 3. mobile bundle build (`/` asset base → `dist-mobile/`)
-4. headless Playwright smoke (`web/scripts/verify-ui.mjs`): loads the app in
-   **compact / medium / desktop × light / dark**, asserts the shell renders with
-   the right `data-shell-mode`, opens a room → chat view, and fails on any console
-   error. Uses deterministic **MockDataSource** (root asset base ⇒ no daemon/DB).
+4. Storybook story + `play` tests (`bun run test:storybook`, headless Playwright
+   Chromium via Vitest). Every component story renders, interaction `play` tests
+   run, and **`Layouts/App Shell`** mounts the full shell at compact / medium /
+   desktop, asserting the right `data-shell-mode` and that the chat surface
+   renders. Uses deterministic **MockDataSource** (no daemon/DB).
 
-To watch it run: `cd web && VERIFY_HEADED=1 bun run verify-ui`
-To run against a live daemon (real data): `VERIFY_BASE_URL=http://127.0.0.1:<port>/web/ bun run verify-ui`
+To watch/debug stories: `cd web && bun run storybook` (dev server + MCP on :6006).
+To run the tests headed: `cd web && bun run test:storybook:headed`.
 
 ## Manual matrix (run for UI-affecting changes)
 
-The smoke covers shell render + chat open. Manually confirm the rest across
+The story tests cover component states + shell render. Manually confirm the rest across
 **compact (<780) / medium (780–1180) / desktop (≥1180)** and **light + dark/Kanagawa**,
 in both **brutal + glass** skins:
 

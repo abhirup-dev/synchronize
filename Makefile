@@ -74,9 +74,10 @@ test: check-install
 	@bun test
 
 # Web UI regression gate (sync-imeu.1.23). Cheap-to-expensive: typecheck both
-# packages, build both asset bases (daemon /web/ + mobile /), then a headless
-# Playwright smoke over compact/medium/desktop × light/dark against deterministic
-# mock data (no daemon needed). One-time browser install: cd web && bunx playwright install chromium
+# packages, build both asset bases (daemon /web/ + mobile /), then the Storybook
+# story + play tests (headless Playwright Chromium via Vitest) over the component
+# glossary and the App Shell breakpoint matrix. One-time browser install:
+# cd web && bunx playwright install chromium
 .PHONY: verify-web
 verify-web:
 	@echo "==> Web typecheck"
@@ -87,8 +88,8 @@ verify-web:
 	@cd web && bun run build.ts
 	@echo "==> Mobile web build (/ asset base -> dist-mobile)"
 	@cd web && WEB_ASSET_BASE=/ WEB_DIST_DIR=dist-mobile bun run build.ts
-	@echo "==> UI smoke (Playwright, mock data)"
-	@cd web && bun run verify-ui
+	@echo "==> UI tests (Storybook stories + play tests)"
+	@cd web && bun run test:storybook
 	@echo "==> verify-web OK. Manual matrix lives in web/VERIFY.md"
 
 # Verify the CLI tooling the project leans on. Required tools fail the check;
