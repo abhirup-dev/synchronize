@@ -16,6 +16,14 @@ document.documentElement.dataset.skin  = "brutal"; // brutal | glass
 Every token below resolves through these — set them before rendering or everything
 falls back to light/brutal.
 
+> **Dark-mode reference cards.** A few component cards — **ChatView, Sidebar,
+> ActivityView, BoardView** — are shown in the gallery rendered with
+> `data-theme="dark"`. These are **the same components** as everywhere else, not
+> dark-only variants: they exist purely to show the dark palette. Every component
+> is theme-agnostic (light is the default) and renders in any of the five themes +
+> glass skin by setting the root attributes above. Don't treat a dark reference
+> card as a different component or assume dark is its default.
+
 ### Provider wrapping
 
 Data-backed components (`ChatView`, `Sidebar`, `ActivityView`, `RoomHeader`,
