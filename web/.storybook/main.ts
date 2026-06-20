@@ -8,7 +8,10 @@ import tailwindcss from "@tailwindcss/vite";
 const config: StorybookConfig = {
   stories: ["../src/**/*.mdx", "../src/**/*.stories.@(ts|tsx)"],
   framework: { name: "@storybook/react-vite", options: {} },
-  addons: ["@storybook/addon-docs"],
+  // addon-mcp (preview) exposes a /mcp endpoint while `storybook dev` runs, so
+  // Claude/Codex can query the component glossary and docs. The docs/dev toolsets
+  // work today; the test toolset (run-story-tests) lights up with sync-i24s.3.
+  addons: ["@storybook/addon-docs", "@storybook/addon-mcp"],
   core: { disableTelemetry: true },
   viteFinal: async (cfg) => {
     cfg.plugins = cfg.plugins ?? [];
