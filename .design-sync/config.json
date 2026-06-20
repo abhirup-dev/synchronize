@@ -26,6 +26,8 @@
     "RoomHeader": { "cardMode": "column" },
     "ResizeHandle": { "cardMode": "column" },
     "ChatView": { "cardMode": "column" },
+    "ChatViewDark": { "cardMode": "column" },
+    "ActivityViewDark": { "cardMode": "column" },
     "ScrollControls": { "cardMode": "column" },
     "ThreadSummaryPanel": { "cardMode": "column" },
     "ContextMenuProvider": { "cardMode": "column", "skip": ["surfaces-contextmenu--message-actions"] },

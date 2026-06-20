@@ -68,15 +68,17 @@ pieces, all captured below so a re-sync replays them.
   (`startAtBottom`) to match the reference.
 - `ArchiveRecoveryProvider` stories open a `document.body` dialog via `play` — it escapes the canvas on
   BOTH sides, so both show the identical launcher button row → they MATCH (no skip needed).
-- **Dark-mode reference cards — owned previews for `ChatView`, `Sidebar`, `ActivityView`, `BoardView`.**
-  Themes are a Storybook toolbar GLOBAL (not stories), so every captured card defaults to light/brutal.
-  To represent dark in the gallery, these 4 heroes have owned previews (`.design-sync/previews/<Name>.tsx`)
-  that set `document.documentElement.dataset.theme = "dark"` at module load and otherwise compose the same
-  story cells. They are the SAME components, shown dark for reference (encoded in conventions.md too).
-  **Grading caveat:** the storybook reference renders light (the default global), so compare shows a
-  light-vs-dark pair for these — that's an intentional theme delta, graded `match` on the component
-  render, NOT a real mismatch. Don't "fix" it by reverting to light. To add/adjust dark heroes, copy the
-  generated cache twin, drop the marker, add the dark-setter (see existing four).
+- **Dark-theme sibling components — real `*Dark.stories.tsx` files.** Themes are a Storybook toolbar
+  GLOBAL (not stories), so default cards capture light/brutal. To get BOTH a light and a dark card for
+  the hero surfaces, there are 4 dedicated dark stories: `web/src/components/{ChatView,Sidebar,
+  ActivityView,BoardView}Dark.stories.tsx`. Each re-exports its base stories under a `… Dark` title with
+  a decorator that sets `data-theme="dark"` (+ `globals.theme:"dark"`), so the Storybook reference AND the
+  design-sync preview both render dark → a REAL dark-vs-dark compare (not a faked delta). They surface as
+  separate cards (`ChatViewDark`, `SidebarDark`, `ActivityViewDark`, `BoardViewDark`); the base 4 stay
+  light. Discovery needs the names on the global — `web/.ds-entry.tsx` aliases them
+  (`export { ChatView as ChatViewDark }` …). `ChatViewDark`/`ActivityViewDark` carry `cardMode:column`
+  like their bases. To add more dark siblings: add `<Name>Dark.stories.tsx` + the alias in the barrel
+  (+ a column override if the base has one). They are the SAME components — encoded in conventions.md.
 
 ## [GENERAL] Play-driven story states (the recurring fan-out lesson)
 

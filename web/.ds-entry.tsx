@@ -29,3 +29,11 @@ export * from "./src/components/TimelineRail.tsx";
 export * from "./src/components/Toast.tsx";
 export * from "./src/ui/Sheet.tsx";
 export * from "./src/shell-mode.tsx";
+
+// Dark-theme reference siblings — aliases of the same components so the
+// *Dark.stories.tsx titles resolve to distinct design-system cards. Same
+// component, themed dark (see the *Dark stories + conventions.md).
+export { ChatView as ChatViewDark } from "./src/components/ChatView.tsx";
+export { Sidebar as SidebarDark } from "./src/components/Sidebar.tsx";
+export { ActivityView as ActivityViewDark } from "./src/components/ActivityView.tsx";
+export { BoardView as BoardViewDark } from "./src/components/BoardView.tsx";
