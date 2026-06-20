@@ -266,3 +266,63 @@ export const SpawnAgentEntrypointDemo: Story = {
   parameters: spawnAgentEntrypointParameters,
   play: async (ctx) => spawnAgentEntrypoint(ctx, { pauseMs: 900 }),
 };
+
+// Compact (Android) chrome end-to-end: the bottom nav opens the Chats overlay
+// (CompactAppBar), the app bar opens the display-settings Sheet, Escape dismisses
+// it, and the close button tears the overlay down. Exercises the whole compact
+// navigation surface that desktop never mounts.
+async function compactNavAndSettings(ctx: PlayCtx, options: FlowOptions = {}) {
+  const pause = pauseFor(options);
+  const canvas = within(ctx.canvasElement);
+
+  await ctx.step("Compact shell shows the three-tab bottom nav", async () => {
+    await waitFor(() => expect(ctx.canvasElement.querySelector(".bottom-nav")).toBeTruthy());
+    await expect(canvas.getByRole("button", { name: "Chats" })).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Activity" })).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Agents" })).toBeVisible();
+    await pause();
+  });
+
+  await ctx.step("Bottom nav → Chats opens the room-switcher overlay", async () => {
+    await userEvent.click(canvas.getByRole("button", { name: "Chats" }));
+    await waitFor(() => requireElement(ctx.canvasElement, '[aria-label="chats"]', "chats overlay"));
+    await pause();
+  });
+
+  await ctx.step("App bar opens the display-settings sheet; Escape dismisses it", async () => {
+    const overlay = requireElement<HTMLElement>(ctx.canvasElement, '[aria-label="chats"]', "chats overlay");
+    await userEvent.click(within(overlay).getByRole("button", { name: "open display settings" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "display settings" })).toBeVisible());
+    await pause();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "display settings" })).toBeNull());
+    await pause();
+  });
+
+  await ctx.step("Close button tears the overlay down", async () => {
+    const overlay = requireElement<HTMLElement>(ctx.canvasElement, '[aria-label="chats"]', "chats overlay");
+    await userEvent.click(within(overlay).getByRole("button", { name: "close" }));
+    await waitFor(() => expect(ctx.canvasElement.querySelector('[aria-label="chats"]')).toBeNull());
+  });
+}
+
+export const CompactNavAndSettings: Story = {
+  globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+  parameters: {
+    synchronizeFlow: {
+      id: "flows.compact-nav-and-settings",
+      tier: "contract",
+      determinism: "deterministic",
+      components: ["app-shell", "bottom-nav", "compact-app-bar", "sheet", "sidebar"],
+      data: "MockDataSource seed",
+    },
+  },
+  play: async (ctx) => compactNavAndSettings(ctx),
+};
+
+export const CompactNavAndSettingsDemo: Story = {
+  tags: ["!test"],
+  globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+  parameters: CompactNavAndSettings.parameters!,
+  play: async (ctx) => compactNavAndSettings(ctx, { pauseMs: 900 }),
+};

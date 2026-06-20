@@ -67,3 +67,10 @@ export const WithThreadBanner: Story = {
 export const GlassSkinBoardTab: Story = {
   args: { room: group, skin: "glass", tab: "board", themeIcon: "🌙", theme: "ink" },
 };
+
+// Compact (mobile-narrow, 390): title truncation, member-pile collapse, and the
+// tab row at a thumb width — the Android header state.
+export const Compact: Story = {
+  args: { room: group, showAgentsButton: true, onOpenAgents: noop },
+  globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+};

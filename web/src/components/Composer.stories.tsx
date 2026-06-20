@@ -42,6 +42,12 @@ export const DirectMessage: Story = {
   args: { roomId: dm.id },
 };
 
+// Compact (mobile-narrow, 390): toolbar, textarea, and footer hints at a thumb
+// width — the Android composer state (incl. safe-area padding).
+export const Compact: Story = {
+  globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+};
+
 // Type into the textarea and hit send; submit() clears the draft on success,
 // which is the observable effect of the sendMessage dispatch landing.
 export const TypeAndSend: Story = {

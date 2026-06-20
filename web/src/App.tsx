@@ -80,7 +80,8 @@ export function App() {
   );
 }
 
-function ConnectionError({ message }: { message: string }) {
+// Exported for Storybook (Surfaces/ConnectionError). App() is the runtime caller.
+export function ConnectionError({ message }: { message: string }) {
   const authHint = message.toLowerCase().includes("unauthorized") || message.includes("401");
   return (
     <div className="connection-error">
@@ -447,7 +448,9 @@ export function Shell() {
   );
 }
 
-function CompactAppBar({
+// Exported for Storybook (Navigation/CompactAppBar) — the compact Chats/Agents
+// overlay header. Rendered inline by the overlays below; the export is story-only.
+export function CompactAppBar({
   title,
   detail,
   onSettings,
@@ -478,7 +481,9 @@ function CompactAppBar({
   );
 }
 
-function CompactSettingsSheet({
+// Exported for Storybook (Surfaces/CompactSettingsSheet) — the compact display
+// settings bottom sheet (theme / skin / chat background).
+export function CompactSettingsSheet({
   open,
   theme,
   skin,
@@ -548,7 +553,8 @@ function CompactSettingsSheet({
   );
 }
 
-function SettingsRow({ label, value, onClick }: { label: string; value: string; onClick(): void }) {
+// Exported for Storybook (Primitives/SettingsRow).
+export function SettingsRow({ label, value, onClick }: { label: string; value: string; onClick(): void }) {
   return (
     <button type="button" className="compact-settings-row" onClick={onClick}>
       <span>{label}</span>
@@ -557,7 +563,8 @@ function SettingsRow({ label, value, onClick }: { label: string; value: string; 
   );
 }
 
-function Placeholder({ label }: { label: string }) {
+// Exported for Storybook (Surfaces/Placeholder) — unimplemented-tab stamp.
+export function Placeholder({ label }: { label: string }) {
   return (
     <div className="placeholder">
       <div className="placeholder-stamp">{label}</div>
