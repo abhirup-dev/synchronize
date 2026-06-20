@@ -32,3 +32,11 @@ work/
 # Python bytecode from the integration-aoe harness
 __pycache__/
 *.pyc
+
+# /design-sync
+.ds-sync/
+ds-bundle/
+.design-sync/sb-reference/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
