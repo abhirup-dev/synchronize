@@ -18,6 +18,10 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const expectShellMode = async (canvasElement: HTMLElement, mode: string) => {
+  // Guard against the CSS-import drift that once unstyled the whole catalog:
+  // if tokens.css isn't loaded, --paper is empty and every brutal border/bg
+  // collapses while DOM-only play tests stay green. Cheap, catches it.
+  expect(getComputedStyle(document.documentElement).getPropertyValue("--paper").trim()).not.toBe("");
   await waitFor(() => {
     const shell = canvasElement.querySelector(".app-shell");
     expect(shell).toBeTruthy();
