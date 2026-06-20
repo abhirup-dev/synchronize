@@ -319,10 +319,6 @@
   box-shadow: var(--shadow-chip);
   font-family: var(--font-display);
 }
-:root[data-skin="glass"] .act-nav:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover-sm);
-}
 :root[data-skin="glass"] .act-nav.active {
   background: rgba(87, 82, 121, 0.82); /* iris (Rosé Pine Dawn) */
   transform: none;
@@ -333,17 +329,6 @@
 :root[data-skin="glass"][data-theme="catppuccin-mocha"] .act-nav.active {
   background: rgba(212, 206, 176, 0.12); /* fujiWhite veil (Kanagawa) */
   color: var(--ink);
-}
-:root[data-skin="glass"] .act-nav-icon {
-  color: var(--on-accent);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-xs);
-}
-:root[data-skin="glass"] .act-nav-count {
-  color: var(--on-accent);
-  border: 1px solid var(--rule);
-  box-shadow: var(--shadow-xxs);
 }
 
 /* -- activity: header ------------------------------------------------------ */
@@ -362,7 +347,6 @@
 }
 :root[data-skin="glass"] .act-markall { border-radius: var(--radius-sm); }
 :root[data-skin="glass"] .act-view-switch { border-radius: var(--radius-sm); }
-:root[data-skin="glass"] :is(.act-viewtoggle, .act-liveonly) { border-radius: var(--radius-md); }
 :root[data-skin="glass"] .act-live-dot,
 :root[data-skin="glass"] .act-rf-dot { border: 1px solid var(--rule); }
 :root[data-skin="glass"] .act-view-switch:hover,
@@ -377,8 +361,6 @@
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);
 }
-:root[data-skin="glass"] .avt-btn { border-right: 1px solid var(--rule); }
-:root[data-skin="glass"] .avt-btn:last-child { border-right: none; }
 
 /* -- activity: filter tabs (glass-dark drops the brutal chip shadows) ------ */
 :root[data-skin="glass"][data-theme="dark"] .act-filter,
@@ -419,7 +401,6 @@
   background: var(--paper-3);
   border-radius: var(--radius-panel-top);
 }
-:root[data-skin="glass"] .act-section-items { border-radius: var(--radius-panel-bottom); }
 :root[data-skin="glass"] .act-room-icon {
   border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
@@ -482,12 +463,7 @@
   border: 1px solid var(--rule);
   border-radius: var(--radius-lg);
 }
-:root[data-skin="glass"] .act-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-}
 :root[data-skin="glass"] .act-top .author-chip { box-shadow: var(--shadow-xs); }
-:root[data-skin="glass"] .act-reaction-chip { border: 1px solid var(--rule); box-shadow: var(--shadow-xxs); }
 :root[data-skin="glass"] .act-reaction-chip.you { color: var(--on-accent); }
 :root[data-skin="glass"] .act-act-btn {
   border: 1px solid var(--rule);
@@ -501,21 +477,6 @@
 :root[data-skin="glass"] .act-act-btn.jump:hover { color: var(--on-accent); }
 :root[data-skin="glass"] .act-act-btn.react:hover,
 :root[data-skin="glass"] .act-act-btn.react.done { color: var(--on-accent); }
-:root[data-skin="glass"] .act-artifact {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-}
-:root[data-skin="glass"] .act-artifact-thumb {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-xs);
-}
-:root[data-skin="glass"] .act-artifact-kind { color: var(--on-accent); }
-:root[data-skin="glass"] .act-task {
-  border: var(--line-dashed-sm);
-  border-radius: var(--radius-sm);
-}
-:root[data-skin="glass"] .act-task-col { border: 1px solid var(--rule); color: var(--on-accent); }
 :root[data-skin="glass"] .act-row {
   background: var(--paper);
   border: 1px solid var(--rule);
@@ -531,22 +492,6 @@
 :root[data-skin="glass"] .act-row-presence {
   --status-dot-border: var(--rule);
   border-color: var(--rule);
-}
-:root[data-skin="glass"] .act-ticket {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-}
-:root[data-skin="glass"] .act-ticket:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-}
-:root[data-skin="glass"] .act-ticket-head { border-bottom: 1px solid var(--rule); }
-:root[data-skin="glass"] .act-ticket-foot { border-top: 1px solid var(--rule); }
-:root[data-skin="glass"] .act-ticket-type {
-  color: var(--on-accent);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-hair);
-  box-shadow: var(--shadow-xxs);
 }
 :root[data-skin="glass"] .act-latest {
   background: var(--paper-3);
@@ -567,10 +512,6 @@
 
 /* -- activity: lanes (dropped variant, kept consistent anyway) -------------- */
 :root[data-skin="glass"] .act-lane-await { border: 1px solid var(--rule); }
-:root[data-skin="glass"] .act-lane-go {
-  border: var(--line-dashed-sm);
-  border-radius: var(--radius-sm);
-}
 
 /* -- activity: room filter popover ------------------------------------------ */
 :root[data-skin="glass"] .act-roomlist {

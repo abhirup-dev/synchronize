@@ -318,10 +318,6 @@ button { font-family: inherit; cursor: pointer; }
   right: -2px;
 }
 
-.user-info { flex: 1; min-width: 0; }
-.user-name { font-weight: 700; font-size: var(--text-13-5); }
-.user-handle { font-family: var(--font-mono); font-size: var(--text-10-5); color: var(--ink-soft); }
-
 /* .activity-dock-btn base + .activity-dock-badge base migrated to Tailwind
    utilities in Sidebar.tsx (activityDockBtn() CVA + inline badge utils). The
    hook classes stay so the .activity-dock-btn:hover/.active rule and the
@@ -626,10 +622,6 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper);
 }
 
-.compact-settings-layer {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
 .compact-settings-sheet {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
@@ -771,15 +763,6 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
 }
-.room-id-sub {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  margin-top: 2px;
-}
 .dot-sep { opacity: 0.4; }
 /* .busy-inline + .room-header-actions base migrated to Tailwind utilities in
    RoomHeader.tsx (the extra.css .busy-inline copy won; room-header-actions
@@ -789,34 +772,6 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   margin-right: 4px;
 }
-.member-stack-item { margin-left: -8px; }
-.member-stack-item:first-child { margin-left: 0; }
-.member-stack-more {
-  margin-left: -8px;
-  width: 32px;
-  height: 32px;
-  background: var(--paper-3);
-  border: var(--line-md);
-  border-radius: var(--radius-lg);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  display: grid;
-  place-items: center;
-  box-shadow: var(--shadow-chip);
-}
-
-.icon-btn-lg {
-  width: 36px;
-  height: 36px;
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-15);
-  padding: 0;
-}
-.icon-btn-lg:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
 
 /* ─── tabbar ─── */
 .tabbar {
@@ -827,41 +782,12 @@ button { font-family: inherit; cursor: pointer; }
   border-top: var(--line-2);
   background: var(--paper-2);
 }
-
-.tab-btn {
-  background: transparent;
-  border: var(--line-none);
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  letter-spacing: var(--tracking-sm);
-  color: var(--ink-soft);
-  padding: var(--space-bubble-pad);
-  border-bottom: 4px solid transparent;
-  margin-right: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-.tab-btn:hover { color: var(--ink); }
 .tab-btn.active {
   color: var(--ink);
   border-bottom-color: var(--ink);
   background: var(--paper);
   box-shadow: var(--shadow-tab-active);
 }
-.tab-glyph { font-size: var(--text-14); }
-
-.tab-spacer { flex: 1; }
-.tab-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-}
-.tab-meta-label { font-weight: 700; letter-spacing: var(--tracking-md); }
-.sparkline { display: flex; gap: 2px; align-items: flex-end; height: 16px; }
 .sparkline span { width: 4px; }
 
 /* ───────────────────────── chat ───────────────────────── */
@@ -886,27 +812,11 @@ button { font-family: inherit; cursor: pointer; }
 .chat-list::-webkit-scrollbar { width: 10px; }
 .chat-list::-webkit-scrollbar-thumb { background: var(--ink); border-radius: var(--radius-none); }
 .chat-list::-webkit-scrollbar-track { background: var(--paper); }
-
-.day-divider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  margin: 4px 0 4px;
-}
 .day-divider .line {
   flex: 1;
   height: 0;
   border-top: var(--line-dashed-md);
   opacity: 0.5;
-}
-.day-pill {
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  padding: 4px 12px;
-  border-radius: var(--radius-pill);
-  letter-spacing: var(--tracking-lg);
 }
 
 /* DEAD CSS REMOVED (sync-q48d): legacy .msg-row/.msg-bubble/.msg-gutter/.msg-main/
@@ -922,18 +832,6 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-none);
   padding: 0;
   transform: none;
-}
-
-.author-role {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-  margin-left: 4px;
-}
-.role-text {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
 }
 
 .mention {
@@ -1280,77 +1178,6 @@ button { font-family: inherit; cursor: pointer; }
   min-height: 0;
 }
 
-.media-card {
-  background: var(--paper);
-  border: var(--line);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.media-card:hover { transform: translate(-2px, -2px); box-shadow: var(--shadow-lg); }
-
-.media-preview {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  border-bottom: var(--line);
-  overflow: hidden;
-}
-
-.media-kind-pill {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-md);
-  padding: 3px 8px;
-  border-radius: var(--radius-xs);
-  border: var(--line-xs);
-}
-
-.media-body {
-  padding: 11px 13px 13px;
-}
-.media-title {
-  font-weight: 700;
-  font-size: var(--text-13-5);
-  margin-bottom: 5px;
-  text-wrap: pretty;
-}
-.media-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  color: var(--ink-soft);
-  margin-bottom: 6px;
-}
-.media-note {
-  font-size: var(--text-11-5);
-  color: var(--ink);
-  background: var(--paper-2);
-  border: var(--line-xs);
-  padding: var(--space-button-pad-sm);
-  border-radius: var(--radius-sm);
-  display: inline-block;
-}
-
-.empty-state {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-14);
-  padding: 60px 20px;
-  font-family: var(--font-mono);
-  color: var(--ink-soft);
-}
-
 /* ───────────────────────── agent roster ───────────────────────── */
 /* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
  * (sync-9hqo). The live component carries all roster styling; the legacy
@@ -1375,11 +1202,6 @@ button { font-family: inherit; cursor: pointer; }
   vertical-align: baseline;
   box-shadow: var(--shadow-xs);
 }
-.reader-stack {
-  display: inline-flex;
-  vertical-align: middle;
-  margin: 0 4px 0 2px;
-}
 .reader-stack > div { margin-left: -6px; }
 .reader-stack > div:first-child { margin-left: 0; }
 
@@ -1394,16 +1216,6 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.mention-pop-hint {
-  font-family: var(--font-mono);
-  font-weight: 400;
-  font-size: var(--text-9-5);
-  letter-spacing: var(--tracking-xs);
-  opacity: 0.7;
-}
-.mention-item {
-  position: relative;
 }
 /* .mention-note base + .status-busy migrated to inline Tailwind utilities in
    components/Composer.tsx (effective font-mono/text-11/ink-soft preserved;
@@ -1485,28 +1297,6 @@ button { font-family: inherit; cursor: pointer; }
   font-size: var(--text-10-5);
   font-weight: 600;
 }
-.roster-focus-banner .banner-name {
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  letter-spacing: var(--tracking-xs);
-}
-.roster-focus-banner .banner-clear {
-  margin-left: auto;
-  background: var(--paper);
-  border: var(--line-xs);
-  border-radius: var(--radius-xs);
-  padding: var(--space-chip-pad-md);
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  font-weight: 700;
-  color: var(--ink);
-  cursor: pointer;
-  box-shadow: var(--shadow-chip);
-}
-.roster-focus-banner .banner-clear:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover-sm);
-}
 
 /* ───────────────────────── poll (inline in messages) ───────────────────────── */
 
@@ -1519,37 +1309,6 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-none);
 }
 .poll.closed { opacity: 0.78; }
-
-.poll-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  margin-bottom: 10px;
-}
-.poll-tag {
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-lg);
-  background: var(--ink);
-  color: var(--on-ink);
-  padding: var(--space-chip-pad-md);
-  border-radius: var(--radius-xs);
-  flex-shrink: 0;
-}
-.poll-question {
-  font-family: var(--font-display);
-  font-size: var(--text-15);
-  color: var(--ink);
-  line-height: 1.25;
-  text-wrap: pretty;
-}
-
-.poll-options {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  margin-bottom: 10px;
-}
 
 .poll-opt {
   position: relative;
@@ -1584,83 +1343,13 @@ button { font-family: inherit; cursor: pointer; }
   transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .poll-opt.selected .poll-opt-bar { opacity: 0.55; }
-
-.poll-opt-row {
-  position: relative;
-  z-index: var(--z-local-content);
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-}
-
-.poll-opt-glyph {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  background: var(--opt-color);
-  border: var(--line-hair-faint);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  color: var(--on-accent);
-  flex-shrink: 0;
-}
-
-.poll-opt-label {
-  font-family: var(--font-display);
-  font-size: var(--text-12-5);
-  letter-spacing: var(--tracking-sm);
-  color: var(--ink);
-  flex: 1;
-}
-
-.poll-opt-count {
-  font-family: var(--font-mono);
-  font-size: var(--text-13);
-  font-weight: 700;
-  color: var(--ink);
-  min-width: 18px;
-  text-align: right;
-}
-
-.poll-voters {
-  display: inline-flex;
-  flex-shrink: 0;
-}
 .poll-voters > div { margin-left: -5px; }
 .poll-voters > div:first-child { margin-left: 6px; }
-.poll-voters-more {
-  margin-left: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  font-weight: 700;
-  color: var(--ink-soft);
-}
-
-.poll-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  color: var(--ink-soft);
-  padding-top: var(--space-7);
-  border-top: var(--line-dashed-faint);
-}
-.poll-tally { font-weight: 700; color: var(--ink); }
-.poll-sep { opacity: 0.5; }
 .poll-status-open b {
   font-family: var(--font-display);
   font-size: var(--text-10);
   letter-spacing: var(--tracking-sm);
   color: var(--ink);
-}
-.poll-status-closed {
-  font-family: var(--font-display);
-  color: var(--red);
-  letter-spacing: var(--tracking-md);
 }
 
 /* ───────────────────────── context menu ───────────────────────── */
@@ -1746,47 +1435,12 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-soft);
   transition: background 100ms, color 100ms;
 }
-.thread-stub:hover {
-  background: var(--paper-2);
-  color: var(--ink);
-}
 .thread-stub.active {
   background: var(--paper-2);
   color: var(--ink);
 }
-
-.thread-stub-avatars {
-  display: inline-flex;
-}
 .thread-stub-avatars > div { margin-left: -4px; }
 .thread-stub-avatars > div:first-child { margin-left: 0; }
-
-.thread-stub-count {
-  font-family: var(--font-ui);
-  font-size: var(--text-12-5);
-  font-weight: 700;
-  color: var(--ink);
-  letter-spacing: var(--tracking-none);
-}
-.thread-stub-time {
-  font-family: var(--font-ui);
-  font-size: var(--text-12);
-  color: var(--ink-soft);
-}
-.thread-stub-cta {
-  font-family: var(--font-ui);
-  font-size: var(--text-12);
-  color: var(--ink-soft);
-  opacity: 0;
-  transition: opacity 100ms;
-  margin-left: auto;
-  padding-left: var(--space-8);
-}
-.thread-stub:hover .thread-stub-cta { opacity: 1; }
-.thread-stub-arrow {
-  display: inline-block;
-  margin-left: 2px;
-}
 /* the active stub gets a tiny ink underscore so it reads as "currently open" */
 .thread-stub.active .thread-stub-count {
   box-shadow: var(--shadow-accent-inset);
@@ -1824,19 +1478,6 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   justify-content: center;
 }
-.thread-resize-grip {
-  width: 2px;
-  height: 38px;
-  background: var(--ink-faint);
-  border-radius: var(--radius-hair);
-  opacity: 0;
-  transition: opacity 120ms, background 120ms, height 120ms;
-}
-.thread-resize-handle:hover .thread-resize-grip {
-  opacity: 1;
-  background: var(--ink);
-  height: 56px;
-}
 /* while actively resizing, kill text selection + transitions for snappy feel */
 .chat-view.resizing {
   user-select: none;
@@ -1865,22 +1506,6 @@ button { font-family: inherit; cursor: pointer; }
 .thread-pane-sep {
   color: var(--ink-faint);
   font-size: var(--text-13);
-}
-.thread-pane-room {
-  font-family: var(--font-ui);
-  font-size: var(--text-12-5);
-  color: var(--ink-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.thread-pane-author {
-  font-family: var(--font-display);
-  font-size: var(--text-10-5);
-  letter-spacing: var(--tracking-sm);
-  padding: var(--space-chip-pad-sm);
-  border-radius: var(--radius-xs);
-  margin-left: 2px;
 }
 .thread-pane-close {
   width: 26px;
@@ -1934,23 +1559,6 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--space-thread-author-chip-pad);
   border-radius: var(--radius-xs);
 }
-.thread-parent-head .msg-time {
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  color: var(--ink-soft);
-  margin-left: auto;
-}
-.thread-parent-bubble {
-  font-size: var(--text-13-5);
-  line-height: 1.5;
-  color: var(--ink);
-  padding: 10px 12px;
-  background: var(--paper);
-  border: var(--line-sm);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  margin-left: 40px;
-}
 .thread-parent-bubble .markdown p { margin: 0 0 6px; }
 .thread-parent-bubble .markdown p:last-child { margin-bottom: 0; }
 .thread-parent-bubble .poll { margin-top: 8px; }
@@ -1975,33 +1583,11 @@ button { font-family: inherit; cursor: pointer; }
   gap: 0;
 }
 .thread-reply.compact { margin-top: -10px; }
-.thread-reply-gutter { padding-top: 2px; }
-.thread-reply-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  margin-bottom: 3px;
-}
 .thread-reply-head .author-chip.sm {
   font-family: var(--font-display);
   font-size: var(--text-10-5);
   padding: var(--space-chip-pad-sm);
   border-radius: var(--radius-xs);
-}
-.thread-reply-head .msg-time {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-}
-.thread-reply-bubble {
-  font-size: var(--text-13);
-  line-height: 1.5;
-  color: var(--ink);
-  padding: var(--space-thread-bubble-pad);
-  background: var(--paper);
-  border: var(--line-sm);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
 }
 .thread-reply-bubble .markdown p { margin: 0 0 4px; }
 .thread-reply-bubble .markdown p:last-child { margin-bottom: 0; }
@@ -2016,7 +1602,4 @@ button { font-family: inherit; cursor: pointer; }
 /* thread pane uses the standard Composer; ensure the wrap doesn't get squished */
 .thread-pane-composer-wrap {
   flex-shrink: 0;
-}
-.thread-pane-composer-wrap .composer-wrap {
-  padding: 12px 16px 14px;
 }

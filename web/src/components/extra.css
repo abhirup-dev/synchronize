@@ -146,9 +146,6 @@
 :root[data-theme="kanagawa-wave"] .thread-scroll-wrap {
   --composer-separator-line: 2px solid #5E5D66;
 }
-:root[data-theme="kanagawa-wave"] .composer-toolbar {
-  border-bottom-color: #424250;
-}
 :root[data-theme="kanagawa-wave"] .ct-btn {
   background: #1F1F28;
   color: var(--ink);
@@ -166,12 +163,6 @@
 }
 :root[data-theme="kanagawa-wave"] .composer-input::placeholder {
   color: #8F8D9A;
-}
-:root[data-theme="kanagawa-wave"] .composer-foot {
-  border-top-color: #424250;
-}
-:root[data-theme="kanagawa-wave"] .composer-hint {
-  color: #AFA78D;
 }
 :root[data-theme="kanagawa-wave"] .composer-send,
 :root[data-theme="kanagawa-wave"] .thread-scan-btn {
@@ -350,11 +341,6 @@
 .mention-chip-self {
   box-shadow: var(--shadow-xs);
 }
-.author-role {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
 
 /* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
    utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
@@ -363,12 +349,6 @@
    parity preserved). Your own / web-client messages get the accent bubble
    everywhere (DM and group rooms alike) — one identity, one treatment. */
 .message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
-
-.message-status {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-}
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
 .markdown > * { margin: 0 0 8px; }
@@ -669,7 +649,6 @@
 /* .empty-main / .empty-main-box (+ h1, p) migrated to inline Tailwind utilities
    in App.tsx. None are skin/theme/JS hooks, so the classes were dropped. */
 
-
 /* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
 /* Ported from the Claude Design prototype (board.jsx); colors/fonts/borders
    mapped onto the app's existing design tokens. */
@@ -941,7 +920,6 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-
 
 /* ═══════════════════ Thread Summary panel (CHAT tab) ═══════════════════ */
 /* Slides in from the left of the chat column; dots are aligned to each thread's
