@@ -81,6 +81,24 @@ const DEFAULT_REMOTE_DAEMON = {
   sweepIntervalMs: 1_000,
 } as const;
 
+export interface ReverseTunnelPlanInput {
+  sshHost: string;
+  localUrl: string;
+  remotePort?: number;
+  pidDir?: string;
+}
+
+export interface LettaChannelPlanInput {
+  sshHost: string;
+  remotePath: string;
+  hubUrl: string;
+  agent: string;
+  lettaBaseUrl: string;
+  lettaApiKey?: string;
+  pollMs?: number;
+  logPath?: string;
+}
+
 /** Render the config.toml the remote runtime uses both as a client and, when started locally, as a daemon. */
 export function renderRemoteConfig(input: Pick<SyncPlanInput, "hubUrl" | "token" | "tokenEnv" | "daemonBind" | "leaseMs" | "peerRetentionMs" | "sweepIntervalMs">): string {
   const clientConfig = serializeConfig({
@@ -145,6 +163,82 @@ export function buildSyncPlan(input: SyncPlanInput): RemoteStep[] {
   return steps;
 }
 
+export function buildReverseTunnelPlan(input: ReverseTunnelPlanInput): RemoteStep[] {
+  const local = parseHttpUrl(input.localUrl, "localUrl");
+  const localPort = portFromUrl(local);
+  const remotePort = input.remotePort ?? localPort;
+  const pidDir = input.pidDir ?? "~/.synchronize/tunnels";
+  const controlSocket = `${pidDir}/${input.sshHost}-${remotePort}.sock`;
+  const logFile = `${pidDir}/${input.sshHost}-${remotePort}.log`;
+  const tunnelCmd = [
+    `mkdir -p ${shq(pidDir)}`,
+    `if [ -S ${shq(controlSocket)} ] && ssh -S ${shq(controlSocket)} -O check ${quote(input.sshHost)} >/dev/null 2>&1; then echo "tunnel already running control=${controlSocket}"; exit 0; fi`,
+    `rm -f ${shq(controlSocket)}`,
+    `ssh -M -S ${shq(controlSocket)} -fN -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:${remotePort}:127.0.0.1:${localPort} ${quote(input.sshHost)} > ${shq(logFile)} 2>&1`,
+    `sleep 1`,
+    `ssh -S ${shq(controlSocket)} -O check ${quote(input.sshHost)} >/dev/null 2>&1 || { cat ${shq(logFile)} >&2; exit 1; }`,
+    `echo "tunnel control=${controlSocket} remote=http://127.0.0.1:${remotePort} local=http://127.0.0.1:${localPort}"`,
+  ].join("; ");
+  return [
+    {
+      name: "start ssh reverse tunnel",
+      argv: ["sh", "-lc", tunnelCmd],
+    },
+    {
+      name: "verify reverse tunnel from remote",
+      argv: ["ssh", input.sshHost, `curl -fsS -m 5 ${shq(`http://127.0.0.1:${remotePort}`)}/health`],
+    },
+  ];
+}
+
+export function buildLettaChannelPlan(input: LettaChannelPlanInput): RemoteStep[] {
+  const lettaBin = `${stripTrailingSlash(input.remotePath)}/.local-bin/letta-code`;
+  const logPath = input.logPath ?? "$HOME/.letta/synchronize-channel.log";
+  const apiKey = input.lettaApiKey ?? "dummy";
+  const pollMs = input.pollMs ?? 1000;
+  const env = `LETTA_BASE_URL=${quote(input.lettaBaseUrl)} LETTA_API_KEY=${quote(apiKey)}`;
+  const processPattern = "node_modules/@letta-ai/letta-code/letta.js server --channels synchronize";
+  return [
+    {
+      name: "write Letta Code wrapper",
+      argv: [
+        "ssh",
+        input.sshHost,
+        `mkdir -p ${shq(input.remotePath)}/.local-bin && cat > ${shq(lettaBin)} && chmod +x ${shq(lettaBin)}`,
+      ],
+      stdin: `#!/usr/bin/env bash\nexec bun ${stripTrailingSlash(input.remotePath)}/node_modules/@letta-ai/letta-code/letta.js "$@"\n`,
+    },
+    {
+      name: "provision Letta synchronize channel",
+      argv: [
+        "ssh",
+        input.sshHost,
+        `cd ${shq(input.remotePath)} && ${env} bash extensions/letta-synchronize/channel/provision.sh --daemon-url ${shq(input.hubUrl)} --poll-ms ${pollMs} --letta ${shq(lettaBin)} --agent ${shq(input.agent)}`,
+      ],
+    },
+    {
+      name: "restart Letta synchronize channel",
+      argv: [
+        "ssh",
+        input.sshHost,
+        [
+          `old=$(ps -eo pid=,args= | awk ${quote(`/${processPattern.replace(/\//g, "\\/")}/ && !/awk/ {print $1}`)})`,
+          `if [ -n "$old" ]; then kill $old 2>/dev/null || true; fi`,
+          `for i in $(seq 1 50); do ps -p $old >/dev/null 2>&1 || break; sleep 0.1; done`,
+          `if [ -n "$old" ] && ps -p $old >/dev/null 2>&1; then kill -9 $old 2>/dev/null || true; fi`,
+          `cd ${shq(input.remotePath)}`,
+          `: > ${logPath}`,
+          `${env} nohup ${shq(lettaBin)} server --channels synchronize --debug > ${logPath} 2>&1 &`,
+          `pid=$!`,
+          `echo "started Letta synchronize channel pid=$pid"`,
+          `sleep 2`,
+          `ps -p "$pid" -o pid=,args=`,
+        ].join("; "),
+      ],
+    },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Run the Python AOE integration harness on a remote, pointed at the hub.
 // Each scenario is a `uv run --script` entrypoint; per-scenario default
@@ -198,6 +292,24 @@ export function buildHarnessPlan(input: HarnessPlanInput): RemoteStep[] {
 
 function stripTrailingSlash(p: string): string {
   return p.replace(/\/+$/, "");
+}
+
+function parseHttpUrl(raw: string, name: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${name} must be a valid http(s) URL`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${name} must use http or https`);
+  }
+  return url;
+}
+
+function portFromUrl(url: URL): number {
+  if (url.port) return Number(url.port);
+  return url.protocol === "https:" ? 443 : 80;
 }
 
 // Minimal single-quote shell escaping for paths/urls embedded in remote commands.

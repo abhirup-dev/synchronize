@@ -39,6 +39,7 @@ describe("CLI schema", () => {
       "remove",
       "provision",
       "sync",
+      "connect",
       "harness",
       "status",
       "doctor",
@@ -78,7 +79,7 @@ Usage:
   synchronize completion install --shell carapace
   synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]
   synchronize remote use NAME | ls | show [NAME] | remove NAME
-  synchronize remote provision HOST | sync HOST --hub-url URL | harness HOST --hub-url URL [--all]
+  synchronize remote provision HOST | sync HOST --hub-url URL | connect HOST | harness HOST --hub-url URL [--all]
   synchronize remote status | doctor
   synchronize --help
 

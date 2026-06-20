@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, renderRemoteConfig } from "../src/remote/plan.ts";
+import {
+  ALL_HARNESS_SCENARIOS,
+  buildHarnessPlan,
+  buildLettaChannelPlan,
+  buildProvisionPlan,
+  buildReverseTunnelPlan,
+  buildSyncPlan,
+  renderRemoteConfig,
+} from "../src/remote/plan.ts";
 import { parseConfig, resolveRuntimeConfig } from "../src/config.ts";
 
 // Pure unit tests for the remote command plans — they assert the exact ssh/rsync
@@ -136,4 +144,43 @@ test("write-config step carries the toml as stdin (no fragile heredoc quoting)",
   expect(writeStep.argv).toContain("ssh");
   expect(writeStep.stdin).toBeDefined();
   expect(parseConfig(writeStep.stdin!).remotes.hub?.url).toBe("http://h:1");
+});
+
+test("reverse tunnel plan exposes remote localhost back to local daemon localhost", () => {
+  const plan = buildReverseTunnelPlan({ sshHost: "vpsme", localUrl: "http://127.0.0.1:58405" });
+  expect(plan.map((s) => s.name)).toEqual(["start ssh reverse tunnel", "verify reverse tunnel from remote"]);
+  const start = plan[0]!.argv.join(" ");
+  expect(start).toContain("-R 127.0.0.1:58405:127.0.0.1:58405");
+  expect(start).toContain("ssh -M -S");
+  expect(start).toContain("-fN");
+  expect(start).toContain("~/'");
+  expect(start).not.toContain("&;");
+  expect(plan[1]!.argv).toEqual(["ssh", "vpsme", "curl -fsS -m 5 'http://127.0.0.1:58405'/health"]);
+});
+
+test("reverse tunnel plan can choose a distinct remote port", () => {
+  const plan = buildReverseTunnelPlan({ sshHost: "vpsme", localUrl: "http://127.0.0.1:58405", remotePort: 58499 });
+  expect(plan[0]!.argv.join(" ")).toContain("-R 127.0.0.1:58499:127.0.0.1:58405");
+  expect(plan[1]!.argv[2]).toContain("http://127.0.0.1:58499");
+});
+
+test("Letta channel plan writes wrapper, provisions channel, and restarts server", () => {
+  const plan = buildLettaChannelPlan({
+    sshHost: "vpsme",
+    remotePath: "~/synchronize-letta-test",
+    hubUrl: "http://127.0.0.1:58405",
+    agent: "rocky:rocky:agent-123:default",
+    lettaBaseUrl: "http://127.0.0.1:8283",
+  });
+  expect(plan.map((s) => s.name)).toEqual([
+    "write Letta Code wrapper",
+    "provision Letta synchronize channel",
+    "restart Letta synchronize channel",
+  ]);
+  expect(plan[0]!.stdin).toContain("node_modules/@letta-ai/letta-code/letta.js");
+  expect(plan[1]!.argv[2]).toContain("extensions/letta-synchronize/channel/provision.sh");
+  expect(plan[1]!.argv[2]).toContain("--daemon-url 'http://127.0.0.1:58405'");
+  expect(plan[1]!.argv[2]).toContain("--agent 'rocky:rocky:agent-123:default'");
+  expect(plan[2]!.argv[2]).toContain("LETTA_BASE_URL='http://127.0.0.1:8283'");
+  expect(plan[2]!.argv[2]).toContain("server --channels synchronize --debug");
 });
