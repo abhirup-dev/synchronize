@@ -85,7 +85,7 @@ export const cliSchema: CliSchema = {
     "synchronize threads summary ROOT_EVENT_ID [--refresh] [--strategy all|first_k|last_k|first_last] [--k N] [--first-k N] [--last-k N] [--format text|json]",
     "synchronize query [--format json|table|csv] [--params JSON] SQL",
     "synchronize hook claude-session",
-    "synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]",
+    "synchronize launch [--name NAME] [--] claude|pi|letta [--] [TOOL_ARGS...]",
     "synchronize spawn claude|pi|letta --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
     "synchronize completion carapace",
     "synchronize completion install --shell carapace",
