@@ -83,6 +83,48 @@ as-built record and supersedes the original phase plan where they differ.
   stories, advanced browser control is available via `@vitest/browser/context`
   (`page`/`commands`, Playwright under the hood).
 
+### Extending with complex cross-component flows
+
+Multi-step journeys that cross components (open a view → click → navigate →
+assert) are **interaction tests over a composed mount**, not isolated component
+stories. The first one — `Flows/Activity to Thread` — is the template.
+
+**Where they live:** `web/src/components/*.stories.tsx` under the `Flows/*`
+title family. One file per flow area is fine; group related journeys in the
+same file when they share fixtures/helpers.
+
+**How to add one:**
+
+1. **Mount the real composed surface.** Use the exported `Shell`
+   (`web/src/App.tsx`) so the flow runs through the actual navigation glue, not
+   a hand-wired harness. `parameters: { layout: "fullscreen" }`.
+2. **Drive it in a `play` function with `step()`.** One labeled `step()` per
+   phase so the Interactions panel and failures read as discrete stages.
+3. **Target deterministically.** Match a distinctive, unique string (not "the
+   first row"); query portals (thread, dialog, menu, toast) via `screen` /
+   `document`, in-tree content via `within(canvasElement)`. Scope assertions to
+   the relevant pane to avoid matching the same text elsewhere (e.g. a feed row
+   and the thread parent).
+4. **Make each assertion meaningful.** Assert the *transition*, not a tautology:
+   e.g. a virtualized item absent-before / visible-after a scroll, `scrollTop`
+   moving off 0. Avoid checks that pass without the action happening.
+5. **Add fixtures to `seed.ts`, never fork `MockDataSource`.** Append data in a
+   room no story indexes positionally (so existing index-based stories don't
+   shift). Mind component behavior that depends on the data — e.g. `ThreadPane`
+   auto-scrolls to the bottom only when the last reply is `you`, so a
+   top-opening thread needs a non-`you` last reply.
+6. **Optional watchable demo.** Add a paced twin (`pauseMs` + smooth scroll)
+   that shares one flow helper with the real test, tagged `tags: ['!test']` so
+   it is excluded from `test:storybook` (no CI slowdown/flake). See
+   `OpenThreadFromActivityDemo`.
+7. **Verify:** `cd web && bun run test:storybook` (or the MCP `run-story-tests`)
+   + screenshot the end state.
+
+**Stay inside the boundary.** These run against `MockDataSource` in a real
+browser — they verify UI wiring, not the daemon. If a flow needs real daemon
+state, SSE, or routing, it belongs to sync-rycd, not Storybook. Debugging
+detail and the MCP catalog: `docs/debugging/storybook.md`.
+
 
 ## Goal
 
