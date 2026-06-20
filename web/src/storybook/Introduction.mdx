@@ -4,14 +4,14 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Synchronize Web UI — Component Glossary
 
-This Storybook is the **component-level catalog** for the synchronize web chat UI.
-Every story renders a *real* production component (imported straight from
-`src/components/`) in isolation, against realistic data from `src/data/seed.ts`
-via `MockDataSource`. There are no Storybook-only forks of components.
+This Storybook is the **UI catalog and flow regression surface** for the
+synchronize web chat UI. Every story renders real production components
+(imported straight from `src/components/` or the exported `Shell`) against
+realistic data from `src/data/seed.ts` via `MockDataSource`. There are no
+Storybook-only forks of components.
 
-It complements — and does **not** replace — the live `/web` app and the
-real-daemon UI probe pipeline. Storybook owns **isolated component states**;
-integrated flows and daemon behavior are verified against the running app.
+Storybook owns component states and composed UI flows. The live `/web` app and
+Bun integration tests still prove daemon/API behavior, routing, and SSE.
 
 ## How the catalog is organized
 
@@ -26,6 +26,7 @@ Stories are grouped by product vocabulary, not by file layout:
   `TimelineRail`, `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
 - **Activity** — `ActivityItem`, `ActivityView`.
 - **Agent States** — `SpawnAgentDialog`, `AgentColorPicker`.
+- **Flows** — composed shell journeys in `web/src/flows/*.stories.tsx`.
 
 Each component also has an auto-generated **Docs** page listing its props
 (args/argTypes) — use it to answer "what does this component take?" without

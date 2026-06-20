@@ -103,7 +103,7 @@ export const MESSAGES: Record<string, Message[]> = {
     // as a clickable activity row; distinctive body for deterministic targeting.
     { id: "ml-deepdive", roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(115),
       body: "rollout checklist deep-dive — the full ranker launch sequence is in this thread.",
-      mentions: [], reactions: [], threadReplyCount: 14, threadLastReplyAt: ISO(34) },
+      mentions: [], reactions: [{ emoji: "🚀", by: ["you", "vega"] }], threadReplyCount: 14, threadLastReplyAt: ISO(34) },
     { id: "ml2", roomId: "ml-ranking", authorId: "vega", createdAt: ISO(90),
       body: "nice. want me to start a shadow eval against the live ranker?",
       mentions: ["pulse"], reactions: [] },
