@@ -38,6 +38,7 @@ test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) 
 
   await page.goto("/web");
   await expect(page.locator(".app-shell")).toBeVisible();
+  await openActivity(page);
   await openGroupChat(page, group!.name);
 
   const opened: number[] = [];
@@ -49,13 +50,8 @@ test("flow chat.top-thread-traversal.scroll-bottom", async ({ page }, testInfo) 
 
     const thread = page.locator(".thread-pane");
     await expect(thread).toBeVisible();
-    const threadBody = thread.locator(".thread-pane-body");
-    await expect(threadBody).toBeVisible();
-    const atBottom = await threadBody.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-      return Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 2;
-    });
-    expect(atBottom, `thread ${target.event_id} should scroll to bottom`).toBe(true);
+    const scrollMetrics = await scrollThreadToBottom(thread);
+    expect(scrollMetrics.atBottom, `thread ${target.event_id} should scroll to bottom`).toBe(true);
     await expect(thread.locator(".composer")).toBeVisible();
     await page.screenshot({ path: join(screenshotDir, `${testInfo.project.name}-chat-thread-${opened.length}.png`), fullPage: true });
     await closeThread(page);
@@ -91,11 +87,8 @@ test("flow activity.thread-row.open-scroll-emoji", async ({ page }, testInfo) =>
 
   const thread = page.locator(".thread-pane");
   await expect(thread).toBeVisible();
-  const threadBody = thread.locator(".thread-pane-body");
-  await expect(threadBody).toBeVisible();
-  await threadBody.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
+  const scrollMetrics = await scrollThreadToBottom(thread);
+  expect(scrollMetrics.atBottom, `activity thread ${target!.event_id} should scroll to bottom`).toBe(true);
   await expect(thread.locator(".composer")).toBeVisible();
 
   const reaction = thread.locator("button[aria-label*='reaction from']").filter({ hasText: expectedEmoji }).first();
@@ -205,6 +198,28 @@ async function closeThread(page: import("@playwright/test").Page): Promise<void>
   await expect(close).toBeVisible();
   await close.click();
   await expect(page.locator(".thread-pane")).toHaveCount(0);
+}
+
+async function scrollThreadToBottom(thread: import("@playwright/test").Locator): Promise<{
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  remaining: number;
+  atBottom: boolean;
+}> {
+  const threadBody = thread.locator(".thread-pane-body");
+  await expect(threadBody).toBeVisible();
+  return threadBody.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    const remaining = element.scrollHeight - element.clientHeight - element.scrollTop;
+    return {
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      remaining,
+      atBottom: Math.abs(remaining) <= 2,
+    };
+  });
 }
 
 function snippet(text: string): string {

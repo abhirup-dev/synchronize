@@ -4,7 +4,7 @@
   "tier": "contract",
   "determinism": "deterministic",
   "owner": "web",
-  "description": "Open a group chat, consider at most the five newest root messages with more than one reply, open two different thread badges from that set, and scroll each thread pane to the bottom.",
+  "description": "Open Activity, navigate into a group chat, consider at most the five newest root messages with more than one reply, open two different thread badges from that set, and scroll each thread pane to the bottom.",
   "entry": {
     "route": "/web",
     "surface": "chat",
@@ -17,6 +17,7 @@
   ],
   "components": [
     "app-shell",
+    "activity-view",
     "chat-view",
     "room-header",
     "message-row",
@@ -26,6 +27,7 @@
   ],
   "steps": [
     "Navigate to /web and wait for the app shell.",
+    "Open Activity to prove the flow can navigate into the app from a non-chat surface.",
     "Open the selected group chat from the sidebar.",
     "Build the top-five candidate set from real snapshot root messages with reply_count > 1.",
     "Find and click a thread badge for the first candidate.",
