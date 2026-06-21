@@ -74,7 +74,7 @@ Usage:
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
   synchronize launch [--name NAME] [--] claude|pi|letta [--] [TOOL_ARGS...]
-  synchronize spawn claude|pi|letta --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
+  synchronize spawn claude|pi|letta --name NAME [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize completion carapace
   synchronize completion install --shell carapace
   synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]

@@ -216,12 +216,15 @@ async function syncRemote(argv: string[]): Promise<void> {
 
 async function connectRemote(argv: string[]): Promise<void> {
   const flags = parseFlags(argv);
-  const sshHost = flags.positional[0];
-  if (!sshHost) fail("remote connect requires an <ssh-host>");
-  const expose = flags.opts.expose ?? "ssh-reverse";
+  const target = flags.positional[0];
+  if (!target) fail("remote connect requires an <ssh-host-or-profile>");
+  const { config } = await readConfig();
+  const profile = resolveProfile(config, target);
+  const sshHost = flags.opts["ssh-host"] ?? profile?.sshHost ?? profile?.sync?.sshHost ?? target;
+  const expose = flags.opts.expose ?? profile?.expose ?? "ssh-reverse";
   if (expose !== "ssh-reverse") fail("--expose currently supports only ssh-reverse");
-  const remotePath = flags.opts.path ?? "~/synchronize-runtime";
-  const remotePort = positiveNumberFlag(flags, "remote-port");
+  const remotePath = flags.opts.path ?? profile?.runtimePath ?? "~/synchronize-runtime";
+  const remotePort = positiveNumberFlag(flags, "remote-port") ?? profile?.remotePort;
   const pollMs = positiveNumberFlag(flags, "poll-ms");
 
   const client = await ensureDaemon();
@@ -243,7 +246,7 @@ async function connectRemote(argv: string[]): Promise<void> {
       remotePath,
       localRoot: flags.opts["local-root"] ?? resolve(import.meta.dir, "../../.."),
       hubUrl,
-      skipInstall: flags.bools.has("skip-install"),
+      skipInstall: flags.bools.has("skip-install") || profile?.install === false,
     }),
   ];
 

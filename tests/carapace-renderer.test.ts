@@ -37,7 +37,7 @@ describe("Carapace renderer", () => {
     expect(mediaShare?.completion?.positional?.[1]).toEqual(["$files"]);
 
     const spawn = spec.commands.find((command) => command.name === "spawn");
-    expect(spawn?.flags?.["--repo="]).toBe("Repository path");
+    expect(spawn?.flags?.["--repo="]).toBe("Repository path; required unless NAME resolves to a configured remote agent");
     expect(spawn?.completion?.flag?.repo).toEqual(["$directories"]);
     expect(spawn?.completion?.flag?.group).toEqual(["$(synchronize completion complete group-names --format carapace)"]);
     expect(spawn?.completion?.dashany).toEqual(["$files"]);

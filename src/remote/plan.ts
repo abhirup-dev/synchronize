@@ -110,6 +110,8 @@ export function renderRemoteConfig(input: Pick<SyncPlanInput, "hubUrl" | "token"
         ...(input.token ? { token: input.token } : {}),
       },
     },
+    lettaServers: {},
+    agents: {},
   });
   const daemonLines = [
     "[daemon]",

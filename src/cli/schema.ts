@@ -86,7 +86,7 @@ export const cliSchema: CliSchema = {
     "synchronize query [--format json|table|csv] [--params JSON] SQL",
     "synchronize hook claude-session",
     "synchronize launch [--name NAME] [--] claude|pi|letta [--] [TOOL_ARGS...]",
-    "synchronize spawn claude|pi|letta --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+    "synchronize spawn claude|pi|letta --name NAME [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
     "synchronize completion carapace",
     "synchronize completion install --shell carapace",
     "synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]",
@@ -308,7 +308,7 @@ export const cliSchema: CliSchema = {
       positionals: [{ name: "tool", description: "Agent runtime", value: { kind: "enum", values: ["claude", "pi", "letta"] }, required: true }],
       flags: [
         { name: "name", description: "Session name", value: sessionNameValue, required: true },
-        { name: "repo", description: "Repository path", value: { kind: "directory" }, required: true },
+        { name: "repo", description: "Repository path; required unless NAME resolves to a configured remote agent", value: { kind: "directory" } },
         { name: "group", description: "Group to join", value: groupNameValue },
         { name: "model", description: "Agent model" },
         { name: "thinking", description: "Thinking level" },

@@ -1,6 +1,9 @@
 import { launchAgent } from "../../api/agent-sessions.ts";
 import { ensureDaemon } from "../../client.ts";
+import { loadConfig, resolveAgentProfile, resolveLettaServerProfile } from "../../config.ts";
 import { isLaunchTool, type LaunchTool } from "../../launch/build.ts";
+import { getRuntimePaths } from "../../paths.ts";
+import { run as runRemoteCommand } from "./remote.ts";
 
 /**
  * `synchronize spawn <claude|pi|letta> --name N --repo PATH [--group G] [-- ...toolArgs]`
@@ -11,6 +14,17 @@ import { isLaunchTool, type LaunchTool } from "../../launch/build.ts";
  */
 export async function run(argv: string[]): Promise<void> {
   const { tool, name, repo, group, model, thinking, args } = parseSpawnArgs(argv);
+  if (
+    tool === "letta" &&
+    (await trySpawnConfiguredLetta({
+      name,
+      ...(group ? { group } : {}),
+      ...(model ? { model } : {}),
+      ...(thinking ? { thinking } : {}),
+      args,
+    }))
+  ) return;
+  if (!repo) throw new Error("spawn requires --repo PATH");
   const client = await ensureDaemon();
   const result = await launchAgent(client, {
     tool,
@@ -27,7 +41,7 @@ export async function run(argv: string[]): Promise<void> {
 function parseSpawnArgs(argv: string[]): {
   tool: LaunchTool;
   name: string;
-  repo: string;
+  repo?: string;
   group?: string;
   model?: string;
   thinking?: string;
@@ -68,6 +82,57 @@ function parseSpawnArgs(argv: string[]): {
     throw new Error(`spawn: unexpected argument '${arg}' (use -- before tool args)`);
   }
   if (!name) throw new Error("spawn requires --name NAME");
-  if (!repo) throw new Error("spawn requires --repo PATH");
-  return { tool, name, repo, ...(group ? { group } : {}), ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), args };
+  return { tool, name, ...(repo ? { repo } : {}), ...(group ? { group } : {}), ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), args };
+}
+
+async function trySpawnConfiguredLetta(input: {
+  name: string;
+  group?: string;
+  model?: string;
+  thinking?: string;
+  args: string[];
+}): Promise<boolean> {
+  if (input.group || input.model || input.thinking || input.args.length > 0) return false;
+  const config = await loadConfig(getRuntimePaths().configPath);
+  const agent = resolveAgentProfile(config, input.name);
+  if (!agent) return false;
+  if (agent.tool !== "letta") {
+    throw new Error(`configured agent '${input.name}' uses tool '${agent.tool}', not letta`);
+  }
+  if (!agent.server) throw new Error(`configured letta agent '${input.name}' requires server`);
+  const server = resolveLettaServerProfile(config, agent.server);
+  if (!server) throw new Error(`configured letta server '${agent.server}' not found`);
+  if (!server.remote) return false;
+  if (!agent.agentId) throw new Error(`configured letta agent '${input.name}' requires agent_id`);
+
+  const sessionName = agent.sessionName ?? input.name;
+  const conversationId = agent.conversationId ?? "default";
+  const route = `${input.name}:${sessionName}:${agent.agentId}:${conversationId}`;
+  await runRemoteCommand([
+    "connect",
+    server.remote,
+    "--letta-agent",
+    route,
+    "--letta-base-url",
+    server.baseUrl,
+    "--letta-api-key",
+    server.apiKeyEnv ? process.env[server.apiKeyEnv] ?? "dummy" : server.apiKey ?? "dummy",
+    ...(agent.pollMs ? ["--poll-ms", String(agent.pollMs)] : []),
+  ]);
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        tool: "letta",
+        name: input.name,
+        remote: server.remote,
+        server: agent.server,
+        agent_id: agent.agentId,
+        conversation_id: conversationId,
+      },
+      null,
+      2,
+    ),
+  );
+  return true;
 }
