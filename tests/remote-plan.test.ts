@@ -164,7 +164,7 @@ test("reverse tunnel plan can choose a distinct remote port", () => {
   expect(plan[1]!.argv[2]).toContain("http://127.0.0.1:58499");
 });
 
-test("Letta channel plan writes wrapper, provisions channel, and restarts server", () => {
+test("Letta channel plan writes wrapper, provisions channel, and ensures one server is running", () => {
   const plan = buildLettaChannelPlan({
     sshHost: "vpsme",
     remotePath: "~/synchronize-letta-test",
@@ -175,12 +175,28 @@ test("Letta channel plan writes wrapper, provisions channel, and restarts server
   expect(plan.map((s) => s.name)).toEqual([
     "write Letta Code wrapper",
     "provision Letta synchronize channel",
-    "restart Letta synchronize channel",
+    "ensure Letta synchronize channel running",
   ]);
   expect(plan[0]!.stdin).toContain("node_modules/@letta-ai/letta-code/letta.js");
   expect(plan[1]!.argv[2]).toContain("extensions/letta-synchronize/channel/provision.sh");
   expect(plan[1]!.argv[2]).toContain("--daemon-url 'http://127.0.0.1:58405'");
   expect(plan[1]!.argv[2]).toContain("--agent 'rocky:rocky:agent-123:default'");
   expect(plan[2]!.argv[2]).toContain("LETTA_BASE_URL='http://127.0.0.1:8283'");
+  expect(plan[2]!.argv[2]).toContain("Letta synchronize channel already running");
+  expect(plan[2]!.argv[2]).toContain("expected at most one Letta synchronize channel process");
   expect(plan[2]!.argv[2]).toContain("server --channels synchronize --debug");
+  expect(plan[2]!.argv[2]).toContain("expected exactly one Letta synchronize channel process");
+});
+
+test("Letta channel plan only kills the channel with explicit restart", () => {
+  const plan = buildLettaChannelPlan({
+    sshHost: "vpsme",
+    remotePath: "~/synchronize-letta-test",
+    hubUrl: "http://127.0.0.1:58405",
+    agent: "rocky:rocky:agent-123:default",
+    lettaBaseUrl: "http://127.0.0.1:8283",
+    restartChannel: true,
+  });
+  expect(plan[2]!.name).toBe("restart Letta synchronize channel");
+  expect(plan[2]!.argv[2]).toContain("kill $old");
 });

@@ -399,7 +399,7 @@ export const cliSchema: CliSchema = {
         },
         {
           name: "connect",
-          description: "Start an SSH reverse tunnel, sync runtime, and optionally restart Letta channel",
+          description: "Start an SSH reverse tunnel, sync runtime, and optionally ensure Letta channel is running",
           positionals: [{ name: "HOST", description: "SSH host", required: true }],
           flags: [
             { name: "path", description: "Remote runtime dir" },
@@ -409,6 +409,7 @@ export const cliSchema: CliSchema = {
             { name: "letta-base-url", description: "Self-hosted Letta server URL on the remote" },
             { name: "letta-api-key", description: "Letta API key for the channel process" },
             { name: "poll-ms", description: "Letta channel polling interval" },
+            { name: "restart-channel", description: "Restart an already-running Letta channel after provisioning", boolean: true },
             { name: "skip-install", description: "Skip remote bun install", boolean: true },
             { name: "skip-provision", description: "Skip remote tool verification", boolean: true },
             { name: "dry-run", description: "Print the plan without running it", boolean: true },

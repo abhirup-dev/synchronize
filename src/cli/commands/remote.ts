@@ -47,8 +47,8 @@ const USAGE = `synchronize remote <subcommand>
   connect <ssh-host> [--path <remote-dir>] [--remote-port <n>] [--expose ssh-reverse]
              [--letta-agent <chatId>:<sessionName>:<agentId>[:conversationId]]
              [--letta-base-url <url>] [--letta-api-key <key>] [--poll-ms <n>]
-             [--skip-install] [--skip-provision] [--dry-run]
-             start a reverse tunnel, sync runtime, optionally provision/restart Letta channel
+             [--restart-channel] [--skip-install] [--skip-provision] [--dry-run]
+             start a reverse tunnel, sync runtime, optionally provision/ensure Letta channel
   harness <ssh-host> --hub-url <url> [--scenario <name> | --all] [--token <t>]
              [--path <remote-dir>] [--dry-run] [-- <extra scenario args>]
              run the Python AOE harness on the remote against the hub
@@ -260,6 +260,7 @@ async function connectRemote(argv: string[]): Promise<void> {
         lettaBaseUrl: flags.opts["letta-base-url"] ?? "http://127.0.0.1:8283",
         lettaApiKey: flags.opts["letta-api-key"] ?? "dummy",
         ...(pollMs ? { pollMs } : {}),
+        restartChannel: flags.bools.has("restart-channel"),
       }),
     );
   }

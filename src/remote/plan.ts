@@ -97,6 +97,7 @@ export interface LettaChannelPlanInput {
   lettaApiKey?: string;
   pollMs?: number;
   logPath?: string;
+  restartChannel?: boolean;
 }
 
 /** Render the config.toml the remote runtime uses both as a client and, when started locally, as a daemon. */
@@ -200,6 +201,34 @@ export function buildLettaChannelPlan(input: LettaChannelPlanInput): RemoteStep[
   const pollMs = input.pollMs ?? 1000;
   const env = `LETTA_BASE_URL=${quote(input.lettaBaseUrl)} LETTA_API_KEY=${quote(apiKey)}`;
   const processPattern = "node_modules/@letta-ai/letta-code/letta.js server --channels synchronize";
+  const listPids = `ps -eo pid=,args= | awk ${quote(`/${processPattern.replace(/\//g, "\\/")}/ && !/awk/ {print $1}`)}`;
+  const countPids = `printf "%s\\n" "$running" | sed '/^$/d' | wc -l | tr -d ' '`;
+  const startChannel = [
+    `cd ${shq(input.remotePath)}`,
+    `: > ${logPath}`,
+    `${env} nohup ${shq(lettaBin)} server --channels synchronize --debug > ${logPath} 2>&1 &`,
+    `pid=$!`,
+    `echo "started Letta synchronize channel pid=$pid"`,
+    `sleep 2`,
+    `running=$(${listPids})`,
+    `count=$(${countPids})`,
+    `if [ "$count" != "1" ]; then echo "expected exactly one Letta synchronize channel process, found $count: $running" >&2; exit 1; fi`,
+    `ps -p "$pid" -o pid=,args=`,
+  ];
+  const ensureChannel = [
+    `running=$(${listPids})`,
+    `count=$(${countPids})`,
+    `if [ "$count" -gt 1 ]; then echo "expected at most one Letta synchronize channel process, found $count: $running" >&2; exit 1; fi`,
+    `if [ "$count" = "1" ]; then echo "Letta synchronize channel already running pid=$running"; exit 0; fi`,
+    ...startChannel,
+  ];
+  const restartChannel = [
+    `old=$(${listPids})`,
+    `if [ -n "$old" ]; then kill $old 2>/dev/null || true; fi`,
+    `if [ -n "$old" ]; then for i in $(seq 1 50); do ps -p $old >/dev/null 2>&1 || break; sleep 0.1; done; fi`,
+    `if [ -n "$old" ] && ps -p $old >/dev/null 2>&1; then kill -9 $old 2>/dev/null || true; fi`,
+    ...startChannel,
+  ];
   return [
     {
       name: "write Letta Code wrapper",
@@ -219,23 +248,11 @@ export function buildLettaChannelPlan(input: LettaChannelPlanInput): RemoteStep[
       ],
     },
     {
-      name: "restart Letta synchronize channel",
+      name: input.restartChannel ? "restart Letta synchronize channel" : "ensure Letta synchronize channel running",
       argv: [
         "ssh",
         input.sshHost,
-        [
-          `old=$(ps -eo pid=,args= | awk ${quote(`/${processPattern.replace(/\//g, "\\/")}/ && !/awk/ {print $1}`)})`,
-          `if [ -n "$old" ]; then kill $old 2>/dev/null || true; fi`,
-          `for i in $(seq 1 50); do ps -p $old >/dev/null 2>&1 || break; sleep 0.1; done`,
-          `if [ -n "$old" ] && ps -p $old >/dev/null 2>&1; then kill -9 $old 2>/dev/null || true; fi`,
-          `cd ${shq(input.remotePath)}`,
-          `: > ${logPath}`,
-          `${env} nohup ${shq(lettaBin)} server --channels synchronize --debug > ${logPath} 2>&1 &`,
-          `pid=$!`,
-          `echo "started Letta synchronize channel pid=$pid"`,
-          `sleep 2`,
-          `ps -p "$pid" -o pid=,args=`,
-        ].join("; "),
+        (input.restartChannel ? restartChannel : ensureChannel).join("; "),
       ],
     },
   ];

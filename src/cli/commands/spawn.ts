@@ -1,4 +1,6 @@
 import { launchAgent } from "../../api/agent-sessions.ts";
+import { listPeers } from "../../api/peers.ts";
+import type { Peer } from "../../api/types.ts";
 import { ensureDaemon } from "../../client.ts";
 import { loadConfig, resolveAgentProfile, resolveLettaServerProfile } from "../../config.ts";
 import { isLaunchTool, type LaunchTool } from "../../launch/build.ts";
@@ -107,6 +109,13 @@ async function trySpawnConfiguredLetta(input: {
 
   const sessionName = agent.sessionName ?? input.name;
   const conversationId = agent.conversationId ?? "default";
+  const client = await ensureDaemon();
+  const running = findRunningLettaPeer(await listConfiguredPeers(client), sessionName);
+  if (running) {
+    throw new Error(
+      `configured letta agent '${input.name}' is already running as '${sessionName}' (peer ${running.peer_id})`,
+    );
+  }
   const route = `${input.name}:${sessionName}:${agent.agentId}:${conversationId}`;
   await runRemoteCommand([
     "connect",
@@ -135,4 +144,13 @@ async function trySpawnConfiguredLetta(input: {
     ),
   );
   return true;
+}
+
+async function listConfiguredPeers(client: Awaited<ReturnType<typeof ensureDaemon>>): Promise<Peer[]> {
+  const response = await listPeers(client);
+  return "peers" in response ? response.peers as Peer[] : [];
+}
+
+function findRunningLettaPeer(peers: Peer[], sessionName: string): Peer | null {
+  return peers.find((peer) => peer.tool === "letta" && peer.session_name === sessionName && peer.online === true) ?? null;
 }
