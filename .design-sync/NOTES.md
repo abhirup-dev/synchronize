@@ -72,13 +72,60 @@ pieces, all captured below so a re-sync replays them.
   GLOBAL (not stories), so default cards capture light/brutal. To get BOTH a light and a dark card for
   the hero surfaces, there are 4 dedicated dark stories: `web/src/components/{ChatView,Sidebar,
   ActivityView,BoardView}Dark.stories.tsx`. Each re-exports its base stories under a `… Dark` title with
-  a decorator that sets `data-theme="dark"` (+ `globals.theme:"dark"`), so the Storybook reference AND the
-  design-sync preview both render dark → a REAL dark-vs-dark compare (not a faked delta). They surface as
-  separate cards (`ChatViewDark`, `SidebarDark`, `ActivityViewDark`, `BoardViewDark`); the base 4 stay
-  light. Discovery needs the names on the global — `web/.ds-entry.tsx` aliases them
+  a decorator that sets `data-theme="kanagawa-wave"` (+ `globals.theme:"kanagawa-wave"`), so the Storybook
+  reference AND the design-sync preview both render dark → a REAL dark-vs-dark compare (not a faked delta).
+  **The dark palette is `kanagawa-wave`, the canonical `DEFAULT_DARK_THEME`** the app boots into
+  (`web/src/hooks/usePersistentTheme.ts`) — NOT the legacy plain `dark`. Theme families:
+  light = {light, rose-pine-dawn}; dark = {kanagawa-wave, dark, catppuccin-mocha}. They surface as separate
+  cards (`ChatViewDark`, `SidebarDark`, `ActivityViewDark`, `BoardViewDark`); the base 4 stay light.
+  Discovery needs the names on the global — `web/.ds-entry.tsx` aliases them
   (`export { ChatView as ChatViewDark }` …). `ChatViewDark`/`ActivityViewDark` carry `cardMode:column`
   like their bases. To add more dark siblings: add `<Name>Dark.stories.tsx` + the alias in the barrel
   (+ a column override if the base has one). They are the SAME components — encoded in conventions.md.
+- **Theme/skin wiring (post-2026-06-20 master merge).** Theme = palette, skin = aesthetic, both carried on
+  `<html data-theme>`/`<html data-skin>`. CSS load order is centralized in `web/src/styles/css.ts`, imported
+  by BOTH `main.tsx` and `.storybook/preview.tsx` (never duplicate the list — drift silently dropped
+  tokens.css once). The reference-storybook CSS scrape (`[CSS_FROM_STORYBOOK]`) therefore captures the full
+  stack (tokens/extra/activity/chat-bg/skin-glass/hljs/code-light) automatically. `preview.tsx` itself maps
+  the `theme`/`skin` toolbar globals → documentElement dataset, identical to the app — so a story renders
+  what the app renders. No converter change needed for any of this.
+- **Compact/mobile chrome components live in `App.tsx`.** `CompactAppBar`, `CompactSettingsSheet`,
+  `SettingsRow`, `Placeholder`, `ConnectionError` are exported FROM `App.tsx` (which also exports the
+  self-mounting `App`/`Shell` roots — those are excluded). The barrel NAMED-re-exports the 5 standalone
+  ones so they reach the global without surfacing App/Shell as cards. App.tsx has NO top-level mount side
+  effect (mounting is in main.tsx), so importing it in the barrel is safe.
+- **`Sheet` + `CompactSettingsSheet` — floor cards (skipped), confirmed after capture.** Both are built on
+  the `Sheet` primitive, which renders its open state to a `document.body` portal. The captured canvas root
+  is empty on BOTH the storybook reference AND the preview → every story is `sb-error`
+  ("no storybook root content"), including the would-be `primaryStory` (`Open` / `Dark Glass`). The compare
+  oracle can't see portal content, so both are `cfg.overrides.<Name>.skip = true` — same pattern as
+  SpawnAgentDialog. Components stay fully importable (`.d.ts` / `.prompt.md` ship); only their preview cards
+  are the floor. To upgrade later: author `.design-sync/previews/<Name>.tsx` rendering the sheet inline
+  (no portal) — but there's no storybook reference to compare against, so grade standalone.
+- **Preview canvas must tint `var(--paper)` — wrapper parity with `preview.tsx`.** The storybook reference
+  (`web/.storybook/preview.tsx`) sets `document.body.style.background = "var(--paper)"` so the whole canvas
+  reflects the palette. The design-sync preview wrapper (`web/.ds-providers.tsx`) sets `data-theme`/`data-skin`
+  but MUST also set the body background — without it, components whose root doesn't paint `--paper`
+  (SettingsRow, TimelineRail, ScrollControls, …) inherit white from the canvas while the reference inherits
+  paper → a false "missing background" mismatch across every such component. One line in `.ds-providers.tsx`,
+  mirroring `main.tsx`'s app-shell behavior. (Found via Gemini vision grading 2026-06-23.)
+- **Play-driven `WideThreadPane` / `ScrollingDown` stories — skipped.** `ActivityView`/`ActivityViewDark`
+  `WideThreadPane` and `ScrollControls` `ScrollingDown` reach their shown state via a Storybook `play`
+  click (open a thread row / scroll down) that the compiled preview never runs → the pane/scroll state is
+  absent. Same pattern as the ContextMenu/Toast play-driven skips. `cfg.overrides.<Name>.skip` lists those
+  story ids; the cards still show their non-play stories (e.g. ActivityView `Grouped`, which matches).
+- **`BottomNav` — shell-frame decorator (`inBottomNavRow`) not reproduced by `cfg.provider`.** All 4
+  BottomNav stories use `decorators: [inBottomNavRow]` (from `storybook/shellFrames.tsx`) to anchor in the
+  compact shell's bottom grid row. `cfg.provider` replaces the storybook decorator chain with
+  DataSource/ContextMenu/Toast/ArchiveRecovery only — it does NOT reproduce shell-frame decorators, so the
+  BottomNav card renders degraded (text labels + active-tab yellow fill absent). CompactAppBar (no
+  shell-frame decorator) matches, confirming the decorator is the differentiator. Resolution TBD: own the
+  preview (wrap in the shell frame) or skip the card. Systemic fix would teach the converter to honour
+  storybook story-level `decorators` that set shell frames.
+- **Shell composition showcases.** `Shell.stories` (`Layouts/App Shell`) and `SynchronizeFlows.stories`
+  (`Flows/Synchronize UI`) both use `component: Shell` — pure multi-component composition, not single-
+  component cards. Their titles derive to `AppShell`/`SynchronizeUI`, already `null` in `titleMap`. The old
+  `Flows.stories.tsx` was deleted on master and replaced by `flows/SynchronizeFlows.stories.tsx`.
 
 ## [GENERAL] Play-driven story states (the recurring fan-out lesson)
 

@@ -19,11 +19,13 @@ falls back to light/brutal.
 > **Dark-theme sibling cards.** The gallery includes four dark reference cards —
 > **ChatViewDark, SidebarDark, ActivityViewDark, BoardViewDark** — shown beside
 > their light originals (ChatView, Sidebar, ActivityView, BoardView). A `*Dark`
-> card is **the exact same component** as its base, just rendered with
-> `data-theme="dark"` to show the dark palette — there is no separate "dark"
-> component to import. To build in dark, use the base component (`ChatView`, …)
-> and set `data-theme="dark"` on the root. Every component is theme-agnostic
-> (light default) and supports all five themes + glass skin via the root
+> card is **the exact same component** as its base, rendered with
+> `data-theme="kanagawa-wave"` — the **canonical dark palette** the app boots
+> into (`DEFAULT_DARK_THEME`). There is no separate "dark" component to import:
+> to build in dark, use the base component (`ChatView`, …) and set
+> `data-theme="kanagawa-wave"` on the root. Every component is theme-agnostic
+> (light default) and supports all five palettes (`light`, `rose-pine-dawn`;
+> `kanagawa-wave`, `dark`, `catppuccin-mocha`) + glass skin via the root
 > attributes above.
 
 ### Provider wrapping

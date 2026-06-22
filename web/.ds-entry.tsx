@@ -30,6 +30,18 @@ export * from "./src/components/Toast.tsx";
 export * from "./src/ui/Sheet.tsx";
 export * from "./src/shell-mode.tsx";
 
+// Compact/mobile chrome + fallback surfaces live in App.tsx (App/Shell are the
+// self-mounting roots, excluded; these are standalone exported components with
+// their own stories). Named re-export so they reach window.SynchronizeWeb without
+// pulling App/Shell onto the global as cards.
+export {
+  CompactAppBar,
+  CompactSettingsSheet,
+  SettingsRow,
+  Placeholder,
+  ConnectionError,
+} from "./src/App.tsx";
+
 // Dark-theme reference siblings — aliases of the same components so the
 // *Dark.stories.tsx titles resolve to distinct design-system cards. Same
 // component, themed dark (see the *Dark stories + conventions.md).
