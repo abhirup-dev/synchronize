@@ -75,6 +75,7 @@
 | `docs/plans/config-unification.md` | ~150 | Unify ~40 scattered SYNCHRONIZE_* env reads behind one typed RuntimeConfig resolver (defaults < config.toml < env). Key decision: Category A (operator config → resolver) vs Category B (per-process IPC/correlation → stays env, bounded+documented). Covers the test-harness strategy (writeTestConfig/testConfig, drop config.toml in per-test HOME) so env soup leaves test invocations. Pure structural refactor, env override preserved. (epic sync-tw0e; sync-1w0q resolver → sync-x7ep daemon/tunables, sync-11gp summary/llm/skills, sync-wbav test harness; builds on sync-7mcv connection section). |
 | `docs/plans/multi-machine-cli-devex.md` | ~270 | Operator/customer CLI DevEx for multi-machine: a new client-side `~/.synchronize/config.toml` profile layer (named `[remote.*]` targets that feed the existing SYNCHRONIZE_REMOTE_URL env contract, env still wins) + a `synchronize remote` command family (add/use/ls/show, provision, sync, upgrade, status) + `doctor`. ASCII use-case diagrams for D1–D7 (operator) and C1–C2 (customer). Decisions: TOML profiles, bidirectional skills/MCP sync (3-way reconcile + manifest, downgradable to one-way), build profiles-first. (sync-kp1 epic; sync-7mcv profiles → sync-nxyp provision → sync-qqw8 parity, sync-i01i ops). |
 | `docs/plans/launch-lifecycle-kernel.md` | 386 | Durable launch lifecycle kernel for local AOE launches and future remote executors — continues `docs/plans/aoe-agent-launch.md` and `sync-6wlv` (epic sync-txpj). |
+| `docs/plans/agent-launch-profiles.md` | 457 | Generic agent launch profiles for treating `[agent.<name>]` as self-contained launch/spawn targets with runtime identity preserved, secret-source env redaction, durable profile persistence, and archive/resume continuity (sync-c84i, sync-c84i.1). |
 | `docs/group-sync-integrity.md` | 455 | End-to-end group registration and sync integrity walkthrough. Long but authoritative on subtle group-membership invariants. |
 | `docs/integration-tmux.md` | 216 | AoE/tmux integration harness — how Pi agents under tmux are exercised in integration tests. |
 | `docs/plans/aoe-agent-launch.md` | 161 | Daemon-managed AOE-backed launch of persistent Claude/Pi sessions with server-side group auto-join; REST+CLI+MCP, no UI (v0). Decisions: in-memory launch map (no table), pin peer_id at launch, swappable SessionBackend, rely on global install (epic sync-gsx; slices sync-lb1/62d/0g9/0at/32k/tm4/rh5/1c2/ewj/2xt/qkl/7u4). |
@@ -84,6 +85,7 @@
 | `docs/plans/web-archive-recovery-console.md` | 427 | Web archive recovery console plan for contextual archive/resume preview-confirm flows plus a bottom-left archived sessions recovery console, derived from backend lifecycle state and scoped by epic sync-4trr. |
 | `docs/plans/cli-completion-carapace-v0.md` | 555 | CLI completion Carapace V0 plan for schema-first command metadata, generated Carapace specs, daemon-safe dynamic candidates, and raw zsh forward compatibility (sync-x7q1). |
 | `docs/plans/daemon-modularization-v2.md` | 1322 | Current master daemon modularization plan for a strictly structural, phase-wise refactor with pre-refactor route precedence, validation, and response-shape snapshot tests first (sync-mkj, sync-mkj.12, sync-mkj.13). |
+| `docs/plans/web-url-deep-links.md` | 407 | Web URL deep-link plan for derivable instance-local `/web/e/:eventId` links, bounded target hydration, app-shell focus routing, Storybook flow coverage, and live `/web` verification (sync-vbd6). |
 | `docs/agentmemory-scope-repair.md` | 101 | Local AgentMemory project-scope repair and repeatable restore process for preserving sessions, observations, memories, lessons, crystals, and summaries while clearing polluted derived scopes (sync-815x). |
 
 ### Per-extension READMEs
@@ -248,6 +250,12 @@ sed -n '100,200p' session-tracker/plan-group-policy-v0.md
 If the user asks "what did we plan for X?", point them at the file by name
 first. Read it only if they confirm or if the current code genuinely
 doesn't answer the question.
+
+### Integration plans
+
+| File | Topic |
+|---|---|
+| `docs/plans/letta-native-integration.md` | Letta ↔ synchronize native channel integration — decision log: topology, tool-access model, the three PoCs (remote/agent/channel) and why the channel won, problems solved (crypto-over-HTTP, turn-stuck, version pins), polling-vs-push tradeoff, assumptions. Forward work under bd epic `sync-fi9l`. |
 
 ## See also
 

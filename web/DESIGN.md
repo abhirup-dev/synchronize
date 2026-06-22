@@ -166,15 +166,15 @@ The web UI is a single hosted surface (one React bundle) that lets a human opera
 
 Aesthetic: **playful neo-brutalist** — cream paper background, 3 px ink-black borders, hard offset shadows (no blur, no gradients), three-typeface mix (Archivo Black display / Space Grotesk UI / JetBrains Mono code & handles). Each agent gets a stable identity color used in their avatar tile, mention chip, message author chip, and timeline marker.
 
-Two themes:
+Supported themes:
 - **Light** (default) — warm cream paper + ink black.
-- **Dark** — warm coffee browns + off-white ink, accents desaturated ~15–20 %.
+- **Kanagawa Wave** — the only supported dark palette.
 
 ## Colors
 
 See YAML front-matter `colors`. Notes:
 
-- All raw colors are exposed as CSS custom properties (`--paper`, `--ink`, `--yellow`, …) on `:root`. The dark theme is a sibling block under `:root[data-theme="dark"]`.
+- All raw colors are exposed as CSS custom properties (`--paper`, `--ink`, `--yellow`, …) on `:root`. Theme variants are sibling blocks such as `:root[data-theme="kanagawa-wave"]`.
 - Accent rotation is per-room: each room declares a `color` (one of `yellow / pink / blue / lime / tangerine / lilac`). Accent flows through the room icon background, the room-name chip on hover, and the "active" room indicator on the sidebar.
 - Per-agent identity colors are owned by the daemon (`peer.color`) and rendered by the client; defaults match the prototype palette (`Cortex = yellow`, `Atlas = pink`, `Vega = blue`, `Nova = lime`, `Echo = tangerine`, `Pulse = lilac`, `Mira = red`, `Jay = teal`, `You = ink`).
 - The `code-bg` / `code-fg` tokens stay dark in both themes — code blocks never strobe when toggling theme.
@@ -247,7 +247,7 @@ Included theme templates:
 | Family | Theme IDs |
 | --- | --- |
 | Light | `light`, `rose-pine-dawn` |
-| Dark | `dark`, `kanagawa-wave`, `catppuccin-mocha` |
+| Dark | `kanagawa-wave` |
 
 The bottom-right theme button keeps quick toggling simple: click switches between the default light/dark themes, and Shift-click cycles through variants inside the current light or dark family.
 

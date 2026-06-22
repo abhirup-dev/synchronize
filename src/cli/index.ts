@@ -21,8 +21,18 @@ import { printHelp } from "./help.ts";
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
-  if (!command || command === "--help" || command === "-h" || command === "help") {
+  if (!command || command === "--help" || command === "-h") {
     printHelp();
+    return;
+  }
+  if (command === "help") {
+    printHelp(rest);
+    return;
+  }
+  const helpIndex = rest.findIndex((arg) => arg === "--help" || arg === "-h" || arg === "help");
+  const passthroughIndex = rest.indexOf("--");
+  if (helpIndex >= 0 && (passthroughIndex < 0 || helpIndex < passthroughIndex)) {
+    printHelp([command, ...rest.slice(0, helpIndex)]);
     return;
   }
 

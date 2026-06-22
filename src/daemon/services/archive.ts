@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { transitionArchive } from "../../lifecycle/archive.ts";
 import { type LaunchTool } from "../../launch/build.ts";
 import { type LaunchRequest, resolveLaunchSpec } from "../../launch/service.ts";
+import { resolveConfiguredAgentLaunchProfileFromPath } from "../../launch/profiles.ts";
 import { LocalLivenessProbe, type Liveness } from "../../lifecycle/probe.ts";
 import { HttpError } from "../../http.ts";
 import { planArchive, markPeerArchived, isPeerArchived, listArchivedSessions, planResume, type ArchivePlan, type ResumePlan, type ArchiveAliasReservation, type ArchivedSessionSummary } from "../repo/archive.ts";
@@ -396,6 +397,7 @@ export async function resumeSessionApply(
 
   const req: LaunchRequest = {
     tool: plan.tool,
+    ...(plan.profileName ? { profileName: plan.profileName } : {}),
     name: plan.alias ?? plan.sessionName,
     repo: plan.cwd,
     peerId: plan.peerId,
@@ -418,9 +420,16 @@ export async function resumeSessionApply(
     // Build the exact command + env + cwd for the plain-terminal path without
     // spawning. The user runs it; the hook re-registers by host_session_id
     // correlation and resurrects the identity (Flow F).
-    const spec = resolveLaunchSpec(req, { launchId: createHash("sha1").update(`${peerId}:${plan.hostSessionId}`).digest("hex").slice(0, 32), peerId: plan.peerId, home: ctx.paths.home });
+    const profile = plan.profileName
+      ? resolveConfiguredAgentLaunchProfileFromPath(ctx.paths.configPath, plan.profileName)
+      : null;
+    const spec = resolveLaunchSpec(
+      req,
+      { launchId: createHash("sha1").update(`${peerId}:${plan.hostSessionId}`).digest("hex").slice(0, 32), peerId: plan.peerId, home: ctx.paths.home },
+      { profile },
+    );
     result.command = spec.command;
-    result.env = spec.env;
+    result.env = redactProfileEnv(spec.env, profile?.env ?? {});
     log(`resume print peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""}`);
     debug(`resume: print command peer=${peerId} ${spec.command.join(" ")}`);
     return result;
@@ -431,6 +440,15 @@ export async function resumeSessionApply(
   log(`resume launch peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""} (AOE spawn enqueued)`);
   debug(`resume: AOE spawn enqueued peer=${peerId} host_session=${plan.hostSessionId}`);
   return result;
+}
+
+function redactProfileEnv(env: Record<string, string>, profileEnv: Record<string, string>): Record<string, string> {
+  if (Object.keys(profileEnv).length === 0) return env;
+  const redacted = { ...env };
+  for (const key of Object.keys(profileEnv)) {
+    if (key in redacted) redacted[key] = "<redacted:agent-profile>";
+  }
+  return redacted;
 }
 
 export interface GroupResumeMemberResult {

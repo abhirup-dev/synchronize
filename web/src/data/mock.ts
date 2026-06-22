@@ -26,6 +26,7 @@ import type {
   Task,
   ThreadSummary,
   TimelineEvent,
+  WebDeepLinkTarget,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath } from "../utils/attachments.ts";
@@ -471,6 +472,42 @@ export class MockDataSource implements DataSource {
       this._me.set({ ...this._me.get(), color: next ?? this._me.get().color });
     }
   }
+
+  // Resolve a seed message id into a deep-link target. A main-list message (in
+  // MESSAGES) focuses in the chat; a thread reply (in THREAD_REPLIES) opens the
+  // thread pane on its parent. This mocks the web projection, not daemon truth.
+  async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
+    for (const [roomId, msgs] of Object.entries(MESSAGES)) {
+      if (msgs.some((m) => m.id === eventId)) {
+        const room = this._rooms.get().find((r) => r.id === roomId);
+        return {
+          roomId,
+          surface: room?.kind === "dm" ? "dm" : "group-main",
+          focusMessageId: eventId,
+          threadParentId: null,
+          linkId: eventId,
+          eventId: 0,
+        };
+      }
+    }
+    for (const [parentId, replies] of Object.entries(THREAD_REPLIES)) {
+      if (!replies.some((m) => m.id === eventId)) continue;
+      const parentRoomId = Object.entries(MESSAGES).find(([, msgs]) => msgs.some((m) => m.id === parentId))?.[0];
+      if (!parentRoomId) break;
+      return {
+        roomId: parentRoomId,
+        surface: "group-thread",
+        focusMessageId: eventId,
+        threadParentId: parentId,
+        linkId: eventId,
+        eventId: 0,
+      };
+    }
+    throw new Error(`deep link target not found: ${eventId}`);
+  }
+
+  // Mock holds the whole seed in memory, so there is nothing to hydrate.
+  async hydrateDeepLinkTarget(): Promise<void> {}
 
   async connect(): Promise<void> { /* mock has no live connection */ }
   disconnect(): void { /* noop */ }

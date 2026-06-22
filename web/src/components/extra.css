@@ -224,14 +224,10 @@
   border-color: var(--rule);
   box-shadow: var(--shadow-sm);
 }
-:root[data-theme="dark"] .room-tab,
-:root[data-theme="kanagawa-wave"] .room-tab,
-:root[data-theme="catppuccin-mocha"] .room-tab {
+:root[data-theme="kanagawa-wave"] .room-tab{
   color: var(--ink-soft);
 }
-:root[data-theme="dark"] .room-tab.active,
-:root[data-theme="kanagawa-wave"] .room-tab.active,
-:root[data-theme="catppuccin-mocha"] .room-tab.active {
+:root[data-theme="kanagawa-wave"] .room-tab.active{
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);

@@ -11,7 +11,7 @@ export function DataSourceProvider({ value, children }: { value: DataSource; chi
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-function useDataSource(): DataSource {
+export function useDataSource(): DataSource {
   const ds = useContext(Ctx);
   if (!ds) throw new Error("DataSourceProvider missing in tree");
   return ds;

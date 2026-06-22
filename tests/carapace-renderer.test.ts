@@ -23,6 +23,13 @@ describe("Carapace renderer", () => {
     const group = spec.commands.find((command) => command.name === "group");
     expect(group?.commands?.map((command) => command.name)).toEqual(["create", "describe", "join", "leave", "rename", "send", "history"]);
 
+    const resume = spec.commands.find((command) => command.name === "resume");
+    expect(resume?.commands?.map((command) => command.name)).toEqual(["launch", "show", "group"]);
+    expect(resume?.commands?.find((command) => command.name === "launch")?.flags?.["--peer-id="]).toBe("Peer id to resume");
+    expect(resume?.commands?.find((command) => command.name === "group")?.completion?.positional?.[0]).toEqual([
+      "$(synchronize completion complete group-names --format carapace)",
+    ]);
+
     const threadsSummary = spec.commands
       .find((command) => command.name === "threads")
       ?.commands?.find((command) => command.name === "summary");
@@ -37,7 +44,7 @@ describe("Carapace renderer", () => {
     expect(mediaShare?.completion?.positional?.[1]).toEqual(["$files"]);
 
     const spawn = spec.commands.find((command) => command.name === "spawn");
-    expect(spawn?.flags?.["--repo="]).toBe("Repository path");
+    expect(spawn?.flags?.["--repo="]).toBe("Repository path; required unless target profile supplies repo or resolves to a configured remote agent");
     expect(spawn?.completion?.flag?.repo).toEqual(["$directories"]);
     expect(spawn?.completion?.flag?.group).toEqual(["$(synchronize completion complete group-names --format carapace)"]);
     expect(spawn?.completion?.dashany).toEqual(["$files"]);

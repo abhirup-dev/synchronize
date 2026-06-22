@@ -26,6 +26,9 @@ docs/ui-reference/claude-design-screenshots/
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
 
+# Local Claude launch profiles are machine-specific
+.claude/launch.json
+
 # Local scratch / vendored exploration trees
 work/
 
@@ -40,3 +43,6 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# Local secrets — NEVER commit (GCP service-account keys for ad-hoc tooling like Gemini vision)
+.secrets/

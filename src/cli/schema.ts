@@ -76,6 +76,10 @@ export const cliSchema: CliSchema = {
     "synchronize group rename NAME NEW_ALIAS --as SESSION_NAME",
     "synchronize group send NAME --as SESSION_NAME [--in-reply-to EVENT_ID] MESSAGE",
     "synchronize group history NAME --as SESSION_NAME [--thread-of EVENT_ID]",
+    "synchronize archive session (--peer-id PEER_ID | --session-id SESSION_ID) [--reason TEXT] [--dry-run]",
+    "synchronize archive group NAME [--reason TEXT] [--dry-run]",
+    "synchronize resume launch (--peer-id PEER_ID | --session-id SESSION_ID) [--force] [--print]",
+    "synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]",
     "synchronize media share GROUP FILE --description TEXT",
     "synchronize media list GROUP [--query TEXT]",
     "synchronize media get MEDIA_ID",
@@ -85,25 +89,34 @@ export const cliSchema: CliSchema = {
     "synchronize threads summary ROOT_EVENT_ID [--refresh] [--strategy all|first_k|last_k|first_last] [--k N] [--first-k N] [--last-k N] [--format text|json]",
     "synchronize query [--format json|table|csv] [--params JSON] SQL",
     "synchronize hook claude-session",
-    "synchronize launch [--name NAME] [--] claude [--] [CLAUDE_ARGS...]",
-    "synchronize spawn claude|pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+    "synchronize launch [--name NAME] [--] claude|pi|letta|PROFILE [--] [TOOL_ARGS...]",
+    "synchronize spawn claude|pi|letta|PROFILE [--name NAME] [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+    "synchronize host --bind HOST --token TOKEN [--port PORT] [--home PATH] [--restart]",
     "synchronize completion carapace",
     "synchronize completion install --shell carapace",
     "synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]",
     "synchronize remote use NAME | ls | show [NAME] | remove NAME",
-    "synchronize remote provision HOST | sync HOST --hub-url URL | harness HOST --hub-url URL [--all]",
+    "synchronize remote provision HOST | sync HOST --hub-url URL | connect HOST | harness HOST --hub-url URL [--all]",
     "synchronize remote status | doctor",
-    "synchronize --help",
+    "synchronize help [COMMAND [SUBCOMMAND]]",
   ],
   commands: [
     {
+      name: "help",
+      description: "Show top-level or command-specific help",
+      usage: ["synchronize help [COMMAND [SUBCOMMAND]]", "synchronize COMMAND --help", "synchronize COMMAND SUBCOMMAND --help"],
+      positionals: [{ name: "TOPIC", description: "Command path to explain", variadic: true }],
+    },
+    {
       name: "status",
       description: "Start or connect to the local daemon and print health/status",
+      usage: ["synchronize status"],
     },
     {
       name: "top",
       aliases: ["summary"],
       description: "Live htop-style dashboard for daemon, peers, groups, inbox, and media",
+      usage: ["synchronize top [--once] [--json] [--interval SECONDS]"],
       flags: [
         { name: "once", description: "Render one summary and exit", boolean: true },
         { name: "json", description: "Print the summary as JSON", boolean: true },
@@ -212,6 +225,91 @@ export const cliSchema: CliSchema = {
       ],
     },
     {
+      name: "archive",
+      description: "Archive sessions or groups while preserving durable history",
+      usage: [
+        "synchronize archive session --peer-id PEER_ID [--reason TEXT] [--dry-run]",
+        "synchronize archive session --session-id SESSION_ID [--reason TEXT] [--dry-run]",
+        "synchronize archive group NAME [--reason TEXT] [--dry-run]",
+      ],
+      subcommands: [
+        {
+          name: "session",
+          description: "Archive one peer/session identity",
+          usage: [
+            "synchronize archive session --peer-id PEER_ID [--reason TEXT] [--dry-run]",
+            "synchronize archive session --session-id SESSION_ID [--reason TEXT] [--dry-run]",
+          ],
+          flags: [
+            { name: "peer-id", description: "Peer id to archive", value: peerIdValue },
+            { name: "session-id", description: "Host session id to archive" },
+            { name: "reason", description: "Archive reason" },
+            { name: "dry-run", description: "Print the archive plan without mutating", boolean: true },
+          ],
+        },
+        {
+          name: "group",
+          description: "Archive all launchable members of a group",
+          usage: ["synchronize archive group NAME [--reason TEXT] [--dry-run]"],
+          positionals: [{ name: "NAME", description: "Group name", value: groupNameValue, required: true }],
+          flags: [
+            { name: "reason", description: "Archive reason" },
+            { name: "dry-run", description: "Print the archive plan without mutating", boolean: true },
+          ],
+        },
+      ],
+    },
+    {
+      name: "resume",
+      description: "Resume archived sessions or groups",
+      usage: [
+        "synchronize resume launch --peer-id PEER_ID [--force] [--print]",
+        "synchronize resume launch --session-id SESSION_ID [--force] [--print]",
+        "synchronize resume show (--peer-id PEER_ID | --session-id SESSION_ID)",
+        "synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]",
+      ],
+      subcommands: [
+        {
+          name: "launch",
+          description: "Resume one archived launch-backed session",
+          usage: [
+            "synchronize resume launch --peer-id PEER_ID [--force] [--print]",
+            "synchronize resume launch --session-id SESSION_ID [--force] [--print]",
+          ],
+          flags: [
+            { name: "peer-id", description: "Peer id to resume", value: peerIdValue },
+            { name: "session-id", description: "Host session id to resume" },
+            { name: "force", description: "Terminate a blocking live peer before resume", boolean: true },
+            { name: "print", description: "Print the resume command instead of launching", boolean: true },
+          ],
+        },
+        {
+          name: "show",
+          description: "Print the resume command for one archived session",
+          usage: [
+            "synchronize resume show --peer-id PEER_ID",
+            "synchronize resume show --session-id SESSION_ID",
+          ],
+          flags: [
+            { name: "peer-id", description: "Peer id to inspect", value: peerIdValue },
+            { name: "session-id", description: "Host session id to inspect" },
+          ],
+        },
+        {
+          name: "group",
+          description: "Resume archived members of a group",
+          usage: ["synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]"],
+          positionals: [{ name: "NAME", description: "Group name", value: groupNameValue, required: true }],
+          flags: [
+            { name: "only", description: "Comma-separated aliases/session names to resume" },
+            { name: "exclude", description: "Comma-separated aliases/session names to skip" },
+            { name: "force", description: "Terminate blocking live peers before resume", boolean: true },
+            { name: "print", description: "Print resume commands instead of launching", boolean: true },
+          ],
+        },
+      ],
+    },
+    {
       name: "media",
       description: "Share, list, and inspect group media",
       subcommands: [
@@ -298,17 +396,30 @@ export const cliSchema: CliSchema = {
     {
       name: "launch",
       description: "Start an agent in the foreground with synchronize daemon/env setup",
+      usage: [
+        "synchronize launch [--name NAME] [--] claude [TOOL_ARGS...]",
+        "synchronize launch [--name NAME] [--] pi [TOOL_ARGS...]",
+        "synchronize launch [--name NAME] [--] letta [TOOL_ARGS...]",
+        "synchronize launch [--name NAME] [--] PROFILE [TOOL_ARGS...]",
+      ],
       flags: [{ name: "name", description: "Session name", value: sessionNameValue }],
-      positionals: [{ name: "target", description: "Agent runtime", value: { kind: "enum", values: ["claude", "pi"] }, required: true }],
+      positionals: [{ name: "target", description: "Agent runtime or configured [agent.NAME] profile", required: true }],
       passthrough: { marker: "--", description: "Arguments passed to the launched agent" },
     },
     {
       name: "spawn",
       description: "Launch a persistent agent session via the backend (AOE), optionally into a group",
-      positionals: [{ name: "tool", description: "Agent runtime", value: { kind: "enum", values: ["claude", "pi"] }, required: true }],
+      usage: [
+        "synchronize spawn claude --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+        "synchronize spawn pi --name NAME --repo PATH [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+        "synchronize spawn letta --name NAME",
+        "synchronize spawn letta --name NAME --repo PATH [-- TOOL_ARGS...]",
+        "synchronize spawn PROFILE [--name NAME] [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
+      ],
+      positionals: [{ name: "target", description: "Agent runtime or configured [agent.NAME] profile", required: true }],
       flags: [
-        { name: "name", description: "Session name", value: sessionNameValue, required: true },
-        { name: "repo", description: "Repository path", value: { kind: "directory" }, required: true },
+        { name: "name", description: "Session name; required for Claude/Pi profiles unless session_name is configured", value: sessionNameValue },
+        { name: "repo", description: "Repository path; required unless target profile supplies repo or resolves to a configured remote agent", value: { kind: "directory" } },
         { name: "group", description: "Group to join", value: groupNameValue },
         { name: "model", description: "Agent model" },
         { name: "thinking", description: "Thinking level" },
@@ -316,8 +427,21 @@ export const cliSchema: CliSchema = {
       passthrough: { marker: "--", description: "Arguments passed to the spawned tool" },
     },
     {
+      name: "host",
+      description: "Start or verify a token-protected daemon for LAN/tailnet clients",
+      usage: ["synchronize host --bind HOST --token TOKEN [--port PORT] [--home PATH] [--restart]"],
+      flags: [
+        { name: "bind", description: "Daemon bind host", required: true },
+        { name: "port", description: "Daemon port" },
+        { name: "token", description: "Bearer token", required: true },
+        { name: "home", description: "Runtime home" },
+        { name: "restart", description: "Restart an incompatible existing daemon", boolean: true },
+      ],
+    },
+    {
       name: "completion",
       description: "Generate shell completion specs",
+      usage: ["synchronize completion carapace", "synchronize completion install --shell carapace"],
       subcommands: [
         {
           name: "carapace",
@@ -356,10 +480,24 @@ export const cliSchema: CliSchema = {
     {
       name: "remote",
       description: "Manage multi-machine profiles, provision/sync remotes, run the harness, and inspect status",
+      usage: [
+        "synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]",
+        "synchronize remote use NAME",
+        "synchronize remote ls",
+        "synchronize remote show [NAME]",
+        "synchronize remote remove NAME",
+        "synchronize remote provision HOST [--dry-run]",
+        "synchronize remote sync HOST --hub-url URL [--path REMOTE_DIR] [--skip-install] [--dry-run]",
+        "synchronize remote connect HOST_OR_PROFILE [--remote-port PORT] [--path REMOTE_DIR] [--letta-agent SPEC] [--restart-channel] [--dry-run]",
+        "synchronize remote harness HOST --hub-url URL [--scenario NAME | --all] [-- EXTRA_ARGS...]",
+        "synchronize remote status",
+        "synchronize remote doctor",
+      ],
       subcommands: [
         {
           name: "add",
           description: "Define a connection profile in ~/.synchronize/config.toml",
+          usage: ["synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]"],
           positionals: [{ name: "NAME", description: "Profile name", required: true }],
           flags: [
             { name: "url", description: "Hub daemon URL", required: true },
@@ -370,19 +508,23 @@ export const cliSchema: CliSchema = {
             { name: "use", description: "Make this the active profile", boolean: true },
           ],
         },
-        { name: "use", description: "Set the active profile", positionals: [{ name: "NAME", description: "Profile name", required: true }] },
-        { name: "ls", aliases: ["list"], description: "List profiles (active marked with *)" },
-        { name: "show", description: "Show a profile and its resolved connection", positionals: [{ name: "NAME", description: "Profile name (default: active)" }] },
-        { name: "remove", aliases: ["rm"], description: "Delete a profile", positionals: [{ name: "NAME", description: "Profile name", required: true }] },
+        { name: "use", description: "Set the active profile", usage: ["synchronize remote use NAME"], positionals: [{ name: "NAME", description: "Profile name", required: true }] },
+        { name: "ls", aliases: ["list"], description: "List profiles (active marked with *)", usage: ["synchronize remote ls"] },
+        { name: "show", description: "Show a profile and its resolved connection", usage: ["synchronize remote show [NAME]"], positionals: [{ name: "NAME", description: "Profile name (default: active)" }] },
+        { name: "remove", aliases: ["rm"], description: "Delete a profile", usage: ["synchronize remote remove NAME"], positionals: [{ name: "NAME", description: "Profile name", required: true }] },
         {
           name: "provision",
           description: "Verify remote tools + non-interactive PATH",
+          usage: ["synchronize remote provision HOST [--dry-run]"],
           positionals: [{ name: "HOST", description: "SSH host", required: true }],
           flags: [{ name: "dry-run", description: "Print the plan without running it", boolean: true }],
         },
         {
           name: "sync",
           description: "rsync runtime to a remote, write its config, verify the hub",
+          usage: [
+            "synchronize remote sync HOST --hub-url URL [--path REMOTE_DIR] [--token TOKEN | --token-env ENV] [--skip-install] [--dry-run]",
+          ],
           positionals: [{ name: "HOST", description: "SSH host", required: true }],
           flags: [
             { name: "hub-url", description: "Hub daemon URL the remote points at", required: true },
@@ -398,8 +540,34 @@ export const cliSchema: CliSchema = {
           ],
         },
         {
+          name: "connect",
+          description: "Connect an SSH remote/profile to the local daemon through an SSH reverse tunnel",
+          usage: [
+            "synchronize remote connect HOST_OR_PROFILE [--path REMOTE_DIR] [--remote-port PORT] [--expose ssh-reverse]",
+            "synchronize remote connect HOST_OR_PROFILE --letta-agent CHAT:SESSION:AGENT[:CONVERSATION] [--letta-base-url URL] [--poll-ms MS]",
+          ],
+          positionals: [{ name: "HOST", description: "SSH host or [remote.<name>] profile", required: true }],
+          flags: [
+            { name: "path", description: "Remote runtime dir" },
+            { name: "remote-port", description: "Remote localhost port exposed by the reverse tunnel" },
+            { name: "expose", description: "Exposure mode", value: { kind: "enum", values: ["ssh-reverse"] } },
+            { name: "letta-agent", description: "Letta route spec chatId:sessionName:agentId[:conversationId]" },
+            { name: "letta-base-url", description: "Self-hosted Letta server URL on the remote" },
+            { name: "letta-api-key", description: "Letta API key for the channel process" },
+            { name: "poll-ms", description: "Letta channel polling interval" },
+            { name: "restart-channel", description: "Restart an already-running Letta channel after provisioning", boolean: true },
+            { name: "skip-install", description: "Skip remote bun install", boolean: true },
+            { name: "skip-provision", description: "Skip remote tool verification", boolean: true },
+            { name: "dry-run", description: "Print the plan without running it", boolean: true },
+          ],
+        },
+        {
           name: "harness",
           description: "Run the Python AOE harness on a remote against the hub",
+          usage: [
+            "synchronize remote harness HOST --hub-url URL --scenario NAME [--token TOKEN] [--path REMOTE_DIR] [--dry-run] [-- EXTRA_ARGS...]",
+            "synchronize remote harness HOST --hub-url URL --all [--token TOKEN] [--path REMOTE_DIR] [--dry-run] [-- EXTRA_ARGS...]",
+          ],
           positionals: [{ name: "HOST", description: "SSH host", required: true }],
           flags: [
             { name: "hub-url", description: "Hub daemon URL", required: true },
@@ -411,8 +579,8 @@ export const cliSchema: CliSchema = {
           ],
           passthrough: { marker: "--", description: "Extra args appended to each scenario" },
         },
-        { name: "status", description: "Hub health + agent roster grouped by machine" },
-        { name: "doctor", description: "Readiness checklist for the active connection" },
+        { name: "status", description: "Hub health + agent roster grouped by machine", usage: ["synchronize remote status"] },
+        { name: "doctor", description: "Readiness checklist for the active connection", usage: ["synchronize remote doctor"] },
       ],
     },
   ],

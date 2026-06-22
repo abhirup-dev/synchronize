@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, fireEvent, screen, userEvent, waitFor, within } from "storybook/test";
 import { AgentRoster } from "./AgentRoster.tsx";
 import { GROUPS } from "../data/seed.ts";
 import { inRosterColumn } from "../storybook/shellFrames.tsx";
+import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
 
 // Provider-backed: AgentRoster reads the agent set through useAgents() off the
 // MockDataSource supplied by the global StorybookProviders decorator. The story
@@ -41,4 +43,47 @@ export const AllStatuses: Story = {
 // matching roster card.
 export const FocusedAgent: Story = {
   args: { room: checkoutRevamp, focusedAgent: "cortex" },
+};
+
+export const ViewProfileFlow: Story = {
+  args: { room: checkoutRevamp },
+  decorators: [
+    (Story) => (
+      <RuntimeDetailsProvider>
+        <Story />
+      </RuntimeDetailsProvider>
+    ),
+  ],
+  play: async ({ canvasElement, step }) => {
+    const openProfileFor = async (agentId: string, expectedName: string, expectedModel: string) => {
+      const card = canvasElement.querySelector<HTMLElement>(`[data-vim-item="agent-${agentId}"]`);
+      expect(card).toBeTruthy();
+      await fireEvent.contextMenu(card!);
+      await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+      await userEvent.click(screen.getByText("View profile"));
+      await waitFor(() => expect(screen.getByText(`${expectedName} profile`)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(expectedModel)).toBeTruthy());
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByText(`${expectedName} profile`)).toBeNull());
+    };
+
+    await step("Open the roster profile for Atlas", async () => {
+      await openProfileFor("atlas", "Atlas", "claude-sonnet-4-6");
+    });
+
+    await step("Open the roster profile for Cortex", async () => {
+      await openProfileFor("cortex", "Cortex", "gpt-5.5");
+    });
+
+    await step("Do not expose View profile for You", async () => {
+      const canvas = within(canvasElement);
+      expect(await canvas.findByText("AGENTS")).toBeTruthy();
+      const youCard = canvasElement.querySelector<HTMLElement>('[data-vim-item="agent-you"]');
+      expect(youCard).toBeTruthy();
+      await fireEvent.contextMenu(youCard!);
+      await waitFor(() => {
+        expect(screen.queryByText("View profile")).toBeNull();
+      });
+    });
+  },
 };

@@ -26,6 +26,8 @@ export const ENV_BIND = "SYNCHRONIZE_BIND";
 export const ENV_PORT = "SYNCHRONIZE_PORT";
 export const ENV_TOKEN = "SYNCHRONIZE_TOKEN";
 export const ENV_REMOTE_URL = "SYNCHRONIZE_REMOTE_URL";
+// Backward-compatible alias used by the original Letta remote-daemon harness.
+export const ENV_DAEMON_URL = "SYNCHRONIZE_DAEMON_URL";
 export const ENV_HEALTH_TIMEOUT_MS = "SYNCHRONIZE_HEALTH_TIMEOUT_MS";
 export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
 export const ENV_PEER_ID = "SYNCHRONIZE_PEER_ID";

@@ -31,9 +31,7 @@
   opacity: 0.42;
   filter: saturate(0.72) contrast(0.88) sepia(0.16);
 }
-:root[data-theme="dark"][data-skin="brutal"] .chat-region::before,
-:root[data-theme="kanagawa-wave"][data-skin="brutal"] .chat-region::before,
-:root[data-theme="catppuccin-mocha"][data-skin="brutal"] .chat-region::before {
+:root[data-theme="kanagawa-wave"][data-skin="brutal"] .chat-region::before{
   /* On dark papers, screen-blend turns the ink art into faint light — the
      translucent grays would otherwise read as a muddy veil. */
   opacity: 0.4;
@@ -45,9 +43,7 @@
   opacity: 0.62;
   filter: saturate(1.08);
 }
-:root[data-theme="dark"][data-skin="glass"] .chat-region::before,
-:root[data-theme="kanagawa-wave"][data-skin="glass"] .chat-region::before,
-:root[data-theme="catppuccin-mocha"][data-skin="glass"] .chat-region::before {
+:root[data-theme="kanagawa-wave"][data-skin="glass"] .chat-region::before{
   opacity: 0.55;
   mix-blend-mode: screen;
   filter: saturate(1.15) brightness(1.85);

@@ -428,6 +428,7 @@ function migrate(db: Database): void {
         launch_id TEXT PRIMARY KEY,
         peer_id TEXT NOT NULL,
         tool TEXT NOT NULL,
+        profile_name TEXT,
         session_name TEXT NOT NULL,
         alias TEXT NOT NULL,
         cwd TEXT NOT NULL,
@@ -677,6 +678,18 @@ function migrate(db: Database): void {
     if (!launchCols.includes("resume_host_session_file"))
       db.exec(`ALTER TABLE launch_intents ADD COLUMN resume_host_session_file TEXT`);
     if (!hasResumeTargetV13) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (13)`);
+  }
+
+  // v14: store the selected agent profile name for configured launch/spawn.
+  // Only the profile key is durable; env values and secret sources are resolved
+  // from config.toml at spawn/retry time and are never copied into SQLite.
+  const hasAgentProfileV14 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 14")
+    .get();
+  const launchColsV14 = db.query<{ name: string }, []>("PRAGMA table_info(launch_intents)").all().map((col) => col.name);
+  if (!hasAgentProfileV14 || !launchColsV14.includes("profile_name")) {
+    if (!launchColsV14.includes("profile_name")) db.exec(`ALTER TABLE launch_intents ADD COLUMN profile_name TEXT`);
+    if (!hasAgentProfileV14) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (14)`);
   }
 }
 

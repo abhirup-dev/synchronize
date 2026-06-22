@@ -24,6 +24,7 @@ import { ActivityItem } from "./ActivityItem.tsx";
 import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
 import { Avatar, IdentityBadge } from "./primitives.tsx";
+import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { useActivityPreferences } from "../hooks/useActivityPreferences.ts";
 import { useIsCompact, useShellMode } from "../shell-mode.tsx";
@@ -57,6 +58,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
   const [reacted, setReacted] = useState<Set<number>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState<{ roomId: string; parentId: string; focusMessageId: string } | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
 
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a] as const)), [agents]);
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r] as const)), [rooms]);
@@ -158,6 +160,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
     onReact,
     onOpenThread,
     onJumpToRoom,
+    onViewProfile: setProfileAgent,
   });
 
   const FILTERS: Array<{ id: Filter; label: string; n: number; hot?: boolean }> = [
@@ -368,6 +371,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
           <ThreadPane room={openRoom} parentId={open.parentId} focusMessageId={open.focusMessageId} onClose={() => setOpen(null)} />
         </>
       )}
+      <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </div>
   );
 }

@@ -8,6 +8,35 @@ export type AgentLifecycleState = "active" | "archived";
 export type MemberState = "active" | "archived" | "left";
 export type RoomArchiveState = "active" | "mixed" | "archived";
 
+export interface AgentRuntimeDetails {
+  peerId: string;
+  bindingId?: string;
+  launchId?: string;
+  profileName?: string;
+  tool?: string;
+  sessionName?: string;
+  model?: string;
+  thinking?: string;
+  source?: string;
+  agentType?: string;
+  hostTool?: string;
+  hostSessionId?: string;
+  hostSessionFile?: string;
+  machineId?: string;
+  cwd?: string;
+  gitBranch?: string;
+  gitDirty?: boolean;
+  pid?: number;
+  launchState?: string;
+  backendTitle?: string;
+  targetGroup?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -32,6 +61,7 @@ export interface Agent {
     title: string;
     attachCommand: string;
   };
+  runtimeDetails?: AgentRuntimeDetails;
   avatar: string; // single uppercase letter
 }
 
@@ -237,7 +267,7 @@ export interface ReactToMessageInput {
   op?: "add" | "remove" | "toggle";
 }
 
-export type AgentLaunchTool = "claude" | "pi";
+export type AgentLaunchTool = "claude" | "pi" | "letta";
 
 export interface SkillCatalogEntry {
   id: string;
@@ -328,6 +358,20 @@ export interface ResumePreview {
   members: ResumePreviewMember[];
 }
 
+export type WebDeepLinkSurface = "dm" | "group-main" | "group-thread";
+
+// Resolved destination for a pasteable /web/e/:id link. Adapter-agnostic: the
+// daemon resolves it from SQLite, the mock from seed.ts, but both produce the
+// same web-space shape the Shell navigates to.
+export interface WebDeepLinkTarget {
+  roomId: string;
+  surface: WebDeepLinkSurface;
+  focusMessageId: string; // web message id to scroll to / flash ("e:123" or a mock id)
+  threadParentId: string | null; // set for group-thread, so the pane can open
+  linkId: string; // path segment for /web/e/<linkId> (numeric event id, or mock id)
+  eventId: number; // numeric event id for daemon around-window hydration (0 for mock)
+}
+
 export interface DataSource {
   // queries
   rooms(): Snapshot<Room[]>;
@@ -371,6 +415,12 @@ export interface DataSource {
   /** Override an agent's identity color. Pass `null` to revert to the seeded
    *  color. Mutates the agents snapshot so every component re-renders. */
   setAgentColor(agentId: string, hex: string | null): void;
+
+  // deep links — resolve a /web/e/:id event id into a navigable target, then
+  // hydrate enough room context for the target to render even if it is older
+  // than the latest window. See {@link WebDeepLinkTarget}.
+  resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget>;
+  hydrateDeepLinkTarget(target: WebDeepLinkTarget): Promise<void>;
 
   // lifecycle
   connect(): Promise<void>;

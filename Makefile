@@ -18,7 +18,7 @@ PI_AGENT_DIR ?= $(HOME)/.pi/agent
         dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
         reinstall-books dev-reset \
         doctor inspect-daemon inspect-peers inspect-groups inspect-events \
-        link install-claude install-codex install-pi install-all \
+        install-cli link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
 # `make` with no target prints help.
@@ -33,6 +33,7 @@ help:
 	@echo "  check-install    Verify root + web deps are installed (fails fast with a fix hint)"
 	@echo "  test             Run the test suite (guarded by check-install)"
 	@echo "Install agents (writes to your real ~/.claude, ~/.codex, ~/.pi):"
+	@echo "  install-cli      Link the CLI/MCP binaries and refresh shell completions"
 	@echo "  install-claude | install-codex | install-pi | install-all"
 	@echo "  uninstall-claude | uninstall-codex | uninstall-pi | uninstall-all"
 	@echo "Demo (isolated runtime under $(DEMO_HOME), never touches your real daemon):"
@@ -239,9 +240,15 @@ inspect-events:
 
 # --- install targets -------------------------------------------------------
 
+install-cli: link
+
 link: setup
 	@bun link >/dev/null
+	@command -v synchronize >/dev/null || { echo "synchronize not on PATH after 'bun link'"; exit 1; }
 	@command -v $(MCP_BIN) >/dev/null || { echo "$(MCP_BIN) not on PATH after 'bun link'"; exit 1; }
+	@synchronize completion install --shell carapace >/dev/null
+	@echo "installed Carapace completion spec for synchronize"
+	@echo "linked synchronize -> $$(readlink $$(command -v synchronize))"
 	@echo "linked $(MCP_BIN) -> $$(readlink $$(command -v $(MCP_BIN)))"
 
 install-claude: link

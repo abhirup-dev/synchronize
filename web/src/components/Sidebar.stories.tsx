@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, fireEvent, screen, userEvent, waitFor } from "storybook/test";
 import { Sidebar } from "./Sidebar.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
 import { inSidebarColumn } from "../storybook/shellFrames.tsx";
+import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
 
 // Provider-backed shell: Sidebar reads the room list, identity, agents, and the
 // activity awaiting-count through hooks (useRooms / useMe / useAgents /
@@ -42,4 +44,29 @@ export const ActivityDock: Story = {
 // the default NAV chip (tangerine).
 export const TypingMode: Story = {
   args: { activeRoomId: GROUPS[0]!.id, mode: "typing" },
+};
+
+export const DmViewProfileFlow: Story = {
+  args: { activeRoomId: "dm-atlas" },
+  decorators: [
+    (Story) => (
+      <RuntimeDetailsProvider>
+        <Story />
+      </RuntimeDetailsProvider>
+    ),
+  ],
+  play: async ({ canvasElement, step }) => {
+    await step("Open the DM context menu for Atlas", async () => {
+      const atlasDm = canvasElement.querySelector<HTMLElement>('[data-vim-item="room-dm-atlas"]');
+      expect(atlasDm).toBeTruthy();
+      await fireEvent.contextMenu(atlasDm!);
+      await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+    });
+
+    await step("Select View profile from the DM menu", async () => {
+      await userEvent.click(screen.getByText("View profile"));
+      await waitFor(() => expect(screen.getByText("Atlas profile")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy());
+    });
+  },
 };

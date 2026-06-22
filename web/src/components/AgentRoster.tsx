@@ -11,6 +11,7 @@ import { roomAgents } from "../data/roomAgents.ts";
 import { useToast } from "./Toast.tsx";
 import { copyText } from "../utils/clipboard.ts";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { AgentProfileDialog, canShowAgentPreview } from "./AgentPreview.tsx";
 
 interface AgentRosterProps {
   room: Room;
@@ -79,6 +80,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
   const toast = useToast();
   const archive = useArchiveWorkflow();
   const [picker, setPicker] = useState<{ agent: Agent; x: number; y: number } | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const members = useMemo(
     () => displayAgents.filter((a) => room.members.includes(a.id)),
     [displayAgents, room.members],
@@ -126,6 +128,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                 onDoubleClick={() => onAgentDoubleClick?.(agent.id)}
                 onContextMenu={(e) => {
                   const { clientX, clientY } = e;
+                  const canViewProfile = canShowAgentPreview(agent);
                   const copyAoeCommand = agent.aoeSession
                     ? async () => {
                         const copied = await copyText(agent.aoeSession!.attachCommand);
@@ -143,7 +146,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
                   openMenu(e, [
                     { label: `Focus on @${agent.handle}`, onSelect: () => onFocus(agent.id) },
                     { label: "Open DM", onSelect: () => console.log("dm", agent.id) },
-                    { label: "View profile", onSelect: () => console.log("profile", agent.id) },
+                    ...(canViewProfile ? [{ label: "View profile", onSelect: () => setProfileAgent(agent) }] : []),
                     { divider: true },
                     aoeMenuItem,
                     { divider: true },
@@ -190,6 +193,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
           onClose={() => setPicker(null)}
         />
       )}
+      <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </aside>
   );
 }

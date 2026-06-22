@@ -254,6 +254,7 @@ function webStateShape(): Record<string, unknown> {
     ok: true,
     daemon: { pid: "number", base_url: "string", started_at: "string", token_required: false },
     generated_at: "string",
+    agent_runtime_details: [agentRuntimeDetailsShape()],
     cursor: "number",
     peers: [peerShape({ online: true, presence: "string", purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
     groups: [groupShape()],
@@ -262,8 +263,43 @@ function webStateShape(): Record<string, unknown> {
     room_summaries: [{ group_id: "number", last_event_id: "number", last_event_at: "string", last_preview: "string", message_count: "number" }],
     events: [],
     media: [],
-    launch_tools: { claude: { tool: "string", available: true, path: "string" }, pi: { tool: "string", available: true, path: "string" } },
+    launch_tools: {
+      claude: { tool: "string", available: true, path: "string" },
+      pi: { tool: "string", available: true, path: "string" },
+      letta: { tool: "string", available: true, path: "string" },
+    },
     launch_lifecycle: [],
     skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
+  };
+}
+
+function agentRuntimeDetailsShape(): Record<string, unknown> {
+  return {
+    peer_id: "string",
+    session_name: "string",
+    tool: "string",
+    machine_id: "string",
+    binding_id: null,
+    host_tool: null,
+    host_session_id: null,
+    host_session_file: null,
+    cwd: null,
+    git_branch: null,
+    git_dirty: null,
+    pid: null,
+    source: null,
+    model: null,
+    agent_type: null,
+    launch_id: null,
+    created_at: null,
+    updated_at: null,
+    last_seen_at: null,
+    launch_state: null,
+    backend_title: null,
+    profile_name: null,
+    target_group: null,
+    failure_code: null,
+    failure_message: null,
+    thinking: null,
   };
 }

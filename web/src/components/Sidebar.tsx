@@ -3,11 +3,12 @@ import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/context.tsx";
 import { IdentityBadge, StatusDot } from "./primitives.tsx";
-import type { Room } from "../data/types.ts";
+import type { Agent, Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { AgentProfileDialog, canShowAgentPreview } from "./AgentPreview.tsx";
 
 /**
  * Tokens flow from the styles.css contract via the tw.css `@theme inline`
@@ -85,6 +86,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
   const dmsScrollRef = useAutoScrollbar<HTMLDivElement>();
   const openMenu = useContextMenu();
   const [spawnRoom, setSpawnRoom] = useState<Room | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const awaitingCount = useActivityAwaitingCount();
   const archive = useArchiveWorkflow();
 
@@ -142,6 +144,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
                 room={r}
                 active={r.id === activeRoomId}
                 onSelect={onSelect}
+                {...(other ? { profileAgent: other, onViewProfile: setProfileAgent } : {})}
                 {...(other?.status ? { otherStatus: other.status } : {})}
               {...(other?.color ? { otherColor: other.color } : {})}
               />
@@ -165,7 +168,6 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
               { label: "Set status: idle",    onSelect: () => console.log("status idle") },
               { divider: true },
               { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${me.handle}`) },
-              { label: "View profile", onSelect: () => console.log("profile", me.id) },
               { divider: true },
               { label: "Sign out", danger: true, onSelect: () => console.log("sign out") },
             ])
@@ -195,6 +197,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
         </button>
       </div>
       {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
+      <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </aside>
   );
 }
@@ -204,6 +207,8 @@ function RoomItem({
   active,
   onSelect,
   onSpawnAgent,
+  profileAgent,
+  onViewProfile,
   otherStatus,
   otherColor,
 }: {
@@ -211,6 +216,8 @@ function RoomItem({
   active: boolean;
   onSelect(id: string): void;
   onSpawnAgent?(room: Room): void;
+  profileAgent?: Agent;
+  onViewProfile?(agent: Agent): void;
   otherStatus?: import("../data/types.ts").AgentStatus;
   otherColor?: string;
 }) {
@@ -218,6 +225,7 @@ function RoomItem({
   const archive = useArchiveWorkflow();
   const iconColor = otherColor ?? room.color;
   const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
+  const canViewProfile = Boolean(profileAgent && onViewProfile && canShowAgentPreview(profileAgent));
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -241,6 +249,19 @@ function RoomItem({
             ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
             : []),
           ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
+          ...(room.kind === "dm"
+            ? canViewProfile
+              ? [
+                  {
+                    label: "View profile",
+                    onSelect: () => {
+                      if (profileAgent && onViewProfile) onViewProfile(profileAgent);
+                    },
+                  },
+                  { divider: true as const },
+                ]
+              : []
+            : []),
           { label: "Mark as read (soon)", disabled: true, onSelect: () => {} },
           { label: `${room.pinned ? "Unpin" : "Pin to top"} (soon)`, disabled: true, onSelect: () => {} },
           { label: "Mute notifications (soon)", disabled: true, onSelect: () => {} },

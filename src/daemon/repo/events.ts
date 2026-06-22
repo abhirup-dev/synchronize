@@ -70,6 +70,68 @@ export function getVisibleEvent(db: Database, eventId: number, peerId: string): 
   return event;
 }
 
+export type WebDeepLinkSurface = "dm" | "group-main" | "group-thread";
+
+export interface WebDeepLinkTarget {
+  event_id: number;
+  room_id: string; // group:<group_id> or dm:<other_peer_id>
+  surface: WebDeepLinkSurface;
+  group_id: number | null;
+  parent_event_id: number | null;
+  focus_event_id: number;
+}
+
+// Resolve a single event id into the web surface that should open to show it.
+// Visibility is enforced through getVisibleEvent (group membership / DM
+// participation), so the web peer can only resolve links it is allowed to see.
+// For a thread reply we also return the thread root so the pane can render its
+// parent even when the root falls outside the hydration window — but only if the
+// peer can see the root too (a reply after a joiner's history boundary may have a
+// root before it).
+export function resolveWebDeepLink(
+  db: Database,
+  eventId: number,
+  peerId: string,
+): { target: WebDeepLinkTarget; event: EventRow; root_event: EventRow | null } {
+  const event = getVisibleEvent(db, eventId, peerId);
+  if (event.group_id !== null) {
+    const isReply = event.parent_event_id !== null;
+    const target: WebDeepLinkTarget = {
+      event_id: event.event_id,
+      room_id: `group:${event.group_id}`,
+      surface: isReply ? "group-thread" : "group-main",
+      group_id: event.group_id,
+      parent_event_id: event.parent_event_id,
+      focus_event_id: event.event_id,
+    };
+    let root_event: EventRow | null = null;
+    if (isReply && event.parent_event_id !== null) {
+      try {
+        root_event = getVisibleEvent(db, event.parent_event_id, peerId);
+      } catch {
+        root_event = null; // root outside this peer's visibility; reply still resolves
+      }
+    }
+    return { target, event, root_event };
+  }
+  if (event.recipient_peer_id === null) {
+    throw new HttpError(400, "deeplink_unsupported", `Event ${eventId} is not a room or DM message`);
+  }
+  const otherPeerId = event.sender_peer_id === peerId ? event.recipient_peer_id : event.sender_peer_id;
+  return {
+    target: {
+      event_id: event.event_id,
+      room_id: `dm:${otherPeerId}`,
+      surface: "dm",
+      group_id: null,
+      parent_event_id: null,
+      focus_event_id: event.event_id,
+    },
+    event,
+    root_event: null,
+  };
+}
+
 export function eventForRecipient<T extends EventRow>(event: T, recipientPeerId: string): T {
   const skillDirectives = parseJsonStringArray(event.skill_directives_json);
   if (event.type !== "group_message" || skillDirectives.length === 0) return event;

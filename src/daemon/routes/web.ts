@@ -11,6 +11,7 @@ import {
   safePathSegment,
   webAttachmentRoot,
 } from "../repo/media.ts";
+import { resolveWebDeepLink } from "../repo/events.ts";
 import { ensureLocalWebPeer } from "../repo/peers.ts";
 import { emitWebStateChanged, openWebEvents } from "../services/web-events.ts";
 import {
@@ -40,6 +41,14 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
           `${launch.launch_id}:${launch.peer_id}:${launch.state}:${launch.target_group ?? ""}:${launch.backend_title}:${
             launch.failure_code ?? ""
           }:${launch.updated_at}`,
+      ),
+      ...state.agent_runtime_details.map(
+        (details) =>
+          `${details.peer_id}:${details.binding_id ?? ""}:${details.launch_id ?? ""}:${details.profile_name ?? ""}:${
+            details.model ?? ""
+          }:${details.thinking ?? ""}:${details.host_session_id ?? ""}:${details.cwd ?? ""}:${details.git_branch ?? ""}:${
+            details.git_dirty ?? ""
+          }:${details.launch_state ?? ""}:${details.updated_at ?? ""}`,
       ),
       ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
@@ -115,6 +124,17 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
   if (request.method === "GET" && url.pathname === "/web/events") {
     requireAuth(request, ctx);
     return openWebEvents(ctx);
+  }
+
+  if (request.method === "GET" && url.pathname === "/web/resolve") {
+    requireAuth(request, ctx);
+    const eventId = Number(url.searchParams.get("event_id"));
+    if (!Number.isInteger(eventId) || eventId < 1) {
+      throw new HttpError(400, "invalid_request", "event_id query parameter is required");
+    }
+    const peerId = url.searchParams.get("peer_id");
+    if (!peerId) throw new HttpError(400, "invalid_request", "peer_id query parameter is required");
+    return jsonResponse(resolveWebDeepLink(ctx.db, eventId, peerId));
   }
 
   if (request.method === "GET" && (url.pathname === "/web" || url.pathname === "/web/" || url.pathname.startsWith("/web/"))) {

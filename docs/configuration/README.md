@@ -39,6 +39,7 @@ make doctor                -> what is the local daemon runtime doing now?
 | --- | --- |
 | Understand config precedence, `config.toml`, and daemon settings | [runtime.md](runtime.md) |
 | Configure a remote daemon or named remote profiles | [remote-profiles.md](remote-profiles.md) |
+| Configure local or remote agent spawning | [spawn.md](spawn.md) |
 | Classify environment variables by role | [environment.md](environment.md) |
 | Use daemon `.env` files for local secrets/defaults | [daemon-env-files.md](daemon-env-files.md) |
 | Set up test or harness runtime isolation | [testing-and-harnesses.md](testing-and-harnesses.md) |
@@ -64,14 +65,44 @@ config.toml
   +-- active
   |
   +-- [remote.<name>]
-        url
-        token_env
-        token
-        health_timeout_ms
-        |
-        +-- [remote.<name>.sync]
-              ssh_host
-              paths
+  |     url
+  |     token_env
+  |     token
+  |     health_timeout_ms
+  |     ssh_host
+  |     runtime_path
+  |     expose
+  |     remote_port
+  |     install
+  |     |
+  |     +-- [remote.<name>.sync]
+  |           ssh_host
+  |           paths
+  |
+  +-- [letta.server.<name>]
+  |     remote
+  |     base_url
+  |     api_key_env
+  |     api_key
+  |
+  +-- [agent.<name>]
+  |     tool
+  |     bin
+  |     remote
+  |     server
+  |     repo
+  |     model
+  |     thinking
+  |     args
+  |     session_name
+  |     agent_id
+  |     conversation_id
+  |     poll_ms
+  |     |
+  |     +-- [agent.<name>.env]
+  |           TARGET_ENV_KEY = "literal"
+  |           TARGET_ENV_KEY = { from_env = "SOURCE_ENV_KEY" }
+  |           TARGET_ENV_KEY = { from_file = "/path/to/secret" }
 ```
 
 Current-state caveat: `[mcp].heartbeat_ms` is parsed by the runtime resolver and

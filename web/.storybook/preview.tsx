@@ -15,15 +15,12 @@ export const globalTypes = {
       title: "Theme",
       icon: "paintbrush",
       dynamicTitle: true,
-      // Canonical pair first: Light (default light) + Kanagawa Wave (default
-      // dark, see DEFAULT_DARK_THEME in usePersistentTheme). The rest are extra
-      // palettes that ride the same token contract.
+      // Canonical pair: Light + Kanagawa Wave. Kanagawa is the only supported
+      // dark palette.
       items: [
         { value: "light", title: "Light" },
         { value: "kanagawa-wave", title: "Kanagawa Wave" },
-        { value: "dark", title: "Dark" },
         { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
-        { value: "catppuccin-mocha", title: "Catppuccin Mocha" },
       ],
     },
   },
@@ -67,7 +64,11 @@ const preview: Preview = {
     // the canvas with the theme's paper token so the whole preview reflects it.
     (Story, context) => {
       const root = document.documentElement;
-      root.dataset["theme"] = context.globals["theme"] ?? "light";
+      const requestedTheme = context.globals["theme"];
+      root.dataset["theme"] =
+        requestedTheme === "kanagawa-wave" || requestedTheme === "rose-pine-dawn" || requestedTheme === "light"
+          ? requestedTheme
+          : "kanagawa-wave";
       root.dataset["skin"] = context.globals["skin"] ?? "brutal";
       document.body.style.background = "var(--paper)";
       return <Story />;

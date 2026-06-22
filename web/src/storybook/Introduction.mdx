@@ -25,7 +25,7 @@ Stories are grouped by product vocabulary, not by file layout:
 - **Surfaces** — `ChatView`, `BoardView`, `ThreadPane`, `ThreadSummaryPanel`,
   `TimelineRail`, `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
 - **Activity** — `ActivityItem`, `ActivityView`.
-- **Agent States** — `SpawnAgentDialog`, `AgentColorPicker`.
+- **Agent States** — `AgentPreview`, `SpawnAgentDialog`, `AgentColorPicker`.
 - **Flows** — composed shell journeys in `web/src/flows/*.stories.tsx`.
 
 Each component also has an auto-generated **Docs** page listing its props
@@ -35,8 +35,8 @@ opening source.
 ## Tokens, themes, and skins
 
 All visual values flow through CSS custom properties. The authoritative token
-contract — palette, the `data-theme` palettes (light, dark, rose-pine-dawn,
-kanagawa-wave, catppuccin-mocha) and the `data-skin` aesthetic layer
+contract — palette, the `data-theme` palettes (light, rose-pine-dawn,
+kanagawa-wave) and the `data-skin` aesthetic layer
 (brutal / glass) — lives in `web/DESIGN.md` and `web/src/styles.css`. Use the
 toolbar **Theme** and **Skin** controls to view any story across them.
 

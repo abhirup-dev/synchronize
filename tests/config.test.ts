@@ -33,9 +33,29 @@ health_timeout_ms = 5000
 ssh_host = "vpsme"
 paths = [".claude/skills", ".mcp.json"]
 
+[remote.vpsme]
+ssh_host = "vpsme"
+runtime_path = "~/synchronize-letta-test"
+expose = "ssh-reverse"
+remote_port = 58455
+install = false
+
 [remote.laptop]
 url = "http://100.64.0.9:58412"
 token = "literal-token"
+
+[letta.server.vps]
+remote = "vpsme"
+base_url = "http://127.0.0.1:8283"
+api_key_env = "LETTA_API_KEY"
+
+[agent.rocky]
+tool = "letta"
+server = "vps"
+session_name = "rocky"
+agent_id = "agent-814dab68-2d4d-4cac-9f29-86d987494b13"
+conversation_id = "default"
+poll_ms = 1000
 `;
 
 test("parseConfig normalizes a full config into camelCase profiles", () => {
@@ -48,6 +68,57 @@ test("parseConfig normalizes a full config into camelCase profiles", () => {
     sync: { sshHost: "vpsme", paths: [".claude/skills", ".mcp.json"] },
   });
   expect(config.remotes.laptop).toEqual({ url: "http://100.64.0.9:58412", token: "literal-token" });
+  expect(config.remotes.vpsme).toEqual({
+    sshHost: "vpsme",
+    runtimePath: "~/synchronize-letta-test",
+    expose: "ssh-reverse",
+    remotePort: 58455,
+    install: false,
+  });
+  expect(config.lettaServers?.vps).toEqual({
+    remote: "vpsme",
+    baseUrl: "http://127.0.0.1:8283",
+    apiKeyEnv: "LETTA_API_KEY",
+  });
+  expect(config.agents?.rocky).toEqual({
+    tool: "letta",
+    server: "vps",
+    sessionName: "rocky",
+    agentId: "agent-814dab68-2d4d-4cac-9f29-86d987494b13",
+    conversationId: "default",
+    pollMs: 1000,
+  });
+});
+
+test("parseConfig supports launch profile bin and env source descriptors", () => {
+  const config = parseConfig(`
+[agent.glaude]
+tool = "claude"
+bin = "/opt/bin/claude"
+repo = "/repo"
+model = "claude-haiku-4-5-20251001"
+args = ["--verbose"]
+session_name = "reviewer"
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.example.test/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
+SSL_CERT_FILE = { from_file = "/tmp/cert.pem" }
+`);
+
+  expect(config.agents?.glaude).toEqual({
+    tool: "claude",
+    bin: "/opt/bin/claude",
+    repo: "/repo",
+    model: "claude-haiku-4-5-20251001",
+    args: ["--verbose"],
+    sessionName: "reviewer",
+    env: {
+      ANTHROPIC_BASE_URL: "https://api.example.test/anthropic",
+      ANTHROPIC_AUTH_TOKEN: { fromEnv: "ZAI_API_TOKEN" },
+      SSL_CERT_FILE: { fromFile: "/tmp/cert.pem" },
+    },
+  });
 });
 
 test("parseConfig throws on malformed TOML", () => {
@@ -75,7 +146,7 @@ test("loadConfig reads and parses an on-disk file", async () => {
   await writeFile(path, FULL_TOML);
   const config = await loadConfig(path);
   expect(config.active).toBe("hub");
-  expect(Object.keys(config.remotes).sort()).toEqual(["hub", "laptop"]);
+  expect(Object.keys(config.remotes).sort()).toEqual(["hub", "laptop", "vpsme"]);
 });
 
 test("resolveConnection: explicit env vars win over the active profile", () => {

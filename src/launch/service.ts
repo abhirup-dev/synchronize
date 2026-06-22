@@ -6,9 +6,11 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CONFIG_FILE } from "../constants.ts";
 import { buildAgentCommand, buildAgentResumeCommand, buildLaunchEnv, isLaunchTool, type LaunchTool, type ResumeTarget } from "./build.ts";
 import type { LaunchSpec, SessionBackend } from "./backend.ts";
 import { transitionLaunch, type LaunchLifecycleEvent } from "./lifecycle.ts";
+import { assertValidAgentProfileName, resolveConfiguredAgentLaunchProfileFromPath, type ResolvedAgentLaunchProfile } from "./profiles.ts";
 import {
   appendLaunchEvent,
   createLaunchIntent,
@@ -25,6 +27,8 @@ import {
  */
 export interface LaunchRequest {
   tool: LaunchTool;
+  /** Optional configured [agent.NAME] profile. Only the name is persisted. */
+  profileName?: string;
   /** Group-scoped readable launch alias; backend title is derived separately. */
   name: string;
   /** Working directory for the spawned agent. Required, no magic default. */
@@ -89,13 +93,25 @@ export function validateLaunchRequest(input: unknown): LaunchRequest {
   const body = input as Record<string, unknown>;
   const tool = body.tool;
   if (typeof tool !== "string" || !isLaunchTool(tool)) {
-    throw new LaunchValidationError("launch requires tool: 'claude' | 'pi'");
+    throw new LaunchValidationError("launch requires tool: 'claude' | 'pi' | 'letta'");
   }
   const name = body.name;
   if (typeof name !== "string" || name.trim() === "") {
     throw new LaunchValidationError("launch requires a non-empty name");
   }
   const normalizedName = normalizeLaunchAlias(name);
+  let profileName: string | undefined;
+  if (body.profile_name !== undefined && body.profile_name !== null) {
+    if (typeof body.profile_name !== "string" || body.profile_name.trim() === "") {
+      throw new LaunchValidationError("launch profile_name must be a non-empty string when provided");
+    }
+    profileName = body.profile_name.trim();
+    try {
+      assertValidAgentProfileName(profileName);
+    } catch (error) {
+      throw new LaunchValidationError(error instanceof Error ? error.message : String(error));
+    }
+  }
   const repo = body.repo;
   if (typeof repo !== "string" || repo.trim() === "") {
     throw new LaunchValidationError("launch requires a non-empty repo (working directory)");
@@ -119,6 +135,7 @@ export function validateLaunchRequest(input: unknown): LaunchRequest {
   validateLaunchModel(tool, model, thinking);
   return {
     tool,
+    ...(profileName ? { profileName } : {}),
     name: normalizedName,
     repo: repo.trim(),
     ...(group ? { group } : {}),
@@ -235,6 +252,10 @@ export const PI_LAUNCH_MODELS = {
   gpt54Mini: "gpt-5.4-mini",
 } as const;
 
+export const LETTA_LAUNCH_MODELS = {
+  glm47: "zai/glm-4.7",
+} as const;
+
 export const PI_LAUNCH_THINKING_LEVELS = ["low", "medium", "high"] as const;
 export const CLAUDE_LAUNCH_THINKING_LEVELS = ["medium", "high"] as const;
 export const CLAUDE_LAUNCH_THINKING_BY_MODEL: Record<string, (typeof CLAUDE_LAUNCH_THINKING_LEVELS)[number]> = {
@@ -252,10 +273,31 @@ const DEFAULT_CLAUDE_LAUNCH_THINKING = "high";
 const DEFAULT_PI_LAUNCH_PROVIDER = "openai-codex";
 const DEFAULT_PI_LAUNCH_MODEL = PI_LAUNCH_MODELS.gpt54Mini;
 const DEFAULT_PI_LAUNCH_THINKING = "high";
+const DEFAULT_LETTA_LAUNCH_MODEL = LETTA_LAUNCH_MODELS.glm47;
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const LETTA_LAUNCH_ENV_KEYS = [
+  "HOME",
+  // Remote Letta server backend (default).
+  "LETTA_BACKEND",
+  "LETTA_BASE_URL",
+  "LETTA_AGENT_ID",
+  "LETTA_API_KEY",
+  "LETTA_SERVER_PASSWORD",
+  // Local Letta Code SDK backend.
+  "LETTA_CLI_PATH",
+  "LETTA_LOCAL_BACKEND_DIR",
+  "LETTA_LOCAL_BACKEND_EXPERIMENTAL",
+  "SYNCHRONIZE_LETTA_DELIVERY",
+  "SYNCHRONIZE_LETTA_MODEL",
+  "SYNCHRONIZE_LETTA_POLL_MS",
+  "ZAI_CODING_API_KEY",
+  "ZAI_CODING_API_KEY_FILE",
+  "ZAI_CODING_BASE_URL",
+] as const;
 
 const CLAUDE_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(CLAUDE_LAUNCH_MODELS));
 const PI_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(PI_LAUNCH_MODELS));
+const LETTA_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(LETTA_LAUNCH_MODELS));
 const CLAUDE_LAUNCH_THINKING_VALUES = new Set<string>(CLAUDE_LAUNCH_THINKING_LEVELS);
 const PI_LAUNCH_THINKING_VALUES = new Set<string>(PI_LAUNCH_THINKING_LEVELS);
 
@@ -274,6 +316,15 @@ function validateLaunchModel(tool: LaunchTool, model: string | undefined, thinki
     }
     if (thinking && !CLAUDE_LAUNCH_THINKING_VALUES.has(thinking)) {
       throw new LaunchValidationError(`unsupported claude thinking level: ${thinking}`);
+    }
+    return;
+  }
+  if (tool === "letta") {
+    if (model && !LETTA_LAUNCH_MODEL_VALUES.has(model)) {
+      throw new LaunchValidationError(`unsupported letta model: ${model}`);
+    }
+    if (thinking) {
+      throw new LaunchValidationError("letta launches do not support thinking levels");
     }
     return;
   }
@@ -312,8 +363,13 @@ function forcePiLaunchDefaults(args: string[], model: string, thinking: string):
   return ["--provider", DEFAULT_PI_LAUNCH_PROVIDER, "--model", model, "--thinking", thinking, ...filtered];
 }
 
-function withLaunchDefaults(req: LaunchRequest): string[] {
-  const args = req.args ?? [];
+function forceLettaLaunchDefaults(args: string[], model: string): string[] {
+  const filtered = stripOption(args, "--model");
+  return ["--model", model, ...filtered];
+}
+
+function withLaunchDefaults(req: LaunchRequest, profile?: ResolvedAgentLaunchProfile | null): string[] {
+  const args = [...(profile?.args ?? []), ...(req.args ?? [])];
   if (req.tool === "claude") {
     const model = req.model ?? DEFAULT_CLAUDE_LAUNCH_MODEL;
     const thinking = req.thinking ?? CLAUDE_LAUNCH_THINKING_BY_MODEL[model] ?? DEFAULT_CLAUDE_LAUNCH_THINKING;
@@ -324,7 +380,17 @@ function withLaunchDefaults(req: LaunchRequest): string[] {
     req.model ?? DEFAULT_PI_LAUNCH_MODEL,
     req.thinking ?? DEFAULT_PI_LAUNCH_THINKING,
   );
+  if (req.tool === "letta") return forceLettaLaunchDefaults(args, req.model ?? DEFAULT_LETTA_LAUNCH_MODEL);
   return args;
+}
+
+function lettaLaunchEnvFromProcess(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of LETTA_LAUNCH_ENV_KEYS) {
+    const value = env[key];
+    if (typeof value === "string" && value !== "") result[key] = value;
+  }
+  return result;
 }
 
 /**
@@ -334,7 +400,13 @@ function withLaunchDefaults(req: LaunchRequest): string[] {
 export function resolveLaunchSpec(
   req: LaunchRequest,
   ids: { launchId: string; peerId: string; home: string },
+  options: { profile?: ResolvedAgentLaunchProfile | null } = {},
 ): LaunchSpec {
+  if (options.profile && options.profile.tool !== req.tool) {
+    throw new LaunchValidationError(
+      `agent profile '${options.profile.profileName}' uses tool '${options.profile.tool}', not '${req.tool}'`,
+    );
+  }
   const title = aoeTitle({
     launchId: ids.launchId,
     peerId: ids.peerId,
@@ -342,19 +414,32 @@ export function resolveLaunchSpec(
     sessionName: req.name,
     tool: req.tool,
   });
+  const synchronizeEnv = buildLaunchEnv({
+    launchId: ids.launchId,
+    sessionName: req.name,
+    peerId: ids.peerId,
+    home: ids.home,
+  });
+  const env: Record<string, string> = {};
+  if (req.tool === "letta") Object.assign(env, lettaLaunchEnvFromProcess());
+  Object.assign(env, options.profile?.env ?? {}, synchronizeEnv);
   return {
     title,
     tool: req.tool,
     command: req.resume
-      ? buildAgentResumeCommand(req.tool, req.resume, withLaunchDefaults(req))
-      : buildAgentCommand(req.tool, withLaunchDefaults(req)),
+      ? buildAgentResumeCommand(
+        req.tool,
+        req.resume,
+        withLaunchDefaults(req, options.profile),
+        options.profile?.bin ? { bin: options.profile.bin } : {},
+      )
+      : buildAgentCommand(
+        req.tool,
+        withLaunchDefaults(req, options.profile),
+        options.profile?.bin ? { bin: options.profile.bin } : {},
+      ),
     env: {
-      ...buildLaunchEnv({
-        launchId: ids.launchId,
-        sessionName: req.name,
-        peerId: ids.peerId,
-        home: ids.home,
-      }),
+      ...env,
       // Headless Claude under AOE/tmux: disable the alternate-screen (fullscreen)
       // renderer so the dev-channel confirm prompt renders inline where the AOE
       // backend's auto-confirm (capture-pane + Enter) can see and dismiss it.
@@ -375,6 +460,10 @@ export interface LaunchServiceOptions {
   db?: Database;
   /** Durable backend metadata surfaced to attach/stop flows. */
   backendProfile?: string;
+  /** config.toml path used to resolve durable agent profile names. */
+  configPath?: string;
+  /** Environment used to resolve profile secret source descriptors. */
+  env?: NodeJS.ProcessEnv;
   /** Override Pi launch-home provisioning (tests). */
   provisionPiRuntime?: (input: { home: string; repoRoot: string; key?: string }) => Promise<Record<string, string>>;
   /** Override id minting (tests). */
@@ -394,6 +483,8 @@ export class LaunchService {
   private readonly home: string;
   private readonly db: Database | null;
   private readonly backendProfile: string | null;
+  private readonly configPath: string;
+  private readonly env: NodeJS.ProcessEnv;
   private readonly provisionPiRuntime: (input: { home: string; repoRoot: string; key?: string }) => Promise<Record<string, string>>;
   private readonly mintLaunchId: () => string;
   private readonly mintPeerId: () => string;
@@ -405,6 +496,8 @@ export class LaunchService {
     this.home = opts.home;
     this.db = opts.db ?? null;
     this.backendProfile = opts.backendProfile ?? null;
+    this.configPath = opts.configPath ?? join(this.home, CONFIG_FILE);
+    this.env = opts.env ?? process.env;
     this.provisionPiRuntime = opts.provisionPiRuntime ?? provisionPiLaunchRuntime;
     this.mintLaunchId = opts.mintLaunchId ?? (() => crypto.randomUUID());
     this.mintPeerId = opts.mintPeerId ?? (() => crypto.randomUUID());
@@ -415,13 +508,15 @@ export class LaunchService {
     const launchId = this.mintLaunchId();
     // Resume pins the archived peer_id; a fresh launch mints a new one.
     const peerId = req.peerId ?? this.mintPeerId();
-    const spec = resolveLaunchSpec(req, { launchId, peerId, home: this.home });
+    const profile = this.resolveProfile(req.profileName, req.tool);
+    const spec = resolveLaunchSpec(req, { launchId, peerId, home: this.home }, { profile });
     if (this.db) {
       const now = this.nowIso();
       const row = createLaunchIntent(this.db, {
         launchId,
         peerId,
         tool: req.tool,
+        profileName: req.profileName ?? null,
         sessionName: req.name,
         alias: req.name,
         cwd: req.repo,
@@ -442,7 +537,7 @@ export class LaunchService {
         launchId,
         kind: "launch.accepted",
         toState: row.state,
-        payload: { tool: req.tool, group: req.group ?? null, backend: "local_aoe" },
+        payload: { tool: req.tool, profile_name: req.profileName ?? null, group: req.group ?? null, backend: "local_aoe" },
         createdAt: now,
       });
       enqueueLaunchWork(this.db, {
@@ -633,9 +728,11 @@ export class LaunchService {
     const resume = row.resume_host_session_id
       ? { hostSessionId: row.resume_host_session_id, hostSessionFile: row.resume_host_session_file }
       : undefined;
+    const profile = this.resolveProfile(row.profile_name ?? undefined, row.tool);
     const spec = resolveLaunchSpec(
       {
         tool: row.tool,
+        ...(row.profile_name ? { profileName: row.profile_name } : {}),
         name: row.session_name,
         repo: row.cwd,
         ...(row.target_group ? { group: row.target_group } : {}),
@@ -645,6 +742,7 @@ export class LaunchService {
         ...(resume ? { resume } : {}),
       },
       { launchId: row.launch_id, peerId: row.peer_id, home: this.home },
+      { profile },
     );
     if (row.tool === "pi") {
       // key = peer_id → private per-launch piHome (mirrors the spawn path above);
@@ -652,6 +750,15 @@ export class LaunchService {
       Object.assign(spec.env, await this.provisionPiRuntime({ home: this.home, repoRoot: REPO_ROOT, key: row.peer_id }));
     }
     return spec;
+  }
+
+  private resolveProfile(profileName: string | undefined, expectedTool: LaunchTool): ResolvedAgentLaunchProfile | null {
+    if (!profileName) return null;
+    const profile = resolveConfiguredAgentLaunchProfileFromPath(this.configPath, profileName, this.env);
+    if (profile.tool !== expectedTool) {
+      throw new LaunchValidationError(`agent profile '${profileName}' uses tool '${profile.tool}', not '${expectedTool}'`);
+    }
+    return profile;
   }
 
   private applyTransition(row: LaunchIntentRow, event: LaunchLifecycleEvent): LaunchIntentRow {

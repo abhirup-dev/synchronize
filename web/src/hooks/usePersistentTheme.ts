@@ -4,13 +4,12 @@ import { chatBackgroundById } from "../data/chatBackgrounds.ts";
 // Theme = palette; skin = aesthetic system (border/shadow/radius language),
 // orthogonal axes. Both persist to localStorage as plain strings and are
 // applied as `data-theme` / `data-skin` on <html> so CSS owns the cascade.
-// Canonical dark theme is Kanagawa Wave (listed first so it is the dark family's
-// default/representative everywhere); plain "dark" remains a cycle option. Keep
+// Canonical dark theme is Kanagawa Wave. Keep
 // the DEFAULT_* constants the single source for "which theme does each family
 // open in" — App boot, the family toggle, and the Storybook theme matrix all read
 // them so the default can never drift per call site.
 const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-const DARK_THEMES = ["kanagawa-wave", "dark", "catppuccin-mocha"] as const;
+const DARK_THEMES = ["kanagawa-wave"] as const;
 const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 export type ThemeName = (typeof ALL_THEMES)[number];
@@ -20,6 +19,11 @@ export const DEFAULT_DARK_THEME: ThemeName = "kanagawa-wave";
 
 function isThemeName(value: string | null): value is ThemeName {
   return ALL_THEMES.includes(value as ThemeName);
+}
+
+function normalizeStoredTheme(value: string | null): ThemeName {
+  if (value === "dark" || value === "catppuccin-mocha") return DEFAULT_DARK_THEME;
+  return isThemeName(value) ? value : DEFAULT_DARK_THEME;
 }
 
 export function themeFamily(theme: ThemeName): "light" | "dark" {
@@ -79,7 +83,7 @@ export interface PersistentTheme {
 export function usePersistentTheme(): PersistentTheme {
   const [theme, setTheme] = useState<ThemeName>(() => {
     const stored = localStorage.getItem("synchronize.theme");
-    return isThemeName(stored) ? stored : DEFAULT_DARK_THEME;
+    return normalizeStoredTheme(stored);
   });
   useEffect(() => {
     document.documentElement.dataset["theme"] = theme;

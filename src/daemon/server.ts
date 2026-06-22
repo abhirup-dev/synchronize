@@ -466,8 +466,9 @@ interface WebStateResponse {
     started_at: string;
     token_required: boolean;
   };
-  launch_tools: Record<"claude" | "pi", WebLaunchToolStatus>;
+  launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
   launch_lifecycle: WebLaunchLifecycleRow[];
+  agent_runtime_details: WebAgentRuntimeDetails[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
@@ -476,6 +477,9 @@ interface WebStateResponse {
   events: WebEventRow[];
   media: MediaRow[];
   skill_catalog: SkillCatalogEntry[];
+  // Present only when hydrating around a deep-link target (around_event_id). Lets
+  // the client know whether the exact target made it into the bounded window.
+  target?: { event_id: number; included: boolean; before_count: number; after_count: number };
 }
 
 type WebLaunchLifecycleRow = Pick<
@@ -483,6 +487,7 @@ type WebLaunchLifecycleRow = Pick<
   | "launch_id"
   | "peer_id"
   | "tool"
+  | "profile_name"
   | "session_name"
   | "alias"
   | "cwd"
@@ -512,8 +517,39 @@ interface WebAoeSession {
   attach_command: string;
 }
 
+interface WebAgentRuntimeDetails {
+  peer_id: string;
+  binding_id: string | null;
+  launch_id: string | null;
+  profile_name: string | null;
+  tool: string | null;
+  session_name: string | null;
+  model: string | null;
+  thinking: string | null;
+  source: string | null;
+  agent_type: string | null;
+  host_tool: string | null;
+  host_session_id: string | null;
+  host_session_file: string | null;
+  machine_id: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
+  pid: number | null;
+  launch_state: string | null;
+  backend_title: string | null;
+  target_group: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
+}
+
+type WebAgentRuntimeDetailsRow = Omit<WebAgentRuntimeDetails, "git_dirty"> & { git_dirty: number | null };
+
 interface WebLaunchToolStatus {
-  tool: "claude" | "pi";
+  tool: "claude" | "pi" | "letta";
   available: boolean;
   path?: string;
 }
@@ -540,11 +576,13 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const since = parseCursor(url.searchParams.get("since"));
   const room = url.searchParams.get("room");
   const webPeerId = url.searchParams.get("peer_id");
+  const aroundRaw = Number(url.searchParams.get("around_event_id"));
+  const aroundEventId = Number.isInteger(aroundRaw) && aroundRaw >= 1 ? aroundRaw : null;
   const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
   const aoeProfile = aoeProfileName(ctx.paths.home);
   const launchLifecycle = ctx.db
     .query<WebLaunchLifecycleRow, []>(
-      `SELECT launch_id, peer_id, tool, session_name, alias, cwd, target_group,
+      `SELECT launch_id, peer_id, tool, profile_name, session_name, alias, cwd, target_group,
               backend_profile, backend_title, state, failure_code, failure_message,
               created_at, updated_at, accepted_at, spawned_at, prompt_seen_at,
               prompt_accepted_at, registered_at, reconciled_at, joined_at,
@@ -554,6 +592,63 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        LIMIT 200`,
     )
     .all();
+  const agentRuntimeDetails = ctx.db
+    .query<WebAgentRuntimeDetailsRow, []>(
+      `SELECT
+         p.peer_id,
+         s.binding_id,
+         COALESCE(s.launch_id, li.launch_id) AS launch_id,
+         li.profile_name,
+         COALESCE(li.tool, s.host_tool, p.tool) AS tool,
+         COALESCE(li.session_name, p.session_name) AS session_name,
+         COALESCE(s.model, li.model) AS model,
+         li.thinking,
+         s.source,
+         s.agent_type,
+         s.host_tool,
+         s.host_session_id,
+         s.host_session_file,
+         p.machine_id,
+         COALESCE(s.cwd, li.cwd) AS cwd,
+         s.git_branch,
+         s.git_dirty,
+         s.pid,
+         li.state AS launch_state,
+         li.backend_title,
+         li.target_group,
+         li.failure_code,
+         li.failure_message,
+         COALESCE(s.created_at, li.created_at) AS created_at,
+         COALESCE(s.updated_at, li.updated_at) AS updated_at,
+         s.last_seen_at
+       FROM peers p
+       LEFT JOIN agent_sessions s
+         ON s.binding_id = (
+           SELECT latest_s.binding_id
+           FROM agent_sessions latest_s
+           WHERE latest_s.peer_id = p.peer_id
+           ORDER BY latest_s.updated_at DESC, latest_s.created_at DESC
+           LIMIT 1
+         )
+       LEFT JOIN launch_intents li
+         ON li.launch_id = COALESCE(
+           s.launch_id,
+           (
+             SELECT latest_li.launch_id
+             FROM launch_intents latest_li
+             WHERE latest_li.peer_id = p.peer_id
+             ORDER BY latest_li.updated_at DESC, latest_li.created_at DESC
+             LIMIT 1
+           )
+         )
+       WHERE p.deleted_at IS NULL
+       ORDER BY p.updated_at DESC, p.session_name ASC`,
+    )
+    .all()
+    .map((row) => ({
+      ...row,
+      git_dirty: row.git_dirty === null ? null : Boolean(row.git_dirty),
+    }));
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
@@ -614,8 +709,16 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        ORDER BY last_event_id DESC, g.name ASC`,
     )
     .all();
-  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId });
+  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId, aroundEventId });
   const media = readWebRoomMedia(ctx, { room, limit });
+  const target = aroundEventId === null
+    ? undefined
+    : {
+        event_id: aroundEventId,
+        included: events.some((event) => event.event_id === aroundEventId),
+        before_count: events.filter((event) => event.event_id < aroundEventId).length,
+        after_count: events.filter((event) => event.event_id > aroundEventId).length,
+      };
   // A soft-deleted (evicted / lease-lapsed) peer can still be the author of
   // historical events. The active `peers` directory above excludes deleted peers
   // (correct for the live roster), but the web client resolves an event's sender
@@ -656,6 +759,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     },
     launch_tools: launchToolStatus(),
     launch_lifecycle: launchLifecycle,
+    agent_runtime_details: agentRuntimeDetails,
     peers: [...peers, ...extraPeers],
     groups,
     group_paths: groupPaths,
@@ -664,13 +768,15 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     events,
     media,
     skill_catalog: ctx.skillCatalog,
+    ...(target ? { target } : {}),
   };
 }
 
-function launchToolStatus(): Record<"claude" | "pi", WebLaunchToolStatus> {
+function launchToolStatus(): Record<"claude" | "pi" | "letta", WebLaunchToolStatus> {
   return {
     claude: launchToolStatusFor("claude"),
     pi: launchToolStatusFor("pi"),
+    letta: launchToolStatusFor("letta"),
   };
 }
 
@@ -770,8 +876,8 @@ function positiveEnvInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function launchToolStatusFor(tool: "claude" | "pi"): WebLaunchToolStatus {
-  const path = Bun.which(tool) ?? undefined;
+function launchToolStatusFor(tool: "claude" | "pi" | "letta"): WebLaunchToolStatus {
+  const path = Bun.which(tool === "letta" ? "bun" : tool) ?? undefined;
   return {
     tool,
     available: Boolean(path),
@@ -794,15 +900,26 @@ function webEventSelectSql(where: string): string {
           LIMIT ?`;
 }
 
+// Deep links must open to events outside the latest room window, so target
+// hydration fetches a bounded context window centred on around_event_id instead
+// of the newest slice. Conservative bounds keep an old link from loading an
+// unbounded transcript. ponytail: fixed 40/40; widen if context proves too thin.
+const DEEP_LINK_WINDOW_BEFORE = 40;
+const DEEP_LINK_WINDOW_AFTER = 40;
+
 export function readWebRoomEvents(
   ctx: DaemonContext,
-  input: { room: string | null; since: number; limit: number; webPeerId: string | null },
+  input: { room: string | null; since: number; limit: number; webPeerId: string | null; aroundEventId?: number | null },
 ): WebEventRow[] {
   if (!input.room) return [];
+  const around = input.aroundEventId ?? null;
   if (input.room.startsWith("group:")) {
     const groupId = Number.parseInt(input.room.slice("group:".length), 10);
     if (!Number.isInteger(groupId) || groupId < 1) {
       throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+    }
+    if (around !== null) {
+      return readGroupAroundWindow(ctx, groupId, around);
     }
     const rows = ctx.db
       .query<WebEventRow, [number, number, number]>(
@@ -817,20 +934,46 @@ export function readWebRoomEvents(
     const otherPeerId = input.room.slice("dm:".length);
     ensurePeer(ctx.db, input.webPeerId);
     ensurePeer(ctx.db, otherPeerId);
-    const rows = ctx.db
-      .query<WebEventRow, [string, string, string, string, number, number]>(
-        webEventSelectSql(
-          `WHERE e.type = 'dm'
+    const dmWhere = `WHERE e.type = 'dm'
              AND ((e.sender_peer_id = ? AND e.recipient_peer_id = ?)
-               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))
-             AND e.event_id > ?`,
-        ),
-      )
+               OR (e.sender_peer_id = ? AND e.recipient_peer_id = ?))`;
+    if (around !== null) {
+      const before = ctx.db
+        .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id <= ?`))
+        .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, around, DEEP_LINK_WINDOW_BEFORE + 1);
+      const after = ctx.db
+        .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id > ?`))
+        .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, around, DEEP_LINK_WINDOW_AFTER);
+      return attachReactions(ctx.db, [...after, ...before].reverse());
+    }
+    const rows = ctx.db
+      .query<WebEventRow, [string, string, string, string, number, number]>(webEventSelectSql(`${dmWhere} AND e.event_id > ?`))
       .all(input.webPeerId, otherPeerId, otherPeerId, input.webPeerId, input.since, input.limit)
       .reverse();
     return attachReactions(ctx.db, rows);
   }
   throw new HttpError(400, "invalid_request", "room must be group:<group_id> or dm:<peer_id>");
+}
+
+// Bounded window of group events centred on a target event id. When the target
+// is a thread reply whose root falls outside the window, the root is added so the
+// thread parent still renders without a second round trip.
+function readGroupAroundWindow(ctx: DaemonContext, groupId: number, around: number): WebEventRow[] {
+  const before = ctx.db
+    .query<WebEventRow, [number, number, number]>(webEventSelectSql("WHERE e.group_id = ? AND e.event_id <= ?"))
+    .all(groupId, around, DEEP_LINK_WINDOW_BEFORE + 1);
+  const after = ctx.db
+    .query<WebEventRow, [number, number, number]>(webEventSelectSql("WHERE e.group_id = ? AND e.event_id > ?"))
+    .all(groupId, around, DEEP_LINK_WINDOW_AFTER);
+  const rows = [...after, ...before].reverse();
+  const targetRow = rows.find((row) => row.event_id === around);
+  if (targetRow?.parent_event_id != null && !rows.some((row) => row.event_id === targetRow.parent_event_id)) {
+    const root = ctx.db
+      .query<WebEventRow, [number, number]>(webEventSelectSql("WHERE e.event_id = ?"))
+      .get(targetRow.parent_event_id, 1);
+    if (root) rows.unshift(root);
+  }
+  return attachReactions(ctx.db, rows);
 }
 
 function readWebRoomMedia(ctx: DaemonContext, input: { room: string | null; limit: number }): MediaRow[] {

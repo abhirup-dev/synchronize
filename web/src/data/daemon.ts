@@ -24,9 +24,27 @@ import type {
   ThreadSummary,
   TimelineEvent,
   TimelineEventType,
+  WebDeepLinkSurface,
+  WebDeepLinkTarget,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
+
+// crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
+// The daemon UI is often reached over plain HTTP on a tailnet IP, where it is
+// undefined — calling it there threw and aborted sends before any request fired.
+function randomId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  if (c && typeof c.getRandomValues === "function") {
+    const b = c.getRandomValues(new Uint8Array(16));
+    b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+    b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, "0"));
+    return `${h.slice(0, 4).join("")}-${h.slice(4, 6).join("")}-${h.slice(6, 8).join("")}-${h.slice(8, 10).join("")}-${h.slice(10, 16).join("")}`;
+  }
+  return `${Date.now().toString(16)}-${Math.floor(Math.random() * 0xffffffff).toString(16)}`;
+}
 
 export interface DaemonDataSourceOptions {
   baseUrl?: string;
@@ -145,7 +163,10 @@ interface DaemonMedia {
 interface DaemonLaunchLifecycle {
   launch_id: string;
   peer_id: string;
+  tool?: string;
+  profile_name?: string | null;
   session_name: string;
+  cwd?: string | null;
   target_group: string | null;
   backend_title: string;
   state: string;
@@ -153,19 +174,62 @@ interface DaemonLaunchLifecycle {
   failure_message: string | null;
 }
 
+interface DaemonAgentRuntimeDetails {
+  peer_id: string;
+  binding_id: string | null;
+  launch_id: string | null;
+  profile_name: string | null;
+  tool: string | null;
+  session_name: string | null;
+  model: string | null;
+  thinking: string | null;
+  source: string | null;
+  agent_type: string | null;
+  host_tool: string | null;
+  host_session_id: string | null;
+  host_session_file: string | null;
+  machine_id: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
+  pid: number | null;
+  launch_state: string | null;
+  backend_title: string | null;
+  target_group: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
+}
+
 interface DaemonSkillCatalogEntry {
   id: string;
   name: string;
   description: string;
-  runtimes: Array<"claude" | "pi">;
+  runtimes: Array<"claude" | "pi" | "letta">;
   source_path?: string;
+}
+
+interface DaemonResolveResponse {
+  target: {
+    event_id: number;
+    room_id: string;
+    surface: WebDeepLinkSurface;
+    group_id: number | null;
+    parent_event_id: number | null;
+    focus_event_id: number;
+  };
+  event: unknown;
+  root_event: unknown;
 }
 
 interface WebStateResponse {
   ok: true;
   cursor: number;
-  launch_tools?: Partial<Record<"claude" | "pi", { tool: "claude" | "pi"; available: boolean; path?: string }>>;
+  launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
   launch_lifecycle?: DaemonLaunchLifecycle[];
+  agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
   group_paths: DaemonGroupPath[];
@@ -872,6 +936,32 @@ export class DaemonDataSource implements DataSource {
     this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, color: colorForPeer(agentId) } : agent));
   }
 
+  async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
+    if (this.peerId === PENDING_WEB_PEER_ID) await this.registerWebPeer();
+    const res = await this.request<DaemonResolveResponse>(
+      `/web/resolve?event_id=${encodeURIComponent(eventId)}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    const t = res.target;
+    return {
+      roomId: t.room_id,
+      surface: t.surface,
+      focusMessageId: messageId(t.focus_event_id),
+      threadParentId: t.parent_event_id != null ? messageId(t.parent_event_id) : null,
+      linkId: String(t.event_id),
+      eventId: t.event_id,
+    };
+  }
+
+  async hydrateDeepLinkTarget(target: WebDeepLinkTarget): Promise<void> {
+    this.messages(target.roomId); // ensure the room snapshot exists
+    const state = await this.request<WebStateResponse>(
+      `/web/state?room=${encodeURIComponent(target.roomId)}&around_event_id=${target.eventId}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    // Merge the around-window into whatever is already loaded so both the latest
+    // tail and the old target stay present.
+    this.applyRoomState(target.roomId, state, { append: true });
+  }
+
   private async registerWebPeer(): Promise<void> {
     const result = await this.request<{ peer: DaemonPeer }>("/web/session", { method: "POST" });
     this.peerId = result.peer.peer_id;
@@ -880,7 +970,7 @@ export class DaemonDataSource implements DataSource {
 
   private addOptimisticMessage(input: SendMessageInput, body: string): Message {
     const message: Message = {
-      id: `optimistic:${crypto.randomUUID()}`,
+      id: `optimistic:${randomId()}`,
       roomId: input.roomId,
       authorId: this.peerId,
       body,
@@ -1291,7 +1381,13 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
     const existing = launchByPeer.get(launch.peer_id);
     if (!existing) launchByPeer.set(launch.peer_id, launch);
   }
-  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id)));
+  const runtimeDetailsByPeer = new Map<string, DaemonAgentRuntimeDetails>();
+  for (const details of state.agent_runtime_details ?? []) {
+    runtimeDetailsByPeer.set(details.peer_id, details);
+  }
+  return [...peers.values()].map((peer) =>
+    mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id), runtimeDetailsByPeer.get(peer.peer_id)),
+  );
 }
 
 // Map the daemon's derived presence onto the roster's status palette. working
@@ -1316,7 +1412,12 @@ function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
   }
 }
 
-function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifecycle): Agent {
+function mapAgent(
+  peer: DaemonPeer,
+  mePeerId: string,
+  launch?: DaemonLaunchLifecycle,
+  runtimeDetails?: DaemonAgentRuntimeDetails,
+): Agent {
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
   const launchNote = launch ? launchStatusNote(launch) : undefined;
@@ -1340,6 +1441,38 @@ function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifec
             ...(launch.target_group ? { targetGroup: launch.target_group } : {}),
             ...(launch.failure_code ? { failureCode: launch.failure_code } : {}),
             ...(launch.failure_message ? { failureMessage: launch.failure_message } : {}),
+          },
+        }
+      : {}),
+    ...(runtimeDetails
+      ? {
+          runtimeDetails: {
+            peerId: runtimeDetails.peer_id,
+            ...(runtimeDetails.binding_id ? { bindingId: runtimeDetails.binding_id } : {}),
+            ...(runtimeDetails.launch_id ? { launchId: runtimeDetails.launch_id } : {}),
+            ...(runtimeDetails.profile_name ? { profileName: runtimeDetails.profile_name } : {}),
+            ...(runtimeDetails.tool ? { tool: runtimeDetails.tool } : {}),
+            ...(runtimeDetails.session_name ? { sessionName: runtimeDetails.session_name } : {}),
+            ...(runtimeDetails.model ? { model: runtimeDetails.model } : {}),
+            ...(runtimeDetails.thinking ? { thinking: runtimeDetails.thinking } : {}),
+            ...(runtimeDetails.source ? { source: runtimeDetails.source } : {}),
+            ...(runtimeDetails.agent_type ? { agentType: runtimeDetails.agent_type } : {}),
+            ...(runtimeDetails.host_tool ? { hostTool: runtimeDetails.host_tool } : {}),
+            ...(runtimeDetails.host_session_id ? { hostSessionId: runtimeDetails.host_session_id } : {}),
+            ...(runtimeDetails.host_session_file ? { hostSessionFile: runtimeDetails.host_session_file } : {}),
+            ...(runtimeDetails.machine_id ? { machineId: runtimeDetails.machine_id } : {}),
+            ...(runtimeDetails.cwd ? { cwd: runtimeDetails.cwd } : {}),
+            ...(runtimeDetails.git_branch ? { gitBranch: runtimeDetails.git_branch } : {}),
+            ...(runtimeDetails.git_dirty !== null ? { gitDirty: runtimeDetails.git_dirty } : {}),
+            ...(runtimeDetails.pid !== null ? { pid: runtimeDetails.pid } : {}),
+            ...(runtimeDetails.launch_state ? { launchState: runtimeDetails.launch_state } : {}),
+            ...(runtimeDetails.backend_title ? { backendTitle: runtimeDetails.backend_title } : {}),
+            ...(runtimeDetails.target_group ? { targetGroup: runtimeDetails.target_group } : {}),
+            ...(runtimeDetails.failure_code ? { failureCode: runtimeDetails.failure_code } : {}),
+            ...(runtimeDetails.failure_message ? { failureMessage: runtimeDetails.failure_message } : {}),
+            ...(runtimeDetails.created_at ? { createdAt: runtimeDetails.created_at } : {}),
+            ...(runtimeDetails.updated_at ? { updatedAt: runtimeDetails.updated_at } : {}),
+            ...(runtimeDetails.last_seen_at ? { lastSeenAt: runtimeDetails.last_seen_at } : {}),
           },
         }
       : {}),
