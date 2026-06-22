@@ -89,7 +89,7 @@ export function validateLaunchRequest(input: unknown): LaunchRequest {
   const body = input as Record<string, unknown>;
   const tool = body.tool;
   if (typeof tool !== "string" || !isLaunchTool(tool)) {
-    throw new LaunchValidationError("launch requires tool: 'claude' | 'pi'");
+    throw new LaunchValidationError("launch requires tool: 'claude' | 'pi' | 'letta'");
   }
   const name = body.name;
   if (typeof name !== "string" || name.trim() === "") {
@@ -235,6 +235,10 @@ export const PI_LAUNCH_MODELS = {
   gpt54Mini: "gpt-5.4-mini",
 } as const;
 
+export const LETTA_LAUNCH_MODELS = {
+  glm47: "zai/glm-4.7",
+} as const;
+
 export const PI_LAUNCH_THINKING_LEVELS = ["low", "medium", "high"] as const;
 export const CLAUDE_LAUNCH_THINKING_LEVELS = ["medium", "high"] as const;
 export const CLAUDE_LAUNCH_THINKING_BY_MODEL: Record<string, (typeof CLAUDE_LAUNCH_THINKING_LEVELS)[number]> = {
@@ -252,10 +256,31 @@ const DEFAULT_CLAUDE_LAUNCH_THINKING = "high";
 const DEFAULT_PI_LAUNCH_PROVIDER = "openai-codex";
 const DEFAULT_PI_LAUNCH_MODEL = PI_LAUNCH_MODELS.gpt54Mini;
 const DEFAULT_PI_LAUNCH_THINKING = "high";
+const DEFAULT_LETTA_LAUNCH_MODEL = LETTA_LAUNCH_MODELS.glm47;
 const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const LETTA_LAUNCH_ENV_KEYS = [
+  "HOME",
+  // Remote Letta server backend (default).
+  "LETTA_BACKEND",
+  "LETTA_BASE_URL",
+  "LETTA_AGENT_ID",
+  "LETTA_API_KEY",
+  "LETTA_SERVER_PASSWORD",
+  // Local Letta Code SDK backend.
+  "LETTA_CLI_PATH",
+  "LETTA_LOCAL_BACKEND_DIR",
+  "LETTA_LOCAL_BACKEND_EXPERIMENTAL",
+  "SYNCHRONIZE_LETTA_DELIVERY",
+  "SYNCHRONIZE_LETTA_MODEL",
+  "SYNCHRONIZE_LETTA_POLL_MS",
+  "ZAI_CODING_API_KEY",
+  "ZAI_CODING_API_KEY_FILE",
+  "ZAI_CODING_BASE_URL",
+] as const;
 
 const CLAUDE_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(CLAUDE_LAUNCH_MODELS));
 const PI_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(PI_LAUNCH_MODELS));
+const LETTA_LAUNCH_MODEL_VALUES = new Set<string>(Object.values(LETTA_LAUNCH_MODELS));
 const CLAUDE_LAUNCH_THINKING_VALUES = new Set<string>(CLAUDE_LAUNCH_THINKING_LEVELS);
 const PI_LAUNCH_THINKING_VALUES = new Set<string>(PI_LAUNCH_THINKING_LEVELS);
 
@@ -274,6 +299,15 @@ function validateLaunchModel(tool: LaunchTool, model: string | undefined, thinki
     }
     if (thinking && !CLAUDE_LAUNCH_THINKING_VALUES.has(thinking)) {
       throw new LaunchValidationError(`unsupported claude thinking level: ${thinking}`);
+    }
+    return;
+  }
+  if (tool === "letta") {
+    if (model && !LETTA_LAUNCH_MODEL_VALUES.has(model)) {
+      throw new LaunchValidationError(`unsupported letta model: ${model}`);
+    }
+    if (thinking) {
+      throw new LaunchValidationError("letta launches do not support thinking levels");
     }
     return;
   }
@@ -312,6 +346,11 @@ function forcePiLaunchDefaults(args: string[], model: string, thinking: string):
   return ["--provider", DEFAULT_PI_LAUNCH_PROVIDER, "--model", model, "--thinking", thinking, ...filtered];
 }
 
+function forceLettaLaunchDefaults(args: string[], model: string): string[] {
+  const filtered = stripOption(args, "--model");
+  return ["--model", model, ...filtered];
+}
+
 function withLaunchDefaults(req: LaunchRequest): string[] {
   const args = req.args ?? [];
   if (req.tool === "claude") {
@@ -324,7 +363,17 @@ function withLaunchDefaults(req: LaunchRequest): string[] {
     req.model ?? DEFAULT_PI_LAUNCH_MODEL,
     req.thinking ?? DEFAULT_PI_LAUNCH_THINKING,
   );
+  if (req.tool === "letta") return forceLettaLaunchDefaults(args, req.model ?? DEFAULT_LETTA_LAUNCH_MODEL);
   return args;
+}
+
+function lettaLaunchEnvFromProcess(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of LETTA_LAUNCH_ENV_KEYS) {
+    const value = env[key];
+    if (typeof value === "string" && value !== "") result[key] = value;
+  }
+  return result;
 }
 
 /**
@@ -342,6 +391,13 @@ export function resolveLaunchSpec(
     sessionName: req.name,
     tool: req.tool,
   });
+  const env = buildLaunchEnv({
+    launchId: ids.launchId,
+    sessionName: req.name,
+    peerId: ids.peerId,
+    home: ids.home,
+  });
+  if (req.tool === "letta") Object.assign(env, lettaLaunchEnvFromProcess());
   return {
     title,
     tool: req.tool,
@@ -349,12 +405,7 @@ export function resolveLaunchSpec(
       ? buildAgentResumeCommand(req.tool, req.resume, withLaunchDefaults(req))
       : buildAgentCommand(req.tool, withLaunchDefaults(req)),
     env: {
-      ...buildLaunchEnv({
-        launchId: ids.launchId,
-        sessionName: req.name,
-        peerId: ids.peerId,
-        home: ids.home,
-      }),
+      ...env,
       // Headless Claude under AOE/tmux: disable the alternate-screen (fullscreen)
       // renderer so the dev-channel confirm prompt renders inline where the AOE
       // backend's auto-confirm (capture-pane + Enter) can see and dismiss it.

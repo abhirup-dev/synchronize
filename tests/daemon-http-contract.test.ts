@@ -262,7 +262,11 @@ function webStateShape(): Record<string, unknown> {
     room_summaries: [{ group_id: "number", last_event_id: "number", last_event_at: "string", last_preview: "string", message_count: "number" }],
     events: [],
     media: [],
-    launch_tools: { claude: { tool: "string", available: true, path: "string" }, pi: { tool: "string", available: true, path: "string" } },
+    launch_tools: {
+      claude: { tool: "string", available: true, path: "string" },
+      pi: { tool: "string", available: true, path: "string" },
+      letta: { tool: "string", available: true, path: "string" },
+    },
     launch_lifecycle: [],
     skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
   };

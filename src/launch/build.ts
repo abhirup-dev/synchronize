@@ -1,9 +1,11 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../constants.ts";
 
-export type LaunchTool = "claude" | "pi";
+export type LaunchTool = "claude" | "pi" | "letta";
 
 export function isLaunchTool(value: string): value is LaunchTool {
-  return value === "claude" || value === "pi";
+  return value === "claude" || value === "pi" || value === "letta";
 }
 
 export const LAUNCH_ENV_UNSET_KEYS = [
@@ -11,6 +13,7 @@ export const LAUNCH_ENV_UNSET_KEYS = [
   "SSL_CERT_DIR",
   "GRPC_DEFAULT_SSL_ROOTS_FILE_PATH",
 ] as const;
+const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /**
  * Build the bare agent command (binary + args) for a launch target.
@@ -40,6 +43,9 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
     }
     return ["claude", ...args];
   }
+  if (tool === "letta") {
+    return ["bun", "run", join(REPO_ROOT, "extensions/letta-synchronize/src/index.ts"), ...rest];
+  }
   return ["pi", ...rest];
 }
 
@@ -68,8 +74,11 @@ export function buildAgentResumeCommand(tool: LaunchTool, target: ResumeTarget, 
   if (tool === "claude") {
     return ["claude", "--resume", target.hostSessionId, ...base.slice(1)];
   }
-  const session = target.hostSessionFile ?? target.hostSessionId;
-  return ["pi", "--session", session, ...base.slice(1)];
+  if (tool === "pi") {
+    const session = target.hostSessionFile ?? target.hostSessionId;
+    return ["pi", "--session", session, ...base.slice(1)];
+  }
+  throw new Error("letta launches do not support faithful resume yet");
 }
 
 export interface LaunchEnvInput {

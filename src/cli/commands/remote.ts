@@ -12,7 +12,15 @@ import {
   type SynchronizeConfig,
 } from "../../config.ts";
 import { getRuntimePaths } from "../../paths.ts";
-import { ALL_HARNESS_SCENARIOS, buildHarnessPlan, buildProvisionPlan, buildSyncPlan, type RemoteStep } from "../../remote/plan.ts";
+import {
+  ALL_HARNESS_SCENARIOS,
+  buildHarnessPlan,
+  buildLettaChannelPlan,
+  buildProvisionPlan,
+  buildReverseTunnelPlan,
+  buildSyncPlan,
+  type RemoteStep,
+} from "../../remote/plan.ts";
 import { evaluateDoctor, renderDoctor, renderStatusReport, type DoctorInput } from "../../remote/status.ts";
 import { ensureDaemon } from "../../client.ts";
 import { getStatus } from "../../api/status.ts";
@@ -36,6 +44,11 @@ const USAGE = `synchronize remote <subcommand>
   sync <ssh-host> --hub-url <url> [--path <remote-dir>] [--token <t> | --token-env <ENV>]
              [--daemon-bind <ip>] [--lease-ms <n>] [--peer-retention-ms <n>] [--sweep-interval-ms <n>]
              [--skip-install] [--dry-run]   rsync runtime + write remote config + verify
+  connect <ssh-host> [--path <remote-dir>] [--remote-port <n>] [--expose ssh-reverse]
+             [--letta-agent <chatId>:<sessionName>:<agentId>[:conversationId]]
+             [--letta-base-url <url>] [--letta-api-key <key>] [--poll-ms <n>]
+             [--restart-channel] [--skip-install] [--skip-provision] [--dry-run]
+             start a reverse tunnel, sync runtime, optionally provision/ensure Letta channel
   harness <ssh-host> --hub-url <url> [--scenario <name> | --all] [--token <t>]
              [--path <remote-dir>] [--dry-run] [-- <extra scenario args>]
              run the Python AOE harness on the remote against the hub
@@ -68,6 +81,9 @@ export async function run(argv: string[]): Promise<void> {
       return;
     case "sync":
       await syncRemote(rest);
+      return;
+    case "connect":
+      await connectRemote(rest);
       return;
     case "harness":
       await harnessRemote(rest);
@@ -195,6 +211,60 @@ async function syncRemote(argv: string[]): Promise<void> {
     ...(positiveFlag(flags, "sweep-interval-ms")),
     skipInstall: flags.bools.has("skip-install"),
   });
+  await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
+}
+
+async function connectRemote(argv: string[]): Promise<void> {
+  const flags = parseFlags(argv);
+  const target = flags.positional[0];
+  if (!target) fail("remote connect requires an <ssh-host-or-profile>");
+  const { config } = await readConfig();
+  const profile = resolveProfile(config, target);
+  const sshHost = flags.opts["ssh-host"] ?? profile?.sshHost ?? profile?.sync?.sshHost ?? target;
+  const expose = flags.opts.expose ?? profile?.expose ?? "ssh-reverse";
+  if (expose !== "ssh-reverse") fail("--expose currently supports only ssh-reverse");
+  const remotePath = flags.opts.path ?? profile?.runtimePath ?? "~/synchronize-runtime";
+  const remotePort = positiveNumberFlag(flags, "remote-port") ?? profile?.remotePort;
+  const pollMs = positiveNumberFlag(flags, "poll-ms");
+
+  const client = await ensureDaemon();
+  const status = await getStatus(client);
+  if (status.token_required) {
+    fail(
+      "remote connect --expose ssh-reverse expects the local daemon to be un-tokenized; restart it normally so local CLI stays bearer-free",
+    );
+  }
+  const localUrl = `http://127.0.0.1:${status.port}`;
+  const hubPort = remotePort ?? status.port;
+  const hubUrl = `http://127.0.0.1:${hubPort}`;
+
+  const plan: RemoteStep[] = [
+    ...(flags.bools.has("skip-provision") ? [] : buildProvisionPlan({ sshHost })),
+    ...buildReverseTunnelPlan({ sshHost, localUrl, remotePort: hubPort }),
+    ...buildSyncPlan({
+      sshHost,
+      remotePath,
+      localRoot: flags.opts["local-root"] ?? resolve(import.meta.dir, "../../.."),
+      hubUrl,
+      skipInstall: flags.bools.has("skip-install") || profile?.install === false,
+    }),
+  ];
+
+  if (flags.opts["letta-agent"]) {
+    plan.push(
+      ...buildLettaChannelPlan({
+        sshHost,
+        remotePath,
+        hubUrl,
+        agent: flags.opts["letta-agent"],
+        lettaBaseUrl: flags.opts["letta-base-url"] ?? "http://127.0.0.1:8283",
+        lettaApiKey: flags.opts["letta-api-key"] ?? "dummy",
+        ...(pollMs ? { pollMs } : {}),
+        restartChannel: flags.bools.has("restart-channel"),
+      }),
+    );
+  }
+
   await runPlan(plan, { dryRun: flags.bools.has("dry-run") });
 }
 
@@ -367,6 +437,14 @@ function positiveFlag(flags: Flags, key: "lease-ms" | "peer-retention-ms" | "swe
   if (!Number.isFinite(n) || n <= 0) fail(`--${key} must be a positive number`);
   const prop = key === "lease-ms" ? "leaseMs" : key === "peer-retention-ms" ? "peerRetentionMs" : "sweepIntervalMs";
   return { [prop]: Math.trunc(n) };
+}
+
+function positiveNumberFlag(flags: Flags, key: string): number | undefined {
+  const raw = flags.opts[key];
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) fail(`--${key} must be a positive number`);
+  return Math.trunc(n);
 }
 
 function fail(message: string): never {

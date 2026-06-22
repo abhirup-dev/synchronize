@@ -603,7 +603,8 @@ health_timeout_ms = 5000
 
 See [docs/configuration/](docs/configuration/README.md) for the full config and
 environment reference. It is split by use case: runtime daemon settings, remote
-profiles, environment variables, daemon env files, and test harnesses.
+profiles, spawn configuration, environment variables, daemon env files, and test
+harnesses.
 
 Use a separate runtime home for manual tests:
 
