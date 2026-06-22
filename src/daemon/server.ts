@@ -468,6 +468,7 @@ interface WebStateResponse {
   };
   launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
   launch_lifecycle: WebLaunchLifecycleRow[];
+  agent_runtime_details: WebAgentRuntimeDetails[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
@@ -516,6 +517,37 @@ interface WebAoeSession {
   attach_command: string;
 }
 
+interface WebAgentRuntimeDetails {
+  peer_id: string;
+  binding_id: string | null;
+  launch_id: string | null;
+  profile_name: string | null;
+  tool: string | null;
+  session_name: string | null;
+  model: string | null;
+  thinking: string | null;
+  source: string | null;
+  agent_type: string | null;
+  host_tool: string | null;
+  host_session_id: string | null;
+  host_session_file: string | null;
+  machine_id: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
+  pid: number | null;
+  launch_state: string | null;
+  backend_title: string | null;
+  target_group: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
+}
+
+type WebAgentRuntimeDetailsRow = Omit<WebAgentRuntimeDetails, "git_dirty"> & { git_dirty: number | null };
+
 interface WebLaunchToolStatus {
   tool: "claude" | "pi" | "letta";
   available: boolean;
@@ -560,6 +592,63 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        LIMIT 200`,
     )
     .all();
+  const agentRuntimeDetails = ctx.db
+    .query<WebAgentRuntimeDetailsRow, []>(
+      `SELECT
+         p.peer_id,
+         s.binding_id,
+         COALESCE(s.launch_id, li.launch_id) AS launch_id,
+         li.profile_name,
+         COALESCE(li.tool, s.host_tool, p.tool) AS tool,
+         COALESCE(li.session_name, p.session_name) AS session_name,
+         COALESCE(s.model, li.model) AS model,
+         li.thinking,
+         s.source,
+         s.agent_type,
+         s.host_tool,
+         s.host_session_id,
+         s.host_session_file,
+         p.machine_id,
+         COALESCE(s.cwd, li.cwd) AS cwd,
+         s.git_branch,
+         s.git_dirty,
+         s.pid,
+         li.state AS launch_state,
+         li.backend_title,
+         li.target_group,
+         li.failure_code,
+         li.failure_message,
+         COALESCE(s.created_at, li.created_at) AS created_at,
+         COALESCE(s.updated_at, li.updated_at) AS updated_at,
+         s.last_seen_at
+       FROM peers p
+       LEFT JOIN agent_sessions s
+         ON s.binding_id = (
+           SELECT latest_s.binding_id
+           FROM agent_sessions latest_s
+           WHERE latest_s.peer_id = p.peer_id
+           ORDER BY latest_s.updated_at DESC, latest_s.created_at DESC
+           LIMIT 1
+         )
+       LEFT JOIN launch_intents li
+         ON li.launch_id = COALESCE(
+           s.launch_id,
+           (
+             SELECT latest_li.launch_id
+             FROM launch_intents latest_li
+             WHERE latest_li.peer_id = p.peer_id
+             ORDER BY latest_li.updated_at DESC, latest_li.created_at DESC
+             LIMIT 1
+           )
+         )
+       WHERE p.deleted_at IS NULL
+       ORDER BY p.updated_at DESC, p.session_name ASC`,
+    )
+    .all()
+    .map((row) => ({
+      ...row,
+      git_dirty: row.git_dirty === null ? null : Boolean(row.git_dirty),
+    }));
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
@@ -670,6 +759,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
     },
     launch_tools: launchToolStatus(),
     launch_lifecycle: launchLifecycle,
+    agent_runtime_details: agentRuntimeDetails,
     peers: [...peers, ...extraPeers],
     groups,
     group_paths: groupPaths,

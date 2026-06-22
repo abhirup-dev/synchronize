@@ -163,12 +163,44 @@ interface DaemonMedia {
 interface DaemonLaunchLifecycle {
   launch_id: string;
   peer_id: string;
+  tool?: string;
+  profile_name?: string | null;
   session_name: string;
+  cwd?: string | null;
   target_group: string | null;
   backend_title: string;
   state: string;
   failure_code: string | null;
   failure_message: string | null;
+}
+
+interface DaemonAgentRuntimeDetails {
+  peer_id: string;
+  binding_id: string | null;
+  launch_id: string | null;
+  profile_name: string | null;
+  tool: string | null;
+  session_name: string | null;
+  model: string | null;
+  thinking: string | null;
+  source: string | null;
+  agent_type: string | null;
+  host_tool: string | null;
+  host_session_id: string | null;
+  host_session_file: string | null;
+  machine_id: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
+  pid: number | null;
+  launch_state: string | null;
+  backend_title: string | null;
+  target_group: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
 }
 
 interface DaemonSkillCatalogEntry {
@@ -197,6 +229,7 @@ interface WebStateResponse {
   cursor: number;
   launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
   launch_lifecycle?: DaemonLaunchLifecycle[];
+  agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
   group_paths: DaemonGroupPath[];
@@ -1348,7 +1381,13 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
     const existing = launchByPeer.get(launch.peer_id);
     if (!existing) launchByPeer.set(launch.peer_id, launch);
   }
-  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id)));
+  const runtimeDetailsByPeer = new Map<string, DaemonAgentRuntimeDetails>();
+  for (const details of state.agent_runtime_details ?? []) {
+    runtimeDetailsByPeer.set(details.peer_id, details);
+  }
+  return [...peers.values()].map((peer) =>
+    mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id), runtimeDetailsByPeer.get(peer.peer_id)),
+  );
 }
 
 // Map the daemon's derived presence onto the roster's status palette. working
@@ -1373,7 +1412,12 @@ function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
   }
 }
 
-function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifecycle): Agent {
+function mapAgent(
+  peer: DaemonPeer,
+  mePeerId: string,
+  launch?: DaemonLaunchLifecycle,
+  runtimeDetails?: DaemonAgentRuntimeDetails,
+): Agent {
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
   const launchNote = launch ? launchStatusNote(launch) : undefined;
@@ -1397,6 +1441,38 @@ function mapAgent(peer: DaemonPeer, mePeerId: string, launch?: DaemonLaunchLifec
             ...(launch.target_group ? { targetGroup: launch.target_group } : {}),
             ...(launch.failure_code ? { failureCode: launch.failure_code } : {}),
             ...(launch.failure_message ? { failureMessage: launch.failure_message } : {}),
+          },
+        }
+      : {}),
+    ...(runtimeDetails
+      ? {
+          runtimeDetails: {
+            peerId: runtimeDetails.peer_id,
+            ...(runtimeDetails.binding_id ? { bindingId: runtimeDetails.binding_id } : {}),
+            ...(runtimeDetails.launch_id ? { launchId: runtimeDetails.launch_id } : {}),
+            ...(runtimeDetails.profile_name ? { profileName: runtimeDetails.profile_name } : {}),
+            ...(runtimeDetails.tool ? { tool: runtimeDetails.tool } : {}),
+            ...(runtimeDetails.session_name ? { sessionName: runtimeDetails.session_name } : {}),
+            ...(runtimeDetails.model ? { model: runtimeDetails.model } : {}),
+            ...(runtimeDetails.thinking ? { thinking: runtimeDetails.thinking } : {}),
+            ...(runtimeDetails.source ? { source: runtimeDetails.source } : {}),
+            ...(runtimeDetails.agent_type ? { agentType: runtimeDetails.agent_type } : {}),
+            ...(runtimeDetails.host_tool ? { hostTool: runtimeDetails.host_tool } : {}),
+            ...(runtimeDetails.host_session_id ? { hostSessionId: runtimeDetails.host_session_id } : {}),
+            ...(runtimeDetails.host_session_file ? { hostSessionFile: runtimeDetails.host_session_file } : {}),
+            ...(runtimeDetails.machine_id ? { machineId: runtimeDetails.machine_id } : {}),
+            ...(runtimeDetails.cwd ? { cwd: runtimeDetails.cwd } : {}),
+            ...(runtimeDetails.git_branch ? { gitBranch: runtimeDetails.git_branch } : {}),
+            ...(runtimeDetails.git_dirty !== null ? { gitDirty: runtimeDetails.git_dirty } : {}),
+            ...(runtimeDetails.pid !== null ? { pid: runtimeDetails.pid } : {}),
+            ...(runtimeDetails.launch_state ? { launchState: runtimeDetails.launch_state } : {}),
+            ...(runtimeDetails.backend_title ? { backendTitle: runtimeDetails.backend_title } : {}),
+            ...(runtimeDetails.target_group ? { targetGroup: runtimeDetails.target_group } : {}),
+            ...(runtimeDetails.failure_code ? { failureCode: runtimeDetails.failure_code } : {}),
+            ...(runtimeDetails.failure_message ? { failureMessage: runtimeDetails.failure_message } : {}),
+            ...(runtimeDetails.created_at ? { createdAt: runtimeDetails.created_at } : {}),
+            ...(runtimeDetails.updated_at ? { updatedAt: runtimeDetails.updated_at } : {}),
+            ...(runtimeDetails.last_seen_at ? { lastSeenAt: runtimeDetails.last_seen_at } : {}),
           },
         }
       : {}),

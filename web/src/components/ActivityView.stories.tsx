@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { userEvent, waitFor } from "storybook/test";
+import { expect, fireEvent, screen, userEvent, waitFor } from "storybook/test";
 import { ActivityView } from "./ActivityView.tsx";
+import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
 
 // Provider-backed shell: ActivityView pulls the cross-room feed, agents, and
 // rooms through hooks (useActivity / useAgents / useRooms / ...) off the
@@ -42,6 +43,35 @@ export const WideThreadPane: Story = {
     // meaningful check (visibility/position varies with the test window size).
     await waitFor(() => {
       if (!document.querySelector(".thread-pane")) throw new Error("thread pane did not open");
+    });
+  },
+};
+
+export const ViewProfileFlow: Story = {
+  decorators: [
+    (Story) => (
+      <RuntimeDetailsProvider>
+        <Story />
+      </RuntimeDetailsProvider>
+    ),
+  ],
+  play: async ({ canvasElement, step }) => {
+    await step("Open the activity context menu for Atlas", async () => {
+      const atlasRow = await waitFor(() => {
+        const match = [...canvasElement.querySelectorAll<HTMLElement>(".act-row")].find((el) =>
+          /want me to try a darker variant/i.test(el.textContent ?? ""),
+        );
+        if (!match) throw new Error("Atlas activity row not found");
+        return match;
+      });
+      await fireEvent.contextMenu(atlasRow);
+      await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+    });
+
+    await step("Select View profile from Activity", async () => {
+      await userEvent.click(screen.getByText("View profile"));
+      await waitFor(() => expect(screen.getByText("Atlas profile")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy());
     });
   },
 };

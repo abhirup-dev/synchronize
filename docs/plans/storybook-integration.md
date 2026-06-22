@@ -25,7 +25,7 @@ as-built record and supersedes the original phase plan where they differ.
   `Overview/Authoring Stories` (DataSource contract, provider rules, conventions).
   Web fonts loaded via `.storybook/preview-head.html` for type fidelity.
 - **Theme/skin + responsive matrix (sync-i24s.4).** Toolbar globals for Theme
-  (light, rose-pine-dawn, dark, kanagawa-wave, catppuccin-mocha) and Skin
+  (light, rose-pine-dawn, kanagawa-wave) and Skin
   (brutal, glass), mapped onto `documentElement.dataset.theme/.skin`. Viewport
   presets incl. Android-class 390/412. `Layouts/Chat Surface` stories verified
   no horizontal overflow at mobile widths.
@@ -377,8 +377,7 @@ Android-class responsive work.
 Implementation:
 
 - Add Storybook toolbar globals:
-  - `theme`: `light`, `rose-pine-dawn`, `dark`, `kanagawa-wave`,
-    `catppuccin-mocha`
+  - `theme`: `light`, `rose-pine-dawn`, `kanagawa-wave`
   - `skin`: `brutal`, `glass`
   - `density` or `scenario` only if needed after the first story batch
 - In the preview decorator, map globals onto:

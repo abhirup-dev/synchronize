@@ -8,6 +8,7 @@ import { memo } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
 import { IdentityBadge, StatusDot } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
+import { canShowAgentPreview } from "./AgentPreview.tsx";
 
 export interface ActivityItemProps {
   item: ActivityItemModel;
@@ -18,6 +19,7 @@ export interface ActivityItemProps {
   onReact(item: ActivityItemModel): void;
   onOpenThread(item: ActivityItemModel): void;
   onJumpToRoom(roomId: string, msgId?: string): void;
+  onViewProfile?(agent: Agent): void;
 }
 
 function MarkerIcon({ item }: { item: ActivityItemModel }) {
@@ -84,10 +86,12 @@ function ActivityItemImpl({
   onReact,
   onOpenThread,
   onJumpToRoom,
+  onViewProfile,
 }: ActivityItemProps) {
   const openMenu = useContextMenu();
   if (!actor) return null;
   const awaits = item.awaiting;
+  const canViewProfile = Boolean(onViewProfile && canShowAgentPreview(actor));
 
   const onRowClick = () => {
     onOpenThread(item);
@@ -105,6 +109,15 @@ function ActivityItemImpl({
           { label: "Open thread here", onSelect: () => onOpenThread(item) },
           { label: reacted ? "Remove reaction" : "React 👍", onSelect: () => onReact(item) },
           { divider: true as const },
+          ...(canViewProfile
+            ? [
+                {
+                  label: "View profile",
+                  onSelect: () => onViewProfile?.(actor),
+                },
+                { divider: true as const },
+              ]
+            : []),
           { label: `Focus on ${actor.name}`, onSelect: () => onJumpToRoom(item.roomId, item.msgId) },
         ])
       }

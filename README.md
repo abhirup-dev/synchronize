@@ -82,15 +82,18 @@ bun run src/cli.ts --help
 For day-to-day terminal use, link the package after `make setup`:
 
 ```bash
-make link
+make install-cli
 synchronize --help
 ```
 
-`make link` installs two local commands through Bun:
+`make install-cli` links the local package through Bun, verifies the commands are
+on `PATH`, and refreshes the installed Carapace completion spec. It installs two
+local commands:
 
 - `synchronize` - the human/operator CLI
 - `synchronize-mcp` - the stdio MCP server used by Codex or Claude
 
+`make link` is kept as a lower-level alias for the same local CLI install flow.
 Run `synchronize status` once to start or connect to the local daemon. Runtime
 state is stored under `~/.synchronize` by default.
 
@@ -110,7 +113,8 @@ echo 'source <(carapace _carapace zsh)' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-Then install the generated `synchronize` completion spec:
+`make install-cli` and the agent install targets refresh the generated
+`synchronize` completion spec automatically. To refresh only completions:
 
 ```bash
 synchronize completion install --shell carapace
@@ -300,9 +304,10 @@ make install-all         # all three
 make uninstall-{claude,codex,pi,all}
 ```
 
-All targets depend on `make link` (`bun install && bun link` so
-`synchronize-mcp` is on `PATH`). `SYNCHRONIZE_MCP_MODE` selects the
-notification dialect: `codex` (standard `notifications/message`) or `claude`
+All targets depend on `make link`, which runs `bun install`, `bun link`, and
+refreshes the Carapace completion spec so the installed CLI and shell completion
+surface stay in sync. `SYNCHRONIZE_MCP_MODE` selects the notification dialect:
+`codex` (standard `notifications/message`) or `claude`
 (`notifications/claude/channel`).
 
 ### Under the hood

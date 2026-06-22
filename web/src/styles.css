@@ -23,10 +23,7 @@ body {
   background-size: 18px 18px;
   transition: background-color 200ms ease, color 200ms ease;
 }
-
-:root[data-theme="dark"] body,
-:root[data-theme="kanagawa-wave"] body,
-:root[data-theme="catppuccin-mocha"] body {
+:root[data-theme="kanagawa-wave"] body{
   background-image:
     radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
   /* Bump body weight slightly to combat halation on thin glyphs over deep
@@ -159,10 +156,8 @@ button { font-family: inherit; cursor: pointer; }
 /* .sidebar, .brand, .brand-mark base, .brand-text/-name/-sub, .searchbox(+input/
    placeholder/focus), .search-key, .section-head migrated to Tailwind utilities
    in Sidebar.tsx. Skin hooks (.sidebar, .brand-mark, .section-head) keep their
-   className; only the [data-theme] .brand-mark override remains below. */
-:root[data-theme="dark"] .brand-mark,
-:root[data-theme="kanagawa-wave"] .brand-mark,
-:root[data-theme="catppuccin-mocha"] .brand-mark {
+   className;
+:root[data-theme="kanagawa-wave"] .brand-mark{
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);
@@ -228,24 +223,17 @@ button { font-family: inherit; cursor: pointer; }
 }
 .room-item.active .room-preview { color: var(--on-ink); opacity: 0.65; }
 .room-item.active .room-name { color: var(--on-ink); }
-
-:root[data-theme="dark"] .room-item.active,
-:root[data-theme="kanagawa-wave"] .room-item.active,
-:root[data-theme="catppuccin-mocha"] .room-item.active {
+:root[data-theme="kanagawa-wave"] .room-item.active{
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
 }
-:root[data-theme="dark"] .room-item.active .room-preview,
-:root[data-theme="kanagawa-wave"] .room-item.active .room-preview,
-:root[data-theme="catppuccin-mocha"] .room-item.active .room-preview {
+:root[data-theme="kanagawa-wave"] .room-item.active .room-preview{
   color: var(--ink-soft);
   opacity: 1;
 }
-:root[data-theme="dark"] .room-item.active .room-name,
-:root[data-theme="kanagawa-wave"] .room-item.active .room-name,
-:root[data-theme="catppuccin-mocha"] .room-item.active .room-name {
+:root[data-theme="kanagawa-wave"] .room-item.active .room-name{
   color: var(--ink);
 }
 
@@ -262,10 +250,7 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--identity-shadow, var(--shadow-chip));
   position: relative;
 }
-
-:root[data-theme="dark"] .identity-icon,
-:root[data-theme="kanagawa-wave"] .identity-icon,
-:root[data-theme="catppuccin-mocha"] .identity-icon {
+:root[data-theme="kanagawa-wave"] .identity-icon{
   --identity-shadow: 0 0 0 1px rgba(17, 17, 17, 0.58), var(--shadow-chip);
 }
 
@@ -867,52 +852,21 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .reaction.add {
   color: var(--ink);
 }
-:root[data-theme="dark"] .reaction,
-:root[data-theme="catppuccin-mocha"] .reaction {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.72);
-}
-:root[data-theme="dark"] .reaction.is-mine,
-:root[data-theme="catppuccin-mocha"] .reaction.is-mine {
-  background: var(--paper-2);
-  border-color: color-mix(in srgb, var(--yellow) 45%, var(--rule));
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.72);
-}
-:root[data-theme="dark"] .reaction .rcount,
-:root[data-theme="dark"] .reaction.add,
-:root[data-theme="catppuccin-mocha"] .reaction .rcount,
-:root[data-theme="catppuccin-mocha"] .reaction.add {
-  color: var(--ink);
-}
-/* Base .reaction-picker / .reaction-popover (+ .is-floating) / .reaction-choice
-   (+ :hover) / .reaction-popover-head / .reaction-person migrated to inline
-   Tailwind utilities in MessageRow.tsx (sync-q48d). Per-theme dark overrides
-   below are retained — they out-specify the single-class utilities. */
-:root[data-theme="dark"] .reaction-picker,
-:root[data-theme="dark"] .reaction-popover,
 :root[data-theme="kanagawa-wave"] .reaction-picker,
-:root[data-theme="kanagawa-wave"] .reaction-popover,
-:root[data-theme="catppuccin-mocha"] .reaction-picker,
-:root[data-theme="catppuccin-mocha"] .reaction-popover {
+:root[data-theme="kanagawa-wave"] .reaction-popover{
   background: var(--paper);
   color: var(--ink);
   border-color: var(--rule);
   border-radius: var(--radius-lg);
   box-shadow: 4px 4px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
 }
-:root[data-theme="dark"] .reaction-choice,
-:root[data-theme="kanagawa-wave"] .reaction-choice,
-:root[data-theme="catppuccin-mocha"] .reaction-choice {
+:root[data-theme="kanagawa-wave"] .reaction-choice{
   background: var(--paper);
   color: var(--ink);
   border-color: var(--rule);
   box-shadow: none;
 }
-:root[data-theme="dark"] .reaction-choice:hover,
-:root[data-theme="kanagawa-wave"] .reaction-choice:hover,
-:root[data-theme="catppuccin-mocha"] .reaction-choice:hover {
+:root[data-theme="kanagawa-wave"] .reaction-choice:hover{
   background: var(--paper-3);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
 }

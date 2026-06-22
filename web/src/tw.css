@@ -2,7 +2,7 @@
  * stylesheets still own the base look; revisit once the migration completes).
  *
  * All theme values are *references* to the existing token contract in
- * styles.css (`:root` / `:root[data-theme="dark"]`), so utilities like
+ * styles.css (`:root` / `:root[data-theme="..."]`), so utilities like
  * `bg-paper` or `shadow-md` track the live theme and any future
  * `data-skin` automatically. `@theme inline` makes utilities inline the
  * var() reference instead of pointing at Tailwind's own emitted variable;
@@ -13,13 +13,9 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* Dark-palette themes (legacy CSS targeted these three `data-theme` values
- * together). Use `theme-dark:` for any utility that must override per dark
- * palette, mirroring the old `:root[data-theme=...]` selector lists. */
+/* Kanagawa is the only supported dark palette. Use `theme-dark:` for utilities that must override only in Kanagawa. */
 @custom-variant theme-dark (&:where(
-  [data-theme="dark"] *,
-  [data-theme="kanagawa-wave"] *,
-  [data-theme="catppuccin-mocha"] *
+  [data-theme="kanagawa-wave"] *
 ));
 
 @theme inline {

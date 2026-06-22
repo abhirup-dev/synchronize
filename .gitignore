@@ -35,3 +35,6 @@ work/
 # Python bytecode from the integration-aoe harness
 __pycache__/
 *.pyc
+
+# Local secrets — NEVER commit (GCP service-account keys for ad-hoc tooling like Gemini vision)
+.secrets/

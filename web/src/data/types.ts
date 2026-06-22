@@ -8,6 +8,35 @@ export type AgentLifecycleState = "active" | "archived";
 export type MemberState = "active" | "archived" | "left";
 export type RoomArchiveState = "active" | "mixed" | "archived";
 
+export interface AgentRuntimeDetails {
+  peerId: string;
+  bindingId?: string;
+  launchId?: string;
+  profileName?: string;
+  tool?: string;
+  sessionName?: string;
+  model?: string;
+  thinking?: string;
+  source?: string;
+  agentType?: string;
+  hostTool?: string;
+  hostSessionId?: string;
+  hostSessionFile?: string;
+  machineId?: string;
+  cwd?: string;
+  gitBranch?: string;
+  gitDirty?: boolean;
+  pid?: number;
+  launchState?: string;
+  backendTitle?: string;
+  targetGroup?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -32,6 +61,7 @@ export interface Agent {
     title: string;
     attachCommand: string;
   };
+  runtimeDetails?: AgentRuntimeDetails;
   avatar: string; // single uppercase letter
 }
 

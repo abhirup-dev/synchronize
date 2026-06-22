@@ -133,7 +133,7 @@ synchronize/
 - **Auth/CORS.** Non-localhost bind requires `SYNCHRONIZE_TOKEN`. Daemon must answer preflight `OPTIONS` and echo CORS headers (incl. `Authorization`) on `/web/*`, REST, and SSE. Decide whether `/web/*` static stays unauthenticated (browser path) while data routes require the token — recommend token on all non-localhost data routes.
 - **TLS / cleartext.** Prefer `tailscale serve` HTTPS. Fallback: `network_security_config.xml` allowing cleartext to the tailnet host only (never global).
 - **SSE on mobile.** Stays open while foregrounded; Android suspends it in the background → rely on push + durable-inbox catch-up on resume. Reconnect with backoff on network changes.
-- **Theming.** Reuse the existing `data-theme` palettes (light · dark · rose-pine-dawn · kanagawa-wave · catppuccin-mocha). Follow OS dark mode by default; tint Android status/nav bars to match. Per the standing UI directive, verify every visual change in both light and dark.
+- **Theming.** Reuse the existing `data-theme` palettes (light · rose-pine-dawn · kanagawa-wave). Follow OS dark mode by default; tint Android status/nav bars to match. Per the standing UI directive, verify every visual change in both light and Kanagawa dark.
 - **Performance.** Reuse `@tanstack/react-virtual` for message lists; tune keyboard-resize + momentum/overscroll to avoid WebView jank (primary "seamless" risk).
 - **Offline.** Bundled shell loads offline; data shows a clear "disconnected, retrying" state. No local message queue in v1 (sends require the daemon).
 - **Security.** Token in secure storage, never logged, redacted in any diagnostics. QR pairing payload is versioned. Release APK signed with a managed keystore.

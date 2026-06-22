@@ -42,6 +42,14 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
             launch.failure_code ?? ""
           }:${launch.updated_at}`,
       ),
+      ...state.agent_runtime_details.map(
+        (details) =>
+          `${details.peer_id}:${details.binding_id ?? ""}:${details.launch_id ?? ""}:${details.profile_name ?? ""}:${
+            details.model ?? ""
+          }:${details.thinking ?? ""}:${details.host_session_id ?? ""}:${details.cwd ?? ""}:${details.git_branch ?? ""}:${
+            details.git_dirty ?? ""
+          }:${details.launch_state ?? ""}:${details.updated_at ?? ""}`,
+      ),
       ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
