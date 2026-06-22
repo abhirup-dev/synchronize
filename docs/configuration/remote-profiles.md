@@ -1,12 +1,17 @@
 # Remote Profiles And LAN Mode
 
-Use this page for named remote daemon targets and one-off LAN hosting.
+Use this page for named remote daemon targets, named remote machine targets,
+and one-off LAN hosting. For agent spawn wiring on top of remote machines, see
+[spawn.md](spawn.md).
 
 ## Named Profiles
 
-Remote profiles are client-side daemon targets. When the active profile resolves
-to a remote URL, CLI and MCP clients use that daemon directly and do not read
-local `daemon.json` or auto-start a local daemon.
+Remote profiles can describe a daemon connection target, a remote machine, or
+both.
+
+When the active profile resolves to a remote URL, CLI and MCP clients use that
+daemon directly and do not read local `daemon.json` or auto-start a local
+daemon.
 
 ```toml
 active = "hub"
@@ -21,6 +26,18 @@ ssh_host = "vpsme"
 paths = [".claude/skills", ".mcp.json"]
 ```
 
+Remote machine profiles are used by `remote connect`, configured Letta spawn,
+and other sync/deploy flows:
+
+```toml
+[remote.vpsme]
+ssh_host = "vpsme"
+runtime_path = "~/synchronize-letta-test"
+expose = "ssh-reverse"
+remote_port = 58455
+install = true
+```
+
 Manage profiles with:
 
 ```bash
@@ -30,6 +47,16 @@ synchronize remote show
 synchronize remote use hub
 synchronize remote remove hub
 ```
+
+`remote connect` can take either an SSH host directly or the name of a remote
+machine profile:
+
+```bash
+synchronize remote connect vpsme
+```
+
+With `expose = "ssh-reverse"`, the Mac daemon remains localhost/no-token. The
+remote machine reaches it through a reverse tunnel on its own localhost port.
 
 One-off environment overrides still win over the active profile:
 
