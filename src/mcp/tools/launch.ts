@@ -21,6 +21,7 @@ export function registerLaunchTools(ctx: ToolContext): void {
         "Idempotency: each call spawns a new session — names must be unique within a group.",
       inputSchema: {
         tool: z.enum(["claude", "pi", "letta"]),
+        profile_name: z.string().optional(),
         name: z.string().min(1),
         repo: z.string().min(1),
         group: z.string().optional(),
@@ -34,6 +35,7 @@ export function registerLaunchTools(ctx: ToolContext): void {
       return text(
         await launchAgent(client, {
           tool: args.tool,
+          ...(args.profile_name ? { profileName: args.profile_name } : {}),
           name: args.name,
           repo: args.repo,
           ...(args.group ? { group: args.group } : {}),

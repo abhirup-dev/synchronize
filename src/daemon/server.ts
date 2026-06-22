@@ -486,6 +486,7 @@ type WebLaunchLifecycleRow = Pick<
   | "launch_id"
   | "peer_id"
   | "tool"
+  | "profile_name"
   | "session_name"
   | "alias"
   | "cwd"
@@ -549,7 +550,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const aoeProfile = aoeProfileName(ctx.paths.home);
   const launchLifecycle = ctx.db
     .query<WebLaunchLifecycleRow, []>(
-      `SELECT launch_id, peer_id, tool, session_name, alias, cwd, target_group,
+      `SELECT launch_id, peer_id, tool, profile_name, session_name, alias, cwd, target_group,
               backend_profile, backend_title, state, failure_code, failure_message,
               created_at, updated_at, accepted_at, spawned_at, prompt_seen_at,
               prompt_accepted_at, registered_at, reconciled_at, joined_at,

@@ -90,6 +90,37 @@ test("parseConfig normalizes a full config into camelCase profiles", () => {
   });
 });
 
+test("parseConfig supports launch profile bin and env source descriptors", () => {
+  const config = parseConfig(`
+[agent.glaude]
+tool = "claude"
+bin = "/opt/bin/claude"
+repo = "/repo"
+model = "claude-haiku-4-5-20251001"
+args = ["--verbose"]
+session_name = "reviewer"
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.example.test/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
+SSL_CERT_FILE = { from_file = "/tmp/cert.pem" }
+`);
+
+  expect(config.agents?.glaude).toEqual({
+    tool: "claude",
+    bin: "/opt/bin/claude",
+    repo: "/repo",
+    model: "claude-haiku-4-5-20251001",
+    args: ["--verbose"],
+    sessionName: "reviewer",
+    env: {
+      ANTHROPIC_BASE_URL: "https://api.example.test/anthropic",
+      ANTHROPIC_AUTH_TOKEN: { fromEnv: "ZAI_API_TOKEN" },
+      SSL_CERT_FILE: { fromFile: "/tmp/cert.pem" },
+    },
+  });
+});
+
 test("parseConfig throws on malformed TOML", () => {
   expect(() => parseConfig("this is = = not toml [[[")).toThrow(/not valid TOML/);
 });

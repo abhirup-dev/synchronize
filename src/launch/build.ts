@@ -23,7 +23,11 @@ const REPO_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
  * `env K=V … <command>` for `aoe add --cmd-override`. Either way the produced
  * argv is identical, so the two surfaces never drift.
  */
-export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
+export interface AgentCommandOptions {
+  bin?: string;
+}
+
+export function buildAgentCommand(tool: LaunchTool, rest: string[], options: AgentCommandOptions = {}): string[] {
   if (tool === "claude") {
     const args = [...rest];
     if (!args.includes("--dangerously-skip-permissions")) {
@@ -41,12 +45,12 @@ export function buildAgentCommand(tool: LaunchTool, rest: string[]): string[] {
     if (!args.includes("--dangerously-load-development-channels")) {
       args.unshift("--dangerously-load-development-channels", "server:synchronize");
     }
-    return ["claude", ...args];
+    return [options.bin ?? "claude", ...args];
   }
   if (tool === "letta") {
-    return ["bun", "run", join(REPO_ROOT, "extensions/letta-synchronize/src/index.ts"), ...rest];
+    return options.bin ? [options.bin, ...rest] : ["bun", "run", join(REPO_ROOT, "extensions/letta-synchronize/src/index.ts"), ...rest];
   }
-  return ["pi", ...rest];
+  return [options.bin ?? "pi", ...rest];
 }
 
 export interface ResumeTarget {
@@ -69,14 +73,19 @@ export interface ResumeTarget {
  * The archived peer_id is reused via ENV_PEER_ID (buildLaunchEnv), so the
  * re-registration on boot matches the archived identity and resurrects it.
  */
-export function buildAgentResumeCommand(tool: LaunchTool, target: ResumeTarget, rest: string[]): string[] {
-  const base = buildAgentCommand(tool, rest); // ["claude"|"pi", ...flags]
+export function buildAgentResumeCommand(
+  tool: LaunchTool,
+  target: ResumeTarget,
+  rest: string[],
+  options: AgentCommandOptions = {},
+): string[] {
+  const base = buildAgentCommand(tool, rest, options); // ["claude"|"pi", ...flags]
   if (tool === "claude") {
-    return ["claude", "--resume", target.hostSessionId, ...base.slice(1)];
+    return [options.bin ?? "claude", "--resume", target.hostSessionId, ...base.slice(1)];
   }
   if (tool === "pi") {
     const session = target.hostSessionFile ?? target.hostSessionId;
-    return ["pi", "--session", session, ...base.slice(1)];
+    return [options.bin ?? "pi", "--session", session, ...base.slice(1)];
   }
   throw new Error("letta launches do not support faithful resume yet");
 }

@@ -498,6 +498,56 @@ test("durable spawn and prompt work advance lifecycle and preserve backend title
   ]);
 });
 
+test("durable launch stores profile name and resolves profile bin/env only at spawn time", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sync-launch-profile-"));
+  dirs.push(dir);
+  await writeFile(
+    join(dir, "config.toml"),
+    `
+[agent.glaude]
+tool = "claude"
+bin = "/opt/bin/claude"
+repo = "/profile/repo"
+args = ["--profile-arg"]
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.example.test/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
+`,
+  );
+  const { db } = await openDatabase(join(dir, "synchronize.db"));
+  const { backend, spawned } = promptBackend();
+  const svc = new LaunchService({
+    backend,
+    db,
+    home: dir,
+    env: { ZAI_API_TOKEN: "secret-token" } as NodeJS.ProcessEnv,
+    mintLaunchId: () => "launch-profile",
+    mintPeerId: () => "peer-profile",
+    now: () => Date.parse("2026-05-31T00:00:00.000Z"),
+  });
+
+  await svc.launch({
+    tool: "claude",
+    profileName: "glaude",
+    name: "alice",
+    repo: "/repo",
+    args: ["--caller-arg"],
+  });
+
+  const row = getLaunchIntent(db, "launch-profile");
+  expect(row?.profile_name).toBe("glaude");
+  expect(JSON.stringify(row)).not.toContain("secret-token");
+
+  await svc.runWork("spawn", "launch-profile");
+  expect(spawned).toHaveLength(1);
+  expect(spawned[0]?.command[0]).toBe("/opt/bin/claude");
+  expect(spawned[0]?.command).toContain("--profile-arg");
+  expect(spawned[0]?.command).toContain("--caller-arg");
+  expect(spawned[0]?.env.ANTHROPIC_BASE_URL).toBe("https://api.example.test/anthropic");
+  expect(spawned[0]?.env.ANTHROPIC_AUTH_TOKEN).toBe("secret-token");
+});
+
 test("durable spawn failure leaves launch retryable for the work queue", async () => {
   const dir = await mkdtemp(join(tmpdir(), "sync-launch-service-fail-"));
   dirs.push(dir);

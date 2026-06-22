@@ -147,6 +147,7 @@ export function listArchivedSessions(db: Database): ArchivedSessionSummary[] {
 export interface ResumePlan {
   peerId: string;
   tool: LaunchTool;
+  profileName: string | null;
   sessionName: string;
   hostSessionId: string;
   hostSessionFile: string | null;
@@ -221,6 +222,7 @@ export function planResume(db: Database, peerId: string): ResumePlan {
     alias: membership?.alias ?? null,
     isAoe: Boolean(launch?.backend_title),
     backendTitle: launch?.backend_title ?? null,
+    profileName: launch?.profile_name ?? null,
     model: launch?.model ?? null,
     args,
   };

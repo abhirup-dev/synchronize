@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { Database } from "bun:sqlite";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApiError, type ClientConfig } from "../src/client.ts";
@@ -8,6 +9,7 @@ import { createGroup, joinGroup, sendGroupMessage } from "../src/api/groups.ts";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
 import { archiveGroup, archiveSession } from "../src/api/archive.ts";
 import { resumeGroup, resumeSession } from "../src/api/resume.ts";
+import { createLaunchIntent } from "../src/launch/store.ts";
 import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
 // `homes` tracks the extra per-test CWD temp dirs (resume requires the original
@@ -126,6 +128,59 @@ test("resume show emits a faithful --resume command with the captured host_sessi
     expect(result.command).not.toContain("--fork-session");
     // ENV pins the archived peer for correlation on re-register.
     expect(result.env?.SYNCHRONIZE_PEER_ID).toBe(peerId);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("resume print preserves profile command shape and redacts profile env", async () => {
+  const daemon = await startDaemon({ debug: true });
+  const cwd = await mkdtemp(join(tmpdir(), "resume-profile-"));
+  homes.push(cwd);
+  try {
+    await writeFile(
+      join(daemon.home, "config.toml"),
+      `
+[agent.glaude]
+tool = "claude"
+bin = "/opt/bin/claude"
+args = ["--profile-arg"]
+
+[agent.glaude.env]
+ANTHROPIC_AUTH_TOKEN = "literal-secret"
+`,
+    );
+    const { binding } = await registerAgentSession(daemon.client, {
+      hostTool: "claude",
+      tool: "claude",
+      sessionName: "critic",
+      hostSessionId: "host-sess-profile",
+      cwd,
+    });
+    const db = new Database(join(daemon.home, "synchronize.db"));
+    createLaunchIntent(db, {
+      launchId: "launch-profile-resume",
+      peerId: binding.peer_id,
+      tool: "claude",
+      profileName: "glaude",
+      sessionName: "critic",
+      alias: "critic",
+      cwd,
+      backend: "local_aoe",
+      backendTitle: "abc12345-critic",
+      args: ["--stored-arg"],
+    });
+    db.close();
+    await createGroup(daemon.client, { name: "room", creatorPeerId: binding.peer_id });
+    await joinGroup(daemon.client, { name: "room", peerId: binding.peer_id, alias: "critic" });
+    await archiveSession(daemon.client, { peerId: binding.peer_id });
+
+    const result = await resumeSession(daemon.client, { peerId: binding.peer_id, print: true });
+    expect(result.command?.[0]).toBe("/opt/bin/claude");
+    expect(result.command).toContain("--profile-arg");
+    expect(result.command).toContain("--stored-arg");
+    expect(result.env?.ANTHROPIC_AUTH_TOKEN).toBe("<redacted:agent-profile>");
+    expect(JSON.stringify(result)).not.toContain("literal-secret");
   } finally {
     await daemon.stop();
   }

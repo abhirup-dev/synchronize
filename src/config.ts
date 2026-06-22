@@ -47,14 +47,21 @@ export interface LettaServerProfile {
   apiKeyEnv?: string;
 }
 
+export type AgentEnvValue =
+  | string
+  | { fromEnv: string }
+  | { fromFile: string };
+
 export interface AgentProfile {
   tool: string;
+  bin?: string;
   remote?: string;
   server?: string;
   repo?: string;
   model?: string;
   thinking?: string;
   args?: string[];
+  env?: Record<string, AgentEnvValue>;
   sessionName?: string;
   agentId?: string;
   conversationId?: string;
@@ -174,6 +181,7 @@ function normalizeAgent(value: unknown): AgentProfile | null {
   const tool = typeof value.tool === "string" ? value.tool.trim() : "";
   if (!tool) return null;
   const agent: AgentProfile = { tool };
+  if (typeof value.bin === "string" && value.bin) agent.bin = value.bin;
   if (typeof value.remote === "string" && value.remote) agent.remote = value.remote;
   if (typeof value.server === "string" && value.server) agent.server = value.server;
   if (typeof value.repo === "string" && value.repo) agent.repo = value.repo;
@@ -183,6 +191,8 @@ function normalizeAgent(value: unknown): AgentProfile | null {
     const args = value.args.filter((arg): arg is string => typeof arg === "string");
     if (args.length > 0) agent.args = args;
   }
+  const env = normalizeAgentEnv(value.env);
+  if (env) agent.env = env;
   if (typeof value.session_name === "string" && value.session_name) agent.sessionName = value.session_name;
   if (typeof value.agent_id === "string" && value.agent_id) agent.agentId = value.agent_id;
   if (typeof value.conversation_id === "string" && value.conversation_id) agent.conversationId = value.conversation_id;
@@ -190,6 +200,27 @@ function normalizeAgent(value: unknown): AgentProfile | null {
     agent.pollMs = Math.trunc(value.poll_ms);
   }
   return agent;
+}
+
+function normalizeAgentEnv(value: unknown): Record<string, AgentEnvValue> | null {
+  if (!isRecord(value)) return null;
+  const env: Record<string, AgentEnvValue> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!key) continue;
+    if (typeof raw === "string") {
+      env[key] = raw;
+      continue;
+    }
+    if (!isRecord(raw)) continue;
+    if (typeof raw.from_env === "string" && raw.from_env) {
+      env[key] = { fromEnv: raw.from_env };
+      continue;
+    }
+    if (typeof raw.from_file === "string" && raw.from_file) {
+      env[key] = { fromFile: raw.from_file };
+    }
+  }
+  return Object.keys(env).length > 0 ? env : null;
 }
 
 /** Load+parse the config file. A missing file is an empty config, not an error. */
@@ -319,6 +350,7 @@ export function serializeConfig(config: SynchronizeConfig): string {
     if (!agent) continue;
     lines.push(`[agent.${name}]`);
     lines.push(`tool = ${tomlString(agent.tool)}`);
+    if (agent.bin) lines.push(`bin = ${tomlString(agent.bin)}`);
     if (agent.remote) lines.push(`remote = ${tomlString(agent.remote)}`);
     if (agent.server) lines.push(`server = ${tomlString(agent.server)}`);
     if (agent.repo) lines.push(`repo = ${tomlString(agent.repo)}`);
@@ -329,9 +361,21 @@ export function serializeConfig(config: SynchronizeConfig): string {
     if (agent.agentId) lines.push(`agent_id = ${tomlString(agent.agentId)}`);
     if (agent.conversationId) lines.push(`conversation_id = ${tomlString(agent.conversationId)}`);
     if (agent.pollMs !== undefined) lines.push(`poll_ms = ${agent.pollMs}`);
+    if (agent.env && Object.keys(agent.env).length > 0) {
+      lines.push("", `[agent.${name}.env]`);
+      for (const key of Object.keys(agent.env).sort()) {
+        lines.push(`${key} = ${tomlAgentEnvValue(agent.env[key]!)}`);
+      }
+    }
     lines.push("");
   }
   return lines.join("\n").replace(/\n+$/, "\n");
+}
+
+function tomlAgentEnvValue(value: AgentEnvValue): string {
+  if (typeof value === "string") return tomlString(value);
+  if ("fromEnv" in value) return `{ from_env = ${tomlString(value.fromEnv)} }`;
+  return `{ from_file = ${tomlString(value.fromFile)} }`;
 }
 
 function tomlString(value: string): string {
