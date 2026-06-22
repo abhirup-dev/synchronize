@@ -576,10 +576,11 @@ Runtime settings resolve in this order:
 defaults < $SYNCHRONIZE_HOME/config.toml < environment variables
 ```
 
-Use `config.toml` for persistent machine/operator settings and named remote
-profiles. Use environment variables for one-off overrides, per-process agent
-wiring, and test harness isolation. The default runtime directory is
-`~/.synchronize`, so the default config file is `~/.synchronize/config.toml`.
+Use `config.toml` for persistent machine/operator settings, named remote
+profiles, and named agent launch profiles. Use environment variables for
+one-off overrides, per-process agent wiring, and test harness isolation. The
+default runtime directory is `~/.synchronize`, so the default config file is
+`~/.synchronize/config.toml`.
 
 Minimal local daemon config:
 
@@ -599,6 +600,28 @@ active = "hub"
 url = "http://100.x.y.z:8787"
 token_env = "SYNCHRONIZE_TOKEN"
 health_timeout_ms = 5000
+```
+
+Named agent profiles make `launch` and `spawn` self-contained without depending
+on shell aliases or zsh functions:
+
+```toml
+[agent.glaude]
+tool = "claude"
+bin = "/Users/example/.local/bin/claude"
+repo = "/Users/example/project"
+session_name = "reviewer"
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
+```
+
+Then run:
+
+```bash
+synchronize launch glaude
+synchronize spawn glaude --group alpha
 ```
 
 See [docs/configuration/](docs/configuration/README.md) for the full config and

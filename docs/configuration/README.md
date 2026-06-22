@@ -87,6 +87,7 @@ config.toml
   |
   +-- [agent.<name>]
   |     tool
+  |     bin
   |     remote
   |     server
   |     repo
@@ -97,6 +98,11 @@ config.toml
   |     agent_id
   |     conversation_id
   |     poll_ms
+  |     |
+  |     +-- [agent.<name>.env]
+  |           TARGET_ENV_KEY = "literal"
+  |           TARGET_ENV_KEY = { from_env = "SOURCE_ENV_KEY" }
+  |           TARGET_ENV_KEY = { from_file = "/path/to/secret" }
 ```
 
 Current-state caveat: `[mcp].heartbeat_ms` is parsed by the runtime resolver and
