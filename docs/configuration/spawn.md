@@ -8,6 +8,8 @@ Related commands:
 ```bash
 synchronize spawn claude --name NAME --repo PATH
 synchronize spawn pi --name NAME --repo PATH
+synchronize spawn PROFILE [--name NAME]
+synchronize launch PROFILE
 synchronize spawn letta --name NAME
 synchronize remote connect HOST_OR_PROFILE
 ```
@@ -24,7 +26,17 @@ synchronize spawn claude --name reviewer --repo /path/to/repo --group room
 synchronize spawn pi --name planner --repo /path/to/repo --model MODEL --thinking LEVEL
 ```
 
-The current explicit Letta form is:
+Configured profiles work for both foreground launch and persistent spawn:
+
+```bash
+synchronize launch glaude
+synchronize spawn glaude --name reviewer
+```
+
+For Claude/Pi profiles, `spawn PROFILE` requires `--name` unless the profile
+sets `session_name`. `repo` can come from config or `--repo`.
+
+The explicit Letta compatibility form remains:
 
 ```bash
 synchronize spawn letta --name rocky
@@ -36,19 +48,22 @@ from config and runs the remote connection/channel workflow.
 
 ## Agent Profile Fields
 
-Agent profiles use `[agent.<name>]`. Current command behavior consumes these
-profiles for configured remote Letta spawn. The shared schema also parses
-local-agent-looking fields so remote Claude/Pi and local configured-agent spawn
-can reuse the same shape later, but ordinary Claude/Pi spawn still requires
-explicit CLI arguments today.
+Agent profiles use `[agent.<name>]`. The profile name must not be `claude`,
+`pi`, or `letta`; those names are reserved for built-in runtime targets.
 
 ```toml
-[agent.reviewer]
+[agent.glaude]
 tool = "claude"
+bin = "/Users/example/.local/bin/claude"
 repo = "/Users/example/project"
-model = "sonnet"
+model = "claude-haiku-4-5-20251001"
 thinking = "high"
-args = ["--dangerously-skip-permissions"]
+args = []
+session_name = "reviewer"
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
 ```
 
 Supported fields:
@@ -56,11 +71,18 @@ Supported fields:
 | Field | Meaning |
 | --- | --- |
 | `tool` | Agent runtime: `claude`, `pi`, or `letta`. Required. |
-| `repo` | Repository path. Parsed, but ordinary Claude/Pi spawn still takes this from `--repo`. |
-| `model` | Optional model selector. Parsed for future configured spawn shapes. |
-| `thinking` | Optional thinking/effort selector. Parsed for future configured spawn shapes. |
-| `args` | Extra runtime arguments. Parsed for future configured spawn shapes. |
+| `bin` | Optional absolute binary path. Use this instead of shell aliases or zsh wrapper functions. |
+| `repo` | Repository path for `spawn PROFILE`, and foreground cwd for `launch PROFILE`. |
+| `model` | Optional model selector. CLI flags override config when provided. |
+| `thinking` | Optional thinking/effort selector. CLI flags override config when provided. |
+| `args` | Extra runtime arguments prepended before CLI passthrough args. |
+| `session_name` | Default synchronize session name. Required for Claude/Pi `spawn PROFILE` when `--name` is omitted. |
+| `[agent.NAME.env]` | Environment overlay for the launched process. Values can be literal strings, `{ from_env = "SOURCE" }`, or `{ from_file = "/path" }`. |
 | `remote` | Reserved for remote agent shapes that do not use a Letta server profile. |
+
+Only the profile name is stored in launch lifecycle SQLite rows. Environment
+values and secret-source results are resolved from config at spawn/retry time
+and are not persisted in daemon state.
 
 ## Remote Machine Profiles
 
@@ -128,6 +150,7 @@ poll_ms = 1000
 Then spawn with:
 
 ```bash
+synchronize spawn rocky
 synchronize spawn letta --name rocky
 ```
 
@@ -178,10 +201,15 @@ synchronize remote connect vpsme --restart-channel
 
 - `src/config.ts` parses and normalizes `[remote.*]`, `[letta.server.*]`, and
   `[agent.*]`.
-- `src/cli/commands/spawn.ts` resolves configured Letta agents and enforces the
-  duplicate-running guard.
+- `src/launch/profiles.ts` resolves configured agent profiles, binary overrides,
+  and env source descriptors.
+- `src/cli/commands/launch.ts` and `src/cli/commands/spawn.ts` accept built-in
+  runtime targets or configured profile targets.
+- `src/launch/service.ts` persists profile names and re-resolves profile
+  command/env at durable spawn/retry time.
 - `src/cli/commands/remote.ts` maps remote profiles into connect/sync/channel
   plans.
 - `src/remote/plan.ts` defines tunnel, sync, and Letta channel process policy.
-- `tests/config.test.ts`, `tests/cli-spawn-config.test.ts`, and
+- `tests/config.test.ts`, `tests/launch-profiles.test.ts`,
+  `tests/launch-service.test.ts`, `tests/cli-spawn-config.test.ts`, and
   `tests/remote-plan.test.ts` cover the config and process invariants.

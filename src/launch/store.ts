@@ -8,6 +8,7 @@ export interface LaunchIntentRow {
   launch_id: string;
   peer_id: string;
   tool: LaunchTool;
+  profile_name: string | null;
   session_name: string;
   alias: string;
   cwd: string;
@@ -69,6 +70,7 @@ export interface CreateLaunchIntentInput {
   launchId: string;
   peerId: string;
   tool: LaunchTool;
+  profileName?: string | null;
   sessionName: string;
   alias: string;
   cwd: string;
@@ -139,17 +141,18 @@ export function createLaunchIntent(db: Database, input: CreateLaunchIntentInput)
   db
     .query(
       `INSERT INTO launch_intents (
-         launch_id, peer_id, tool, session_name, alias, cwd, target_group,
+         launch_id, peer_id, tool, profile_name, session_name, alias, cwd, target_group,
          model, thinking, args_json, resume_host_session_id, resume_host_session_file,
          backend, backend_profile, backend_title,
          state, created_at, updated_at, accepted_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.launchId,
       input.peerId,
       input.tool,
+      input.profileName ?? null,
       input.sessionName,
       input.alias,
       input.cwd,

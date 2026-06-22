@@ -31,6 +31,15 @@ test("buildAgentCommand for pi passes args through verbatim", () => {
   expect(cmd).toEqual(["pi", "--provider", "openai-codex", "--model", "gpt-5.4-mini"]);
 });
 
+test("buildAgentCommand can use a configured binary while preserving tool defaults", () => {
+  const claude = buildAgentCommand("claude", ["--model", "opus"], { bin: "/opt/tools/claude" });
+  expect(claude[0]).toBe("/opt/tools/claude");
+  expect(claude).toContain("--dangerously-skip-permissions");
+
+  const pi = buildAgentCommand("pi", ["--model", "gpt-5.4-mini"], { bin: "/opt/tools/pi" });
+  expect(pi).toEqual(["/opt/tools/pi", "--model", "gpt-5.4-mini"]);
+});
+
 test("buildAgentCommand for letta runs the synchronize Letta harness", () => {
   const cmd = buildAgentCommand("letta", ["--model", "zai/glm-4.7"]);
   expect(cmd[0]).toBe("bun");

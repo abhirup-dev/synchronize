@@ -5,6 +5,7 @@ import type { LaunchTool } from "../launch/build.ts";
 
 export interface LaunchAgentInput {
   tool: LaunchTool;
+  profileName?: string;
   name: string;
   repo: string;
   group?: string;
@@ -89,6 +90,7 @@ export function launchAgent(client: ClientConfig, input: LaunchAgentInput): Prom
     method: "POST",
     body: JSON.stringify({
       tool: input.tool,
+      ...(input.profileName ? { profile_name: input.profileName } : {}),
       name: input.name,
       repo: input.repo,
       ...(input.group ? { group: input.group } : {}),

@@ -83,8 +83,8 @@ Usage:
   synchronize threads summary ROOT_EVENT_ID [--refresh] [--strategy all|first_k|last_k|first_last] [--k N] [--first-k N] [--last-k N] [--format text|json]
   synchronize query [--format json|table|csv] [--params JSON] SQL
   synchronize hook claude-session
-  synchronize launch [--name NAME] [--] claude|pi|letta [--] [TOOL_ARGS...]
-  synchronize spawn claude|pi|letta --name NAME [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
+  synchronize launch [--name NAME] [--] claude|pi|letta|PROFILE [--] [TOOL_ARGS...]
+  synchronize spawn claude|pi|letta|PROFILE [--name NAME] [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize host --bind HOST --token TOKEN [--port PORT] [--home PATH] [--restart]
   synchronize completion carapace
   synchronize completion install --shell carapace
@@ -133,7 +133,7 @@ Environment:
     expect(renderCommandHelp(["resume", "group"])).toContain("synchronize resume group NAME");
     expect(renderCommandHelp(["host"])).toContain("synchronize host --bind HOST --token TOKEN");
     expect(renderCommandHelp(["spawn"])).toContain("synchronize spawn letta --name NAME");
-    expect(renderCommandHelp(["launch"])).toContain("synchronize launch [--name NAME] [--] claude");
+    expect(renderCommandHelp(["launch"])).toContain("synchronize launch [--name NAME] [--] PROFILE");
   });
 });
 
