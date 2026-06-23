@@ -6,6 +6,7 @@ export * from "./src/components/primitives.tsx";
 export * from "./src/components/ActivityItem.tsx";
 export * from "./src/components/ActivityView.tsx";
 export * from "./src/components/AgentColorPicker.tsx";
+export * from "./src/components/AgentPreview.tsx";
 export * from "./src/components/AgentRoster.tsx";
 export * from "./src/components/ArchiveRecovery.tsx";
 export * from "./src/components/AttachmentPreview.tsx";

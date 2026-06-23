@@ -38,7 +38,8 @@
     "ActivityView": {
       "cardMode": "column",
       "skip": [
-        "activity-activityview--wide-thread-pane"
+        "activity-activityview--wide-thread-pane",
+        "activity-activityview--view-profile-flow"
       ]
     },
     "RoomHeader": {
@@ -98,10 +99,41 @@
       ]
     },
     "Sheet": {
-      "skip": true
+      "skip": [
+        "primitives-sheet--open",
+        "primitives-sheet--dismiss-via-escape"
+      ]
     },
     "CompactSettingsSheet": {
-      "skip": true
+      "skip": [
+        "surfaces-compactsettingssheet--light-brutal",
+        "surfaces-compactsettingssheet--dark-glass",
+        "surfaces-compactsettingssheet--row-interactions"
+      ]
+    },
+    "AgentRoster": {
+      "skip": [
+        "navigation-agentroster--view-profile-flow"
+      ]
+    },
+    "Sidebar": {
+      "skip": [
+        "navigation-sidebar--dm-view-profile-flow"
+      ]
+    },
+    "BottomNav": {
+      "skip": [
+        "navigation-bottomnav--chats-active",
+        "navigation-bottomnav--activity-active",
+        "navigation-bottomnav--agents-active-with-badge",
+        "navigation-bottomnav--tap-agents"
+      ]
+    },
+    "SettingsRow": {
+      "viewport": "375x700",
+      "skip": [
+        "primitives-settingsrow--taps"
+      ]
     }
   },
   "titleMap": {
@@ -111,7 +143,8 @@
     "Identity": "IdentityBadge",
     "ChatSurface": null,
     "AppShell": null,
-    "SynchronizeUI": null
+    "SynchronizeUI": null,
+    "URLDeepLinks": null
   },
   "buildCmd": "cd web && ./node_modules/.bin/storybook build -c .storybook -o ../.design-sync/sb-reference",
   "readmeHeader": ".design-sync/conventions.md"

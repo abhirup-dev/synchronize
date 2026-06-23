@@ -102,26 +102,44 @@ pieces, all captured below so a re-sync replays them.
   SpawnAgentDialog. Components stay fully importable (`.d.ts` / `.prompt.md` ship); only their preview cards
   are the floor. To upgrade later: author `.design-sync/previews/<Name>.tsx` rendering the sheet inline
   (no portal) — but there's no storybook reference to compare against, so grade standalone.
-- **Preview canvas must tint `var(--paper)` — wrapper parity with `preview.tsx`.** The storybook reference
-  (`web/.storybook/preview.tsx`) sets `document.body.style.background = "var(--paper)"` so the whole canvas
-  reflects the palette. The design-sync preview wrapper (`web/.ds-providers.tsx`) sets `data-theme`/`data-skin`
-  but MUST also set the body background — without it, components whose root doesn't paint `--paper`
-  (SettingsRow, TimelineRail, ScrollControls, …) inherit white from the canvas while the reference inherits
-  paper → a false "missing background" mismatch across every such component. One line in `.ds-providers.tsx`,
-  mirroring `main.tsx`'s app-shell behavior. (Found via Gemini vision grading 2026-06-23.)
-- **Play-driven `WideThreadPane` / `ScrollingDown` stories — skipped.** `ActivityView`/`ActivityViewDark`
-  `WideThreadPane` and `ScrollControls` `ScrollingDown` reach their shown state via a Storybook `play`
-  click (open a thread row / scroll down) that the compiled preview never runs → the pane/scroll state is
-  absent. Same pattern as the ContextMenu/Toast play-driven skips. `cfg.overrides.<Name>.skip` lists those
-  story ids; the cards still show their non-play stories (e.g. ActivityView `Grouped`, which matches).
-- **`BottomNav` — shell-frame decorator (`inBottomNavRow`) not reproduced by `cfg.provider`.** All 4
-  BottomNav stories use `decorators: [inBottomNavRow]` (from `storybook/shellFrames.tsx`) to anchor in the
-  compact shell's bottom grid row. `cfg.provider` replaces the storybook decorator chain with
-  DataSource/ContextMenu/Toast/ArchiveRecovery only — it does NOT reproduce shell-frame decorators, so the
-  BottomNav card renders degraded (text labels + active-tab yellow fill absent). CompactAppBar (no
-  shell-frame decorator) matches, confirming the decorator is the differentiator. Resolution TBD: own the
-  preview (wrap in the shell frame) or skip the card. Systemic fix would teach the converter to honour
-  storybook story-level `decorators` that set shell frames.
+- **Card chrome background is `var(--paper)`, not `#fff` (LOCAL HARNESS MOD — `.ds-sync/lib/emit.mjs`).**
+  The generated card HTML hardcodes `<style>body{margin:0;padding:24px;background:#fff}</style>` (two spots,
+  lines ~133 + ~210), which OVERRIDES the bundle's `body{background:var(--paper)}` (styles.css:14). That
+  hardcoded `#fff` is an ad-hoc non-theme value: components whose root is `background:transparent`
+  (SettingsRow, `.compact-settings-row`) render on white in the preview while the storybook reference
+  renders on paper → a false "missing background" mismatch. Fixed by editing emit.mjs so both card-chrome
+  spots use `background:var(--paper)` (theme-driven, one source — the token; the review-index page at
+  ~516 stays `#fff` as a neutral dev helper). Full-surface components (ChatView, the `*Dark` cards) fill
+  the card so the chrome is never visible — unchanged. ⚠ If `.ds-sync/` is ever regenerated from the
+  skill, re-apply this edit or transparent components regress to white. (Found via Gemini vision grading
+  2026-06-23.) NB: do NOT "fix" this by setting `document.body.style.background` in `.ds-providers.tsx`
+  (tried first — that's the same ad-hoc-JS-theme-setting anti-pattern; the CSS/card-chrome is the one place).
+- **Compact-chrome stories declare `globals:{viewport:mobileNarrow}` → set `cfg.overrides.<Name>.viewport`.**
+  `BottomNav` and `SettingsRow` stories pin a narrow viewport. The shell reads `shellModeForWidth(window.
+  innerWidth)` (single source, `web/src/shell-mode.tsx`: compact <780px) and `BottomNav` is compact-only
+  chrome (renders fully only when mode==="compact"). The capture defaults to 900px (desktop) → BottomNav
+  degrades (labels + active-tab fill absent) and SettingsRow renders at the wrong scale. Fix is config-only,
+  no code/flag: `cfg.overrides.<Name>.viewport = "375x700"` — `emit.mjs` writes `viewport="375x700"` into the
+  card HTML and `compare.mjs` sizes BOTH the reference and preview pages to it (line ~431), so both render
+  compact and match. The earlier guess that the `inBottomNavRow` *decorator* was the cause was wrong —
+  `preview-gen-storybook.mjs` DOES apply story+meta decorators (line ~60); the gap was the viewport global.
+- **Play-driven stories — skipped (recurring).** A story whose displayed state is produced by a Storybook
+  `play` click (open a pane / scroll / open a profile dialog) is NOT reproduced by the compiled preview.
+  Skipped story ids so far: `ActivityView`/`ActivityViewDark` `WideThreadPane`, `ScrollControls`
+  `ScrollingDown`, and the agent-profile `View Profile Flow` stories (`AgentRoster`, `ActivityView`,
+  `Sidebar` `Dm View Profile Flow` — they open `AgentProfileDialog` via `play`). `cfg.overrides.<Name>.skip`
+  is a **story-id array** (NOT `true` — `new Set(opts.skip)` throws on a boolean). Cards still show their
+  non-play stories.
+- **`BottomNav` — floor card (all stories skipped).** Its preview screenshot paints ~38% less content than
+  the storybook reference (ds 4.2KB vs sb 6.7KB at identical 375×700) even though `render-check.json` shows
+  the labels ARE in the DOM (`texts:["ChatsActivityAgents"]`, `errs:0`, not blank/thin) — i.e. the component
+  mounts correctly with all labels, but something in the capture doesn't paint them visibly. `compare.mjs`
+  waits for `document.fonts.ready`, and external fonts fail equally on both panels, so it's not a font-FOIT
+  issue. Vision grading (Gemini) consistently flags it; the root cause wasn't pinned without vision. Tried
+  `viewport:"375x700"` (compact via `shellModeForWidth`) and `cardMode:"single"` (full-bleed) — neither fixed
+  the paint. The COMPONENT is correct (verified in-app + storybook + render-check); only its card screenshot
+  is off, so all 4 stories are `cfg.overrides.BottomNav.skip` → floor card. Component still ships its
+  `.d.ts`/`.prompt.md`. Revisit: capture the ds preview in an interactive browser and diff painted vs DOM.
 - **Shell composition showcases.** `Shell.stories` (`Layouts/App Shell`) and `SynchronizeFlows.stories`
   (`Flows/Synchronize UI`) both use `component: Shell` — pure multi-component composition, not single-
   component cards. Their titles derive to `AppShell`/`SynchronizeUI`, already `null` in `titleMap`. The old
