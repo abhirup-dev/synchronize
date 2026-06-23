@@ -11,6 +11,9 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Schema } from "hast-util-sanitize";
 import type { Agent } from "../data/types.ts";
 import { MentionChip } from "./primitives.tsx";
+import { useContextMenu } from "./ContextMenu.tsx";
+import { useToast } from "./Toast.tsx";
+import { copyText } from "../utils/clipboard.ts";
 
 // Permit GFM-specific tags + the class attributes rehype-highlight emits.
 const schema: Schema = {
@@ -43,6 +46,8 @@ const schema: Schema = {
 // scroll frame. With a stable `children` string and `agents` reference, memo
 // skips re-parsing entirely during scroll.
 export const Markdown = memo(function Markdown({ children, agents }: { children: string; agents?: Agent[] }) {
+  const openMenu = useContextMenu();
+  const toast = useToast();
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -63,6 +68,32 @@ export const Markdown = memo(function Markdown({ children, agents }: { children:
             }
             return <code className={className}>{children}</code>;
           },
+          a(props) {
+            const { children, href, title } = props as { children?: React.ReactNode; href?: string; title?: string };
+            const linkHref = href ?? "";
+            const copyHref = absoluteHref(linkHref);
+            return (
+              <a
+                href={linkHref}
+                title={title}
+                target="_blank"
+                rel="noopener noreferrer"
+                onContextMenu={(event) =>
+                  openMenu(event, [
+                    {
+                      label: "Copy link address",
+                      onSelect: async () => {
+                        const copied = await copyText(copyHref);
+                        toast.show(copied ? "Link copied" : "Could not copy link", { kind: copied ? "success" : "error" });
+                      },
+                    },
+                  ])
+                }
+              >
+                {children}
+              </a>
+            );
+          },
         }}
       >
         {children}
@@ -70,3 +101,11 @@ export const Markdown = memo(function Markdown({ children, agents }: { children:
     </div>
   );
 });
+
+function absoluteHref(href: string): string {
+  try {
+    return new URL(href, window.location.href).toString();
+  } catch {
+    return href;
+  }
+}

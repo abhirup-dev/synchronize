@@ -268,6 +268,7 @@ function webStateShape(): Record<string, unknown> {
       pi: { tool: "string", available: true, path: "string" },
       letta: { tool: "string", available: true, path: "string" },
     },
+    launch_profiles: [],
     launch_lifecycle: [],
     skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
   };

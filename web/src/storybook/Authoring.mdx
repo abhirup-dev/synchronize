@@ -44,6 +44,24 @@ snapshot state never leaks between stories). Consequences:
 - Portal-based UI (dialogs, context menus, toasts) renders over the canvas — use
   `parameters: { layout: "fullscreen" }` for shells and surfaces.
 
+## Keeping stories current
+
+Stories render the real components, so simple visual implementation changes flow
+into Storybook automatically. You still need to update stories when the component
+contract changes: props/callbacks, visible states, interactions, deleted
+behaviour, or composed flow wiring.
+
+- Update story args when component props are added, removed, or renamed.
+- Add or extend a story when a new visible state or variant is introduced.
+- Add a `play` test for new interactions.
+- Remove stale stories and assertions when behaviour is deleted.
+- For shared menus, dialogs, sheets, or toasts, mount the real surface and assert
+  the visible result; do not duplicate helper logic inside a story.
+- For portal content, query with `screen` rather than `canvas`.
+- If an existing story or flow is stale, violates these rules, or mounts the
+  component differently from the app, call that out for a product/maintenance
+  decision before expanding the scope.
+
 ## Conventions
 
 - Pure-prop components: `} satisfies Meta<typeof Component>` + `StoryObj<typeof meta>`,

@@ -9,6 +9,9 @@ import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/typ
 import { IdentityBadge, StatusDot } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { canShowAgentPreview } from "./AgentPreview.tsx";
+import { useToast } from "./Toast.tsx";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { agentActionMenuItems } from "./agentActionMenu.ts";
 
 export interface ActivityItemProps {
   item: ActivityItemModel;
@@ -20,6 +23,7 @@ export interface ActivityItemProps {
   onOpenThread(item: ActivityItemModel): void;
   onJumpToRoom(roomId: string, msgId?: string): void;
   onViewProfile?(agent: Agent): void;
+  onOpenDm?(agentId: string): void;
 }
 
 function MarkerIcon({ item }: { item: ActivityItemModel }) {
@@ -87,8 +91,11 @@ function ActivityItemImpl({
   onOpenThread,
   onJumpToRoom,
   onViewProfile,
+  onOpenDm,
 }: ActivityItemProps) {
   const openMenu = useContextMenu();
+  const toast = useToast();
+  const archive = useArchiveWorkflow();
   if (!actor) return null;
   const awaits = item.awaiting;
   const canViewProfile = Boolean(onViewProfile && canShowAgentPreview(actor));
@@ -118,16 +125,40 @@ function ActivityItemImpl({
                 { divider: true as const },
               ]
             : []),
-          { label: `Focus on ${actor.name}`, onSelect: () => onJumpToRoom(item.roomId, item.msgId) },
         ])
       }
     >
       {awaits && <span className="act-row-bar" />}
-      <IdentityBadge as="div" className="act-marker sm" color={actor.color}>
+      <IdentityBadge
+        as="div"
+        className="act-marker sm"
+        color={actor.color}
+        onContextMenu={(e) =>
+          openMenu(e, agentActionMenuItems(e, {
+            agent: actor,
+            toast,
+            archive,
+            ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
+            ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
+          }))
+        }
+      >
         <MarkerIcon item={item} />
         {actor.status === "busy" && <span className="act-marker-pulse" />}
       </IdentityBadge>
-      <IdentityBadge className="author-chip xs" color={actor.color}>
+      <IdentityBadge
+        className="author-chip xs"
+        color={actor.color}
+        onContextMenu={(e) =>
+          openMenu(e, agentActionMenuItems(e, {
+            agent: actor,
+            toast,
+            archive,
+            ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
+            ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
+          }))
+        }
+      >
         {actor.name}
       </IdentityBadge>
       <span className="act-row-text">

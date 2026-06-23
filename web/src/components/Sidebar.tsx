@@ -8,7 +8,9 @@ import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
-import { AgentProfileDialog, canShowAgentPreview } from "./AgentPreview.tsx";
+import { AgentProfileDialog } from "./AgentPreview.tsx";
+import { useToast } from "./Toast.tsx";
+import { agentActionMenuItems } from "./agentActionMenu.ts";
 
 /**
  * Tokens flow from the styles.css contract via the tw.css `@theme inline`
@@ -223,9 +225,9 @@ function RoomItem({
 }) {
   const openMenu = useContextMenu();
   const archive = useArchiveWorkflow();
+  const toast = useToast();
   const iconColor = otherColor ?? room.color;
   const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
-  const canViewProfile = Boolean(profileAgent && onViewProfile && canShowAgentPreview(profileAgent));
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -243,25 +245,22 @@ function RoomItem({
       data-vim-item={`room-${room.id}`}
       onClick={() => onSelect(room.id)}
       onKeyDown={handleKeyDown}
-      onContextMenu={(e) =>
+      onContextMenu={(e) => {
+        if (room.kind === "dm" && profileAgent) {
+          openMenu(e, agentActionMenuItems(e, {
+            agent: profileAgent,
+            toast,
+            archive,
+            onOpenDm: () => onSelect(room.id),
+            ...(onViewProfile ? { onViewProfile: () => onViewProfile(profileAgent) } : {}),
+          }));
+          return;
+        }
         openMenu(e, [
           ...(room.kind === "group" && onSpawnAgent
             ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
             : []),
           ...(room.kind === "group" && onSpawnAgent ? [{ divider: true as const }] : []),
-          ...(room.kind === "dm"
-            ? canViewProfile
-              ? [
-                  {
-                    label: "View profile",
-                    onSelect: () => {
-                      if (profileAgent && onViewProfile) onViewProfile(profileAgent);
-                    },
-                  },
-                  { divider: true as const },
-                ]
-              : []
-            : []),
           { label: "Mark as read (soon)", disabled: true, onSelect: () => {} },
           { label: `${room.pinned ? "Unpin" : "Pin to top"} (soon)`, disabled: true, onSelect: () => {} },
           { label: "Mute notifications (soon)", disabled: true, onSelect: () => {} },
@@ -276,8 +275,8 @@ function RoomItem({
           { label: "Copy room id", onSelect: () => navigator.clipboard?.writeText(room.id) },
           { divider: true },
           { label: `${room.kind === "group" ? "Leave group" : "Close DM"} (soon)`, danger: true, disabled: true, onSelect: () => {} },
-        ])
-      }
+        ]);
+      }}
     >
       {isArchivedGroup ? (
         <div className="room-icon identity-icon">

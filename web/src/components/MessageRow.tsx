@@ -31,6 +31,12 @@ import { PollWidget } from "./PollWidget.tsx";
 import { useMe } from "../data/context.tsx";
 import { isSelfAgent } from "../data/identity.ts";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
+import { AgentProfileDialog } from "./AgentPreview.tsx";
+import { useToast } from "./Toast.tsx";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { messageDeepLinkUrl } from "../deeplinks.ts";
+import { copyText } from "../utils/clipboard.ts";
 
 interface MessageRowProps {
   message: Message;
@@ -46,6 +52,7 @@ interface MessageRowProps {
   hideAuthor?: boolean;
   /** Compact thread rows use the composer/context menu as the primary action surface. */
   hideReactionAdd?: boolean;
+  onOpenDm?(agentId: string): void;
 }
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
@@ -75,10 +82,13 @@ export const MessageRow = memo(function MessageRow({
   hideAvatar,
   hideAuthor,
   hideReactionAdd,
+  onOpenDm,
 }: MessageRowProps) {
   const openMenu = useContextMenu();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const me = useMe();
+  const toast = useToast();
+  const archive = useArchiveWorkflow();
   // "You" / web-client messages: right-aligned accent bubble, no avatar or name
   // chip. Single source of truth — see data/identity.ts.
   const isSelf = isSelfAgent(author, me);
@@ -86,6 +96,7 @@ export const MessageRow = memo(function MessageRow({
   const [pickerStyle, setPickerStyle] = useState<FloatingStyle | null>(null);
   const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null);
   const [detailsStyle, setDetailsStyle] = useState<FloatingStyle | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent] as const)), [agents]);
   const threadReplyCount = message.threadReplyCount ?? 0;
   const hasThreadBadge = threadReplyCount > 0 && Boolean(onOpenThread);
@@ -124,6 +135,7 @@ export const MessageRow = memo(function MessageRow({
   }, []);
 
   return (
+    <>
     <div
       ref={rowRef}
       id={`msg-${message.id}`}
@@ -139,7 +151,13 @@ export const MessageRow = memo(function MessageRow({
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
           ...(!hideReactionAdd ? [{ label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) }] : []),
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
-          { label: "Copy link (soon)", disabled: true, onSelect: () => {} },
+          {
+            label: "Copy link",
+            onSelect: async () => {
+              const copied = await copyText(messageDeepLinkUrl(message.id));
+              toast.show(copied ? "Message link copied" : "Could not copy message link", { kind: copied ? "success" : "error" });
+            },
+          },
           { divider: true },
           { label: "Pin to room (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
@@ -148,7 +166,18 @@ export const MessageRow = memo(function MessageRow({
       }
     >
       {!hideAvatar && !isSelf && (
-        <div className="message-gutter flex h-[34px] justify-center pt-0">
+        <div
+          className="message-gutter flex h-[34px] justify-center pt-0"
+          onContextMenu={(e) =>
+            openMenu(e, agentActionMenuItems(e, {
+              agent: author,
+              toast,
+              archive,
+              ...(onOpenDm ? { onOpenDm: () => onOpenDm(author.id) } : {}),
+              onViewProfile: () => setProfileAgent(author),
+            }))
+          }
+        >
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
@@ -336,6 +365,8 @@ export const MessageRow = memo(function MessageRow({
         </div>
       </div>
     </div>
+    <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
+    </>
   );
 });
 

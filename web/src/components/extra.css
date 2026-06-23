@@ -360,6 +360,10 @@
 .message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
+.markdown {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 .markdown > * { margin: 0 0 8px; }
 .markdown > *:last-child { margin-bottom: 0; }
 .markdown h1, .markdown h2, .markdown h3 {
@@ -409,6 +413,7 @@
   padding: 12px 14px;
   margin: 8px 0;
   overflow-x: auto;
+  overflow-wrap: normal;
   box-shadow: var(--shadow-sm);
   font-size: var(--text-12-5);
   line-height: 1.55;
@@ -455,7 +460,13 @@
   font-size: var(--text-11);
   letter-spacing: var(--tracking-sm);
 }
-.markdown a { color: var(--blue); text-decoration: underline; text-decoration-thickness: 2px; }
+.markdown a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 .markdown del { color: var(--ink-faint); }
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */

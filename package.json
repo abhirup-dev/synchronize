@@ -11,10 +11,14 @@
     "daemon": "bun run src/daemon.ts",
     "mcp": "bun run src/mcp.ts",
     "synchronize": "bun run src/cli.ts",
+    "ast-grep": "ast-grep",
+    "ast-grep:scan": "ast-grep scan",
+    "ast-grep:test": "ast-grep test",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "devDependencies": {
+    "@ast-grep/cli": "^0.44.0",
     "@types/bun": "^1.2.0",
     "typescript": "^5.7.0"
   },
@@ -26,5 +30,8 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openrouter/ai-sdk-provider": "^2.9.0",
     "ai": "^6.0.191"
-  }
+  },
+  "trustedDependencies": [
+    "@ast-grep/cli"
+  ]
 }

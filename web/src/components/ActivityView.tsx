@@ -37,12 +37,13 @@ type TimelineEntry =
 
 interface ActivityViewProps {
   onJumpToRoom(roomId: string, msgId?: string): void;
+  onOpenDm?(agentId: string): void;
   threadWidth: number;
   onThreadWidth(width: number): void;
   onOpenSettings?(event: ReactMouseEvent): void;
 }
 
-export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenSettings }: ActivityViewProps) {
+export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidth, onOpenSettings }: ActivityViewProps) {
   const items = useActivity();
   const awaitingCount = useActivityAwaitingCount();
   const agents = useAgents();
@@ -161,6 +162,7 @@ export function ActivityView({ onJumpToRoom, threadWidth, onThreadWidth, onOpenS
     onOpenThread,
     onJumpToRoom,
     onViewProfile: setProfileAgent,
+    ...(onOpenDm ? { onOpenDm } : {}),
   });
 
   const FILTERS: Array<{ id: Filter; label: string; n: number; hot?: boolean }> = [

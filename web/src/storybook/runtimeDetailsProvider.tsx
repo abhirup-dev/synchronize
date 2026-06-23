@@ -37,6 +37,11 @@ export const agentsWithRuntimeDetails: Agent[] = AGENTS.map((agent) => {
     ...agent,
     role: tool === "web" ? agent.role : tool,
     ...(agent.id === "atlas" ? { statusNote: "Testing/observer" } : {}),
+    aoeSession: {
+      profile: `${tool}-preview`,
+      title: `${agent.id}-preview`,
+      attachCommand: `aoe attach ${agent.id}-preview`,
+    },
     runtimeDetails: {
       peerId: agent.id,
       bindingId: `${tool}:${sessionId}`,

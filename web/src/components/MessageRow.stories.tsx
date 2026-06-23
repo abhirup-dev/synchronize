@@ -1,10 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { userEvent, expect, fn, screen, within } from "storybook/test";
+import { fireEvent, userEvent, expect, fn, screen, waitFor, within } from "storybook/test";
 import { MessageRow } from "./MessageRow.tsx";
 import { AGENTS, MESSAGES } from "../data/seed.ts";
+import { agentsWithRuntimeDetails } from "../storybook/runtimeDetailsProvider.tsx";
 
 const msgs = MESSAGES["checkout-revamp"]!;
 const authorOf = (authorId: string) => AGENTS.find((a) => a.id === authorId)!;
+const runtimeAuthorOf = (authorId: string) => agentsWithRuntimeDetails.find((a) => a.id === authorId)!;
+const longAutolink =
+  "https://sharechat.slack.com/archives/C08Q1HBQ2BF/p1752123456789012?thread_ts=1752123456.789012&cid=C08Q1HBQ2BF&workspace=synchronize-long-link-wrap-regression";
+const longPlainToken =
+  "series_019eaa8ff63f77728e51992a7b500930_with_feature_store_compact_ttl_backfill_pending";
 
 const meta = {
   title: "Messages/MessageRow",
@@ -25,6 +31,63 @@ export const Plain: Story = {
 // affordance and the clickable reply badge, not just the reactions themselves.
 export const RichWithReactions: Story = {
   args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId), onReact: fn(), onOpenThread: fn() },
+};
+
+export const RichWithLongAutolink: Story = {
+  render: (args) => (
+    <div style={{ width: 420 }}>
+      <MessageRow {...args} />
+    </div>
+  ),
+  args: {
+    message: {
+      id: "long-link-edge",
+      roomId: "checkout-revamp",
+      authorId: "atlas",
+      createdAt: new Date().toISOString(),
+      body: [
+        "Context from the archive:",
+        "",
+        longAutolink,
+        "",
+        `Related token: ${longPlainToken}`,
+      ].join("\n"),
+      mentions: [],
+      reactions: [],
+    },
+    author: authorOf("atlas"),
+  },
+  play: async ({ canvasElement }) => {
+    const link = canvasElement.querySelector<HTMLAnchorElement>(`a[href="${longAutolink}"]`);
+    expect(link).toBeTruthy();
+    expect(link!.textContent).toBe(longAutolink);
+    expect(link!.getAttribute("href")).toBe(longAutolink);
+    expect(link!.getAttribute("target")).toBe("_blank");
+    expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
+
+    await fireEvent.contextMenu(link!);
+    await waitFor(() => expect(screen.getByText("Copy link address")).toBeTruthy());
+    expect(screen.queryByText("Reply in thread")).toBeNull();
+
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    expect(bubble).toBeTruthy();
+    expect(bubble!.textContent).toContain(longPlainToken);
+    expect(bubble!.scrollWidth).toBeLessThanOrEqual(bubble!.clientWidth + 1);
+  },
+};
+
+export const MessagePermalinkMenu: Story = {
+  args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId), onReact: fn(), onOpenThread: fn() },
+  play: async ({ canvasElement }) => {
+    const row = canvasElement.querySelector<HTMLElement>(".message-row");
+    expect(row).toBeTruthy();
+    await fireEvent.contextMenu(row!);
+    await waitFor(() => expect(screen.getByText("Copy link")).toBeTruthy());
+    expect(screen.queryByText("Copy link (soon)")).toBeNull();
+    const item = screen.getByRole("menuitem", { name: "Copy link" }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    expect(item.getAttribute("aria-disabled")).toBe("false");
+  },
 };
 
 export const GroupedWithPrev: Story = {
@@ -53,5 +116,30 @@ export const ReactWithPicker: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "add reaction" }));
     await userEvent.click(await screen.findByRole("button", { name: "👍" }));
     await expect(args.onReact).toHaveBeenCalledWith(msgs[0]!.id, "👍");
+  },
+};
+
+export const AgentAvatarMenu: Story = {
+  args: {
+    agents: agentsWithRuntimeDetails,
+    message: msgs[2]!,
+    author: runtimeAuthorOf(msgs[2]!.authorId),
+    onOpenDm: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const avatar = canvasElement.querySelector<HTMLElement>(".message-gutter");
+    expect(avatar).toBeTruthy();
+    await fireEvent.contextMenu(avatar!);
+    await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+    expect(screen.getByText("Open DM")).toBeTruthy();
+    expect(screen.getByText("Copy AOE attach command")).toBeTruthy();
+    expect(screen.getByText("Archive session...")).toBeTruthy();
+    expect(screen.getByText("Resume session...")).toBeTruthy();
+    expect(screen.getByText("Copy @handle")).toBeTruthy();
+    expect(screen.queryByText(/Focus on/i)).toBeNull();
+
+    await userEvent.click(screen.getByText("View profile"));
+    await waitFor(() => expect(screen.getByText("Atlas profile")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy());
   },
 };

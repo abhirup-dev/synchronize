@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fireEvent, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, fireEvent, fn, screen, userEvent, waitFor, within } from "storybook/test";
 import { AgentRoster } from "./AgentRoster.tsx";
 import { GROUPS } from "../data/seed.ts";
 import { inRosterColumn } from "../storybook/shellFrames.tsx";
@@ -8,27 +8,37 @@ import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx"
 // Provider-backed: AgentRoster reads the agent set through useAgents() off the
 // MockDataSource supplied by the global StorybookProviders decorator. The story
 // only chooses which room to scope the roster to (room.members filters which
-// agents appear) and which agent, if any, is focused.
+// agents appear).
 const checkoutRevamp = GROUPS.find((r) => r.id === "checkout-revamp")!;
 // heartbeat-checks includes every agent, so all four status groups
 // (WORKING / READY / IDLE / OFF) render — including offline `pulse`.
 const heartbeat = GROUPS.find((r) => r.id === "heartbeat-checks")!;
 
+async function expectSharedAgentMenu() {
+  await waitFor(() => expect(screen.getByText("Open DM")).toBeTruthy());
+  expect(screen.getByText("View profile")).toBeTruthy();
+  expect(screen.getByText("Copy AOE attach command")).toBeTruthy();
+  expect(screen.getByText("Archive session...")).toBeTruthy();
+  expect(screen.getByText("Resume session...")).toBeTruthy();
+  expect(screen.getByText("Copy @handle")).toBeTruthy();
+  expect(screen.queryByText(/Focus on/i)).toBeNull();
+}
+
 const meta = {
   title: "Navigation/AgentRoster",
   component: AgentRoster,
   parameters: { layout: "fullscreen" },
-  // Mount in the real 260px roster column so the focused card stays within the
-  // roster width instead of stretching into a full-bleed band.
+  // Mount in the real 260px roster column so cards stay within the roster
+  // width instead of stretching into a full-bleed band.
   decorators: [inRosterColumn],
-  args: { focusedAgent: null, onFocus: () => {} },
+  args: {},
 } satisfies Meta<typeof AgentRoster>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Default project room — a busy/idle mix (cortex+atlas+nova busy, vega idle,
-// you online). No agent is focused.
+// you online).
 export const Default: Story = {
   args: { room: checkoutRevamp },
 };
@@ -39,14 +49,8 @@ export const AllStatuses: Story = {
   args: { room: heartbeat },
 };
 
-// A focused agent surfaces the "focused on @handle" banner and highlights the
-// matching roster card.
-export const FocusedAgent: Story = {
-  args: { room: checkoutRevamp, focusedAgent: "cortex" },
-};
-
 export const ViewProfileFlow: Story = {
-  args: { room: checkoutRevamp },
+  args: { room: checkoutRevamp, onOpenDm: fn() },
   decorators: [
     (Story) => (
       <RuntimeDetailsProvider>
@@ -59,7 +63,7 @@ export const ViewProfileFlow: Story = {
       const card = canvasElement.querySelector<HTMLElement>(`[data-vim-item="agent-${agentId}"]`);
       expect(card).toBeTruthy();
       await fireEvent.contextMenu(card!);
-      await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+      await expectSharedAgentMenu();
       await userEvent.click(screen.getByText("View profile"));
       await waitFor(() => expect(screen.getByText(`${expectedName} profile`)).toBeTruthy());
       await waitFor(() => expect(screen.getByText(expectedModel)).toBeTruthy());
@@ -83,6 +87,7 @@ export const ViewProfileFlow: Story = {
       await fireEvent.contextMenu(youCard!);
       await waitFor(() => {
         expect(screen.queryByText("View profile")).toBeNull();
+        expect(screen.queryByText(/Focus on/i)).toBeNull();
       });
     });
   },

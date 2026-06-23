@@ -7,15 +7,23 @@ import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx"
 
 // Provider-backed shell: Sidebar reads the room list, identity, agents, and the
 // activity awaiting-count through hooks (useRooms / useMe / useAgents /
-// useActivityAwaitingCount) off the MockDataSource supplied by the global
-// StorybookProviders decorator. Props only drive selection + vim mode.
+// useActivityAwaitingCount). RuntimeDetailsProvider enriches the default mock
+// agents so the visible DM stories exercise the same profile/AOE menu shape as
+// the app.
 const meta = {
   title: "Navigation/Sidebar",
   component: Sidebar,
   parameters: { layout: "fullscreen" },
   // Mount in the real fixed-width sidebar grid column instead of full-bleed —
   // otherwise the room sections collapse into unreadable horizontal strips.
-  decorators: [inSidebarColumn],
+  decorators: [
+    inSidebarColumn,
+    (Story) => (
+      <RuntimeDetailsProvider>
+        <Story />
+      </RuntimeDetailsProvider>
+    ),
+  ],
   args: { onSelect: () => {}, mode: "navigate" },
 } satisfies Meta<typeof Sidebar>;
 
@@ -48,19 +56,18 @@ export const TypingMode: Story = {
 
 export const DmViewProfileFlow: Story = {
   args: { activeRoomId: "dm-atlas" },
-  decorators: [
-    (Story) => (
-      <RuntimeDetailsProvider>
-        <Story />
-      </RuntimeDetailsProvider>
-    ),
-  ],
   play: async ({ canvasElement, step }) => {
     await step("Open the DM context menu for Atlas", async () => {
       const atlasDm = canvasElement.querySelector<HTMLElement>('[data-vim-item="room-dm-atlas"]');
       expect(atlasDm).toBeTruthy();
       await fireEvent.contextMenu(atlasDm!);
       await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+      expect(screen.getByText("Open DM")).toBeTruthy();
+      expect(screen.getByText("Copy AOE attach command")).toBeTruthy();
+      expect(screen.getByText("Archive session...")).toBeTruthy();
+      expect(screen.getByText("Resume session...")).toBeTruthy();
+      expect(screen.getByText("Copy @handle")).toBeTruthy();
+      expect(screen.queryByText(/Focus on/i)).toBeNull();
     });
 
     await step("Select View profile from the DM menu", async () => {

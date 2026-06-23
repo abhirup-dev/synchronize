@@ -93,6 +93,7 @@ export interface Room {
   // For DMs only
   peerId?: string;
   launchTools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>;
+  launchProfiles?: AgentLaunchProfile[];
 }
 
 export type MessageStatus = "queued" | "delivered" | "read";
@@ -283,12 +284,25 @@ export interface LaunchToolAvailability {
   path?: string;
 }
 
+export interface AgentLaunchProfile {
+  name: string;
+  tool: AgentLaunchTool;
+  available: boolean;
+  path?: string;
+  model?: string;
+  thinking?: string;
+  sessionName?: string;
+  repo?: string;
+  disabledReason?: string;
+}
+
 export interface SpawnAgentInput {
   roomId: string;
   tool: AgentLaunchTool;
+  profileName?: string;
   name: string;
   path: string;
-  model: string;
+  model?: string;
   thinking?: string;
 }
 
@@ -385,6 +399,7 @@ export interface DataSource {
    *  seam for bd sync-b8q — see {@link ThreadSummary}. */
   threadSummary(parentMessageId: string): Snapshot<ThreadSummary>;
   skillCatalog(): Snapshot<SkillCatalogEntry[]>;
+  launchProfiles(): Snapshot<AgentLaunchProfile[]>;
   me(): Snapshot<Agent>;
   /** Global cross-room Activity feed, newest-first. */
   activity(): Snapshot<ActivityItem[]>;

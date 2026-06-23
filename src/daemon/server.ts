@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { appendFile, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config.ts";
@@ -467,6 +468,7 @@ interface WebStateResponse {
     token_required: boolean;
   };
   launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
+  launch_profiles: WebLaunchProfileStatus[];
   launch_lifecycle: WebLaunchLifecycleRow[];
   agent_runtime_details: WebAgentRuntimeDetails[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
@@ -552,6 +554,18 @@ interface WebLaunchToolStatus {
   tool: "claude" | "pi" | "letta";
   available: boolean;
   path?: string;
+}
+
+interface WebLaunchProfileStatus {
+  name: string;
+  tool: "claude" | "pi" | "letta";
+  available: boolean;
+  path?: string;
+  model?: string;
+  thinking?: string;
+  session_name?: string;
+  repo?: string;
+  disabled_reason?: string;
 }
 
 interface WebRoomSummary {
@@ -758,6 +772,7 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       token_required: Boolean(ctx.token),
     },
     launch_tools: launchToolStatus(),
+    launch_profiles: launchProfileStatus(ctx),
     launch_lifecycle: launchLifecycle,
     agent_runtime_details: agentRuntimeDetails,
     peers: [...peers, ...extraPeers],
@@ -778,6 +793,36 @@ function launchToolStatus(): Record<"claude" | "pi" | "letta", WebLaunchToolStat
     pi: launchToolStatusFor("pi"),
     letta: launchToolStatusFor("letta"),
   };
+}
+
+function launchProfileStatus(ctx: DaemonContext): WebLaunchProfileStatus[] {
+  return Object.entries(ctx.config.agents ?? {})
+    .filter((entry): entry is [string, NonNullable<DaemonContext["config"]["agents"]>[string] & { tool: "claude" | "pi" | "letta" }] =>
+      entry[1].tool === "claude" || entry[1].tool === "pi" || entry[1].tool === "letta",
+    )
+    .map(([name, profile]) => {
+      const status = profile.bin
+        ? { available: isExecutablePathAvailable(profile.bin), path: profile.bin }
+        : launchToolStatusFor(profile.tool);
+      const unsupportedRemoteLetta = profile.tool === "letta" && Boolean(profile.server || profile.agentId || profile.remote);
+      return {
+        name,
+        tool: profile.tool,
+        available: status.available && !unsupportedRemoteLetta,
+        ...(status.path ? { path: status.path } : {}),
+        ...(profile.model ? { model: profile.model } : {}),
+        ...(profile.thinking ? { thinking: profile.thinking } : {}),
+        ...(profile.sessionName ? { session_name: profile.sessionName } : {}),
+        ...(profile.repo ? { repo: profile.repo } : {}),
+        ...(unsupportedRemoteLetta ? { disabled_reason: "remote letta profiles are not group-spawnable" } : {}),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function isExecutablePathAvailable(path: string): boolean {
+  if (path.includes("/")) return existsSync(path);
+  return Boolean(Bun.which(path));
 }
 
 function startLaunchWorker(ctx: DaemonContext): WorkerHandle {

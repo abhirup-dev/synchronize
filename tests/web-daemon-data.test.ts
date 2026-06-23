@@ -131,6 +131,47 @@ test("daemon data source maps skill catalog from web state", () => {
   ]);
 });
 
+test("daemon data source maps launch profiles from web state", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    cursor: 0,
+    launch_tools: {},
+    launch_profiles: [
+      {
+        name: "glaude",
+        tool: "claude",
+        available: true,
+        path: "/Users/dev/.local/bin/claude",
+        model: "glm-4.6",
+        thinking: "high",
+      },
+    ],
+    peers: [],
+    groups: [{ group_id: 1, name: "glm-test", description: null, created_at: "2026-06-23T00:00:00.000Z" }],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+  });
+
+  expect(ds.launchProfiles().get()).toEqual([
+    {
+      name: "glaude",
+      tool: "claude",
+      available: true,
+      path: "/Users/dev/.local/bin/claude",
+      model: "glm-4.6",
+      thinking: "high",
+    },
+  ]);
+  expect(ds.rooms().get()[0]?.launchProfiles).toEqual(ds.launchProfiles().get());
+});
+
 test("daemon data source keeps room-scoped historical authors resolvable", () => {
   globalThis.localStorage = { getItem: () => null } as unknown as Storage;
   const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });

@@ -19,6 +19,14 @@ const withLaunchConfig: Room = {
     claude: { tool: "claude", available: true, path: "/usr/local/bin/claude" },
     pi: { tool: "pi", available: true, path: "/usr/local/bin/pi" },
   },
+  launchProfiles: [
+    {
+      name: "glaude",
+      tool: "claude",
+      available: true,
+      path: "/Users/dev/.local/bin/claude",
+    },
+  ],
   memberAliases: { cortex: "cortex", atlas: "atlas" },
 };
 

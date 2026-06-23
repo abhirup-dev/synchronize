@@ -16,3 +16,12 @@ export function parseDeepLinkId(loc: { pathname: string; search: string } = wind
 export function deepLinkPath(target: WebDeepLinkTarget): string {
   return `/web/e/${encodeURIComponent(target.linkId)}`;
 }
+
+export function messageDeepLinkPath(messageId: string): string {
+  const linkId = messageId.startsWith("e:") ? messageId.slice(2) : messageId;
+  return `/web/e/${encodeURIComponent(linkId)}`;
+}
+
+export function messageDeepLinkUrl(messageId: string, origin: string = window.location.origin): string {
+  return new URL(messageDeepLinkPath(messageId), origin).toString();
+}

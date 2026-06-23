@@ -1,6 +1,6 @@
 // Small, reusable UI primitives shared across the app.
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
 import { isSelfAgent } from "../data/identity.ts";
 
@@ -33,6 +33,7 @@ export function IdentityBadge({
   title,
   style,
   as = "span",
+  onContextMenu,
 }: {
   color: string;
   ink?: string;
@@ -44,6 +45,7 @@ export function IdentityBadge({
   title?: string;
   style?: CSSProperties;
   as?: "span" | "div";
+  onContextMenu?: MouseEventHandler;
 }) {
   const Element = as;
   const identityStyle = {
@@ -58,6 +60,7 @@ export function IdentityBadge({
       className={`${className ? `${className} ` : ""}identity-tint${self ? " identity-self" : ""}`}
       style={identityStyle}
       title={title}
+      onContextMenu={onContextMenu}
     >
       {children}
     </Element>

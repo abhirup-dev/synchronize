@@ -27,6 +27,7 @@ type ResizeAdjustmentVirtualizer = Virtualizer<HTMLDivElement, Element> & {
 export function ChatView({
   room,
   onOpenThread,
+  onOpenDm,
   isThreadOpen = false,
   threadSummaryOpen = false,
   onToggleThreadSummary,
@@ -37,6 +38,7 @@ export function ChatView({
 }: {
   room: Room;
   onOpenThread?(parentId: string): void;
+  onOpenDm?(agentId: string): void;
   isThreadOpen?: boolean;
   threadSummaryOpen?: boolean;
   onToggleThreadSummary?(): void;
@@ -272,6 +274,7 @@ export function ChatView({
                         agents={displayAgents}
                         groupedWithPrev={row.grouped}
                         onReact={handleReact}
+                        {...(onOpenDm ? { onOpenDm } : {})}
                         {...(onOpenThread ? { onOpenThread } : {})}
                       />
                     </div>

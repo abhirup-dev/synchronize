@@ -6,6 +6,7 @@
 import type {
   ActivityItem,
   Agent,
+  AgentLaunchProfile,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
@@ -116,6 +117,7 @@ export class MockDataSource implements DataSource {
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
+  private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>(MOCK_ARCHIVED_SESSIONS);
   // Activity feed: aggregated once from the seed (every other agent's message
   // across all rooms), then awaiting is recomputed from `ackedActivity`. This
@@ -129,6 +131,7 @@ export class MockDataSource implements DataSource {
   rooms(): Snapshot<Room[]>   { return this._rooms; }
   me(): Snapshot<Agent>        { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+  launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
 
   activity(): Snapshot<ActivityItem[]> {
     if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();
@@ -354,7 +357,7 @@ export class MockDataSource implements DataSource {
       name: sessionName,
       handle: sessionName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || peerId.slice(-8),
       color: "#B49BFF",
-      role: input.tool,
+      role: input.profileName ?? input.tool,
       status: "idle",
       lifecycleState: "active",
       avatar: (sessionName[0] ?? input.tool[0] ?? "?").toUpperCase(),

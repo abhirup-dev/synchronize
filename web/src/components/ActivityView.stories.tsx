@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fireEvent, screen, userEvent, waitFor } from "storybook/test";
+import { expect, fireEvent, fn, screen, userEvent, waitFor } from "storybook/test";
 import { ActivityView } from "./ActivityView.tsx";
 import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
 
@@ -13,6 +13,7 @@ const meta = {
   parameters: { layout: "fullscreen" },
   args: {
     onJumpToRoom: () => {},
+    onOpenDm: fn(),
     threadWidth: 420,
     onThreadWidth: () => {},
   },
@@ -56,7 +57,7 @@ export const ViewProfileFlow: Story = {
     ),
   ],
   play: async ({ canvasElement, step }) => {
-    await step("Open the activity context menu for Atlas", async () => {
+    await step("Open the activity actor menu for Atlas", async () => {
       const atlasRow = await waitFor(() => {
         const match = [...canvasElement.querySelectorAll<HTMLElement>(".act-row")].find((el) =>
           /want me to try a darker variant/i.test(el.textContent ?? ""),
@@ -64,8 +65,16 @@ export const ViewProfileFlow: Story = {
         if (!match) throw new Error("Atlas activity row not found");
         return match;
       });
-      await fireEvent.contextMenu(atlasRow);
+      const atlasActor = atlasRow.querySelector<HTMLElement>(".author-chip");
+      expect(atlasActor).toBeTruthy();
+      await fireEvent.contextMenu(atlasActor!);
       await waitFor(() => expect(screen.getByText("View profile")).toBeTruthy());
+      expect(screen.getByText("Open DM")).toBeTruthy();
+      expect(screen.getByText("Copy AOE attach command")).toBeTruthy();
+      expect(screen.getByText("Archive session...")).toBeTruthy();
+      expect(screen.getByText("Resume session...")).toBeTruthy();
+      expect(screen.getByText("Copy @handle")).toBeTruthy();
+      expect(screen.queryByText(/Focus on/i)).toBeNull();
     });
 
     await step("Select View profile from Activity", async () => {
