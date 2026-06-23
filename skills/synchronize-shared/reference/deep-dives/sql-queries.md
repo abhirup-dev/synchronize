@@ -53,6 +53,11 @@ bridge_query_events(sql: "... where event_id = ?", params: [123])
 
 ## Views
 
-`event_log` includes group name, sender, recipient, and direct target context.
-`thread_events` adds `thread_root_*` fields for group messages.
-`discoverable_threads` lists roots that have replies.
+Use `event_log` when reconstructing chronological activity across groups, DMs,
+and delivery context.
+
+Use `thread_events` when the question depends on reply target versus normalized
+thread root.
+
+Use `discoverable_threads` when you need thread roots that actually have
+replies. A standalone root message is not a discoverable thread.
