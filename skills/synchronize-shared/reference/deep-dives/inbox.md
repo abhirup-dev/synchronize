@@ -20,11 +20,9 @@ Use inbox when:
 
 ## Variations
 
-```text
-bridge_inbox()
-bridge_inbox(ack: false)
-bridge_inbox(ack: true)
-```
-
 `ack: false` and omitted `ack` are read-only. `ack: true` marks returned rows
 acknowledged.
+
+Keep the top-level inbox rule in mind: inspect first, ack after handling. The
+deep-dive cases are mostly about deciding why push failed, not changing the
+ack contract.

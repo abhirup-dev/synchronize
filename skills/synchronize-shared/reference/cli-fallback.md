@@ -8,6 +8,17 @@ attach the current MCP channel subscription.
 
 ## Commands
 
+Prefer command-specific help when possible:
+
+```bash
+synchronize help
+synchronize help group send
+synchronize help threads show
+synchronize help query
+```
+
+Frequently used fallback commands:
+
 ```bash
 synchronize register --name NAME --purpose "what this session is doing"
 synchronize peers
@@ -20,10 +31,6 @@ synchronize group join GROUP --as NAME --fresh
 synchronize group rename GROUP NEW_ALIAS --as NAME
 synchronize group send GROUP --as NAME [--in-reply-to EVENT_ID] "message"
 synchronize group history GROUP --as NAME
-synchronize threads list --group GROUP
-synchronize threads status ROOT_EVENT_ID
-synchronize threads show ROOT_EVENT_ID --format transcript
-synchronize query --format table 'select * from thread_events where thread_root_event_id = 123'
 ```
 
 When you use CLI fallback, tell the user real-time channel injection will not

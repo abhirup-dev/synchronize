@@ -22,3 +22,6 @@ bridge_list_groups(mine: true)
 bridge_inbox(ack: false)
 bridge_group_history(name: "room", view: "threads")
 ```
+
+Use this page to choose the first diagnostic. Move to the deep dive when the
+first check confirms the symptom but does not explain the cause.

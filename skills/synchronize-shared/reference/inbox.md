@@ -32,3 +32,9 @@ bridge_inbox(ack: true)
 ```
 
 `ack: true` marks returned rows acknowledged, so later reads omit them.
+
+Default to `ack: false` while inspecting missed delivery. Use `ack: true` only
+after acting on returned events; acking first can hide the recovery trail.
+
+If an inbox event is a reply, inspect its thread context before answering so
+the response lands on the intended surface.
