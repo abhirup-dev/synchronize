@@ -7,6 +7,7 @@ import {
   ENV_HOOK_ENABLE,
   ENV_LAUNCH_ID,
   ENV_PEER_ID,
+  ENV_PROFILE_NAME,
   ENV_SESSION_NAME,
 } from "../../constants.ts";
 
@@ -96,7 +97,7 @@ async function runClaudeHook(): Promise<void> {
     sessionName,
     tool: "claude",
     purpose: "claude session",
-    metadata: compactMetadata(input),
+    metadata: hookMetadata(input),
     ...(process.env[ENV_LAUNCH_ID] ? { launchId: process.env[ENV_LAUNCH_ID] } : {}),
     ...(process.env[ENV_PEER_ID] ? { peerId: process.env[ENV_PEER_ID] } : {}),
     ...(stringOrUndefined(input.transcript_path) ? { hostSessionFile: stringOrUndefined(input.transcript_path) } : {}),
@@ -119,7 +120,7 @@ async function runPiHook(): Promise<void> {
     sessionName: process.env[ENV_SESSION_NAME] ?? stringOrUndefined(input.session_name) ?? generateSessionName("pi"),
     tool: "pi",
     purpose: "pi-coding-agent session",
-    metadata: compactMetadata(input),
+    metadata: hookMetadata(input),
     ...(process.env[ENV_LAUNCH_ID] ? { launchId: process.env[ENV_LAUNCH_ID] } : {}),
     ...(process.env[ENV_PEER_ID] ? { peerId: process.env[ENV_PEER_ID] } : {}),
     ...(stringOrUndefined(input.session_file) ? { hostSessionFile: stringOrUndefined(input.session_file) } : {}),
@@ -159,6 +160,13 @@ function compactMetadata(input: Record<string, unknown>): Record<string, unknown
     if (value === undefined || typeof value === "function") continue;
     metadata[key] = value;
   }
+  return metadata;
+}
+
+function hookMetadata(input: Record<string, unknown>): Record<string, unknown> {
+  const metadata = compactMetadata(input);
+  const profileName = stringOrUndefined(process.env[ENV_PROFILE_NAME]);
+  if (profileName) metadata.profile_name = profileName;
   return metadata;
 }
 

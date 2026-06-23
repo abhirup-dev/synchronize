@@ -87,7 +87,7 @@ synchronize --help
 ```
 
 `make install-cli` links the local package through Bun, verifies the commands are
-on `PATH`, and refreshes the installed Carapace completion spec. It installs two
+on `PATH`, and refreshes the installed Tab zsh completion script. It installs two
 local commands:
 
 - `synchronize` - the human/operator CLI
@@ -99,41 +99,41 @@ state is stored under `~/.synchronize` by default.
 
 ## Shell Completion
 
-Shell completion is Carapace-first. Install Carapace if it is not already
-available:
+Shell completion is powered by Tab and installed from the same schema that drives
+CLI help. No separate completion manager is required.
 
 ```bash
-brew install carapace
+synchronize completion install --shell zsh
 ```
 
-Load Carapace from your zsh config:
+Add the generated script to your zsh config once:
 
 ```bash
-echo 'source <(carapace _carapace zsh)' >> ~/.zshrc
+echo 'source ~/.config/synchronize/completions/synchronize.zsh' >> ~/.zshrc
 source ~/.zshrc
 ```
 
 `make install-cli` and the agent install targets refresh the generated
-`synchronize` completion spec automatically. To refresh only completions:
+`synchronize` completion script automatically. To refresh only completions:
 
 ```bash
-synchronize completion install --shell carapace
+synchronize completion install --shell zsh
 ```
 
-On macOS, the install command writes:
+By default, the zsh install command writes:
 
 ```text
-~/Library/Application Support/carapace/specs/synchronize.yaml
+~/.config/synchronize/completions/synchronize.zsh
 ```
 
-To inspect the generated spec without installing it:
+To inspect the generated script without installing it:
 
 ```bash
-synchronize completion carapace
+synchronize completion tab zsh
 ```
 
 Completion is safe to use at the shell prompt. Static command and flag
-completion works from the generated spec. Dynamic completions such as group
+completion works from the generated script. Dynamic completions such as group
 names, peer ids, session names, media ids, and thread root event ids query the
 daemon only when an existing daemon is already healthy; tab completion does not
 auto-start the daemon.
@@ -305,7 +305,7 @@ make uninstall-{claude,codex,pi,all}
 ```
 
 All targets depend on `make link`, which runs `bun install`, `bun link`, and
-refreshes the Carapace completion spec so the installed CLI and shell completion
+refreshes the Tab zsh completion script so the installed CLI and shell completion
 surface stay in sync. `SYNCHRONIZE_MCP_MODE` selects the notification dialect:
 `codex` (standard `notifications/message`) or `claude`
 (`notifications/claude/channel`).

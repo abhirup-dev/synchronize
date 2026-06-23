@@ -371,15 +371,19 @@ function forceLettaLaunchDefaults(args: string[], model: string): string[] {
 function withLaunchDefaults(req: LaunchRequest, profile?: ResolvedAgentLaunchProfile | null): string[] {
   const args = [...(profile?.args ?? []), ...(req.args ?? [])];
   if (req.tool === "claude") {
+    if (profile && !req.model && !req.thinking) return args;
     const model = req.model ?? DEFAULT_CLAUDE_LAUNCH_MODEL;
     const thinking = req.thinking ?? CLAUDE_LAUNCH_THINKING_BY_MODEL[model] ?? DEFAULT_CLAUDE_LAUNCH_THINKING;
     return forceClaudeLaunchDefaults(args, model, thinking);
   }
-  if (req.tool === "pi") return forcePiLaunchDefaults(
-    args,
-    req.model ?? DEFAULT_PI_LAUNCH_MODEL,
-    req.thinking ?? DEFAULT_PI_LAUNCH_THINKING,
-  );
+  if (req.tool === "pi") {
+    if (profile && !req.model && !req.thinking) return args;
+    return forcePiLaunchDefaults(
+      args,
+      req.model ?? DEFAULT_PI_LAUNCH_MODEL,
+      req.thinking ?? DEFAULT_PI_LAUNCH_THINKING,
+    );
+  }
   if (req.tool === "letta") return forceLettaLaunchDefaults(args, req.model ?? DEFAULT_LETTA_LAUNCH_MODEL);
   return args;
 }
@@ -417,6 +421,7 @@ export function resolveLaunchSpec(
   const synchronizeEnv = buildLaunchEnv({
     launchId: ids.launchId,
     sessionName: req.name,
+    ...(req.profileName ? { profileName: req.profileName } : {}),
     peerId: ids.peerId,
     home: ids.home,
   });

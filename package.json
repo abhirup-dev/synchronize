@@ -19,6 +19,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@bomb.sh/tab": "0.0.17",
     "@letta-ai/letta-client": "^1.12.1",
     "@letta-ai/letta-code": "^0.27.9",
     "@letta-ai/letta-code-sdk": "^0.1.14",

@@ -179,8 +179,15 @@ ANTHROPIC_AUTH_TOKEN = "literal-secret"
     expect(result.command?.[0]).toBe("/opt/bin/claude");
     expect(result.command).toContain("--profile-arg");
     expect(result.command).toContain("--stored-arg");
+    expect(result.command).not.toContain("--model");
+    expect(result.command).not.toContain("claude-haiku-4-5-20251001");
     expect(result.env?.ANTHROPIC_AUTH_TOKEN).toBe("<redacted:agent-profile>");
     expect(JSON.stringify(result)).not.toContain("literal-secret");
+
+    const foreground = await resumeSession(daemon.client, { peerId: binding.peer_id, mode: "foreground" });
+    expect(foreground.mode).toBe("foreground");
+    expect(foreground.command?.[0]).toBe("/opt/bin/claude");
+    expect(foreground.env?.ANTHROPIC_AUTH_TOKEN).toBe("literal-secret");
   } finally {
     await daemon.stop();
   }

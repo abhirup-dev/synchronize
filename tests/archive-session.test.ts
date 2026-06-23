@@ -182,3 +182,17 @@ test("planResume gathers the resume target for an archived session with a host s
   expect(plan.alias).toBe("critic");
   expect(plan.group).toBe("g1");
 });
+
+test("planResume recovers foreground launch profile provenance from session metadata", async () => {
+  const { db } = await freshDb();
+  insertPeer(db, "p");
+  db.query(
+    `INSERT INTO agent_sessions (binding_id, peer_id, host_tool, host_session_id, cwd, metadata_json)
+     VALUES ('b1', 'p', 'claude', 'hs-9', '/tmp/wt', ?)`,
+  ).run(JSON.stringify({ source: "session_start", profile_name: "glaude" }));
+  markPeerArchived(db, "p", { source: "manual" });
+
+  const plan = planResume(db, "p");
+
+  expect(plan.profileName).toBe("glaude");
+});

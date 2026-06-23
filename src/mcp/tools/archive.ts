@@ -73,15 +73,16 @@ export function registerArchiveTools(ctx: ToolContext): void {
     {
       description:
         "Resume one archived session, faithfully continuing its prior conversation. Identify by " +
-        "`peer_id` or `session_id`. `mode`='launch' spawns it via AOE in its original cwd; `mode`='print' " +
-        "returns the exact command+env+cwd for you to hand the operator to run themselves. Validation may " +
+        "`peer_id` or `session_id`. `mode`='spawn' spawns it via AOE in its original cwd; `mode`='foreground' " +
+        "returns the exact command+env+cwd for a local foreground runner; `mode`='print' returns a redacted " +
+        "command+env+cwd for inspection. Legacy `mode`='launch' is accepted as an alias for AOE spawn. Validation may " +
         "return peer_not_archived, cwd_missing, or peer_still_live (a live process blocks resume). Set " +
         "`force`=true to terminate a still-live process before resuming (it KILLS the running process). " +
         "Admin-style: membership not required.",
       inputSchema: {
         peer_id: z.string().optional(),
         session_id: z.string().optional(),
-        mode: z.enum(["launch", "print"]).optional(),
+        mode: z.enum(["spawn", "launch", "foreground", "print"]).optional(),
         force: z.boolean().optional(),
       },
     },
@@ -91,7 +92,7 @@ export function registerArchiveTools(ctx: ToolContext): void {
         await resumeSession(client, {
           ...(args.peer_id ? { peerId: args.peer_id } : {}),
           ...(args.session_id ? { sessionId: args.session_id } : {}),
-          print: args.mode === "print",
+          ...(args.mode ? { mode: args.mode === "launch" ? "spawn" : args.mode } : {}),
           ...(args.force ? { force: true } : {}),
         }),
       );
@@ -104,7 +105,7 @@ export function registerArchiveTools(ctx: ToolContext): void {
       description:
         "Resume a whole archived group — relaunch each launchable member, reporting a PER-MEMBER outcome " +
         "(launching | printed | skipped | blocked). Inspect-only members are skipped; a still-live zombie " +
-        "is blocked. `mode`='launch'|'print'. `only`/`exclude` filter by alias. `force` terminates live " +
+        "is blocked. `mode`='launch' (AOE spawn, legacy name)|'print'. `only`/`exclude` filter by alias. `force` terminates live " +
         "processes before resuming. Admin-style: membership not required.",
       inputSchema: {
         group: z.string().min(1),

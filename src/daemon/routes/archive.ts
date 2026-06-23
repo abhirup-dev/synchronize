@@ -83,7 +83,16 @@ export async function tryHandleArchiveRoute(request: Request, ctx: DaemonContext
   if (request.method === "POST" && url.pathname === "/resume/session") {
     const body = await readBody(request);
     const peerId = resolveResumePeerId(ctx.db, body);
-    const mode = body.print === true ? "print" : "launch";
+    const requestedMode = optionalString(body, "mode");
+    if (requestedMode && !["launch", "spawn", "foreground", "print"].includes(requestedMode)) {
+      throw new HttpError(400, "invalid_resume_mode", `Unknown resume mode: ${requestedMode}`);
+    }
+    const mode =
+      body.print === true || requestedMode === "print"
+        ? "print"
+        : requestedMode === "foreground"
+          ? "foreground"
+          : "launch";
     const force = body.force === true;
     if (body.dry_run === true) {
       const result = await resumeSessionPreview(ctx, peerId, { mode, force });

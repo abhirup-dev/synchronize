@@ -38,17 +38,68 @@ describe("dynamic completion providers", () => {
         if (url.pathname === "/groups") {
           return Response.json({ groups: [{ name: "general", description: "main room" }] });
         }
+        if (url.pathname === "/peers" && url.searchParams.get("group") === "general") {
+          return Response.json({
+            peers: [
+              {
+                peer_id: "peer-1",
+                session_name: "alice",
+                tool: "claude",
+                alias: "ali",
+                active: true,
+                purpose: "planner",
+                joined_at: "2026-06-22T09:00:00.000Z",
+                left_at: null,
+                online: true,
+                presence: "working",
+              },
+              {
+                peer_id: "peer-3",
+                session_name: "bob",
+                tool: "pi",
+                alias: "builder",
+                active: true,
+                purpose: "builder",
+                joined_at: "2026-06-22T09:05:00.000Z",
+                left_at: null,
+                online: false,
+                presence: "offline",
+              },
+            ],
+          });
+        }
         if (url.pathname === "/peers") {
           return Response.json({
             peers: [
-              { peer_id: "peer-1", session_name: "alice" },
-              { peer_id: "peer-2", session_name: "alice" },
-              { peer_id: "peer-3", session_name: "bob" },
+              { peer_id: "peer-1", session_name: "alice", tool: "claude", purpose: "planner", online: true, presence: "working", machine_id: "MTPL-1" },
+              { peer_id: "peer-2", session_name: "alice", tool: "claude", purpose: "reviewer", online: true, presence: "online", machine_id: "MTPL-1" },
+              { peer_id: "peer-3", session_name: "bob", tool: "pi", purpose: "builder", online: false, presence: "offline", machine_id: "MTPL-2" },
+            ],
+          });
+        }
+        if (url.pathname === "/agent-sessions") {
+          return Response.json({
+            bindings: [
+              agentSessionBinding("session-1", "peer-1", "claude", "alice", "working", "claude-sonnet"),
+              agentSessionBinding("session-2", "peer-3", "pi", "bob", "offline", "gpt-5.5"),
             ],
           });
         }
         if (url.pathname === "/threads") {
-          return Response.json({ threads: [{ root_event_id: 42, group_name: "general" }] });
+          return Response.json({
+            threads: [{
+              root_event_id: 42,
+              group_name: "general",
+              root_sender_peer_id: "peer-1",
+              root_sender_session_name: "alice",
+              root_sender_alias: "ali",
+              created_at: "2026-06-22T09:10:00.000Z",
+              last_activity_at: "2026-06-22T09:15:00.000Z",
+              reply_count: 3,
+              participant_count: 2,
+              preview: "hello",
+            }],
+          });
         }
         if (url.pathname === "/query/events") {
           return Response.json({ columns: ["media_id", "original_path", "description"], rows: [{ media_id: "media-1", original_path: "/tmp/a.png", description: "screenshot" }] });
@@ -66,15 +117,21 @@ describe("dynamic completion providers", () => {
     const env = { SYNCHRONIZE_HOME: home };
     await expect(completeDynamicProvider("group-names", { env })).resolves.toEqual([{ value: "general", description: "main room" }]);
     await expect(completeDynamicProvider("peer-ids", { env })).resolves.toEqual([
-      { value: "peer-1", description: "alice" },
-      { value: "peer-2", description: "alice" },
-      { value: "peer-3", description: "bob" },
+      { value: "peer-1", description: "claude | alice | ali@general | working | planner | machine MTPL-1" },
+      { value: "peer-2", description: "claude | alice | online | reviewer | machine MTPL-1" },
+      { value: "peer-3", description: "pi | bob | builder@general | offline | builder | machine MTPL-2" },
+    ]);
+    await expect(completeDynamicProvider("session-ids", { env })).resolves.toEqual([
+      { value: "session-1", description: "claude | alice | ali@general | working | claude-sonnet | seen 2026-06-22 10:20:30Z" },
+      { value: "session-2", description: "pi | bob | builder@general | offline | gpt-5.5 | seen 2026-06-22 10:20:30Z" },
     ]);
     await expect(completeDynamicProvider("session-names", { env })).resolves.toEqual([
-      { value: "alice", description: "peer-1" },
-      { value: "bob", description: "peer-3" },
+      { value: "alice", description: "claude | ali@general | working | planner | machine MTPL-1" },
+      { value: "bob", description: "pi | builder@general | offline | builder | machine MTPL-2" },
     ]);
-    await expect(completeDynamicProvider("thread-root-event-ids", { env })).resolves.toEqual([{ value: "42", description: "general" }]);
+    await expect(completeDynamicProvider("thread-root-event-ids", { env })).resolves.toEqual([
+      { value: "42", description: "general | ali | 3 replies | active 2026-06-22 09:15:00Z" },
+    ]);
     await expect(completeDynamicProvider("media-ids", { env })).resolves.toEqual([
       { value: "media-1", description: "screenshot" },
     ]);
@@ -83,7 +140,7 @@ describe("dynamic completion providers", () => {
     ]);
   });
 
-  test("completion bridge can render Carapace candidate lines", async () => {
+  test("completion bridge can render Tab candidate lines", async () => {
     const server = Bun.serve({
       port: 0,
       fetch(request) {
@@ -105,13 +162,13 @@ describe("dynamic completion providers", () => {
       return true;
     }) as typeof process.stdout.write;
     try {
-      await runCompletion(["complete", "group-names", "--format", "carapace"]);
+      await runCompletion(["complete", "group-names", "--format", "tab"]);
     } finally {
       process.stdout.write = originalWrite;
       if (originalEnv === undefined) delete process.env.SYNCHRONIZE_HOME;
       else process.env.SYNCHRONIZE_HOME = originalEnv;
     }
-    expect(writes.join("")).toBe("general\tmain room\n");
+    expect(writes.join("")).toBe("general\tmain room\n:4\n");
   });
 });
 
@@ -119,4 +176,43 @@ async function tempHome(): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), "synchronize-completion-"));
   tempHomes.push(home);
   return home;
+}
+
+function agentSessionBinding(
+  hostSessionId: string,
+  peerId: string,
+  hostTool: string,
+  sessionName: string,
+  presence: "offline" | "online" | "working" | "idle" | "initializing",
+  model: string,
+) {
+  return {
+    binding_id: `binding-${hostSessionId}`,
+    peer_id: peerId,
+    host_tool: hostTool,
+    host_session_id: hostSessionId,
+    host_session_file: null,
+    cwd: "/repo",
+    git_branch: null,
+    git_dirty: null,
+    pid: 123,
+    source: "session_start",
+    model,
+    agent_type: `${hostTool}-session`,
+    metadata_json: null,
+    launch_id: null,
+    created_at: "2026-06-22T10:00:00.000Z",
+    updated_at: "2026-06-22T10:20:30.000Z",
+    last_seen_at: "2026-06-22T10:20:30.000Z",
+    peer: {
+      peer_id: peerId,
+      tool: hostTool,
+      session_name: sessionName,
+      purpose: null,
+      machine_id: "MTPL-1",
+      lease_expires_at: "2026-06-22T10:21:30.000Z",
+      online: presence !== "offline",
+      presence,
+    },
+  };
 }
