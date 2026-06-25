@@ -368,14 +368,16 @@
 }
 :root[data-skin="glass"] .act-room-go,
 :root[data-skin="glass"] .act-digest-go,
-:root[data-skin="glass"] .act-digest-headgo {
+:root[data-skin="glass"] .act-digest-headgo,
+:root[data-skin="glass"] .act-scope-ack {
   border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
   box-shadow: var(--shadow-chip);
 }
 :root[data-skin="glass"] .act-room-go:hover,
 :root[data-skin="glass"] .act-digest-go:hover,
-:root[data-skin="glass"] .act-digest-headgo:hover {
+:root[data-skin="glass"] .act-digest-headgo:hover,
+:root[data-skin="glass"] .act-scope-ack:hover {
   color: var(--on-accent);
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);

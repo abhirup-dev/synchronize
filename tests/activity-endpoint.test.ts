@@ -1,8 +1,7 @@
 // Real-daemon coverage for GET /activity/:peerId — the observer feed. Exercises
 // the actual SQL against SQLite (the stubbed-fetch web tests can't): the
-// events LEFT JOIN inbox, the computed `awaiting` boolean, and — critically —
-// the DM-visibility clause that must keep private agent↔agent DMs out of the
-// observer's feed.
+// thread-interaction awaiting model and — critically — the DM-visibility clause
+// that must keep private agent↔agent DMs out of the observer's feed.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -56,7 +55,7 @@ interface ActivityEvent {
   awaiting: number;
 }
 
-test("GET /activity is an observer feed: group events + awaiting, no private DM leak", async () => {
+test("GET /activity awaits agent group messages after the observer's last thread interaction", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-activity-"));
   homes.push(home);
   const daemon = await startDaemon(home);
@@ -91,14 +90,29 @@ test("GET /activity is an observer feed: group events + awaiting, no private DM 
       body: JSON.stringify({ peer_id: bob.peer.peer_id, alias: "bob" }),
     });
 
-    // alice: a plain message and an @you mention in the group.
-    await json(daemon.baseUrl, "/groups/room/messages", {
+    // alice: two top-level group messages, both awaiting because the human has
+    // not replied/reacted/handled either thread yet. Repeated replies by the
+    // same actor in one thread collapse to the latest representative row, while
+    // a different actor in that same thread still gets a separate row.
+    const root = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
       method: "POST",
       body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "status update for the room" }),
     });
-    await json(daemon.baseUrl, "/groups/room/messages", {
+    const second = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
       method: "POST",
       body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "@you can you review this?" }),
+    });
+    const aliceReply1 = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "first alice follow-up", in_reply_to: root.event.event_id }),
+    });
+    const aliceReply2 = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "latest alice follow-up", in_reply_to: root.event.event_id }),
+    });
+    const bobReply = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: bob.peer.peer_id, message: "bob has a separate thread view", in_reply_to: root.event.event_id }),
     });
 
     // A PRIVATE DM between two other agents — must never reach the observer.
@@ -113,28 +127,72 @@ test("GET /activity is an observer feed: group events + awaiting, no private DM 
     );
     const bodies = feed.events.map((e) => e.body);
 
-    // Both group messages are visible to the observer…
-    expect(bodies).toContain("status update for the room");
+    // Separate top-level threads remain visible, but the repeated alice messages
+    // in root's thread are represented only by her latest reply.
     expect(bodies.some((b) => b?.includes("can you review this?"))).toBe(true);
-    // …and awaiting (web is a member → inbox rows, unacked).
+    expect(feed.events.some((e) => e.event_id === root.event.event_id)).toBe(false);
+    expect(feed.events.some((e) => e.event_id === aliceReply1.event.event_id)).toBe(false);
+    expect(feed.events.some((e) => e.event_id === aliceReply2.event.event_id)).toBe(true);
+    expect(feed.events.some((e) => e.event_id === bobReply.event.event_id)).toBe(true);
+    // …and awaiting (agent-authored group messages after the last human thread interaction).
     expect(feed.events.every((e) => e.group_id !== null && e.awaiting === 1)).toBe(true);
-    expect(feed.awaiting_count).toBeGreaterThanOrEqual(2);
+    expect(feed.awaiting_count).toBe(3);
     expect(feed.peers.map((p) => p.peer_id)).toContain(alice.peer.peer_id);
+    expect(feed.peers.map((p) => p.peer_id)).toContain(bob.peer.peer_id);
     // The private A↔B DM is ABSENT (the discriminator).
     expect(feed.events.some((e) => e.event_id === secret.event.event_id)).toBe(false);
     expect(bodies.some((b) => b?.includes("private alice->bob"))).toBe(false);
 
-    // filter=awaiting keeps only un-acked items; ack one and it drops out.
-    const firstId = feed.events[0]!.event_id;
+    // Explicit handling of one item records a thread interaction and drops that
+    // item from the awaiting projection without depending on inbox state.
+    const firstId = second.event.event_id;
     await json(daemon.baseUrl, `/peers/${encodeURIComponent(me)}/inbox/ack`, {
       method: "POST",
       body: JSON.stringify({ event_ids: [firstId] }),
     });
-    const awaiting = await json<{ events: ActivityEvent[] }>(
+    let awaiting = await json<{ events: ActivityEvent[]; awaiting_count: number }>(
       daemon.baseUrl,
       `/activity/${encodeURIComponent(me)}?filter=awaiting`,
     );
     expect(awaiting.events.some((e) => e.event_id === firstId)).toBe(false);
+    expect(awaiting.awaiting_count).toBe(2);
+
+    // Replying in a thread is a stronger interaction: it clears the root and
+    // everything earlier in that thread from "awaiting you".
+    await json(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: me, message: "on it", in_reply_to: root.event.event_id }),
+    });
+    awaiting = await json<{ events: ActivityEvent[]; awaiting_count: number }>(
+      daemon.baseUrl,
+      `/activity/${encodeURIComponent(me)}?filter=awaiting`,
+    );
+    expect(awaiting.events.some((e) => e.event_id === root.event.event_id)).toBe(false);
+    expect(awaiting.awaiting_count).toBe(0);
+
+    // A later agent reply in that same thread becomes awaiting again.
+    const later = await json<{ event: { event_id: number } }>(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: bob.peer.peer_id, message: "follow-up after you replied", in_reply_to: root.event.event_id }),
+    });
+    awaiting = await json<{ events: ActivityEvent[]; awaiting_count: number }>(
+      daemon.baseUrl,
+      `/activity/${encodeURIComponent(me)}?filter=awaiting`,
+    );
+    expect(awaiting.events.map((e) => e.event_id)).toEqual([later.event.event_id]);
+    expect(awaiting.awaiting_count).toBe(1);
+
+    // Reacting to the later event acknowledges the thread up to that event.
+    await json(daemon.baseUrl, `/events/${later.event.event_id}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({ peer_id: me, emoji: "👍", op: "add" }),
+    });
+    awaiting = await json<{ events: ActivityEvent[]; awaiting_count: number }>(
+      daemon.baseUrl,
+      `/activity/${encodeURIComponent(me)}?filter=awaiting`,
+    );
+    expect(awaiting.events).toEqual([]);
+    expect(awaiting.awaiting_count).toBe(0);
   } finally {
     await daemon.stop();
   }

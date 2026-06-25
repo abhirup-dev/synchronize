@@ -1,4 +1,5 @@
 import { HttpError, jsonResponse } from "../../http.ts";
+import { recordThreadInteractionForEvent } from "../repo/activity-interactions.ts";
 import { ensureActiveMember } from "../repo/groups.ts";
 import {
   ackInboxEvents,
@@ -31,7 +32,10 @@ export async function tryHandleReactionsRoute(request: Request, ctx: DaemonConte
       ensureReactableEvent(event);
       if (event.group_id !== null) ensureActiveMember(ctx.db, event.group_id, peerId);
       const result = applyReaction(ctx.db, { eventId, peerId, emoji, op });
-      if (result.active) ackInboxEvents(ctx.db, peerId, [eventId]);
+      if (result.active) {
+        ackInboxEvents(ctx.db, peerId, [eventId]);
+        recordThreadInteractionForEvent(ctx.db, { peerId, eventId, kind: "reaction" });
+      }
       const updated = getEvent(ctx.db, eventId);
       emitWebStateChanged(ctx, {
         domains: ["reactions"],

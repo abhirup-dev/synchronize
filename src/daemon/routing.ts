@@ -69,18 +69,17 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
 
   // Read-only global Activity feed for the web UI. The web user is an OBSERVER:
   // it sees every group's events (mirroring readWebRoomEvents' group visibility)
-  // but only its OWN DMs — private agent↔agent DMs must not leak. The durable
-  // per-peer inbox is layered on as an LEFT JOIN "awaiting" overlay rather than
-  // the feed's spine, because the observer is a member only of rooms it has
-  // posted in (its inbox would otherwise be near-empty). `awaiting` is computed
-  // in SQL (inbox row present AND un-acked) — never inferred from a null
-  // acked_at, which the LEFT JOIN makes ambiguous. Own sends are excluded.
+  // but only its OWN DMs — private agent↔agent DMs must not leak. Awaiting is a
+  // thread-interaction projection: agent-authored group messages after the
+  // observer's last reply/reaction/handled marker in that thread. Durable inbox
+  // rows remain the notification fallback, not the Activity feed's spine.
   //
   // Unlike GET /peers/:id/inbox and GET /events/:id, this endpoint has NO side
   // effects: it never advances delivery/read state or the peer's last_cursor.
   // That keeps the shared single web peer (all of a human's browsers resolve to
   // web:local-human) free of cross-device cursor contention. Newest-first with a
-  // `before` cursor for load-older; `filter=awaiting` keeps only un-acked items.
+  // `before` cursor for load-older; `filter=awaiting` keeps only projected
+  // awaiting items.
   const activityResponse = tryHandleActivityRoute(request, ctx, url);
   if (activityResponse) return activityResponse;
 

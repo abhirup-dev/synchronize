@@ -212,13 +212,13 @@ export interface ThreadSummary {
 
 // ─── Activity feed ─────────────────────────────────────────────────────────
 
-// One row in the global, cross-room Activity feed. Derived from real events
-// (the daemon's per-peer inbox ⋈ events; the mock aggregates the seed the same
-// way). `type` is a single generic kind for now but is kept as a free string so
+// One row in the global, cross-room Activity feed. Derived from real events.
+// `type` is a single generic kind for now but is kept as a free string so
 // future work-event categories (claim/deliver/ship/…) slot in as pure data via
 // the client's `actMeta(type)` map — no structural change. `awaiting` is the
-// server-authoritative "awaiting you" signal (inbox.acked_at IS NULL); `react`,
-// `reply`, and "mark all handled" clear it. `isMention`/`threadParentId` are
+// server-authoritative "awaiting you" signal: agent-authored group messages
+// after the local user's last reply/reaction/handled marker in the thread.
+// `isMention`/`threadParentId` are
 // derived flags driving the Mentions filter and whether the thread pane opens
 // on an existing parent or on the row's own single-message root.
 export interface ActivityItem {
@@ -229,7 +229,7 @@ export interface ActivityItem {
   type: string; // forward-compat kind; one generic value today
   text: string; // markdown body / preview
   createdAt: string; // ISO
-  awaiting: boolean; // inbox.acked_at IS NULL
+  awaiting: boolean; // true when newer than local user's last thread interaction
   isMention: boolean; // mentions include me
   threadParentId?: string; // set when this is a thread reply; otherwise msgId is the thread root
   replyCount?: number;
@@ -414,6 +414,8 @@ export interface DataSource {
   reactToMessage(input: ReactToMessageInput): Promise<Message>;
   /** Clear one item from "awaiting you" (e.g. on an explicit react in the feed). */
   ackActivity(eventId: number): Promise<void>;
+  /** Clear a scoped set of Activity rows, such as one room group or timeline bucket. */
+  ackActivityEvents(eventIds: number[]): Promise<void>;
   /** Clear every awaiting item ("mark all handled"). */
   ackAllActivity(): Promise<void>;
   /** Page in older activity rows (cursor "load older"). */

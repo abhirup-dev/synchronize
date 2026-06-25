@@ -1,5 +1,6 @@
 import { MAX_MESSAGE_CHARS } from "../../constants.ts";
 import { HttpError, jsonResponse } from "../../http.ts";
+import { recordGroupMessageInteraction } from "../repo/activity-interactions.ts";
 import { getEvent, getVisibleEvent } from "../repo/events.ts";
 import { ensureActiveMember, getGroupById } from "../repo/groups.ts";
 import { ensurePeer } from "../repo/peers.ts";
@@ -122,6 +123,13 @@ export async function tryHandleMessagingRoute(request: Request, ctx: DaemonConte
         )
         .run(senderPeerId, group.group_id, message, parentEventId, target.event_id, mentionsJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      recordGroupMessageInteraction(ctx.db, {
+        peerId: senderPeerId,
+        groupId: group.group_id,
+        eventId: id,
+        parentEventId,
+        kind: "message",
+      });
       allRecipients = ctx.db
         .query<{ peer_id: string }, [number, string]>(
           "SELECT peer_id FROM group_members WHERE group_id = ? AND active = 1 AND peer_id != ?",

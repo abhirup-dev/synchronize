@@ -2,6 +2,7 @@ import { MAX_MESSAGE_CHARS } from "../../constants.ts";
 import { HttpError, jsonResponse } from "../../http.ts";
 import { mapSqliteConstraint } from "../errors.ts";
 import { parseSelectorsFromUrl } from "../selectors.ts";
+import { recordGroupMessageInteraction } from "../repo/activity-interactions.ts";
 import {
   ackInboxEvents,
   attachReactions,
@@ -328,6 +329,13 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
         )
         .run(senderPeerId, group.group_id, message, parentEventId, directReplyTarget?.event_id ?? null, mentionsJson, skillDirectivesJson);
       const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
+      recordGroupMessageInteraction(ctx.db, {
+        peerId: senderPeerId,
+        groupId: group.group_id,
+        eventId: id,
+        parentEventId,
+        kind: "message",
+      });
       // Durable inbox fanout: every active member except the sender, regardless
       // of mention status — durable visibility is the same as v0; only push
       // is mention/thread-aware.
