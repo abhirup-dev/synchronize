@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from ..aoe import AoeController
 from ..pi_env import PiEnvironment, PiPaths
-from ..runtime import ArtifactWriter, CommandRunner, HarnessError, require_tools, stop_daemon, synchronize_env, utc_run_id
+from ..runtime import (
+    ArtifactWriter,
+    CommandRunner,
+    HarnessError,
+    add_remote_daemon_args,
+    remote_daemon_from_args,
+    require_tools,
+    stop_daemon,
+    synchronize_env,
+    utc_run_id,
+)
 from ..sync_rest import SyncRestClient
 from ..tmux import AgentPane, TmuxController, require_libtmux
 
@@ -32,21 +44,38 @@ class PiMcpDmScenario:
     def __init__(self, args: argparse.Namespace, repo: Path) -> None:
         self.args = args
         self.repo = repo
+        self.registration_not_before = datetime.now(timezone.utc)
         self.run_id = args.run_id or utc_run_id()
         self.state_root = Path(args.state_dir).expanduser().resolve() if args.state_dir else self.repo / ".synchronize-itest"
         self.run_dir = Path(args.run_dir).expanduser().resolve() if args.run_dir else self.state_root / "runs" / self.run_id
         self.pi_home = self.run_dir / "pi-agent"
-        self.pi_sessions = self.run_dir / "pi-sessions"
         self.sync_home = self.run_dir / "synchronize-home"
+        # Pi session transcripts MUST live where the daemon's resume launch will
+        # look for them. The daemon's provisionPiLaunchRuntime always points
+        # PI_CODING_AGENT_SESSION_DIR at <sync_home>/pi-sessions (not keyed by
+        # peer), so a faithful `pi --session <id>` resume only resolves if the
+        # original agent wrote its transcript there too. (In a global install
+        # this is a non-issue — one PI home — but the harness runs each agent in
+        # a simulated PI home, so we must align the session dir with the daemon's
+        # deterministic convention.)
+        self.pi_sessions = self.sync_home / "pi-sessions"
         self.profile = args.profile or f"sync-pi-itest-{self.repo.name}-{self.run_id.lower()}"
         self.profile_cleanup_prefix = args.profile or f"sync-pi-itest-{self.repo.name}-"
         self.agent_names = [f"{args.agent_prefix}-{index}" for index in range(1, args.agents + 1)]
-        self.env = synchronize_env(self.sync_home)
+        self.remote = remote_daemon_from_args(args)
+        if self.remote.enabled:
+            # In remote mode, /resume/session runs in the daemon process and Pi
+            # resumes from the daemon's conventional <SYNCHRONIZE_HOME>/pi-sessions.
+            # For the VPS self-hosted topology the harness runs on that same host,
+            # so seed transcripts there instead of in the harness-local sync_home.
+            self.pi_sessions = Path(os.environ.get("SYNCHRONIZE_REMOTE_PI_SESSION_DIR", str(Path.home() / ".synchronize" / "pi-sessions"))).expanduser()
+        self.owns_pi_sessions = not self.remote.enabled
+        self.env = synchronize_env(self.sync_home, remote=self.remote)
         self.writer = ArtifactWriter(self.run_dir)
         self.runner = CommandRunner(self.repo, self.env, self.writer)
         self.aoe = AoeController(self.profile, self.repo, self.runner, self.writer)
         self.tmux = TmuxController(self.runner, self.writer)
-        self.rest = SyncRestClient(self.sync_home)
+        self.rest = SyncRestClient(self.sync_home, base_url=self.remote.url, token=self.remote.token)
         self.pi_env = PiEnvironment(
             repo=self.repo,
             paths=PiPaths(pi_home=self.pi_home, pi_sessions=self.pi_sessions, sync_home=self.sync_home),
@@ -55,6 +84,7 @@ class PiMcpDmScenario:
             thinking=self.args.thinking,
             auth_source=self.args.auth_source,
             writer=self.writer,
+            remote=self.remote,
         )
         self.agent_panes: dict[str, AgentPane] = {}
         self.pi_peers: dict[str, PiPeer] = {}
@@ -81,6 +111,7 @@ class PiMcpDmScenario:
                 "model": self.args.model,
                 "thinking": self.args.thinking,
                 "keep": self.args.keep,
+                **self.remote.as_summary(),
             },
         )
 
@@ -123,7 +154,8 @@ class PiMcpDmScenario:
         self.writer.write_json("preflight.json", versions)
 
     def start_daemon(self) -> None:
-        result = self.runner.run(["bun", "run", "src/cli.ts", "status"], log_name="synchronize-status-start")
+        log_name = "synchronize-status-remote" if self.remote.enabled else "synchronize-status-start"
+        result = self.runner.run(["bun", "run", "src/cli.ts", "status"], log_name=log_name)
         self.writer.write_text("synchronize-status-start.txt", result.stdout)
 
     def install_pi_packages(self) -> None:
@@ -152,13 +184,7 @@ class PiMcpDmScenario:
                 bindings = self.rest.agent_sessions("pi").get("bindings", [])
             except HarnessError:
                 bindings = []
-            matched_bindings = [
-                binding
-                for binding in bindings
-                if isinstance(binding, dict)
-                and str(binding.get("cwd") or "") == str(self.repo)
-                and str(binding.get("host_tool") or "") == "pi"
-            ]
+            matched_bindings = select_current_pi_bindings(bindings, self.repo, self.registration_not_before)
             mapped = self.map_bindings_to_agents(matched_bindings)
             if len(mapped) == len(self.agent_names):
                 self.pi_peers = mapped
@@ -170,13 +196,18 @@ class PiMcpDmScenario:
         raise HarnessError(f"Pi sessions did not auto-register within {self.args.registration_timeout}s")
 
     def map_bindings_to_agents(self, bindings: list[dict[str, Any]]) -> dict[str, PiPeer]:
-        by_host_session_id = {
-            str(binding.get("host_session_id") or ""): binding
-            for binding in bindings
-            if str(binding.get("host_session_id") or "")
-        }
+        by_session_name: dict[str, dict[str, Any]] = {}
+        for binding in bindings:
+            session_name = binding_session_name(binding)
+            if session_name and session_name not in by_session_name:
+                by_session_name[session_name] = binding
+        by_host_session_id = {str(binding.get("host_session_id") or ""): binding for binding in bindings if str(binding.get("host_session_id") or "")}
         mapped: dict[str, PiPeer] = {}
         for name in self.agent_names:
+            direct = by_session_name.get(name)
+            if direct and str(direct.get("peer_id") or "") and str(direct.get("host_session_id") or ""):
+                mapped[name] = PiPeer(name=name, peer_id=str(direct["peer_id"]), host_session_id=str(direct["host_session_id"]))
+                continue
             pane = self.agent_panes.get(name)
             if not pane:
                 continue
@@ -276,7 +307,7 @@ class PiMcpDmScenario:
         except Exception as error:  # noqa: BLE001
             self.writer.write_text(f"{label}-pane-diagnostics-error.txt", str(error))
         try:
-            if (self.sync_home / "daemon.json").exists():
+            if self.remote.enabled or (self.sync_home / "daemon.json").exists():
                 self.writer.write_json(f"{label}-sync-status.json", self.rest.status())
                 self.writer.write_json(f"{label}-sync-peers.json", self.rest.peers())
                 self.writer.write_json(f"{label}-sync-agent-sessions.json", self.rest.agent_sessions("pi"))
@@ -299,9 +330,11 @@ class PiMcpDmScenario:
     def cleanup(self) -> None:
         if shutil.which("aoe") is not None:
             self.aoe.cleanup(self.agent_names)
-        stop_daemon(self.sync_home, self.writer)
+        if not self.remote.enabled:
+            stop_daemon(self.sync_home, self.writer)
         shutil.rmtree(self.pi_home, ignore_errors=True)
-        shutil.rmtree(self.pi_sessions, ignore_errors=True)
+        if self.owns_pi_sessions:
+            shutil.rmtree(self.pi_sessions, ignore_errors=True)
         shutil.rmtree(self.sync_home, ignore_errors=True)
 
     def cleanup_dirty_state_before_run(self) -> None:
@@ -314,7 +347,7 @@ class PiMcpDmScenario:
             sync_home_value = str(stale.get("sync_home") or "")
             run_dir = Path(run_dir_value) if run_dir_value else None
             sync_home = Path(sync_home_value) if sync_home_value else None
-            if sync_home is not None:
+            if sync_home is not None and not bool(stale.get("remote_mode")):
                 stop_daemon(sync_home, self.writer)
             if profile and shutil.which("aoe") is not None:
                 self.runner.run(["aoe", "profile", "delete", profile], check=False, log_name=f"cleanup-stale-profile-{profile}", input_text="y\n")
@@ -352,6 +385,41 @@ class PiMcpDmScenario:
         return [base_prefix, compact_prefix, self.profile]
 
 
+def binding_session_name(binding: dict[str, Any]) -> str:
+    direct = str(binding.get("session_name") or "")
+    if direct:
+        return direct
+    peer = binding.get("peer")
+    if isinstance(peer, dict):
+        return str(peer.get("session_name") or "")
+    return ""
+
+
+def select_current_pi_bindings(bindings: list[Any], repo: Path, not_before: datetime) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    for binding in bindings:
+        if not isinstance(binding, dict):
+            continue
+        if str(binding.get("cwd") or "") != str(repo):
+            continue
+        if str(binding.get("host_tool") or "") != "pi":
+            continue
+        created_at = parse_iso_utc(str(binding.get("created_at") or ""))
+        if created_at is not None and created_at < not_before:
+            continue
+        selected.append(binding)
+    return selected
+
+
+def parse_iso_utc(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the real Pi AoE/tmux synchronize integration smoke.")
     parser.add_argument("--profile", help="AoE profile to create/use. Defaults to sync-pi-itest-<worktree>-<timestamp>.")
@@ -364,6 +432,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Pi model to use for the smoke.")
     parser.add_argument("--thinking", default=DEFAULT_THINKING, help="Pi thinking level to use for the smoke.")
     parser.add_argument("--auth-source", help="Path to auth.json to copy into the isolated Pi home. Defaults to ~/.pi/agent/auth.json.")
+    add_remote_daemon_args(parser)
     parser.add_argument("--keep", action="store_true", help="Preserve AoE sessions/profile and all run state for debugging.")
     parser.add_argument("--start-timeout", type=int, default=90, help="Seconds to wait for AoE sessions to appear.")
     parser.add_argument("--registration-timeout", type=int, default=90, help="Seconds to wait for Pi extension auto-registration.")

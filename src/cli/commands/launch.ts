@@ -1,24 +1,37 @@
 import { spawn } from "node:child_process";
 import { ensureDaemon } from "../../client.ts";
-import { ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_SESSION_NAME } from "../../constants.ts";
+import { loadConfig } from "../../config.ts";
+import { ENV_SESSION_NAME } from "../../constants.ts";
+import { buildAgentCommand, buildLaunchEnv, isLaunchTool, sanitizeLaunchBaseEnv, type LaunchTool } from "../../launch/build.ts";
+import { resolveConfiguredAgentLaunchProfile, type ResolvedAgentLaunchProfile } from "../../launch/profiles.ts";
+import { getRuntimePaths } from "../../paths.ts";
 
 export async function run(argv: string[]): Promise<void> {
-  const { target, name, rest } = parseLaunchArgs(argv);
+  const parsed = parseLaunchArgs(argv);
+  const resolved = await resolveLaunchTarget(parsed);
   await ensureDaemon();
   const launchId = crypto.randomUUID();
   const env = {
-    ...process.env,
-    [ENV_HOOK_ENABLE]: "1",
-    [ENV_LAUNCH_ID]: launchId,
-    ...(name ? { [ENV_SESSION_NAME]: name } : {}),
+    ...sanitizeLaunchBaseEnv(process.env),
+    ...(resolved.profile?.env ?? {}),
+    ...buildLaunchEnv({
+      launchId,
+      ...(resolved.name ? { sessionName: resolved.name } : {}),
+      ...(resolved.profile ? { profileName: resolved.profile.profileName } : {}),
+    }),
   };
-  const cmd = buildCommand(target, rest);
+  const cmd = buildAgentCommand(
+    resolved.target,
+    resolved.rest,
+    resolved.profile?.bin ? { bin: resolved.profile.bin } : {},
+  );
   process.stderr.write(
-    `[synchronize launch] target=${target} name=${name ?? "<unset>"} launch_id=${launchId} ${ENV_SESSION_NAME}=${name ?? "<unset>"} argv=${JSON.stringify(cmd)}\n`,
+    `[synchronize launch] target=${resolved.target}${resolved.profile ? ` profile=${resolved.profile.profileName}` : ""} name=${resolved.name ?? "<unset>"} launch_id=${launchId} ${ENV_SESSION_NAME}=${resolved.name ?? "<unset>"} argv=${JSON.stringify(cmd)}\n`,
   );
   const child = spawn(cmd[0]!, cmd.slice(1), {
     stdio: "inherit",
     env,
+    ...(resolved.cwd ? { cwd: resolved.cwd } : {}),
   });
   const code = await new Promise<number>((resolve) => {
     child.on("exit", (exitCode, signal) => {
@@ -29,16 +42,30 @@ export async function run(argv: string[]): Promise<void> {
   process.exit(code);
 }
 
-function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest: string[] } {
-  const [target, ...args] = argv;
-  if (target !== "claude" && target !== "pi") {
-    throw new Error("launch requires one of: claude, pi");
-  }
+export function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest: string[] } {
+  let target: string | undefined;
   let name: string | undefined;
   const rest: string[] = [];
   let passThrough = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]!;
+
+    if (!target) {
+      if (arg === "--") {
+        continue;
+      }
+      if (arg === "--name") {
+        const next = argv[index + 1];
+        if (!next) throw new Error("launch --name requires a value");
+        name = next;
+        index += 1;
+        continue;
+      }
+      target = arg;
+      continue;
+    }
+
     if (passThrough) {
       rest.push(arg);
       continue;
@@ -48,7 +75,7 @@ function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest:
       continue;
     }
     if (arg === "--name") {
-      const next = args[index + 1];
+      const next = argv[index + 1];
       if (!next) throw new Error("launch --name requires a value");
       name = next;
       index += 1;
@@ -56,19 +83,35 @@ function parseLaunchArgs(argv: string[]): { target: string; name?: string; rest:
     }
     rest.push(arg);
   }
+
+  if (!target) {
+    throw new Error("launch requires a target: claude | pi | letta | configured-profile");
+  }
   return name ? { target, name, rest } : { target, rest };
 }
 
-function buildCommand(target: string, rest: string[]): string[] {
-  if (target === "claude") {
-    const args = [...rest];
-    if (!args.includes("--dangerously-skip-permissions")) {
-      args.unshift("--dangerously-skip-permissions");
-    }
-    if (!args.includes("--dangerously-load-development-channels")) {
-      args.unshift("--dangerously-load-development-channels", "server:synchronize");
-    }
-    return ["claude", ...args];
+async function resolveLaunchTarget(parsed: { target: string; name?: string; rest: string[] }): Promise<{
+  target: LaunchTool;
+  name?: string;
+  rest: string[];
+  cwd?: string;
+  profile?: ResolvedAgentLaunchProfile;
+}> {
+  if (isLaunchTool(parsed.target)) {
+    return {
+      target: parsed.target,
+      ...(parsed.name ? { name: parsed.name } : {}),
+      rest: parsed.rest,
+    };
   }
-  return ["pi", ...rest];
+  const config = await loadConfig(getRuntimePaths().configPath);
+  const profile = resolveConfiguredAgentLaunchProfile(config, parsed.target);
+  const name = parsed.name ?? profile.sessionName ?? profile.profileName;
+  return {
+    target: profile.tool,
+    name,
+    rest: [...profile.args, ...parsed.rest],
+    ...(profile.repo ? { cwd: profile.repo } : {}),
+    profile,
+  };
 }

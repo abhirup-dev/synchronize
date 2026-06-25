@@ -1,24 +1,38 @@
-import { deletePeer, heartbeatPeer, registerPeer } from "../api/peers.ts";
+import { heartbeatPeer, registerPeer, setPeerActivity } from "../api/peers.ts";
 import { findReusablePeer } from "../api/status.ts";
 import { ensureDaemon, type ClientConfig } from "../client.ts";
 import { ENV_PEER_ID, MCP_HEARTBEAT_MS } from "../constants.ts";
 import { type AdapterState, getClient, getMode } from "./state.ts";
 import { formatError, log } from "./util.ts";
 
-export const MCP_INSTRUCTIONS = `You are connected to the synchronize local agent messaging bus. Other Claude and Codex sessions on this machine can register, discover peers, send direct messages, join groups, and share media.
+export const MCP_INSTRUCTIONS = `You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks. Other Claude, Codex, and Pi sessions on this machine register, discover peers, exchange direct messages, join groups, react, and share media here.
 
-IMPORTANT: When you receive a <channel source="synchronize" ...> message, respond immediately. Do not wait until your current task is finished. Pause your current work, inspect the channel content and metadata, reply using bridge_dm when a reply is appropriate, then resume your work.
+When an event arrives on the synchronize bus, use the synchronize skill (invoke /synchronize). When you collaborate, send your responses EXCLUSIVELY through the synchronize bridge_* tools — bridge_reply, bridge_send_group, bridge_dm, bridge_react. A response written as ordinary host-session output is NOT delivered: it never reaches the bus. Composing an answer and actually sending it are two separate acts, and only the bridge_* call counts.
 
-Direct messages arrive through the Claude channel with the original message as channel content. Use the sender_peer_id metadata as the bridge_dm recipient_peer_id when replying.
+The human user is ALSO live on synchronize and ready for active collaboration — the user participates here as a peer, not as a foreign entity on some separate channel. Messages on this bus, including from the user, are real collaborators working with you. When you want to talk to the user, do it through synchronize the same way you reach any peer: with the bridge_* tools.
+
+EXCEPTION — GUI mode: if the user tells you that you are in "GUI mode", the user wants your replies delivered directly in your host session, NOT on the synchronize bus. In that case, prioritize replying to the user in your session and do not route those replies through synchronize tools. Absent that explicit signal, always collaborate via bridge_*.
+
+IMPORTANT — attend immediately, then respond by the lightest sufficient means. When a <channel source="synchronize" ...> event arrives, read it right away rather than batching it to the end of your task; immediacy is about attention, not about emitting a message. Then choose how to respond:
+- If you are directly mentioned, or the message needs something your current task can provide, collaborate: reply with bridge_reply (visible group/thread/DM events) or bridge_dm (direct). Be proactive when collaboration serves the task you have been set.
+- If the event merely interrupts you or is irrelevant to your current task, feel free to ignore it or acknowledge with a single bridge_react reaction. A reaction is a complete response — no message required.
+- Weight DMs higher than group messages: a direct message (bridge_dm) means a peer wants your attention, so reply to it rather than ignoring — the ignore-or-react latitude above is mainly for group/channel traffic.
+- Prioritize efficiency: never send a message where a reaction or silence carries the same information, and do not post redundant "I'm here" presence replies.
+
+For a detailed understanding of how to work within the synchronize workspace — identity and peer_id rules, threading, group/DM/inbox semantics, reactions, and missed-delivery recovery — read the synchronize skill (invoke /synchronize, or open the skill named "synchronize"). Consult it before any non-trivial coordination.
+
+Direct-message replies: use the sender_peer_id metadata as the bridge_dm recipient_peer_id. Visible events: reply by event_id with bridge_reply.
 
 Available tools:
-- bridge_register: Register this session with a stable session_name before messaging.
-- bridge_rename_session: Rename this session's visible alias while preserving its peer_id.
-- bridge_list_peers: Discover peers and their peer_id values.
-- bridge_dm: Reply to or send a direct message to another peer.
-- bridge_inbox: Manually check durable inbox fallback if channel delivery was missed.
-- bridge_create_group, bridge_join_group, bridge_send_group, bridge_group_history: Coordinate in groups.
-- bridge_share_media, bridge_list_media, bridge_get_media: Share and inspect group media.`;
+- bridge_register / bridge_rename_session: register or rename this session (preserves peer_id).
+- bridge_whoami: confirm identity, runtime context, and host binding.
+- bridge_list_peers: discover peers and their peer_id values.
+- bridge_dm: send or reply to a direct message to another peer.
+- bridge_reply: reply to a visible group/thread/DM event by event_id.
+- bridge_react: attach an emoji reaction — the preferred ack / +1 / "seen", with no message body and no notification.
+- bridge_inbox: manually check the durable inbox fallback if channel delivery was missed.
+- bridge_create_group, bridge_join_group, bridge_send_group, bridge_group_history, bridge_get_thread: coordinate in groups and threads.
+- bridge_share_media, bridge_list_media, bridge_get_media: share and inspect group media.`;
 
 export async function resolveMcpRegisterPeerId(
   client: ClientConfig,
@@ -38,6 +52,7 @@ export interface LifecycleHooks {
   maintainPeer: () => Promise<void>;
   startHeartbeat: () => void;
   cleanup: () => Promise<void>;
+  markWorking: () => Promise<void>;
 }
 
 export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
@@ -83,6 +98,13 @@ export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
   }
 
   async function cleanup(): Promise<void> {
+    // Heartbeat-only lifecycle: on shutdown we stop heartbeating and tear down
+    // transports, but we do NOT delete the peer. Death is detected by lease
+    // lapse — within SYNCHRONIZE_LEASE_MS the daemon drops the peer offline on
+    // its own. Tying deletion to stdin-close/process-exit was the footgun (it
+    // deleted peers out from under live processes during session rotation,
+    // borrowed-peer reuse, resume/compact). DELETE /peers/:id is now an
+    // operator-only tool. See plan-agent-ttl-presence-v0.md.
     if (state.heartbeat) {
       clearInterval(state.heartbeat);
       state.heartbeat = null;
@@ -91,26 +113,22 @@ export function createLifecycleHooks(state: AdapterState): LifecycleHooks {
     state.notifier = null;
     state.subscription?.stop();
     state.subscription = null;
-    if (state.peer && state.client) {
-      // Borrowed-peer guard: when SYNCHRONIZE_PEER_ID was set in the env at
-      // adapter startup (e.g. by the Pi extension which owns the peer
-      // lifetime), this adapter is using a borrowed peer. The owner — not
-      // us — controls when to delete it. Skipping deletePeer here prevents
-      // Pi agents from being soft-deleted out from under their own live
-      // process whenever Pi rotates its internal MCP subprocess.
-      const borrowedPeerId = process.env[ENV_PEER_ID];
-      if (borrowedPeerId && borrowedPeerId === state.peer.peer_id) {
-        log(`skip unregister peer ${state.peer.peer_id} (borrowed via ${ENV_PEER_ID})`);
-        return;
-      }
-      try {
-        await deletePeer(state.client, state.peer.peer_id);
-        log(`unregistered peer ${state.peer.peer_id}`);
-      } catch (error) {
-        log(`failed to unregister peer ${state.peer.peer_id}: ${formatError(error)}`);
-      }
+  }
+
+  // Push "working" when an inbound channel event is delivered to this peer.
+  // The MCP adapter is the only in-process component that sees channel delivery
+  // for Claude — UserPromptSubmit fires only for human prompts, so without this
+  // a synchronize-driven turn would never show as working. Best-effort: a
+  // failed push must never disrupt delivery.
+  async function markWorking(): Promise<void> {
+    if (!state.peer) return;
+    try {
+      const client = await getClient(state);
+      await setPeerActivity(client, { peerId: state.peer.peer_id, state: "working" });
+    } catch (error) {
+      log(`activity push (working) failed for peer ${state.peer.peer_id}: ${formatError(error)}`);
     }
   }
 
-  return { registerCurrentPeer, maintainPeer, startHeartbeat, cleanup };
+  return { registerCurrentPeer, maintainPeer, startHeartbeat, cleanup, markWorking };
 }

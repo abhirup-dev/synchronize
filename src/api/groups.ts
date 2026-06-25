@@ -1,5 +1,5 @@
 import { requestJson, type ClientConfig } from "../client.ts";
-import type { Event, Group, GroupMember } from "./types.ts";
+import type { Event, EventSelectors, Group, GroupMember, ReplyDestination, ThreadDiscoveryRow } from "./types.ts";
 
 export function createGroup(
   client: ClientConfig,
@@ -30,6 +30,16 @@ export function patchGroup(
 
 export function listGroups(client: ClientConfig): Promise<{ groups: Group[] }> {
   return requestJson<{ groups: Group[] }>(client, "/groups");
+}
+
+export interface MyGroup extends Group {
+  alias: string;
+  joined_at: string;
+}
+
+/** Groups the given peer is an active member of, with the peer's alias + join time. */
+export function listMyGroups(client: ClientConfig, peerId: string): Promise<{ groups: MyGroup[] }> {
+  return requestJson<{ groups: MyGroup[] }>(client, `/groups?member=${encodeURIComponent(peerId)}`);
 }
 
 export interface JoinGroupResponse {
@@ -91,7 +101,7 @@ export function leaveGroup(client: ClientConfig, input: { name: string; peerId: 
 
 export interface MentionWarning {
   token: string;
-  reason: "alias_not_in_group";
+  reason: "alias_not_in_group" | "alias_archived";
 }
 
 // Delivery summary so callers can verify routing without having to scan
@@ -107,13 +117,14 @@ export interface DeliverySummary {
 
 export interface SendGroupMessageResponse {
   event: Event;
+  posted_to: ReplyDestination;
   warnings: MentionWarning[];
   delivery: DeliverySummary;
 }
 
 export function sendGroupMessage(
   client: ClientConfig,
-  input: { name: string; senderPeerId: string; message: string; inReplyTo?: number },
+  input: { name: string; senderPeerId: string; message: string; inReplyTo?: number; skillDirectives?: string[] },
 ): Promise<SendGroupMessageResponse> {
   return requestJson<SendGroupMessageResponse>(
     client,
@@ -124,6 +135,7 @@ export function sendGroupMessage(
         sender_peer_id: input.senderPeerId,
         message: input.message,
         ...(input.inReplyTo !== undefined ? { in_reply_to: input.inReplyTo } : {}),
+        ...(input.skillDirectives !== undefined ? { skill_directives: input.skillDirectives } : {}),
       }),
     },
   );
@@ -131,11 +143,30 @@ export function sendGroupMessage(
 
 export function getGroupHistory(
   client: ClientConfig,
-  input: { name: string; peerId: string; threadOf?: number },
-): Promise<{ events: Event[]; next_cursor: number }> {
+  input: {
+    name: string;
+    peerId: string;
+    view?: "flat" | "threads" | "events";
+    selectors?: EventSelectors;
+    eventIds?: number[];
+    startedByPeerId?: string;
+    startedBySessionName?: string;
+    participatedByPeerId?: string;
+    participatedBySessionName?: string;
+    activeSince?: string;
+  },
+): Promise<{ view: "flat" | "threads" | "events"; events?: Event[]; items?: Event[]; threads?: ThreadDiscoveryRow[]; next_cursor?: number; truncated?: boolean }> {
   const params = new URLSearchParams({ peer_id: input.peerId });
-  if (input.threadOf !== undefined) params.set("thread_of", String(input.threadOf));
-  return requestJson<{ events: Event[]; next_cursor: number }>(
+  if (input.view) params.set("view", input.view);
+  if (input.selectors?.strategy) params.set("selector_strategy", input.selectors.strategy);
+  if (input.selectors?.k !== undefined) params.set("selector_k", String(input.selectors.k));
+  if (input.eventIds && input.eventIds.length > 0) params.set("event_ids", input.eventIds.join(","));
+  if (input.startedByPeerId) params.set("started_by_peer_id", input.startedByPeerId);
+  if (input.startedBySessionName) params.set("started_by_session_name", input.startedBySessionName);
+  if (input.participatedByPeerId) params.set("participated_by_peer_id", input.participatedByPeerId);
+  if (input.participatedBySessionName) params.set("participated_by_session_name", input.participatedBySessionName);
+  if (input.activeSince) params.set("active_since", input.activeSince);
+  return requestJson<{ view: "flat" | "threads" | "events"; events?: Event[]; items?: Event[]; threads?: ThreadDiscoveryRow[]; next_cursor?: number; truncated?: boolean }>(
     client,
     `/groups/${encodeURIComponent(input.name)}/history?${params.toString()}`,
   );

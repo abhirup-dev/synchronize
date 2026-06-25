@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { startTestDaemon } from "./helpers/daemon.ts";
 
 const homes: string[] = [];
 
@@ -9,41 +10,10 @@ afterAll(async () => {
   await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
 });
 
+// Uses the shared harness; passes its own home since the CLI spawnSync calls
+// below need the same SYNCHRONIZE_HOME.
 async function startDaemon(home: string): Promise<{ baseUrl: string; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: {
-      ...process.env,
-      SYNCHRONIZE_HOME: home,
-      SYNCHRONIZE_PORT: "0",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = await Bun.file(discoveryPath).json();
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          baseUrl: discovery.baseUrl,
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not write discovery file");
+  return startTestDaemon({ home });
 }
 
 async function json<T>(baseUrl: string, path: string, init: RequestInit = {}): Promise<T> {
@@ -215,9 +185,15 @@ test("Claude hook is env gated and registers native session binding when enabled
     model: "sonnet",
   });
 
+  // Strip SYNCHRONIZE_HOOK_ENABLE from the inherited env so the "disabled" case
+  // is genuinely disabled regardless of the ambient shell (the var is commonly
+  // exported globally for the real Claude hook). Without this, a developer whose
+  // shell exports SYNCHRONIZE_HOOK_ENABLE=1 sees this case spuriously start a
+  // daemon and the daemon.json-absence assertion below fails.
+  const { SYNCHRONIZE_HOOK_ENABLE: _hookGate, ...envWithoutHookGate } = process.env;
   const disabled = Bun.spawnSync({
     cmd: ["bash", "-lc", `printf '%s' '${input}' | bun run src/cli.ts hook claude-session`],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
+    env: { ...envWithoutHookGate, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
   });
   expect(disabled.exitCode).toBe(0);
   await expect(stat(join(home, "daemon.json"))).rejects.toThrow();
@@ -227,6 +203,10 @@ test("Claude hook is env gated and registers native session binding when enabled
     env: {
       ...process.env,
       SYNCHRONIZE_HOME: home,
+      // PORT=0 so the CLI-autostarted daemon binds a free port. Without this it
+      // binds the hardcoded DEFAULT_PORT and collides with any daemon already
+      // running on this machine, failing the health check (sync-anr).
+      SYNCHRONIZE_PORT: "0",
       SYNCHRONIZE_HOOK_ENABLE: "1",
       SYNCHRONIZE_SESSION_NAME: "hooked-claude",
     },

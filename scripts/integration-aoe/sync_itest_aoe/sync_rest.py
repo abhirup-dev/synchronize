@@ -11,8 +11,10 @@ from .runtime import HarnessError
 
 
 class SyncRestClient:
-    def __init__(self, sync_home: Path) -> None:
+    def __init__(self, sync_home: Path, *, base_url: str | None = None, token: str | None = None) -> None:
         self.sync_home = sync_home
+        self.remote_base_url = base_url.rstrip("/") if base_url else None
+        self.token = token
 
     def read_discovery(self) -> dict[str, Any]:
         path = self.sync_home / "daemon.json"
@@ -21,11 +23,15 @@ class SyncRestClient:
         return json.loads(path.read_text())
 
     def base_url(self) -> str:
+        if self.remote_base_url is not None:
+            return self.remote_base_url
         return str(self.read_discovery()["baseUrl"])
 
     def http_json(self, path: str, *, method: str = "GET", body: dict[str, Any] | None = None) -> dict[str, Any]:
         data = None
         headers: dict[str, str] = {}
+        if self.token:
+            headers["authorization"] = f"Bearer {self.token}"
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["content-type"] = "application/json"
@@ -56,6 +62,24 @@ class SyncRestClient:
 
     def agent_sessions(self, tool: str) -> dict[str, Any]:
         return self.http_json(f"/agent-sessions?tool={url_quote(tool)}")
+
+    def agent_sessions_for_peer(self, peer_id: str) -> dict[str, Any]:
+        return self.http_json(f"/agent-sessions?peer_id={url_quote(peer_id)}")
+
+    def archive_session(self, *, peer_id: str, reason: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if reason is not None:
+            body["reason"] = reason
+        return self.http_json("/archive/session", method="POST", body=body)
+
+    def resume_session(self, *, peer_id: str, force: bool = False) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id}
+        if force:
+            body["force"] = True
+        return self.http_json("/resume/session", method="POST", body=body)
+
+    def list_archived(self) -> dict[str, Any]:
+        return self.http_json("/archive/sessions")
 
     def list_groups(self) -> dict[str, Any]:
         return self.http_json("/groups")

@@ -1,20 +1,51 @@
 import { useMemo, useState } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 import { useAgents, useSetAgentColor } from "../data/context.tsx";
 import type { Agent, Room } from "../data/types.ts";
-import { Avatar, CountChip } from "./primitives.tsx";
+import { Avatar, CountChip, PanelSectionHeader } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { AgentColorPicker } from "./AgentColorPicker.tsx";
 import { AGENTS as SEED_AGENTS } from "../data/seed.ts";
 import { roomAgents } from "../data/roomAgents.ts";
+import { useToast } from "./Toast.tsx";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { AgentProfileDialog } from "./AgentPreview.tsx";
+import { agentActionMenuItems } from "./agentActionMenu.ts";
 
 interface AgentRosterProps {
   room: Room;
-  focusedAgent: string | null;
-  onFocus(id: string | null): void;
   /** Double-clicking a roster card jumps to the agent's last message in the
    *  active room (and toasts when the agent has no messages yet). */
   onAgentDoubleClick?(agentId: string): void;
+  onOpenDm?(agentId: string): void;
 }
+
+/**
+ * Roster styling migrated off extra.css/styles.css to inline Tailwind utilities
+ * (tokens bridged through tw.css `@theme inline`). Hooks kept on the elements:
+ * `agent-roster` (styles.css `.shell-overlay .agent-roster` + responsive
+ * `display:none`), `roster-head` (skin-glass backdrop-filter), and
+ * `roster-card` (extra.css vim `[data-vim-focused]` ring).
+ */
+const rosterSection = cva("flex flex-col gap-[6px]", {
+  variants: {
+    status: {
+      busy: "pl-[6px] [border-left:2px_solid_var(--pink)]",
+      online: null,
+      idle: null,
+      offline: null,
+    },
+  },
+});
+
+const rosterCard = cva([
+  "relative grid w-full grid-cols-[32px_1fr] items-start gap-[var(--space-10)]",
+  "px-[2px] py-[8px] text-left font-[inherit] text-ink",
+  "cursor-pointer bg-transparent shadow-none [border:var(--line-none)] rounded-none",
+  "[transition:transform_80ms_ease]",
+  "hover:translate-x-px",
+]);
 
 const GROUPS: Array<{ title: string; status: Agent["status"] }> = [
   { title: "WORKING", status: "busy" },
@@ -23,63 +54,59 @@ const GROUPS: Array<{ title: string; status: Agent["status"] }> = [
   { title: "OFF", status: "offline" },
 ];
 
-export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }: AgentRosterProps) {
+export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterProps) {
   const agents = useAgents();
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const openMenu = useContextMenu();
   const setAgentColor = useSetAgentColor();
+  const toast = useToast();
+  const archive = useArchiveWorkflow();
   const [picker, setPicker] = useState<{ agent: Agent; x: number; y: number } | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const members = useMemo(
     () => displayAgents.filter((a) => room.members.includes(a.id)),
     [displayAgents, room.members],
   );
 
   return (
-    <aside className="agent-roster" data-vim-panel="roster">
-      <div className="roster-head">
-        <span>AGENTS</span>
-        <CountChip n={members.length} />
-      </div>
-      {focusedAgent && (
-        <div className="focus-banner">
-          focused on @{displayAgents.find((a) => a.id === focusedAgent)?.handle}
-          <button className="focus-clear" onClick={() => onFocus(null)}>✕</button>
-        </div>
+    <aside
+      className={cn(
+        "agent-roster flex min-h-0 flex-col gap-[var(--space-14)] overflow-y-auto",
+        "px-[14px] pt-[14px] pb-[18px] [border-left:var(--line-2)]",
       )}
+      data-vim-panel="roster"
+    >
+      <PanelSectionHeader className="roster-head" label="AGENTS" count={members.length} />
       {GROUPS.map(({ title, status }) => {
         const inGroup = members.filter((m) => m.status === status);
         if (inGroup.length === 0) return null;
         return (
-          <div key={title} className={`roster-section roster-${status}`}>
-            <div className="roster-section-head">
+          <div key={title} className={cn(rosterSection({ status }))}>
+            <div className="flex items-center gap-[var(--space-6)] font-display text-[length:var(--text-10)] tracking-[var(--tracking-md)] text-ink-soft">
               <span>● {title}</span>
               <CountChip n={inGroup.length} />
             </div>
             {inGroup.map((agent) => (
               <button
                 key={agent.id}
-                className={`roster-card${focusedAgent === agent.id ? " focused" : ""}`}
+                className={cn("roster-card", rosterCard())}
                 data-vim-item={`agent-${agent.id}`}
-                onClick={() => onFocus(focusedAgent === agent.id ? null : agent.id)}
                 onDoubleClick={() => onAgentDoubleClick?.(agent.id)}
                 onContextMenu={(e) => {
-                  const { clientX, clientY } = e;
-                  openMenu(e, [
-                    { label: `Focus on @${agent.handle}`, onSelect: () => onFocus(agent.id) },
-                    { label: "Open DM", onSelect: () => console.log("dm", agent.id) },
-                    { label: "View profile", onSelect: () => console.log("profile", agent.id) },
-                    { divider: true },
-                    { label: "Change color…", onSelect: () => setPicker({ agent, x: clientX, y: clientY }) },
-                    { label: "Copy @handle", onSelect: () => navigator.clipboard?.writeText(`@${agent.handle}`) },
-                    { divider: true },
-                    { label: "Mute mentions", onSelect: () => console.log("mute", agent.id) },
-                  ]);
+                  openMenu(e, agentActionMenuItems(e, {
+                    agent,
+                    toast,
+                    archive,
+                    ...(onOpenDm ? { onOpenDm: () => onOpenDm(agent.id) } : {}),
+                    onViewProfile: () => setProfileAgent(agent),
+                    onChangeColor: ({ x, y }) => setPicker({ agent, x, y }),
+                  }));
                 }}
               >
                 <Avatar agent={agent} size={32} />
-                <div className="roster-meta">
-                  <div className="roster-name">{agent.name}</div>
-                  <div className="roster-role">
+                <div>
+                  <div className="font-semibold text-[length:var(--text-13)]">{agent.name}</div>
+                  <div className="font-mono text-[length:var(--text-10-5)] text-ink-soft">
                     {agent.role}
                     {agent.statusNote && agent.statusNote !== agent.name ? ` (${agent.statusNote})` : ""}
                   </div>
@@ -101,6 +128,7 @@ export function AgentRoster({ room, focusedAgent, onFocus, onAgentDoubleClick }:
           onClose={() => setPicker(null)}
         />
       )}
+      <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </aside>
   );
 }

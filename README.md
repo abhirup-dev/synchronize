@@ -71,21 +71,72 @@ make setup
 bun test
 ```
 
-For convenient CLI use, link the package:
-
-```bash
-make link
-synchronize --help
-```
-
-`synchronize-mcp` is also linked for MCP clients; it is a stdio server, so it is
-normally launched by Codex or Claude rather than run interactively.
-
-If you do not want to link it, run the CLI from the repo:
+If you only want to run from the checkout, use:
 
 ```bash
 bun run src/cli.ts --help
 ```
+
+## Install The CLI
+
+For day-to-day terminal use, link the package after `make setup`:
+
+```bash
+make install-cli
+synchronize --help
+```
+
+`make install-cli` links the local package through Bun, verifies the commands are
+on `PATH`, and refreshes the installed Tab zsh completion script. It installs two
+local commands:
+
+- `synchronize` - the human/operator CLI
+- `synchronize-mcp` - the stdio MCP server used by Codex or Claude
+
+`make link` is kept as a lower-level alias for the same local CLI install flow.
+Run `synchronize status` once to start or connect to the local daemon. Runtime
+state is stored under `~/.synchronize` by default.
+
+## Shell Completion
+
+Shell completion is powered by Tab and installed from the same schema that drives
+CLI help. No separate completion manager is required.
+
+```bash
+synchronize completion install --shell zsh
+```
+
+Add the generated script to your zsh config once:
+
+```bash
+echo 'source ~/.config/synchronize/completions/synchronize.zsh' >> ~/.zshrc
+source ~/.zshrc
+```
+
+`make install-cli` and the agent install targets refresh the generated
+`synchronize` completion script automatically. To refresh only completions:
+
+```bash
+synchronize completion install --shell zsh
+```
+
+By default, the zsh install command writes:
+
+```text
+~/.config/synchronize/completions/synchronize.zsh
+```
+
+To inspect the generated script without installing it:
+
+```bash
+synchronize completion tab zsh
+```
+
+Completion is safe to use at the shell prompt. Static command and flag
+completion works from the generated script. Dynamic completions such as group
+names, peer ids, session names, media ids, and thread root event ids query the
+daemon only when an existing daemon is already healthy; tab completion does not
+auto-start the daemon.
 
 ## Merge Policy
 
@@ -150,6 +201,39 @@ synchronize media share demo ./some-file.txt --description "notes for the demo g
 synchronize media list demo --query notes
 ```
 
+Discover deeper thread conversations and inspect event state:
+
+```bash
+synchronize threads list --group demo
+synchronize threads status 123
+synchronize threads show 123 --format transcript
+synchronize query --format table 'select event_id, body from thread_events where thread_root_event_id = 123'
+```
+
+Read an LLM-generated summary of a thread (opt-in: set `OPENROUTER_API_KEY`):
+
+```bash
+synchronize threads summary 123                                     # cached read
+synchronize threads summary 123 --refresh                           # force regen
+synchronize threads summary 123 --refresh --strategy first_last --first-k 3 --last-k 5
+synchronize threads summary 123 --format json                       # full envelope incl. stale flag
+```
+
+Summaries are computed once per thread (last-write-wins cache) and recomputed
+by a background worker when a thread goes cold (no activity for ~30 min) and
+new replies have landed since the cache was written. With no
+`OPENROUTER_API_KEY` set the worker is idle and the read endpoints report
+`status: "disabled"`.
+
+Knobs: `SYNCHRONIZE_LLM_PROVIDER` (default `openrouter`), `SYNCHRONIZE_LLM_MODEL`
+(default `google/gemini-2.5-flash-lite`), `SYNCHRONIZE_SUMMARY_STRATEGY` /
+`SYNCHRONIZE_SUMMARY_K` / `SYNCHRONIZE_SUMMARY_FIRST_K` /
+`SYNCHRONIZE_SUMMARY_LAST_K`, `SYNCHRONIZE_SUMMARY_POLL_INTERVAL_MS` (default
+15 min — set to `10000` during testing), `SYNCHRONIZE_SUMMARY_COLD_AFTER_MS`
+(default 30 min), `SYNCHRONIZE_SUMMARY_MIN_REPLIES` (default 1),
+`SYNCHRONIZE_SUMMARY_BATCH_SIZE` (default 10).
+
+
 ## Group Join Semantics
 
 Normal join gets history:
@@ -187,9 +271,10 @@ synchronize group rename demo reviewer --as terminal
 
 Group names are matched case-insensitively for collision checks. Thread replies
 are hidden from the main-channel history by default; use `--thread-of` to read a
-thread. Mentions are resolved from active group aliases, ignore text inside
-single-backtick and triple-backtick code regions, and exclude the sender from
-live push notifications. Durable inbox rows remain the fallback visibility path.
+thread. Mentions are resolved from active group aliases, can include colon
+aliases such as `web:local-human`, ignore text inside single-, double-, and
+triple-backtick code regions, and exclude the sender from live push
+notifications. Durable inbox rows remain the fallback visibility path.
 
 ## Web UI
 
@@ -219,9 +304,10 @@ make install-all         # all three
 make uninstall-{claude,codex,pi,all}
 ```
 
-All targets depend on `make link` (`bun install && bun link` so
-`synchronize-mcp` is on `PATH`). `SYNCHRONIZE_MCP_MODE` selects the
-notification dialect: `codex` (standard `notifications/message`) or `claude`
+All targets depend on `make link`, which runs `bun install`, `bun link`, and
+refreshes the Tab zsh completion script so the installed CLI and shell completion
+surface stay in sync. `SYNCHRONIZE_MCP_MODE` selects the notification dialect:
+`codex` (standard `notifications/message`) or `claude`
 (`notifications/claude/channel`).
 
 ### Under the hood
@@ -233,8 +319,13 @@ notification dialect: `codex` (standard `notifications/message`) or `claude`
 | Pi     | `bun run scripts/pi-mcp-config.ts ~/.pi/agent/mcp.json` + writes `~/.pi/agent/extensions/synchronize.ts` |
 
 For Claude channel pushes to surface in the UI, launch Claude with
-`--dangerously-load-development-channels server:synchronize`. Without it,
-durable inbox tools still work but channel events stay silent.
+`--dangerously-load-development-channels server:synchronize`. A `server:`
+channel only registers as a development channel (`--channels server:synchronize`
+is skipped — it's not on any approved allowlist; see bd sync-zst), and this
+flag triggers a one-time "local development" confirmation per launch. For
+daemon-spawned sessions, `AoeBackend` auto-dismisses that prompt via tmux
+send-keys so the session is unattended. Without the channel, durable inbox
+tools still work but live channel pushes stay silent.
 
 Pi has no `pi mcp add` CLI; `scripts/pi-mcp-config.ts` idempotently merges
 this entry into `~/.pi/agent/mcp.json` (or `$PI_CODING_AGENT_DIR/mcp.json`)
@@ -270,7 +361,7 @@ see which external session owns a peer.
 
 ```bash
 synchronize hook claude-session
-synchronize launch claude --name backend-reviewer -- --dangerously-load-development-channels server:synchronize
+synchronize launch claude --name backend-reviewer   # auto-adds --dangerously-load-development-channels server:synchronize
 ```
 
 Install the Claude `SessionStart` hook with `scripts/claude-hooks-config.ts`.
@@ -288,6 +379,44 @@ Relevant environment variables:
 - `SYNCHRONIZE_LAUNCH_ID` groups launch/hook events from the same spawned session.
 
 See `AUTO_REGISTRATION.md` for the full flow.
+
+## Spawning persistent agent sessions (AOE backend)
+
+`synchronize launch` runs an agent in the *foreground*. To spawn a **persistent**
+agent session that outlives the daemon, synchronize drives Agent of Empires
+(`aoe`) as a tmux backend:
+
+```bash
+# REST
+curl -X POST $BASE/agent-sessions/launch \
+  -d '{"tool":"claude","name":"alice","repo":"~/proj","group":"alpha"}'
+
+# CLI
+synchronize spawn claude --name alice --repo ~/proj --group alpha -- --model opus
+
+# MCP (an in-group agent spawning a teammate)
+bridge_launch({ tool: "claude", name: "alice", repo: "~/proj", group: "alpha" })
+```
+
+What happens:
+
+1. The daemon mints a `launch_id` + `peer_id`, builds the agent command (reusing
+   the same builder as `synchronize launch`), and asks the backend to
+   `aoe add` + `aoe session start` a session titled `<name>-<peerid8>`.
+2. `aoe` hands the session to its own daemon/tmux, so it **survives a
+   synchronize daemon crash** (the tmux server reparents to PID 1).
+3. The agent boots, its SessionStart hook self-registers with the pinned
+   `peer_id` + `launch_id`, and — if a `group` was named — the daemon
+   **auto-joins** the peer to that synchronize group (alias = name, fresh
+   history). The agent discovers its group via `bridge_list_groups({ mine: true })`.
+4. Stop with `POST /agent-sessions/stop {title}` / `bridge_stop`. Wiping the
+   runtime (`make clean-slate`) deletes the AOE profile, dropping its sessions.
+
+Requirements: `aoe` and `tmux` installed, and the agent globally installed
+(`make install-claude` / `install-pi`) so its synchronize MCP/hook wiring exists.
+The launch injects `SYNCHRONIZE_HOME` so the spawned agent registers back to the
+launching daemon. The backend is swappable (vanilla tmux is a future drop-in);
+group binding is server-side, so launches add **no new environment variables**.
 
 ## Skills
 
@@ -361,6 +490,7 @@ GET    /peers/{peer_id}/inbox
 POST   /peers/{peer_id}/inbox/ack
 GET    /events/{peer_id}?cursor=0&limit=50
 GET    /events/{event_id}
+POST   /query/events
 
 POST   /groups
 GET    /groups
@@ -373,7 +503,12 @@ POST   /groups/{name}/messages
 GET    /groups/{name}/history?peer_id={peer_id}
 GET    /groups/{name}/history?peer_id={peer_id}&thread_of={root_event_id}
 
+GET    /threads
+GET    /threads/{root_event_id}
+GET    /threads/{root_event_id}/status
 GET    /threads/{root_event_id}?peer_id={peer_id}
+GET    /threads/{root_event_id}/summary
+POST   /threads/{root_event_id}/summary
 
 POST   /groups/{name}/media
 GET    /groups/{name}/media
@@ -438,22 +573,68 @@ Important details:
 - Media files are copied into the group MediaStore by default.
 - `index.jsonl` is intentionally easy to inspect with `rg`, `jq`, or `find`.
 
-## Environment
+## Configuration
+
+Runtime settings resolve in this order:
 
 ```text
-SYNCHRONIZE_HOME   Runtime directory. Default: ~/.synchronize
-SYNCHRONIZE_BIND   Daemon bind host. Default: 127.0.0.1
-SYNCHRONIZE_PORT   Daemon port. Default: 58405
-SYNCHRONIZE_TOKEN  Bearer token. Required when SYNCHRONIZE_BIND is not localhost
-SYNCHRONIZE_MCP_MODE  codex or claude. Default: codex
-SYNCHRONIZE_PEER_ID   Stable MCP/Pi peer id across restarts
-SYNCHRONIZE_SESSION_NAME  Stable host-agent session name for hooks/Pi
-SYNCHRONIZE_HOOK_ENABLE   Enables hook ingestion when set to 1
-SYNCHRONIZE_LAUNCH_ID     Correlates launch/hook registration events
-SYNCHRONIZE_WEB_DIST      Override built web asset directory
+defaults < $SYNCHRONIZE_HOME/config.toml < environment variables
 ```
 
-Use a separate test environment:
+Use `config.toml` for persistent machine/operator settings, named remote
+profiles, and named agent launch profiles. Use environment variables for
+one-off overrides, per-process agent wiring, and test harness isolation. The
+default runtime directory is `~/.synchronize`, so the default config file is
+`~/.synchronize/config.toml`.
+
+Minimal local daemon config:
+
+```toml
+[daemon]
+bind = "127.0.0.1"
+port = 58405
+```
+
+Named remote profiles let CLI and MCP clients target an existing daemon without
+retyping `SYNCHRONIZE_REMOTE_URL`:
+
+```toml
+active = "hub"
+
+[remote.hub]
+url = "http://100.x.y.z:8787"
+token_env = "SYNCHRONIZE_TOKEN"
+health_timeout_ms = 5000
+```
+
+Named agent profiles make `launch` and `spawn` self-contained without depending
+on shell aliases or zsh functions:
+
+```toml
+[agent.glaude]
+tool = "claude"
+bin = "/Users/example/.local/bin/claude"
+repo = "/Users/example/project"
+session_name = "reviewer"
+
+[agent.glaude.env]
+ANTHROPIC_BASE_URL = "https://api.z.ai/api/anthropic"
+ANTHROPIC_AUTH_TOKEN = { from_env = "ZAI_API_TOKEN" }
+```
+
+Then run:
+
+```bash
+synchronize launch glaude
+synchronize spawn glaude --group alpha
+```
+
+See [docs/configuration/](docs/configuration/README.md) for the full config and
+environment reference. It is split by use case: runtime daemon settings, remote
+profiles, spawn configuration, environment variables, daemon env files, and test
+harnesses.
+
+Use a separate runtime home for manual tests:
 
 ```bash
 SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
@@ -461,20 +642,35 @@ SYNCHRONIZE_HOME=/tmp/synchronize-demo synchronize status
 
 ## LAN Mode
 
-Localhost mode needs no token. Non-localhost bind requires a token:
+Localhost mode needs no token. Non-localhost bind requires a token. For
+one-off hosting, use:
 
 ```bash
-export SYNCHRONIZE_BIND=0.0.0.0
-export SYNCHRONIZE_PORT=8787
-export SYNCHRONIZE_TOKEN='replace-with-a-secret'
-bun run src/daemon.ts
+bun run src/cli.ts host \
+  --bind 100.126.163.80 \
+  --port 8787 \
+  --token 'replace-with-a-secret'
 ```
 
-Clients must use the same token:
+Use the Mac's Tailscale IP for `--bind` when the Mac is the central v0 daemon.
+The command starts or verifies a token-protected daemon and prints the remote
+client environment. If a daemon is already running with incompatible host/token
+settings, it exits without changing it; pass `--restart` to relaunch that daemon
+while preserving `SYNCHRONIZE_HOME` state.
+
+Remote clients must use the printed daemon URL and the same token:
 
 ```bash
+export SYNCHRONIZE_REMOTE_URL='http://100.x.y.z:8787'
 export SYNCHRONIZE_TOKEN='replace-with-a-secret'
 ```
+
+For persistent clients, prefer a named `[remote.<name>]` profile in
+`config.toml`; environment variables remain the one-off override path. When a
+remote URL is resolved from either env or the active profile, CLI and MCP
+clients use that daemon directly and do not read `daemon.json` or start a local
+daemon. If the remote daemon is unreachable or rejects the token, the client
+exits loudly.
 
 The daemon expects:
 
@@ -579,6 +775,14 @@ Confirm the MCP server was added with `SYNCHRONIZE_MCP_MODE=claude`, then start 
 ```bash
 claude --dangerously-load-development-channels server:synchronize
 ```
+
+(A `server:` channel only registers as a development channel — `--channels
+server:synchronize` is skipped because custom `server:` channels can't be added
+to the `allowedChannelPlugins` managed allowlist, which only covers marketplace
+plugins (see bd sync-zst). The dev flag triggers a one-time "local development"
+confirmation; daemon-spawned sessions auto-dismiss it. Even once registered, a
+freshly-spawned *idle* session may not surface a live push until it's active —
+durable inbox remains the fallback (see bd sync-amq).)
 
 Inbox remains available through `bridge_inbox` even if channel notifications do not surface. Claude mode receives daemon events through one localhost callback subscription; it does not rely on per-group polling.
 

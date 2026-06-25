@@ -1,14 +1,27 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { Toast } from "@base-ui-components/react/toast";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn.ts";
 
 export type ToastKind = "info" | "warn" | "error" | "success";
 
-interface ToastItem {
-  id: string;
-  message: string;
-  kind: ToastKind;
-  /** ms before auto-dismiss; 0 means sticky (requires manual close). */
-  duration: number;
-}
+// `.toast` keeps its class as a skin-glass backdrop hook (skin-glass.css) and so
+// the `.toast-stack .toast { transform: none; animation-fill-mode: both }` reset
+// (+ `@keyframes toast-in`) in extra.css still bind. Base visuals migrated inline.
+const toast = cva(
+  "toast pointer-events-auto max-w-[min(560px,80vw)] px-[16px] py-[8px] bg-paper text-ink font-mono text-[length:var(--text-12-5)] [border:var(--line-sm)] rounded-pill shadow-sm cursor-pointer text-center animate-[toast-in_180ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:[box-shadow:var(--shadow)]",
+  {
+    variants: {
+      kind: {
+        info: "",
+        warn: "[background:color-mix(in_srgb,var(--yellow)_30%,var(--paper))]",
+        error: "[background:color-mix(in_srgb,var(--red)_26%,var(--paper))]",
+        success: "[background:color-mix(in_srgb,var(--lime)_30%,var(--paper))]",
+      },
+    },
+    defaultVariants: { kind: "info" },
+  },
+);
 
 interface Ctx {
   show(message: string, opts?: { kind?: ToastKind; duration?: number }): string;
@@ -17,58 +30,70 @@ interface Ctx {
 
 const ToastCtx = createContext<Ctx | null>(null);
 
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const timersRef = useRef<Map<string, number>>(new Map());
+const DEFAULT_DURATION_MS = 3000;
 
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-    const t = timersRef.current.get(id);
-    if (t !== undefined) {
-      window.clearTimeout(t);
-      timersRef.current.delete(id);
-    }
-  }, []);
+/**
+ * Toast surface built on Base UI's Toast (provider + manager), wrapped behind
+ * the original `useToast().show/dismiss` API so call sites stay unchanged.
+ * Toast visuals are inline Tailwind; `.toast-stack` / `.toast` classes stay as
+ * hooks (keyframe reset + skin-glass backdrop). Base UI adds screen-reader
+ * announcements, F6 viewport focus, and hover timer pausing.
+ */
+export function ToastProvider({ children }: { children: ReactNode }) {
+  return (
+    <Toast.Provider timeout={DEFAULT_DURATION_MS} limit={Number.MAX_SAFE_INTEGER}>
+      <ToastBridge>{children}</ToastBridge>
+    </Toast.Provider>
+  );
+}
+
+function ToastBridge({ children }: { children: ReactNode }) {
+  const manager = Toast.useToastManager();
 
   const show = useCallback(
-    (message: string, opts?: { kind?: ToastKind; duration?: number }) => {
-      const id = `t_${Math.random().toString(36).slice(2)}`;
-      const duration = opts?.duration ?? 3000;
-      setToasts((prev) => [...prev, { id, message, kind: opts?.kind ?? "info", duration }]);
-      if (duration > 0) {
-        const timer = window.setTimeout(() => dismiss(id), duration);
-        timersRef.current.set(id, timer);
-      }
-      return id;
-    },
-    [dismiss],
+    (message: string, opts?: { kind?: ToastKind; duration?: number }) =>
+      manager.add({
+        title: message,
+        type: opts?.kind ?? "info",
+        // 0 means sticky (requires manual close) — same contract as before.
+        timeout: opts?.duration ?? DEFAULT_DURATION_MS,
+      }),
+    [manager],
   );
 
-  useEffect(
-    () => () => {
-      timersRef.current.forEach((t) => window.clearTimeout(t));
-      timersRef.current.clear();
-    },
-    [],
-  );
+  const dismiss = useCallback((id: string) => manager.close(id), [manager]);
+
+  const value = useMemo<Ctx>(() => ({ show, dismiss }), [show, dismiss]);
 
   return (
-    <ToastCtx.Provider value={{ show, dismiss }}>
+    <ToastCtx.Provider value={value}>
       {children}
-      <div className="toast-stack" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`toast toast-${t.kind}`}
-            onClick={() => dismiss(t.id)}
-            title="dismiss"
-          >
-            {t.message}
-          </button>
-        ))}
-      </div>
+      <Toast.Viewport className="toast-stack absolute top-[14px] left-1/2 -translate-x-1/2 z-[var(--z-toast)] flex flex-col gap-[var(--space-8)] items-center pointer-events-none">
+        <ToastItems />
+      </Toast.Viewport>
     </ToastCtx.Provider>
+  );
+}
+
+function ToastItems() {
+  const { toasts, close } = Toast.useToastManager();
+  // Base UI prepends new toasts; the original stack appended them (newest at
+  // the bottom), so reverse to keep the visual order identical.
+  return (
+    <>
+      {[...toasts].reverse().map((t) => (
+        <Toast.Root
+          key={t.id}
+          toast={t}
+          className={cn(toast({ kind: (t.type as ToastKind | undefined) ?? "info" }))}
+          render={<button type="button" />}
+          title="dismiss"
+          onClick={() => close(t.id)}
+        >
+          <Toast.Title render={<span />}>{t.title}</Toast.Title>
+        </Toast.Root>
+      ))}
+    </>
   );
 }
 

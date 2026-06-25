@@ -1,16 +1,51 @@
 import type {
+  ActivityItem,
   Agent,
+  AgentLaunchProfile,
+  AgentStatus,
+  ArchivePreview,
+  ArchivePreviewMember,
+  ArchivedSession,
   Artifact,
   DataSource,
+  MemberState,
   Message,
+  MessageAttachment,
+  ReactToMessageInput,
+  ResumePreview,
+  ResumePreviewMember,
   Room,
   SendMessageInput,
+  SkillCatalogEntry,
+  SpawnAgentInput,
+  SpawnAgentResult,
+  StageAttachmentInput,
   Snapshot,
   Task,
+  ThreadSummary,
   TimelineEvent,
   TimelineEventType,
+  WebDeepLinkSurface,
+  WebDeepLinkTarget,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
+import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
+
+// crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
+// The daemon UI is often reached over plain HTTP on a tailnet IP, where it is
+// undefined — calling it there threw and aborted sends before any request fired.
+function randomId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  if (c && typeof c.getRandomValues === "function") {
+    const b = c.getRandomValues(new Uint8Array(16));
+    b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+    b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, "0"));
+    return `${h.slice(0, 4).join("")}-${h.slice(4, 6).join("")}-${h.slice(6, 8).join("")}-${h.slice(8, 10).join("")}-${h.slice(10, 16).join("")}`;
+  }
+  return `${Date.now().toString(16)}-${Math.floor(Math.random() * 0xffffffff).toString(16)}`;
+}
 
 export interface DaemonDataSourceOptions {
   baseUrl?: string;
@@ -19,13 +54,25 @@ export interface DaemonDataSourceOptions {
   stateLimit?: number;
 }
 
+type DaemonPresence = "offline" | "online" | "initializing" | "working" | "idle";
+
 interface DaemonPeer {
   peer_id: string;
   tool: string;
   session_name: string;
   purpose: string | null;
   lease_expires_at: string;
+  lifecycle_state?: "active" | "archived";
+  archived_at?: string | null;
+  archived_reason?: string | null;
+  archive_source?: string | null;
   online?: boolean;
+  presence?: DaemonPresence;
+  aoe_session?: {
+    profile: string;
+    title: string;
+    attach_command: string;
+  };
 }
 
 interface DaemonGroup {
@@ -36,15 +83,26 @@ interface DaemonGroup {
   created_at: string;
 }
 
+interface DaemonGroupPath {
+  path_id: number;
+  group_id: number;
+  path: string;
+  label: string | null;
+  active: boolean;
+  created_at: string;
+}
+
 interface DaemonMember {
   group_id: number;
   peer_id: string;
   alias: string;
   active: boolean;
+  member_state?: MemberState;
   purpose: string | null;
   session_name: string;
   tool: string;
   online?: boolean;
+  presence?: DaemonPresence;
 }
 
 interface DaemonEvent {
@@ -57,12 +115,40 @@ interface DaemonEvent {
   media_id: string | null;
   parent_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   reply_count?: number;
   last_reply_event_id?: number | null;
   delivered_count?: number;
   read_count?: number;
   acked_count?: number;
+  // Present on /activity rows: explicit server-computed awaiting flag (1 when the
+  // event is in the observer's inbox and un-acked). Never inferred from acked_at:
+  // under the feed's LEFT JOIN a null acked_at is ambiguous (no inbox row vs.
+  // unacked), so observer-only rows would falsely read as awaiting.
+  awaiting?: number | boolean;
+  reactions?: DaemonReaction[];
+}
+
+interface ActivityResponse {
+  events: DaemonEvent[];
+  peers?: DaemonPeer[];
+  next_cursor: number | null;
+  awaiting_count: number;
+}
+
+interface DaemonReactionActor {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  alias: string | null;
+  created_at: string;
+}
+
+interface DaemonReaction {
+  emoji: string;
+  count: number;
+  by: DaemonReactionActor[];
 }
 
 interface DaemonMedia {
@@ -75,11 +161,80 @@ interface DaemonMedia {
   created_at: string;
 }
 
+interface DaemonLaunchLifecycle {
+  launch_id: string;
+  peer_id: string;
+  tool?: string;
+  profile_name?: string | null;
+  session_name: string;
+  cwd?: string | null;
+  target_group: string | null;
+  backend_title: string;
+  state: string;
+  failure_code: string | null;
+  failure_message: string | null;
+}
+
+interface DaemonAgentRuntimeDetails {
+  peer_id: string;
+  binding_id: string | null;
+  launch_id: string | null;
+  profile_name: string | null;
+  tool: string | null;
+  session_name: string | null;
+  model: string | null;
+  thinking: string | null;
+  source: string | null;
+  agent_type: string | null;
+  host_tool: string | null;
+  host_session_id: string | null;
+  host_session_file: string | null;
+  machine_id: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
+  pid: number | null;
+  launch_state: string | null;
+  backend_title: string | null;
+  target_group: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  last_seen_at: string | null;
+}
+
+interface DaemonSkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: Array<"claude" | "pi" | "letta">;
+  source_path?: string;
+}
+
+interface DaemonResolveResponse {
+  target: {
+    event_id: number;
+    room_id: string;
+    surface: WebDeepLinkSurface;
+    group_id: number | null;
+    parent_event_id: number | null;
+    focus_event_id: number;
+  };
+  event: unknown;
+  root_event: unknown;
+}
+
 interface WebStateResponse {
   ok: true;
   cursor: number;
+  launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
+  launch_profiles?: DaemonLaunchProfile[];
+  launch_lifecycle?: DaemonLaunchLifecycle[];
+  agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
+  group_paths: DaemonGroupPath[];
   memberships: DaemonMember[];
   room_summaries: Array<{
     group_id: number;
@@ -90,6 +245,27 @@ interface WebStateResponse {
   }>;
   events: DaemonEvent[];
   media: DaemonMedia[];
+  skill_catalog?: DaemonSkillCatalogEntry[];
+}
+
+interface WebAttachmentStageResponse {
+  attachment: {
+    id: string;
+    source: "staged";
+    name: string;
+    mimeType: string;
+    size: number;
+    extension: string;
+    path: string;
+  };
+}
+
+// Subset of the daemon's ThreadSummaryResponse (src/api/types.ts) that the web
+// UI consumes. Declared locally to avoid coupling the web bundle to server types.
+interface DaemonThreadSummary {
+  summary: string | null;
+  status: "ready" | "pending" | "disabled";
+  stale?: boolean;
 }
 
 interface WebStateChange {
@@ -101,8 +277,91 @@ interface WebStateChange {
   peer_id?: string | null;
 }
 
+interface DaemonLaunchResponse {
+  launchId: string;
+  peerId: string;
+  sessionName: string;
+  title: string;
+  group?: string;
+}
+
+interface DaemonLaunchProfile {
+  name: string;
+  tool: "claude" | "pi" | "letta";
+  available: boolean;
+  path?: string;
+  model?: string;
+  thinking?: string;
+  session_name?: string;
+  repo?: string;
+  disabled_reason?: string;
+}
+
+interface DaemonArchivedSession {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  archived_at: string | null;
+  archived_reason: string | null;
+  archive_source: string | null;
+  aliases: Array<{ group: string; alias: string }>;
+}
+
+interface DaemonArchiveSessionResult {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  action: "archived" | "already_archived" | "would_archive";
+  reaped: boolean;
+  zombie: boolean;
+  warning?: string;
+  dry_run?: boolean;
+}
+
+interface DaemonArchiveGroupResult {
+  group: string;
+  dry_run: boolean;
+  members: Array<{
+    alias: string;
+    tool: string;
+    peer_id: string;
+    action: "archived" | "already_archived" | "would_archive" | "skipped";
+    reaped: boolean;
+    zombie: boolean;
+    warning?: string;
+  }>;
+}
+
+interface DaemonResumePreviewMember {
+  mode: "launch" | "print";
+  peer_id: string;
+  session_name: string;
+  alias: string | null;
+  tool: string;
+  group: string | null;
+  cwd: string | null;
+  host_session_id: string | null;
+  action: "will_launch" | "will_print" | "blocked" | "skipped";
+  code?: string;
+  force_available: boolean;
+  warning?: string;
+}
+
+interface DaemonResumeGroupPreview {
+  group: string;
+  mode: "launch" | "print";
+  dry_run: boolean;
+  members: DaemonResumePreviewMember[];
+}
+
 const PEER_KEY = "synchronize.web.peerId";
 const PENDING_WEB_PEER_ID = "web:pending";
+// Activity feed: fetch this many rows per page; keep at most this many in memory
+// (older rows are trimmed and re-fetchable via load-older). Use the daemon's
+// bounded page max so the grouped digest does not hide older durable rooms on
+// first load when their latest non-own author is expired/offline.
+const ACTIVITY_WINDOW = 200;
+const ACTIVITY_CAP = 500;
 const COLORS = ["#FFD23F", "#FF5DA2", "#4D7CFE", "#7BE389", "#FF8A3D", "#B49BFF", "#F45B69", "#2EC4B6"];
 const EMPTY_AGENT: Agent = {
   id: "web:pending",
@@ -128,8 +387,20 @@ export class DaemonDataSource implements DataSource {
   private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
+  private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
+  private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
+  private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
+  private readonly _activity = createSnapshot<ActivityItem[]>([]);
+  private readonly _activityAwaiting = createSnapshot<number>(0);
+  private readonly _archivedSessions = createSnapshot<ArchivedSession[]>([]);
+  private activityRequested = false;
+  private archivedRequested = false;
+  private activityRefresh: Promise<void> | null = null;
+  private activityOldestCursor: number | null = null;
+  private activitySeen = new Set<number>();
   private readonly threadReplyCache = new Map<string, Message[]>();
   private readonly threadParentRoom = new Map<string, string>();
+  private readonly localMessages = new Map<string, { body: string; attachments: MessageAttachment[] }>();
   private groupNameByRoomId = new Map<string, string>();
   private roomCursor = new Map<string, number>();
   private pendingRooms = new Set<string>();
@@ -153,6 +424,26 @@ export class DaemonDataSource implements DataSource {
   agents(): Snapshot<Agent[]> { return this._agents; }
   rooms(): Snapshot<Room[]> { return this._rooms; }
   me(): Snapshot<Agent> { return this._me; }
+  skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+  launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
+
+  activity(): Snapshot<ActivityItem[]> {
+    if (!this.activityRequested) {
+      this.activityRequested = true;
+      if (this.connected) void this.refreshActivity({ reset: true });
+    }
+    return this._activity;
+  }
+
+  activityAwaitingCount(): Snapshot<number> { return this._activityAwaiting; }
+
+  archivedSessions(): Snapshot<ArchivedSession[]> {
+    if (!this.archivedRequested) {
+      this.archivedRequested = true;
+      if (this.connected) void this.refreshArchivedSessions();
+    }
+    return this._archivedSessions;
+  }
 
   messages(roomId: string): Snapshot<Message[]> {
     let snap = this._messages.get(roomId);
@@ -201,11 +492,75 @@ export class DaemonDataSource implements DataSource {
     return snap;
   }
 
+  threadSummary(parentMessageId: string): Snapshot<ThreadSummary> {
+    let snap = this._threadSummaries.get(parentMessageId);
+    if (!snap) {
+      // The web message id encodes the daemon event id (`e:<event_id>`); a
+      // thread's root_event_id is that root message's event id. Fetch the
+      // daemon summary and map its status onto the UI shape. While the worker
+      // is still computing ("pending"), poll a few times so the summary lands
+      // without a manual reload. The UI falls back to a generated headline for
+      // any non-"ok" status (bd sync-b8q).
+      snap = createSnapshot<ThreadSummary>({ text: null, status: "pending" });
+      this._threadSummaries.set(parentMessageId, snap);
+      void this.loadThreadSummary(parentMessageId, snap as MutableSnapshot<ThreadSummary>);
+    }
+    return snap;
+  }
+
+  private async loadThreadSummary(
+    parentMessageId: string,
+    snap: MutableSnapshot<ThreadSummary>,
+    attempt = 0,
+  ): Promise<void> {
+    let rootEventId: number;
+    try {
+      rootEventId = eventIdFromMessageId(parentMessageId);
+    } catch {
+      // Optimistic / non-daemon ids have no event to summarize.
+      snap.set({ text: null, status: "disabled" });
+      return;
+    }
+    try {
+      const res = await this.request<DaemonThreadSummary>(`/threads/${rootEventId}/summary`);
+      if (res.status === "ready" && res.summary) {
+        snap.set({ text: res.summary, status: "ok" });
+        return;
+      }
+      if (res.status === "pending") {
+        snap.set({ text: null, status: "pending" });
+        if (attempt === 0) {
+          const generated = await this.generateThreadSummary(rootEventId).catch(() => null);
+          if (generated?.status === "ready" && generated.summary) {
+            snap.set({ text: generated.summary, status: "ok" });
+            return;
+          }
+        }
+        if (attempt < 12 && this.connected) {
+          window.setTimeout(
+            () => void this.loadThreadSummary(parentMessageId, snap, attempt + 1),
+            5_000,
+          );
+        }
+        return;
+      }
+      snap.set({ text: null, status: "disabled" });
+    } catch {
+      snap.set({ text: null, status: "disabled" });
+    }
+  }
+
+  private generateThreadSummary(rootEventId: number): Promise<DaemonThreadSummary> {
+    return this.request<DaemonThreadSummary>(`/threads/${rootEventId}/summary`, { method: "POST" });
+  }
+
   async connect(): Promise<void> {
     if (this.connected) return;
     this.connected = true;
     await this.registerWebPeer();
     await this.refresh();
+    void this.refreshActivity({ reset: true });
+    if (this.archivedRequested) void this.refreshArchivedSessions();
     this.openStream();
     this.pollTimer = window.setInterval(() => {
       void this.refresh();
@@ -221,7 +576,9 @@ export class DaemonDataSource implements DataSource {
 
   async sendMessage(input: SendMessageInput): Promise<Message> {
     const body = input.body.trim();
-    if (!body) throw new Error("message body is required");
+    const attachments = input.attachments ?? [];
+    if (!body && attachments.length === 0) throw new Error("message body or attachment is required");
+    const outgoingBody = outgoingBodyWithAttachmentPaths(body, attachments);
     const inReplyTo = input.parentMessageId ? eventIdFromMessageId(input.parentMessageId) : undefined;
     const optimistic = this.addOptimisticMessage(input, body);
     if (input.roomId.startsWith("group:")) {
@@ -235,11 +592,13 @@ export class DaemonDataSource implements DataSource {
           method: "POST",
           body: JSON.stringify({
             sender_peer_id: this.peerId,
-            message: body,
+            message: outgoingBody,
             ...(inReplyTo !== undefined ? { in_reply_to: inReplyTo } : {}),
+            ...(input.skillDirectives?.length ? { skill_directives: input.skillDirectives } : {}),
           }),
         });
-        const delivered = mapMessage(response.event, input.roomId, "delivered");
+        let delivered = mapMessage(response.event, input.roomId, "delivered");
+        delivered = this.rememberLocalMessage(delivered, body, attachments);
         this.replaceOptimistic(input, optimistic.id, delivered);
         await this.refreshRoom(input.roomId);
         return delivered;
@@ -260,10 +619,11 @@ export class DaemonDataSource implements DataSource {
         body: JSON.stringify({
           sender_peer_id: this.peerId,
           recipient_peer_id: recipientPeerId,
-          message: body,
+          message: outgoingBody,
         }),
       });
-      const delivered = mapMessage(response.event, input.roomId, "delivered");
+      let delivered = mapMessage(response.event, input.roomId, "delivered");
+      delivered = this.rememberLocalMessage(delivered, body, attachments);
       this.replaceOptimistic(input, optimistic.id, delivered);
       await this.refreshRoom(input.roomId);
       return delivered;
@@ -273,11 +633,350 @@ export class DaemonDataSource implements DataSource {
     }
   }
 
+  async stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment> {
+    const externalPath = input.sourceHint === "picker" ? nativeFilePath(input.file) : null;
+    if (externalPath) return makeExternalAttachment(input.file, externalPath, input.previewUrl);
+
+    const id = crypto.randomUUID();
+    const form = new FormData();
+    form.set("id", id);
+    form.set("file", input.file);
+    const response = await this.request<WebAttachmentStageResponse>("/web/attachments", {
+      method: "POST",
+      body: form,
+    });
+    const attachment = response.attachment;
+    return {
+      id: attachment.id,
+      kind: attachmentKindFor(attachment.mimeType, attachment.name),
+      source: attachment.source,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      extension: attachment.extension || extensionFor(attachment.name, attachment.mimeType),
+      path: attachment.path,
+      ...(input.previewUrl ? { previewUrl: input.previewUrl } : {}),
+    };
+  }
+
+  async removeDraftAttachment(attachment: MessageAttachment): Promise<void> {
+    if (attachment.source !== "staged") return;
+    await this.request<{ ok: true }>("/web/attachments", {
+      method: "DELETE",
+      body: JSON.stringify({ path: attachment.path }),
+    });
+  }
+
+  async reactToMessage(input: ReactToMessageInput): Promise<Message> {
+    const eventId = eventIdFromMessageId(input.messageId);
+    const rollback = this.findMessageSnapshot(input.messageId, input.roomId);
+    this.applyLocalReaction(input);
+    const response = await this.request<{ event: DaemonEvent }>(`/events/${eventId}/reactions`, {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: this.peerId,
+        emoji: input.emoji,
+        op: input.op ?? "toggle",
+      }),
+    }).catch((error) => {
+      if (rollback) this.updateMessageSnapshots(rollback);
+      throw error;
+    });
+    const roomId = roomIdForEvent(response.event, this.peerId) ?? input.roomId;
+    const updated = mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId));
+    this.updateMessageSnapshots(updated);
+    return updated;
+  }
+
+  async ackActivity(eventId: number): Promise<void> {
+    // Optimistic: clear the row locally, then persist. The server also acks on
+    // react/reply, so this is the explicit-ack path (e.g. the feed react button).
+    this.setActivityAwaiting(eventId, false);
+    await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
+      method: "POST",
+      body: JSON.stringify({ event_ids: [eventId] }),
+    }).catch(() => undefined);
+  }
+
+  async ackAllActivity(): Promise<void> {
+    const items = this._activity.get();
+    if (items.some((item) => item.awaiting)) {
+      this._activity.set(items.map((item) => (item.awaiting ? { ...item, awaiting: false } : item)));
+    }
+    this._activityAwaiting.set(0);
+    await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }).catch(() => undefined);
+  }
+
+  async loadMoreActivity(): Promise<void> {
+    if (this.activityOldestCursor === null) return;
+    await this.refreshActivity({ before: this.activityOldestCursor });
+  }
+
+  async archiveSessionPreview(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveSessionResult>("/archive/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        dry_run: true,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    return {
+      target: "session",
+      dryRun: true,
+      members: [mapArchiveSessionResult(result)],
+    };
+  }
+
+  async archiveGroupPreview(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveGroupResult>("/archive/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        dry_run: true,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    return mapArchiveGroupResult(result, true);
+  }
+
+  async confirmArchiveSession(input: { peerId: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveSessionResult>("/archive/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return {
+      target: "session",
+      dryRun: false,
+      members: [mapArchiveSessionResult(result)],
+    };
+  }
+
+  async confirmArchiveGroup(input: { group: string; reason?: string }): Promise<ArchivePreview> {
+    const result = await this.request<DaemonArchiveGroupResult>("/archive/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        ...(input.reason ? { reason: input.reason } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return mapArchiveGroupResult(result, false);
+  }
+
+  async resumeSessionPreview(input: { peerId: string; print?: boolean; force?: boolean }): Promise<ResumePreview> {
+    const result = await this.request<DaemonResumePreviewMember>("/resume/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        dry_run: true,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+      }),
+    });
+    return {
+      target: "session",
+      mode: result.mode,
+      dryRun: true,
+      members: [mapResumePreviewMember(result)],
+    };
+  }
+
+  async resumeGroupPreview(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<ResumePreview> {
+    const result = await this.request<DaemonResumeGroupPreview>("/resume/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        dry_run: true,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+        ...(input.only ? { only: input.only } : {}),
+        ...(input.exclude ? { exclude: input.exclude } : {}),
+      }),
+    });
+    return mapResumeGroupPreview(result);
+  }
+
+  async confirmResumeSession(input: { peerId: string; print?: boolean; force?: boolean }): Promise<unknown> {
+    const result = await this.request<unknown>("/resume/session", {
+      method: "POST",
+      body: JSON.stringify({
+        peer_id: input.peerId,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return result;
+  }
+
+  async confirmResumeGroup(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<unknown> {
+    const result = await this.request<unknown>("/resume/group", {
+      method: "POST",
+      body: JSON.stringify({
+        group: input.group,
+        ...(input.print ? { print: true } : {}),
+        ...(input.force ? { force: true } : {}),
+        ...(input.only ? { only: input.only } : {}),
+        ...(input.exclude ? { exclude: input.exclude } : {}),
+      }),
+    });
+    await this.refreshAfterArchiveChange();
+    return result;
+  }
+
+  private setActivityAwaiting(eventId: number, awaiting: boolean): void {
+    const items = this._activity.get();
+    let changed = false;
+    const next = items.map((item) => {
+      if (item.eventId !== eventId || item.awaiting === awaiting) return item;
+      changed = true;
+      return { ...item, awaiting };
+    });
+    if (!changed) return;
+    this._activity.set(next);
+    this._activityAwaiting.set(next.filter((item) => item.awaiting).length);
+  }
+
+  // Fetch a page of the global feed. reset/head → newest window (merged, with
+  // freshly-arrived rows flashed); before → older page appended. The in-memory
+  // list is capped at ACTIVITY_CAP (older rows trimmed, re-fetchable).
+  private async refreshActivity(opts: { reset?: boolean; before?: number } = {}): Promise<void> {
+    if (this.peerId === PENDING_WEB_PEER_ID) return;
+    if (opts.before === undefined && this.activityRefresh) return this.activityRefresh;
+    const params = new URLSearchParams({ limit: String(ACTIVITY_WINDOW) });
+    if (opts.before !== undefined) params.set("before", String(opts.before));
+    const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)
+      .then((res) => {
+        if (res.peers?.length) {
+          // /activity is fetched independently from /web/state, so older pages
+          // may reference expired peers that are intentionally absent from the
+          // live roster. Merge the page-scoped identities before mapping rows or
+          // ActivityItem would drop those durable historical messages.
+          const nextAgents = res.peers.map((peer) => mapAgent(peer, this.peerId));
+          this._agents.set(reuseEqualAgents(this._agents.get(), mergeAgents(this._agents.get(), nextAgents)));
+        }
+        const incoming = res.events.map((event) => this.mapActivityItem(event));
+        this._activityAwaiting.set(res.awaiting_count);
+        const merged = new Map<number, ActivityItem>();
+        if (opts.before === undefined) {
+          // Head/reset: incoming is the newest window. Flag rows we haven't seen
+          // before as "new" so the UI can flash them — but never on the FIRST
+          // population (activitySeen empty), or the whole feed would flash on
+          // open. The flash is reserved for genuine SSE arrivals.
+          const firstLoad = this.activitySeen.size === 0;
+          for (const item of incoming) {
+            merged.set(item.eventId, { ...item, isNew: !firstLoad && !this.activitySeen.has(item.eventId) });
+          }
+          // Keep any older rows already loaded below the new window.
+          const newestIncoming = incoming.at(-1)?.eventId ?? Number.MAX_SAFE_INTEGER;
+          for (const item of this._activity.get()) {
+            if (!merged.has(item.eventId) && item.eventId < newestIncoming) merged.set(item.eventId, { ...item, isNew: false });
+          }
+        } else {
+          // Load-older: keep current rows, append the older page.
+          for (const item of this._activity.get()) merged.set(item.eventId, item);
+          for (const item of incoming) if (!merged.has(item.eventId)) merged.set(item.eventId, item);
+        }
+        const sorted = [...merged.values()].sort((a, b) => b.eventId - a.eventId).slice(0, ACTIVITY_CAP);
+        for (const item of sorted) this.activitySeen.add(item.eventId);
+        this.activityOldestCursor = sorted.at(-1)?.eventId ?? this.activityOldestCursor;
+        this._activity.set(sorted);
+      })
+      .catch(() => undefined);
+    if (opts.before === undefined) {
+      this.activityRefresh = run.finally(() => {
+        this.activityRefresh = null;
+      });
+      return this.activityRefresh;
+    }
+    return run;
+  }
+
+  private mapActivityItem(event: DaemonEvent): ActivityItem {
+    const roomId = roomIdForEvent(event, this.peerId) ?? "";
+    const mentions = parseMentions(event.mentions_json);
+    return {
+      id: messageId(event.event_id),
+      eventId: event.event_id,
+      roomId,
+      actorId: event.sender_peer_id ?? "system",
+      type: "activity", // single generic kind today; forward-compatible seam
+      text: event.body ?? "",
+      createdAt: event.created_at,
+      awaiting: event.awaiting === 1 || event.awaiting === true,
+      isMention: mentions.includes(this.peerId),
+      ...(event.parent_event_id ? { threadParentId: messageId(event.parent_event_id) } : {}),
+      ...(event.reply_count !== undefined ? { replyCount: event.reply_count } : {}),
+      msgId: messageId(event.event_id),
+    };
+  }
+
+  async spawnAgent(input: SpawnAgentInput): Promise<SpawnAgentResult> {
+    const group = this.groupNameByRoomId.get(input.roomId);
+    if (!group) throw new Error(`Unknown group room: ${input.roomId}`);
+    const name = input.name.trim();
+    if (!name) throw new Error("agent name is required");
+    const response = await this.request<DaemonLaunchResponse>("/agent-sessions/launch", {
+      method: "POST",
+      body: JSON.stringify({
+        tool: input.tool,
+        ...(input.profileName ? { profile_name: input.profileName } : {}),
+        name,
+        repo: input.path,
+        group,
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.thinking ? { thinking: input.thinking } : {}),
+      }),
+    });
+    await this.refresh();
+    await this.refreshRoom(input.roomId, { reset: true });
+    return {
+      peerId: response.peerId,
+      sessionName: response.sessionName,
+      title: response.title,
+      group: response.group ?? group,
+    };
+  }
+
   setAgentColor(agentId: string, hex: string | null): void {
     const key = `synchronize.agentColor.${agentId}`;
     if (hex) localStorage.setItem(key, hex);
     else localStorage.removeItem(key);
     this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, color: colorForPeer(agentId) } : agent));
+  }
+
+  async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
+    if (this.peerId === PENDING_WEB_PEER_ID) await this.registerWebPeer();
+    const res = await this.request<DaemonResolveResponse>(
+      `/web/resolve?event_id=${encodeURIComponent(eventId)}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    const t = res.target;
+    return {
+      roomId: t.room_id,
+      surface: t.surface,
+      focusMessageId: messageId(t.focus_event_id),
+      threadParentId: t.parent_event_id != null ? messageId(t.parent_event_id) : null,
+      linkId: String(t.event_id),
+      eventId: t.event_id,
+    };
+  }
+
+  async hydrateDeepLinkTarget(target: WebDeepLinkTarget): Promise<void> {
+    this.messages(target.roomId); // ensure the room snapshot exists
+    const state = await this.request<WebStateResponse>(
+      `/web/state?room=${encodeURIComponent(target.roomId)}&around_event_id=${target.eventId}&peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    // Merge the around-window into whatever is already loaded so both the latest
+    // tail and the old target stay present.
+    this.applyRoomState(target.roomId, state, { append: true });
   }
 
   private async registerWebPeer(): Promise<void> {
@@ -288,7 +987,7 @@ export class DaemonDataSource implements DataSource {
 
   private addOptimisticMessage(input: SendMessageInput, body: string): Message {
     const message: Message = {
-      id: `optimistic:${crypto.randomUUID()}`,
+      id: `optimistic:${randomId()}`,
       roomId: input.roomId,
       authorId: this.peerId,
       body,
@@ -296,6 +995,7 @@ export class DaemonDataSource implements DataSource {
       mentions: input.mentions,
       reactions: [],
       status: "queued",
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       ...(input.parentMessageId ? { parentId: input.parentMessageId } : {}),
     };
     const snap = input.parentMessageId ? this._threadReplies.get(input.parentMessageId) : this._messages.get(input.roomId);
@@ -313,18 +1013,98 @@ export class DaemonDataSource implements DataSource {
     snap?.set(snap.get().filter((message) => message.id !== optimisticId));
   }
 
+  private rememberLocalMessage(message: Message, body: string, attachments: MessageAttachment[]): Message {
+    if (attachments.length === 0) return message;
+    const local = { body, attachments };
+    this.localMessages.set(message.id, local);
+    return { ...message, body, attachments };
+  }
+
+  private hydrateLocalMessage(message: Message): Message {
+    const local = this.localMessages.get(message.id);
+    if (!local) return message;
+    return { ...message, body: local.body, attachments: local.attachments };
+  }
+
+  private findMessageSnapshot(messageId: string, roomId: string): Message | null {
+    const message = this._messages.get(roomId)?.get().find((candidate) => candidate.id === messageId);
+    if (message) return message;
+    for (const snap of this._threadReplies.values()) {
+      const reply = snap.get().find((candidate) => candidate.id === messageId);
+      if (reply) return reply;
+    }
+    return null;
+  }
+
+  private applyLocalReaction(input: ReactToMessageInput): void {
+    const update = (messages: Message[]) =>
+      reuseEqualMessages(messages, messages.map((message) =>
+        message.id === input.messageId ? applyReactionToMessage(message, this.peerId, input.emoji, input.op ?? "toggle") : message,
+      ));
+    this._messages.get(input.roomId)?.update(update);
+    for (const [parentId, snap] of this._threadReplies) {
+      snap.update(update);
+      const cached = this.threadReplyCache.get(parentId);
+      if (cached) this.threadReplyCache.set(parentId, update(cached));
+    }
+  }
+
+  private updateMessageSnapshots(updated: Message): void {
+    this._messages.get(updated.roomId)?.update((messages) =>
+      reuseEqualMessages(messages, messages.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message)),
+    );
+    const parentId = updated.parentId;
+    if (parentId) {
+      this._threadReplies.get(parentId)?.update((messages) =>
+        reuseEqualMessages(messages, messages.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message)),
+      );
+      const cached = this.threadReplyCache.get(parentId);
+      if (cached) {
+        this.threadReplyCache.set(
+          parentId,
+          cached.map((message) => message.id === updated.id ? { ...message, reactions: updated.reactions } : message),
+        );
+      }
+    }
+  }
+
   private async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
-      let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
-      if (await this.ensureWebPeerMemberships(state)) {
-        state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+      try {
+        let state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        if (await this.ensureWebPeerMemberships(state)) {
+          state = await this.request<WebStateResponse>(`/web/state?limit=${this.stateLimit}&peer_id=${encodeURIComponent(this.peerId)}`);
+        }
+        this.applySummaryState(state);
+        if (this.archivedRequested) void this.refreshArchivedSessions();
+      } catch {
+        this.markRemoteAgentsOffline();
       }
-      this.applySummaryState(state);
     })().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
+  }
+
+  private async refreshAfterArchiveChange(): Promise<void> {
+    await this.refresh();
+    await this.refreshArchivedSessions();
+    for (const roomId of this._messages.keys()) await this.refreshRoom(roomId, { reset: true }).catch(() => undefined);
+  }
+
+  private async refreshArchivedSessions(): Promise<void> {
+    const response = await this.request<{ sessions: DaemonArchivedSession[] }>("/archive/sessions").catch(() => ({ sessions: [] }));
+    this._archivedSessions.set(reuseEqualArchivedSessions(
+      this._archivedSessions.get(),
+      response.sessions.map(mapArchivedSession),
+    ));
+  }
+
+  private markRemoteAgentsOffline(): void {
+    this._agents.update((agents) =>
+      agents.map((agent) => agent.id === this.peerId ? agent : { ...agent, status: "offline" }),
+    );
   }
 
   private async ensureWebPeerMemberships(state: WebStateResponse): Promise<boolean> {
@@ -352,6 +1132,7 @@ export class DaemonDataSource implements DataSource {
   private applySummaryState(state: WebStateResponse): void {
     const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
     const memberByGroup = groupMembersByGroup(state.memberships);
+    const pathsByGroup = groupPathsByGroup(state.group_paths ?? []);
     const summaryByGroup = new Map(state.room_summaries.map((summary) => [summary.group_id, summary] as const));
     const agents = agentsFromState(state, this.peerId);
     const me = agents.find((agent) => agent.id === this.peerId) ?? mapAgent(peerById.get(this.peerId) ?? {
@@ -365,6 +1146,11 @@ export class DaemonDataSource implements DataSource {
 
     const groupRooms = state.groups.map((group) => {
       const members = memberByGroup.get(group.group_id) ?? [];
+      const activeMembers = members.filter((member) => member.active);
+      const archivedMembers = members.filter((member) => member.member_state === "archived");
+      const archiveEligibleMembers = members.filter((member) => member.tool !== "web" && !member.peer_id.startsWith("web:"));
+      const activeArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.active);
+      const archivedArchiveEligibleMembers = archiveEligibleMembers.filter((member) => member.member_state === "archived");
       const roomId = groupRoomId(group.group_id);
       this.groupNameByRoomId.set(roomId, group.name);
       const summary = summaryByGroup.get(group.group_id);
@@ -374,15 +1160,26 @@ export class DaemonDataSource implements DataSource {
         name: group.name,
         emoji: "#",
         color: colorForGroup(group.group_id),
-        members: members.map((member) => member.peer_id),
+        members: activeMembers.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
+        memberStates: Object.fromEntries(members.map((member) => [member.peer_id, member.member_state ?? (member.active ? "active" : "left")])),
+        archiveState: archivedArchiveEligibleMembers.length > 0 ? (activeArchiveEligibleMembers.length > 0 ? "mixed" : "archived") : "active",
+        activeMemberCount: activeMembers.length,
+        archivedMemberCount: archivedMembers.length,
+        paths: (pathsByGroup.get(group.group_id) ?? []).map((path) => ({
+          id: String(path.path_id),
+          path: path.path,
+          ...(path.label ? { label: path.label } : {}),
+        })),
+        ...(state.launch_tools ? { launchTools: state.launch_tools } : {}),
+        ...(state.launch_profiles ? { launchProfiles: mapLaunchProfiles(state.launch_profiles) } : {}),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,
       } satisfies Room;
     });
     const dmRooms = state.peers
-      .filter((peer) => peer.peer_id !== this.peerId)
+      .filter((peer) => peer.peer_id !== this.peerId && peer.lifecycle_state !== "archived")
       .map((peer) => {
         return {
           id: dmRoomId(peer.peer_id),
@@ -396,9 +1193,12 @@ export class DaemonDataSource implements DataSource {
         } satisfies Room;
       });
 
-    this._agents.set(reuseEqualAgents(this._agents.get(), agents));
+    const currentAgents = this._agents.get();
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, agents)));
     this._me.set(me);
     this._rooms.set(reuseEqualRooms(this._rooms.get(), [...groupRooms, ...dmRooms]));
+    this._launchProfiles.set(reuseEqualLaunchProfiles(this._launchProfiles.get(), mapLaunchProfiles(state.launch_profiles ?? [])));
+    this._skillCatalog.set(reuseEqualSkillCatalog(this._skillCatalog.get(), mapSkillCatalog(state.skill_catalog ?? [])));
   }
 
   private async refreshRoom(roomId: string, opts: { reset?: boolean } = {}): Promise<void> {
@@ -417,6 +1217,10 @@ export class DaemonDataSource implements DataSource {
   }
 
   private applyRoomState(roomId: string, state: WebStateResponse, opts: { append: boolean }): void {
+    const currentAgents = this._agents.get();
+    const roomAgents = agentsFromState(state, this.peerId);
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, roomAgents)));
+
     const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
     const groupById = new Map(state.groups.map((group) => [group.group_id, group] as const));
     const groupedMessages = new Map<string, Message[]>();
@@ -425,12 +1229,12 @@ export class DaemonDataSource implements DataSource {
     for (const event of state.events) {
       if (event.type === "group_message" && event.group_id !== null) {
         const roomId = groupRoomId(event.group_id);
-        const message = mapMessage(event, roomId, statusForEvent(event, this.peerId));
+        const message = this.hydrateLocalMessage(mapMessage(event, roomId, statusForEvent(event, this.peerId)));
         if (event.parent_event_id) pushMap(groupedReplies, messageId(event.parent_event_id), message);
         else pushMap(groupedMessages, roomId, message);
       } else if (event.type === "dm" && event.recipient_peer_id && event.sender_peer_id) {
         const other = event.sender_peer_id === this.peerId ? event.recipient_peer_id : event.sender_peer_id;
-        pushMap(groupedMessages, dmRoomId(other), mapMessage(event, dmRoomId(other), statusForEvent(event, this.peerId)));
+        pushMap(groupedMessages, dmRoomId(other), this.hydrateLocalMessage(mapMessage(event, dmRoomId(other), statusForEvent(event, this.peerId))));
       } else if (event.group_id !== null) {
         pushMap(timelines, groupRoomId(event.group_id), mapTimelineEvent(event, groupById, peerById));
       }
@@ -524,6 +1328,10 @@ export class DaemonDataSource implements DataSource {
   }
 
   private scheduleInvalidation(change: WebStateChange): void {
+    if (change.domains.includes("reactions")) {
+      if (change.event_id !== undefined) void this.refreshEvent(change.event_id);
+      return;
+    }
     if (change.group_id) this.pendingRooms.add(groupRoomId(change.group_id));
     if (change.peer_id) {
       const dmId = dmRoomId(change.peer_id);
@@ -533,11 +1341,25 @@ export class DaemonDataSource implements DataSource {
     this.coalesceTimer = window.setTimeout(() => {
       this.coalesceTimer = undefined;
       void this.refresh();
+      // Incremental Activity refresh: re-fetch the newest window and prepend new
+      // rows (flashed). Coalesced to one call per burst; cheap (single indexed
+      // read). Reaction-only changes returned early above, so they don't land
+      // here — the feed react button clears awaiting optimistically instead.
+      void this.refreshActivity({});
       for (const roomId of this.pendingRooms) {
-        if (this._messages.has(roomId) || this._timeline.has(roomId)) void this.refreshRoom(roomId);
+        if (this._messages.has(roomId) || this._timeline.has(roomId)) {
+          void this.refreshRoom(roomId, { reset: change.domains.includes("reactions") });
+        }
       }
       this.pendingRooms.clear();
     }, 50);
+  }
+
+  private async refreshEvent(eventId: number): Promise<void> {
+    const response = await this.request<{ event: DaemonEvent }>(`/events/${eventId}?peer_id=${encodeURIComponent(this.peerId)}`);
+    const roomId = roomIdForEvent(response.event, this.peerId);
+    if (!roomId) return;
+    this.updateMessageSnapshots(this.hydrateLocalMessage(mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId))));
   }
 
   private request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -551,7 +1373,7 @@ export class DaemonDataSource implements DataSource {
   private requestRaw(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set("accept", path === "/web/events" ? "text/event-stream" : "application/json");
-    if (init.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
+    if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
     return fetch(`${this.baseUrl}${path}`, { ...init, headers });
   }
@@ -561,6 +1383,7 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
   const peers = new Map<string, DaemonPeer>();
   for (const peer of state.peers) peers.set(peer.peer_id, peer);
   for (const member of state.memberships) {
+    if (!member.active) continue;
     if (peers.has(member.peer_id)) continue;
     peers.set(member.peer_id, {
       peer_id: member.peer_id,
@@ -569,24 +1392,129 @@ function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
       purpose: member.purpose,
       lease_expires_at: "",
       online: Boolean(member.online),
+      ...(member.presence ? { presence: member.presence } : {}),
     });
   }
-  return [...peers.values()].map((peer) => mapAgent(peer, mePeerId));
+  const launchByPeer = new Map<string, DaemonLaunchLifecycle>();
+  for (const launch of state.launch_lifecycle ?? []) {
+    const existing = launchByPeer.get(launch.peer_id);
+    if (!existing) launchByPeer.set(launch.peer_id, launch);
+  }
+  const runtimeDetailsByPeer = new Map<string, DaemonAgentRuntimeDetails>();
+  for (const details of state.agent_runtime_details ?? []) {
+    runtimeDetailsByPeer.set(details.peer_id, details);
+  }
+  return [...peers.values()].map((peer) =>
+    mapAgent(peer, mePeerId, launchByPeer.get(peer.peer_id), runtimeDetailsByPeer.get(peer.peer_id)),
+  );
 }
 
-function mapAgent(peer: DaemonPeer, mePeerId: string): Agent {
+// Map the daemon's derived presence onto the roster's status palette. working
+// and the transient initializing read as "busy" (active, pulsing); idle is its
+// own amber; generic "online" (uninstrumented peers) and the local human stay
+// green. Falls back to the legacy online boolean when presence is absent.
+function statusForPeer(peer: DaemonPeer, isMe: boolean): AgentStatus {
+  if (peer.lifecycle_state === "archived") return "offline";
+  if (isMe) return "online";
+  switch (peer.presence) {
+    case "working":
+    case "initializing":
+      return "busy";
+    case "idle":
+      return "idle";
+    case "offline":
+      return "offline";
+    case "online":
+      return "online";
+    default:
+      return peer.online ? "online" : "offline";
+  }
+}
+
+function mapAgent(
+  peer: DaemonPeer,
+  mePeerId: string,
+  launch?: DaemonLaunchLifecycle,
+  runtimeDetails?: DaemonAgentRuntimeDetails,
+): Agent {
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
+  const launchNote = launch ? launchStatusNote(launch) : undefined;
   return {
     id: peer.peer_id,
     name,
     handle: isMe ? "you" : handleFor(peer),
     color: colorForPeer(peer.peer_id),
     role: peer.tool,
-    status: isMe || peer.online ? "online" : "offline",
-    ...(peer.purpose ? { statusNote: peer.purpose } : {}),
+    status: statusForPeer(peer, isMe),
+    lifecycleState: peer.lifecycle_state ?? "active",
+    ...(peer.archived_at ? { archivedAt: peer.archived_at } : {}),
+    ...(peer.archived_reason ? { archivedReason: peer.archived_reason } : {}),
+    ...(peer.archive_source ? { archiveSource: peer.archive_source } : {}),
+    ...(launchNote ? { statusNote: launchNote } : peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(launch
+      ? {
+          launchLifecycle: {
+            launchId: launch.launch_id,
+            state: launch.state,
+            ...(launch.target_group ? { targetGroup: launch.target_group } : {}),
+            ...(launch.failure_code ? { failureCode: launch.failure_code } : {}),
+            ...(launch.failure_message ? { failureMessage: launch.failure_message } : {}),
+          },
+        }
+      : {}),
+    ...(runtimeDetails
+      ? {
+          runtimeDetails: {
+            peerId: runtimeDetails.peer_id,
+            ...(runtimeDetails.binding_id ? { bindingId: runtimeDetails.binding_id } : {}),
+            ...(runtimeDetails.launch_id ? { launchId: runtimeDetails.launch_id } : {}),
+            ...(runtimeDetails.profile_name ? { profileName: runtimeDetails.profile_name } : {}),
+            ...(runtimeDetails.tool ? { tool: runtimeDetails.tool } : {}),
+            ...(runtimeDetails.session_name ? { sessionName: runtimeDetails.session_name } : {}),
+            ...(runtimeDetails.model ? { model: runtimeDetails.model } : {}),
+            ...(runtimeDetails.thinking ? { thinking: runtimeDetails.thinking } : {}),
+            ...(runtimeDetails.source ? { source: runtimeDetails.source } : {}),
+            ...(runtimeDetails.agent_type ? { agentType: runtimeDetails.agent_type } : {}),
+            ...(runtimeDetails.host_tool ? { hostTool: runtimeDetails.host_tool } : {}),
+            ...(runtimeDetails.host_session_id ? { hostSessionId: runtimeDetails.host_session_id } : {}),
+            ...(runtimeDetails.host_session_file ? { hostSessionFile: runtimeDetails.host_session_file } : {}),
+            ...(runtimeDetails.machine_id ? { machineId: runtimeDetails.machine_id } : {}),
+            ...(runtimeDetails.cwd ? { cwd: runtimeDetails.cwd } : {}),
+            ...(runtimeDetails.git_branch ? { gitBranch: runtimeDetails.git_branch } : {}),
+            ...(runtimeDetails.git_dirty !== null ? { gitDirty: runtimeDetails.git_dirty } : {}),
+            ...(runtimeDetails.pid !== null ? { pid: runtimeDetails.pid } : {}),
+            ...(runtimeDetails.launch_state ? { launchState: runtimeDetails.launch_state } : {}),
+            ...(runtimeDetails.backend_title ? { backendTitle: runtimeDetails.backend_title } : {}),
+            ...(runtimeDetails.target_group ? { targetGroup: runtimeDetails.target_group } : {}),
+            ...(runtimeDetails.failure_code ? { failureCode: runtimeDetails.failure_code } : {}),
+            ...(runtimeDetails.failure_message ? { failureMessage: runtimeDetails.failure_message } : {}),
+            ...(runtimeDetails.created_at ? { createdAt: runtimeDetails.created_at } : {}),
+            ...(runtimeDetails.updated_at ? { updatedAt: runtimeDetails.updated_at } : {}),
+            ...(runtimeDetails.last_seen_at ? { lastSeenAt: runtimeDetails.last_seen_at } : {}),
+          },
+        }
+      : {}),
+    ...(peer.aoe_session
+      ? {
+          aoeSession: {
+            profile: peer.aoe_session.profile,
+            title: peer.aoe_session.title,
+            attachCommand: peer.aoe_session.attach_command,
+          },
+        }
+      : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
+}
+
+function launchStatusNote(launch: DaemonLaunchLifecycle): string | undefined {
+  if (launch.state === "running") return undefined;
+  if (launch.state === "registered_unjoined") return `launch: unjoined${launch.target_group ? ` #${launch.target_group}` : ""}`;
+  if (launch.state === "failed") return `launch failed${launch.failure_code ? `: ${launch.failure_code}` : ""}`;
+  if (launch.state === "stale") return "launch stale";
+  if (launch.state === "stopped") return "launch stopped";
+  return `launch: ${launch.state}`;
 }
 
 function mapMessage(event: DaemonEvent, roomId: string, status?: Message["status"]): Message {
@@ -597,12 +1525,36 @@ function mapMessage(event: DaemonEvent, roomId: string, status?: Message["status
     body: event.body ?? "",
     createdAt: event.created_at,
     mentions: parseMentions(event.mentions_json),
-    reactions: [],
+    reactions: (event.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      by: reaction.by.map((actor) => actor.peer_id),
+    })),
     ...(event.reply_count !== undefined && event.reply_count > 0 ? { threadReplyCount: event.reply_count } : {}),
     ...(event.last_reply_event_id ? { threadLastReplyAt: event.created_at } : {}),
     ...(event.parent_event_id ? { parentId: messageId(event.parent_event_id) } : {}),
     ...(status ? { status } : {}),
   };
+}
+
+function applyReactionToMessage(message: Message, peerId: string, emoji: string, op: ReactToMessageInput["op"] = "toggle"): Message {
+  const reactions = message.reactions.map((reaction) => ({ ...reaction, by: [...reaction.by] }));
+  const existing = reactions.find((reaction) => reaction.emoji === emoji);
+  const hasReacted = Boolean(existing?.by.includes(peerId));
+  const shouldAdd = op === "add" || (op === "toggle" && !hasReacted);
+  if (shouldAdd) {
+    if (existing) existing.by = [...new Set([...existing.by, peerId])];
+    else reactions.push({ emoji, by: [peerId] });
+  } else if ((op === "remove" || op === "toggle") && existing) {
+    existing.by = existing.by.filter((id) => id !== peerId);
+  }
+  return { ...message, reactions: reactions.filter((reaction) => reaction.by.length > 0) };
+}
+
+function roomIdForEvent(event: DaemonEvent, peerId: string): string | null {
+  if (event.group_id !== null) return groupRoomId(event.group_id);
+  if (event.type !== "dm" || !event.sender_peer_id || !event.recipient_peer_id) return null;
+  const other = event.sender_peer_id === peerId ? event.recipient_peer_id : event.sender_peer_id;
+  return dmRoomId(other);
 }
 
 function mapTimelineEvent(event: DaemonEvent, groupById: Map<number, DaemonGroup>, peerById: Map<string, DaemonPeer>): TimelineEvent {
@@ -659,7 +1611,15 @@ function parseMentions(raw: string | null): string[] {
 
 function groupMembersByGroup(memberships: DaemonMember[]): Map<number, DaemonMember[]> {
   const grouped = new Map<number, DaemonMember[]>();
-  for (const member of memberships) pushMap(grouped, member.group_id, member);
+  for (const member of memberships) {
+    pushMap(grouped, member.group_id, member);
+  }
+  return grouped;
+}
+
+function groupPathsByGroup(paths: DaemonGroupPath[]): Map<number, DaemonGroupPath[]> {
+  const grouped = new Map<number, DaemonGroupPath[]>();
+  for (const path of paths) pushMap(grouped, path.group_id, path);
   return grouped;
 }
 
@@ -730,6 +1690,97 @@ function artifactKind(contentType: string, path: string): Artifact["kind"] {
   return "doc";
 }
 
+function mapSkillCatalog(entries: DaemonSkillCatalogEntry[]): SkillCatalogEntry[] {
+  return entries.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    runtimes: entry.runtimes,
+    ...(entry.source_path ? { sourcePath: entry.source_path } : {}),
+  }));
+}
+
+function mapArchivedSession(session: DaemonArchivedSession): ArchivedSession {
+  return {
+    peerId: session.peer_id,
+    sessionName: session.session_name,
+    tool: session.tool,
+    archivedAt: session.archived_at,
+    archivedReason: session.archived_reason,
+    archiveSource: session.archive_source,
+    aliases: session.aliases,
+  };
+}
+
+function mapArchiveSessionResult(result: DaemonArchiveSessionResult): ArchivePreviewMember {
+  return {
+    peerId: result.peer_id,
+    sessionName: result.session_name,
+    tool: result.tool,
+    action: result.action,
+    reaped: result.reaped,
+    zombie: result.zombie,
+    ...(result.warning ? { warning: result.warning } : {}),
+  };
+}
+
+function mapArchiveGroupResult(result: DaemonArchiveGroupResult, dryRun: boolean): ArchivePreview {
+  return {
+    target: "group",
+    group: result.group,
+    dryRun,
+    members: result.members.map((member) => ({
+      alias: member.alias,
+      peerId: member.peer_id,
+      tool: member.tool,
+      action: member.action,
+      reaped: member.reaped,
+      zombie: member.zombie,
+      ...(member.warning ? { warning: member.warning } : {}),
+    })),
+  };
+}
+
+function mapResumePreviewMember(member: DaemonResumePreviewMember): ResumePreviewMember {
+  return {
+    peerId: member.peer_id,
+    sessionName: member.session_name,
+    alias: member.alias,
+    tool: member.tool,
+    group: member.group,
+    cwd: member.cwd,
+    hostSessionId: member.host_session_id,
+    action: member.action,
+    ...(member.code ? { code: member.code } : {}),
+    forceAvailable: member.force_available,
+    ...(member.warning ? { warning: member.warning } : {}),
+  };
+}
+
+function mapResumeGroupPreview(result: DaemonResumeGroupPreview): ResumePreview {
+  return {
+    target: "group",
+    group: result.group,
+    mode: result.mode,
+    dryRun: result.dry_run,
+    members: result.members.map(mapResumePreviewMember),
+  };
+}
+
+function mapLaunchProfiles(profiles: DaemonLaunchProfile[]): AgentLaunchProfile[] {
+  return profiles.map((profile) => ({
+    name: profile.name,
+    tool: profile.tool,
+    available: profile.available,
+    ...(profile.path ? { path: profile.path } : {}),
+    ...(profile.model ? { model: profile.model } : {}),
+    ...(profile.thinking ? { thinking: profile.thinking } : {}),
+    ...(profile.session_name ? { sessionName: profile.session_name } : {}),
+    ...(profile.repo ? { repo: profile.repo } : {}),
+    ...(profile.disabled_reason ? { disabledReason: profile.disabled_reason } : {}),
+  }));
+}
+
 function pushMap<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const existing = map.get(key);
   if (existing) existing.push(value);
@@ -750,6 +1801,13 @@ function mergeTimeline(prev: TimelineEvent[], next: TimelineEvent[]): TimelineEv
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+function mergeAgents(prev: Agent[], next: Agent[]): Agent[] {
+  if (next.length === 0) return prev;
+  const byId = new Map(prev.map((item) => [item.id, item] as const));
+  for (const item of next) byId.set(item.id, item);
+  return [...byId.values()];
+}
+
 function hashString(value: string): number {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
@@ -765,5 +1823,17 @@ function reuseEqualRooms(prev: Room[], next: Room[]): Room[] {
 }
 
 function reuseEqualMessages(prev: Message[], next: Message[]): Message[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualSkillCatalog(prev: SkillCatalogEntry[], next: SkillCatalogEntry[]): SkillCatalogEntry[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualLaunchProfiles(prev: AgentLaunchProfile[], next: AgentLaunchProfile[]): AgentLaunchProfile[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualArchivedSessions(prev: ArchivedSession[], next: ArchivedSession[]): ArchivedSession[] {
   return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }

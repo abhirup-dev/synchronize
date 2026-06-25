@@ -166,15 +166,15 @@ The web UI is a single hosted surface (one React bundle) that lets a human opera
 
 Aesthetic: **playful neo-brutalist** — cream paper background, 3 px ink-black borders, hard offset shadows (no blur, no gradients), three-typeface mix (Archivo Black display / Space Grotesk UI / JetBrains Mono code & handles). Each agent gets a stable identity color used in their avatar tile, mention chip, message author chip, and timeline marker.
 
-Two themes:
+Supported themes:
 - **Light** (default) — warm cream paper + ink black.
-- **Dark** — warm coffee browns + off-white ink, accents desaturated ~15–20 %.
+- **Kanagawa Wave** — the only supported dark palette.
 
 ## Colors
 
 See YAML front-matter `colors`. Notes:
 
-- All raw colors are exposed as CSS custom properties (`--paper`, `--ink`, `--yellow`, …) on `:root`. The dark theme is a sibling block under `:root[data-theme="dark"]`.
+- All raw colors are exposed as CSS custom properties (`--paper`, `--ink`, `--yellow`, …) on `:root`. Theme variants are sibling blocks such as `:root[data-theme="kanagawa-wave"]`.
 - Accent rotation is per-room: each room declares a `color` (one of `yellow / pink / blue / lime / tangerine / lilac`). Accent flows through the room icon background, the room-name chip on hover, and the "active" room indicator on the sidebar.
 - Per-agent identity colors are owned by the daemon (`peer.color`) and rendered by the client; defaults match the prototype palette (`Cortex = yellow`, `Atlas = pink`, `Vega = blue`, `Nova = lime`, `Echo = tangerine`, `Pulse = lilac`, `Mira = red`, `Jay = teal`, `You = ink`).
 - The `code-bg` / `code-fg` tokens stay dark in both themes — code blocks never strobe when toggling theme.
@@ -182,6 +182,14 @@ See YAML front-matter `colors`. Notes:
 ## Token Contract
 
 All static aesthetic decisions in the web UI must go through CSS custom properties. Component code and ordinary selectors should describe structure and state; tokens own the visual values that a future theme may override.
+
+### Skin contract (semantic role layer)
+
+Above the primitive tokens sits a semantic role layer (`--surface`, `--fg`, `--card-border/-shadow/-radius`, `--control-*`, `--overlay-*`, `--focus-ring`) declared under `:root[data-skin="brutal"]` in `styles.css`. `data-skin` is the *aesthetic system* (border/shadow/radius/typography language) and is orthogonal to `data-theme` (palette). Roles reference primitives via `var()`, so every theme flows through automatically.
+
+- New and migrated components consume **role tokens, never primitives** — that is what makes a future skin (e.g. minimal/modern: hairline borders, soft shadows, larger radii) a single-block override instead of a rewrite.
+- Tailwind utilities for the roles live in `tw.css` (`bg-surface`, `text-fg`, `shadow-card`, `rounded-control`, …); prefer them in migrated components.
+- Skin-specific structural flourishes (sticker rotation, hard offset hover translates) must be guarded with `[data-skin="brutal"]` so other skins can opt out.
 
 Rules:
 
@@ -239,7 +247,7 @@ Included theme templates:
 | Family | Theme IDs |
 | --- | --- |
 | Light | `light`, `rose-pine-dawn` |
-| Dark | `dark`, `kanagawa-wave`, `catppuccin-mocha` |
+| Dark | `kanagawa-wave` |
 
 The bottom-right theme button keeps quick toggling simple: click switches between the default light/dark themes, and Shift-click cycles through variants inside the current light or dark family.
 
@@ -304,17 +312,17 @@ The implementation maps prototype files → React + TS components:
 | `timeline.jsx`                | `web/src/components/TimelineRail.tsx`                       | Vertical event rail; types: claim / analyze / deliver / ship / review / alert / kickoff / request. |
 | `board.jsx`                   | `web/src/components/BoardView.tsx`                          | Kanban columns: Backlog / In Progress / In Review / Shipped. |
 | `app.jsx` ArtifactsGrid       | `web/src/components/ArtifactsView.tsx`                      | Filterable grid: IMG / CODE / DOC / DIFF / TF / LOG / CHART. |
-| `app.jsx` AgentRoster         | `web/src/components/AgentRoster.tsx`                        | Right rail, grouped by status, click-to-focus. |
+| `app.jsx` AgentRoster         | `web/src/components/AgentRoster.tsx`                        | Right rail, grouped by status, context menu for agent actions/profile. |
 | `context-menu.jsx`            | `web/src/components/ContextMenu.tsx`                        | Shared portal-rendered menu; consumed by Sidebar / Message / Roster / Timeline. |
 | `tweaks-panel.jsx`            | `web/src/components/TweaksPanel.tsx`                        | Floating debug toolbar: theme / accent / density / shadow size / roster on-off. |
 | `primitives.jsx`              | `web/src/components/primitives.tsx` (Avatar, Sticker, …)    | Inline primitive set: `Avatar`, `Sticker`, `StatusDot`, `MentionChip`. |
 
-Stateful surfaces (focused agent, open thread, active room, theme) live in the top-level `App.tsx` component. There is no global store in v0 — props + a small set of context providers (`ThemeContext`, `TweaksContext`) are enough.
+Stateful surfaces (open thread, active room, theme, profile dialogs) live in the top-level `App.tsx` component or the owning surface. There is no global store in v0 — props + a small set of context providers (`ThemeContext`, `TweaksContext`) are enough.
 
 ### Component states worth calling out
 
 - **Sidebar room item** — three states: idle / hover (paper background + ink border + shadow) / active (ink-filled, paper text, `room-preview` at 0.65 opacity).
-- **Message bubble** — additional states: `dimmed` (other authors when an agent is focused; 32 % opacity, desaturated) and `thread-dimmed` (when a thread is open; 32 % opacity, 75 % opacity on hover). The active thread parent gets a 2 px pink ring.
+- **Message bubble** — additional state: `thread-dimmed` (when a thread is open; 32 % opacity, 75 % opacity on hover). The active thread parent gets a 2 px pink ring.
 - **Composer** — toolbar glyphs always render `color: var(--ink)` (explicit theme-aware fix from chat 1).
 - **Roster cards** — transparent background with faint border in both themes (no white pop). `WORKING` group gets a 2 px pink left tick so busy agents still stand out.
 - **Timeline rail** — `opacity: 0.55` by default; full opacity on rail hover; node markers translate + grow shadow on hover; tooltip renders via React portal to `body` so it escapes overflow clipping.
@@ -461,7 +469,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - RoomHeader with the CHAT / BOARD / ARTIFACTS tab strip (only CHAT renders; the other two are placeholder panels).
 - ChatView: grouped bubbles, author chip, identity colors, status row, markdown body (GFM + code highlight + sanitized).
 - Composer: textarea, toolbar (B / I / `</>` / link / @ / 📎 — only @ and send are wired in V0), `@mention` autocomplete with arrow / tab / enter / live status notes, Enter sends / Shift+Enter newline.
-- AgentRoster (right rail), grouped by presence; click-to-focus is V0 visual only (focus state, no dim semantics yet).
+- AgentRoster (right rail), grouped by presence; right-click exposes the shared agent action/profile menu.
 - Light + dark theming via `data-theme` and CSS custom properties.
 
 **V1 (immediately after merge):**
@@ -469,7 +477,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - SSE event-stream endpoint on the daemon (`GET /events/stream`) + adapter swap from polling.
 - Threads: `ThreadPane`, resize handle, parent-pin, dimming of non-thread messages.
 - TimelineRail with portal tooltips, claim/analyze/deliver/ship/review/alert/kickoff/request markers.
-- Focus-agent mode (dim other-agent messages + timeline nodes; pink ring on focused agent's bubbles).
+- Agent profile flow from roster/sidebar/activity/message-avatar context menus.
 - ContextMenu (4 surfaces: sidebar / message / roster / timeline).
 - TweaksPanel.
 

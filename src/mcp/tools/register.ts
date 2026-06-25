@@ -2,14 +2,15 @@ import { z } from "zod";
 import { listAgentSessions, renameAgentSession } from "../../api/agent-sessions.ts";
 import { registerPeer } from "../../api/peers.ts";
 import type { Peer } from "../../api/types.ts";
+import { ENV_LAUNCH_ID, ENV_PEER_ID } from "../../constants.ts";
 import { EventSubscription } from "../claude-subscription.ts";
 import { NotificationBridge } from "../codex-notifier.ts";
 import { resolveMcpRegisterPeerId } from "../lifecycle.ts";
-import { findEnvBoundPeer, getClient, getMode } from "../state.ts";
+import { getClient, getMode, useCallbackPush } from "../state.ts";
 import { invalidArgument, log, text, wrap } from "../util.ts";
 import type { ToolContext } from "./context.ts";
 
-export function registerRegisterTools(ctx: ToolContext): void {
+export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer: () => Promise<void> } {
   const { mcp, state, emit, lifecycle } = ctx;
 
   mcp.registerTool(
@@ -65,7 +66,8 @@ export function registerRegisterTools(ctx: ToolContext): void {
     {
       description:
         "Show this adapter peer identity. " +
-        "Returns: { peer, registered, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Returns: { peer, registered, runtime_context, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Agent-session bindings include cwd, git_branch, and git_dirty when the host provided a cwd. " +
         "Idempotency: pure read.",
     },
     wrap(async () => {
@@ -78,10 +80,18 @@ export function registerRegisterTools(ctx: ToolContext): void {
       }
     }
     const agentSessions = client && state.peer ? (await listAgentSessions(client, { peerId: state.peer.peer_id })).bindings : [];
+    const activeSession = agentSessions[0] ?? null;
     return text({
       peer: state.peer,
       registered: Boolean(state.peer),
       agent_sessions: agentSessions,
+      runtime_context: activeSession
+        ? {
+            cwd: activeSession.cwd,
+            git_branch: activeSession.git_branch,
+            git_dirty: activeSession.git_dirty,
+          }
+        : null,
       notify_mode: getMode(),
       claude_channel_subscription_active: state.subscription?.isActive() ?? false,
       codex_notifier_active: Boolean(state.notifier),
@@ -90,6 +100,48 @@ export function registerRegisterTools(ctx: ToolContext): void {
   }),
   );
 
+  /**
+   * Proactively activate the live channel subscription on MCP startup for a
+   * launch-bound session, so a freshly-spawned *idle* agent receives pushed
+   * messages without first having to call bridge_register/bridge_whoami (an
+   * idle session never takes that turn on its own — sync-amq).
+   *
+   * Gated on the launch env (ENV_PEER_ID / ENV_LAUNCH_ID): ordinary sessions
+   * that never set these are left untouched — crucially, we do NOT call
+   * getClient() for them, so a normal `claude` start never auto-starts a
+   * synchronize daemon as a side effect.
+   */
+  async function bootstrapEnvBoundPeer(): Promise<void> {
+    if (state.peer) return; // already activated (e.g. an early tool call)
+    if (!process.env[ENV_PEER_ID] && !process.env[ENV_LAUNCH_ID]) return;
+    const client = await getClient(state).catch(() => null);
+    if (!client) return;
+    const envBoundPeer = await findEnvBoundPeer(client);
+    if (!envBoundPeer) return;
+    await activatePeer(envBoundPeer, client);
+    lifecycle.startHeartbeat();
+    log(`bootstrap activated env-bound peer on startup peer_id=${envBoundPeer.peer_id} notify_mode=${getMode()}`);
+  }
+
+  async function findEnvBoundPeer(client: Awaited<ReturnType<typeof getClient>>): Promise<Peer | null> {
+    // `SYNCHRONIZE_LAUNCH_ID` is a short-lived process correlation key, not an
+    // identity. The launcher, Claude SessionStart hook, and MCP process inherit
+    // the same value; the hook stores it on the daemon binding so bridge_whoami
+    // can attach to the peer that was registered before MCP had any in-memory
+    // state. Once found, all real logic uses peer_id / host_session_id.
+    const launchId = process.env[ENV_LAUNCH_ID];
+    if (launchId) {
+      const binding = (await listAgentSessions(client, { launchId })).bindings.at(0);
+      if (binding) return binding.peer;
+    }
+    const peerId = process.env[ENV_PEER_ID];
+    if (peerId) {
+      const binding = (await listAgentSessions(client, { peerId })).bindings.at(0);
+      if (binding) return binding.peer;
+    }
+    return null;
+  }
+
   async function activatePeer(peer: Peer, client: Awaited<ReturnType<typeof getClient>>): Promise<void> {
     state.peer = peer;
     const mode = getMode();
@@ -97,7 +149,11 @@ export function registerRegisterTools(ctx: ToolContext): void {
     state.notifier = null;
     state.subscription?.stop();
     state.subscription = null;
-    if (mode === "claude") {
+    // Transport is chosen by location, not channel: see useCallbackPush. A
+    // remote daemon cannot reach our loopback callback, so remote Claude polls
+    // (like codex); local Claude keeps the instant callback. Either transport
+    // feeds the same mode-parameterized emit -> notifications/claude/channel.
+    if (useCallbackPush(mode, client)) {
       state.subscription = new EventSubscription({
         peerId: peer.peer_id,
         mode,
@@ -105,7 +161,7 @@ export function registerRegisterTools(ctx: ToolContext): void {
         emit,
       });
       await state.subscription.start();
-      log(`Claude channel subscription active peer_id=${peer.peer_id}`);
+      log(`Claude channel callback subscription active peer_id=${peer.peer_id}`);
     } else {
       state.notifier = new NotificationBridge({
         peerId: peer.peer_id,
@@ -114,7 +170,7 @@ export function registerRegisterTools(ctx: ToolContext): void {
         emit,
       });
       state.notifier.start();
-      log(`Codex polling notifier active peer_id=${peer.peer_id}`);
+      log(`${mode} polling notifier active peer_id=${peer.peer_id} remote=${Boolean(client.remote)}`);
     }
   }
 
@@ -150,4 +206,6 @@ export function registerRegisterTools(ctx: ToolContext): void {
       return text(response);
     }),
   );
+
+  return { bootstrapEnvBoundPeer };
 }

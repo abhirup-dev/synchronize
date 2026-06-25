@@ -1,0 +1,30 @@
+{
+  "capturedAt": "2026-06-06T18:45:48.910Z",
+  "source": {
+    "title": "Synchronize",
+    "url": "https://claude.ai/design/p/2851b98a-ec30-44c2-b20d-30c27b5b3959?file=Synchronize.html"
+  },
+  "note": "Reference-design-only screenshots captured from Chrome Claude Design tab. Coordinates are relative crops of the large design iframe where applicable.",
+  "files": [
+    "01-reference-dark-chat-overview.png",
+    "02-reference-sidebar-room-list.png",
+    "03-reference-header-room-tabs.png",
+    "04-reference-chat-bubbles-and-shadows.png",
+    "05-reference-timeline-agent-rail.png",
+    "06-reference-composer-controls.png",
+    "07-reference-top-right-controls.png",
+    "08-reference-active-room-treatment.png",
+    "09-reference-board-overview.png",
+    "10-reference-board-column-cards.png",
+    "11-reference-board-status-chrome.png",
+    "12-reference-artifacts-overview.png",
+    "13-reference-artifact-card-detail.png",
+    "14-reference-artifact-toolbar-and-empty-space.png",
+    "15-reference-alternate-room-chat-state.png",
+    "16-reference-sidebar-dm-section.png",
+    "17-reference-identity-chips-colors.png",
+    "18-reference-text-contrast-message-copy.png",
+    "19-reference-count-badges-labels.png",
+    "20-reference-bottom-left-nav-and-theme.png"
+  ]
+}

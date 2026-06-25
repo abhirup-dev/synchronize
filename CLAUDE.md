@@ -46,13 +46,16 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
+- User-facing CLI install and Tab completion instructions live in `README.md`; keep this file to repository workflow directives.
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
 - Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
+- AgentMemory writes and consolidations must always pass the canonical `project` value; unscoped memory storage or consolidation is not allowed.
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `AGENTS.md`.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding (see workflow in `AGENTS.md`).
+- Before merging to `master`, clean up any daemons, tmux/AOE sessions, or other temporary processes you spawned for testing.
 - **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, you MUST then add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The skill index is the gated discovery surface for historical references; a plan that exists on disk but is not indexed there is effectively invisible to future sessions. The order is strict: write the plan → create bd issues → add the index entry. Never the other way around.
 
 ## Agent skills
@@ -68,6 +71,33 @@ Use the default Matt Pocock skill triage labels as Beads labels. See `docs/agent
 ### Domain docs
 
 This is a single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
+
+### Web UI / Storybook
+
+Before editing or adding `web/` components, use the Storybook component glossary
+(MCP at `http://localhost:6006/mcp` while `cd web && bun run storybook` runs) to
+reuse existing components and patterns. See `docs/agents/storybook-ui.md`.
+
+**If you are adding or modifying any `web/` component OR its states/variants, you
+MUST first read the "Wiring conventions" section of `docs/agents/storybook-ui.md`.**
+It is the gated contract for how stories mount through shared shell cells, how
+mode/theme behaviour is expressed as traits (`shellLayout`/`themeTraits`) instead
+of if-else, and why theme/skin are global toolbar traits (never duplicate stories
+per theme). Wiring a story differently than the app mounts the component is the
+single biggest source of false-positive UI findings — the conventions exist to
+prevent it.
+
+When changing `web/src/components/*`, also run the Storybook staleness audit in
+`docs/agents/storybook-ui.md`: stories render real components automatically, but
+story args, callbacks, visible states, interaction `play` tests, deleted behavior,
+and composed flows must stay in sync with the component contract. If you find a
+stale or divergent story/flow outside the requested scope, tell the user what you
+found and ask how to proceed instead of silently expanding the task.
+
+Use AST-grep for structural code scanning when it fits the question; it is the
+preferred tool for code navigation beyond plain-text search. Project config
+lives in `sgconfig.yml`; run it with `bun run ast-grep -- ...` or
+`bun run ast-grep:scan`.
 
 ## Environment
 

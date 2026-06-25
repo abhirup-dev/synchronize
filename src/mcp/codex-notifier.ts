@@ -25,7 +25,7 @@ export class NotificationBridge {
 
   start(): void {
     if (this.running) return;
-    log(`starting Codex polling notifier peer_id=${this.options.peerId} limit=${this.options.limit ?? DEFAULT_NOTIFICATION_BUFFER}`);
+    log(`starting ${this.options.mode} polling notifier peer_id=${this.options.peerId} limit=${this.options.limit ?? DEFAULT_NOTIFICATION_BUFFER}`);
     this.running = true;
     void this.loop();
   }
@@ -46,7 +46,7 @@ export class NotificationBridge {
         if (result.events.length > 0) {
           sleepMs = activeMs;
           for (const event of result.events) {
-            log(`Codex notifier received event_id=${event.event_id} peer_id=${this.options.peerId}`);
+            log(`${this.options.mode} notifier received event_id=${event.event_id} peer_id=${this.options.peerId}`);
             this.cursor = Math.max(this.cursor, event.event_id);
             this.buffer.push(event);
             if (this.buffer.length > limit) this.buffer.splice(0, this.buffer.length - limit);
@@ -54,7 +54,7 @@ export class NotificationBridge {
           }
         }
       } catch (error) {
-        log(`Codex notifier poll failed peer_id=${this.options.peerId}: ${formatError(error)}`);
+        log(`${this.options.mode} notifier poll failed peer_id=${this.options.peerId}: ${formatError(error)}`);
         sleepMs = idleMs;
       }
       await Bun.sleep(sleepMs);

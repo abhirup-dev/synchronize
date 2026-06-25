@@ -44,11 +44,15 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
+- User-facing CLI install and Tab completion instructions live in `README.md`; keep agent docs minimal and point there for detailed setup steps.
 - Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
+- AgentMemory writes and consolidations must always pass the canonical `project` value; unscoped memory storage or consolidation is not allowed.
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `CLAUDE.md`.
 - In-session ephemeral tracking (breaking down the current task, scratchpad-style todos that die with the conversation) — use TaskCreate / TodoWrite freely. Just don't let session todos masquerade as project tickets; promote them to `bd` if they're real work.
 - Session close must end with `git push` succeeding.
+- Before merging to `master`, clean up any daemons, tmux/AOE sessions, or other temporary processes you spawned for testing.
 - **Plan → bd → skill index.** When you author a new plan, handoff, or design doc and create bd issues from it, add that document to `.claude/skills/synchronize-debugging/reference-v0-plans.md` in the same change. The order is strict: write the plan → create bd issues → add the index entry.
+- **Plannotator review for plans.** When writing a plan, always use the `plannotator-annotate` skill and open the plan for feedback. After launching `plannotator annotate` / the `plannotator-annotate` skill, wait for the user's feedback in the existing session. Do not repeatedly spawn new Plannotator URLs or sessions unless the user explicitly asks for a new one.
 
 ## Agent Skills
 
@@ -63,6 +67,33 @@ Use the default Matt Pocock skill triage labels as Beads labels. See `docs/agent
 ### Domain docs
 
 This is a single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
+
+### Web UI / Storybook
+
+Before editing or adding `web/` components, use the Storybook component glossary
+(MCP at `http://localhost:6006/mcp` while `cd web && bun run storybook` runs) to
+reuse existing components and patterns. See `docs/agents/storybook-ui.md`.
+
+**If you are adding or modifying any `web/` component OR its states/variants, you
+MUST first read the "Wiring conventions" section of `docs/agents/storybook-ui.md`.**
+It is the gated contract for how stories mount through shared shell cells, how
+mode/theme behaviour is expressed as traits (`shellLayout`/`themeTraits`) instead
+of if-else, and why theme/skin are global toolbar traits (never duplicate stories
+per theme). Wiring a story differently than the app mounts the component is the
+single biggest source of false-positive UI findings — the conventions exist to
+prevent it.
+
+When changing `web/src/components/*`, also run the Storybook staleness audit in
+`docs/agents/storybook-ui.md`: stories render real components automatically, but
+story args, callbacks, visible states, interaction `play` tests, deleted behavior,
+and composed flows must stay in sync with the component contract. If you find a
+stale or divergent story/flow outside the requested scope, tell the user what you
+found and ask how to proceed instead of silently expanding the task.
+
+Use AST-grep for structural code scanning when it fits the question; it is the
+preferred tool for code navigation beyond plain-text search. Project config
+lives in `sgconfig.yml`; run it with `bun run ast-grep -- ...` or
+`bun run ast-grep:scan`.
 
 ## Environment
 
@@ -153,7 +184,7 @@ bd close <id>         # Complete work
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
+5. **Clean up** - Clear stashes, prune remote branches, and stop any daemons or temporary test sessions you spawned
 6. **Verify** - All changes committed AND pushed
 7. **Hand off** - Provide context for next session
 

@@ -11,16 +11,33 @@ export const LOCK_DIR = "daemon.lock";
 export const DB_FILE = "synchronize.db";
 export const MEDIA_DIR = "media";
 export const LOG_FILE = "daemon.log";
+// Free-form capture of the spawned daemon's stdout/stderr. Kept strictly
+// separate from LOG_FILE: daemon.log holds one JSON record per line and its
+// last line is parsed as JSON by readers, so unstructured stderr must never
+// land there.
+export const ERR_LOG_FILE = "daemon.err.log";
 export const CLI_IDENTITY_FILE = "cli-peer.json";
+// Client-side multi-machine profile config (named remote daemon targets). This
+// is a CLIENT concern, distinct from the daemon-side .env loader (env-files.ts).
+export const CONFIG_FILE = "config.toml";
 
 export const ENV_HOME = "SYNCHRONIZE_HOME";
 export const ENV_BIND = "SYNCHRONIZE_BIND";
 export const ENV_PORT = "SYNCHRONIZE_PORT";
 export const ENV_TOKEN = "SYNCHRONIZE_TOKEN";
+export const ENV_REMOTE_URL = "SYNCHRONIZE_REMOTE_URL";
+// Backward-compatible alias used by the original Letta remote-daemon harness.
+export const ENV_DAEMON_URL = "SYNCHRONIZE_DAEMON_URL";
+export const ENV_HEALTH_TIMEOUT_MS = "SYNCHRONIZE_HEALTH_TIMEOUT_MS";
 export const ENV_STARTED_BY_CLIENT = "SYNCHRONIZE_STARTED_BY_CLIENT";
 export const ENV_PEER_ID = "SYNCHRONIZE_PEER_ID";
 export const ENV_SESSION_NAME = "SYNCHRONIZE_SESSION_NAME";
+export const ENV_PROFILE_NAME = "SYNCHRONIZE_PROFILE_NAME";
 export const ENV_HOOK_ENABLE = "SYNCHRONIZE_HOOK_ENABLE";
+export const ENV_LEASE_MS = "SYNCHRONIZE_LEASE_MS";
+export const ENV_PEER_RETENTION_MS = "SYNCHRONIZE_PEER_RETENTION_MS";
+export const ENV_SWEEP_INTERVAL_MS = "SYNCHRONIZE_SWEEP_INTERVAL_MS";
+export const ENV_MCP_HEARTBEAT_MS = "SYNCHRONIZE_MCP_HEARTBEAT_MS";
 // Temporary launch-scoped correlation key shared by `synchronize launch`,
 // Claude's SessionStart hook, and the spawned synchronize MCP process.
 // It is not a durable identity: peer_id remains synchronize's identity and
@@ -32,14 +49,37 @@ export const ENV_LAUNCH_ID = "SYNCHRONIZE_LAUNCH_ID";
 export const STARTUP_TIMEOUT_MS = 5_000;
 export const HEALTH_TIMEOUT_MS = 500;
 export const STALE_LOCK_MS = 30_000;
-export const DEFAULT_LEASE_MS = 7 * 24 * 60 * 60_000;
+
+// Liveness lease window, retention, and sweep interval defaults now live in the
+// unified resolver (src/config.ts → CONFIG_DEFAULTS.daemon) and are read off
+// DaemonContext.config (defaults < config.toml < env). They were removed from
+// here because computing them at import time (process.env baked in on load) made
+// them un-injectable and forced tests into subprocess env mutation. The lease
+// window remains intentionally generous so suspended agents do not disappear
+// during multi-day work; SYNCHRONIZE_LEASE_MS still overrides it.
+// See session-tracker/plan-agent-ttl-presence-v0.md + docs/plans/config-unification.md.
+function positiveEnvMs(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+// Canonical agent activity states stored on peers.activity_state. NULL means
+// "uninstrumented" — the peer (web/cli/codex) reports no activity and renders
+// as a generic online/offline. Presence = offline if lease expired, else the
+// activity_state if set, else generic "online".
+export const ACTIVITY_STATES = ["initializing", "working", "idle"] as const;
+export type ActivityState = (typeof ACTIVITY_STATES)[number];
 export const MAX_MESSAGE_CHARS = 16_000;
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 200;
 export const DEFAULT_NOTIFICATION_BUFFER = 100;
 export const NOTIFIER_ACTIVE_MS = 500;
 export const NOTIFIER_IDLE_MS = 2_000;
-export const MCP_HEARTBEAT_MS = 15_000;
+// MCP stdio adapter (Claude/codex) heartbeat cadence. Env-overridable via
+// SYNCHRONIZE_MCP_HEARTBEAT_MS so integration tests can drive a short heartbeat
+// and observe lease-lapse / recovery quickly (mirrors the daemon's
+// SYNCHRONIZE_LEASE_MS and the Pi extension's SYNCHRONIZE_PI_HEARTBEAT_MS).
+export const MCP_HEARTBEAT_MS = positiveEnvMs(ENV_MCP_HEARTBEAT_MS, 15_000);
 
 // Canonical event types stored on events.type. Adding a new type here also
 // requires updating the CHECK constraint in src/db.ts so the daemon stays in

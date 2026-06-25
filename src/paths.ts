@@ -2,9 +2,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   CLI_IDENTITY_FILE,
+  CONFIG_FILE,
   DB_FILE,
   DISCOVERY_FILE,
   ENV_HOME,
+  ERR_LOG_FILE,
   LOCK_DIR,
   LOG_FILE,
   MEDIA_DIR,
@@ -17,7 +19,9 @@ export interface RuntimePaths {
   discoveryPath: string;
   lockPath: string;
   logPath: string;
+  errLogPath: string;
   cliIdentityPath: string;
+  configPath: string;
 }
 
 export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePaths {
@@ -29,6 +33,8 @@ export function getRuntimePaths(env: NodeJS.ProcessEnv = process.env): RuntimePa
     discoveryPath: join(home, DISCOVERY_FILE),
     lockPath: join(home, LOCK_DIR),
     logPath: join(home, LOG_FILE),
+    errLogPath: join(home, ERR_LOG_FILE),
     cliIdentityPath: join(home, CLI_IDENTITY_FILE),
+    configPath: join(home, CONFIG_FILE),
   };
 }

@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import base64
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .runtime import ArtifactWriter, HarnessError
+from .runtime import ArtifactWriter, HarnessError, RemoteDaemonConfig, remote_env
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class PiEnvironment:
         thinking: str,
         auth_source: str | None,
         writer: ArtifactWriter,
+        remote: RemoteDaemonConfig | None = None,
     ) -> None:
         self.repo = repo
         self.paths = paths
@@ -35,10 +38,14 @@ class PiEnvironment:
         self.thinking = thinking
         self.auth_source = auth_source
         self.writer = writer
+        self.remote = remote or RemoteDaemonConfig()
 
     def auth_source_path(self) -> Path:
         if self.auth_source:
             return Path(self.auth_source).expanduser().resolve()
+        codex_auth = Path.home() / ".codex" / "auth.json"
+        if codex_auth.exists():
+            return codex_auth
         return Path.home() / ".pi" / "agent" / "auth.json"
 
     def required_worktree_paths(self) -> dict[str, Path]:
@@ -60,7 +67,7 @@ class PiEnvironment:
         self.paths.pi_home.mkdir(parents=True, exist_ok=True)
         self.paths.pi_sessions.mkdir(parents=True, exist_ok=True)
         self.paths.sync_home.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(self.auth_source_path(), self.paths.pi_home / "auth.json")
+        self.provision_auth()
         settings = {
             "defaultProvider": self.provider,
             "defaultModel": self.model,
@@ -68,20 +75,26 @@ class PiEnvironment:
             "packages": ["npm:pi-mcp-adapter"],
         }
         self.writer.write_json_at(self.paths.pi_home / "settings.json", settings)
+        mcp_env = {
+            "SYNCHRONIZE_HOME": str(self.paths.sync_home),
+            "SYNCHRONIZE_MCP_MODE": "codex",
+            "PATH": os.environ.get("PATH", ""),
+            **remote_env(self.remote),
+        }
         mcp_config = {
             "mcpServers": {
                 "synchronize": {
                     "command": "sh",
                     "args": ["-c", self.resilient_mcp_command()],
-                    "env": {
-                        "SYNCHRONIZE_HOME": str(self.paths.sync_home),
-                        "SYNCHRONIZE_MCP_MODE": "codex",
-                        "PATH": os.environ.get("PATH", ""),
-                    },
+                    "env": mcp_env,
                 }
             }
         }
         self.writer.write_json_at(self.paths.pi_home / "mcp.json", mcp_config)
+        artifact_mcp_config = json.loads(json.dumps(mcp_config))
+        artifact_env = artifact_mcp_config["mcpServers"]["synchronize"]["env"]
+        if "SYNCHRONIZE_TOKEN" in artifact_env:
+            artifact_env["SYNCHRONIZE_TOKEN"] = "<set>"
         self.writer.write_json(
             "pi-environment.json",
             {
@@ -89,11 +102,62 @@ class PiEnvironment:
                 "pi_sessions": str(self.paths.pi_sessions),
                 "auth_source": str(self.auth_source_path()),
                 "settings": settings,
-                "mcp_config": mcp_config,
+                "mcp_config": artifact_mcp_config,
                 "extension": str(self.required_worktree_paths()["pi_extension"]),
                 "skill": str(self.required_worktree_paths()["pi_skill"]),
             },
         )
+
+    def provision_auth(self) -> None:
+        auth_source = self.auth_source_path()
+        target = self.paths.pi_home / "auth.json"
+        codex_auth = self.pi_auth_from_codex_auth(auth_source)
+        if codex_auth is not None:
+            self.writer.write_json_at(target, codex_auth)
+            return
+        shutil.copy2(auth_source, target)
+
+    def pi_auth_from_codex_auth(self, auth_source: Path) -> dict[str, object] | None:
+        try:
+            auth = json.loads(auth_source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        tokens = auth.get("tokens")
+        if not isinstance(tokens, dict):
+            return None
+        access = tokens.get("access_token")
+        refresh = tokens.get("refresh_token")
+        account_id = tokens.get("account_id")
+        if not isinstance(access, str) or not isinstance(refresh, str) or not isinstance(account_id, str):
+            return None
+        expires = self.jwt_expiry_ms(access)
+        if expires is None:
+            return None
+        return {
+            "openai-codex": {
+                "type": "oauth",
+                "access": access,
+                "refresh": refresh,
+                "expires": expires,
+                "accountId": account_id,
+            }
+        }
+
+    def jwt_expiry_ms(self, token: str) -> int | None:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        payload = parts[1]
+        payload += "=" * (-len(payload) % 4)
+        try:
+            decoded = base64.urlsafe_b64decode(payload.encode("ascii"))
+            claims = json.loads(decoded)
+        except (ValueError, json.JSONDecodeError):
+            return None
+        exp = claims.get("exp")
+        if not isinstance(exp, int):
+            return None
+        return exp * 1000
 
     def install_package_command(self) -> list[str]:
         return [
@@ -146,10 +210,18 @@ class PiEnvironment:
             "SYNCHRONIZE_HOME": str(self.paths.sync_home),
             "SYNCHRONIZE_CLI": str(self.repo / "bin" / "synchronize"),
             "SYNCHRONIZE_MCP": str(self.repo / "bin" / "synchronize-mcp"),
-            "SYNCHRONIZE_PORT": "0",
             "SYNCHRONIZE_SESSION_NAME": name,
             "SYNCHRONIZE_PI_DEBUG": "1",
+            **remote_env(self.remote),
         }
+        if not self.remote.enabled:
+            env_parts["SYNCHRONIZE_PORT"] = "0"
+        # Let a scenario shorten the Pi heartbeat (e.g. the peer-revival smoke)
+        # so lease-lapse / sweep / re-register recovery happens within the test
+        # window. Honored by extensions/pi-synchronize HEARTBEAT_MS.
+        heartbeat_ms = os.environ.get("SYNCHRONIZE_PI_HEARTBEAT_MS")
+        if heartbeat_ms:
+            env_parts["SYNCHRONIZE_PI_HEARTBEAT_MS"] = heartbeat_ms
         command = ["env"]
         for key, value in env_parts.items():
             command.append(f"{key}={value}")

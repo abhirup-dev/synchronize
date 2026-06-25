@@ -11,6 +11,11 @@ export interface DaemonProvenance {
   git_dirty: boolean | null;
 }
 
+export interface GitContext {
+  git_branch: string | null;
+  git_dirty: boolean | null;
+}
+
 export function collectDaemonProvenance(): DaemonProvenance {
   const entrypointPath = fileURLToPath(new URL("./daemon.ts", import.meta.url));
   const sourceRoot = dirname(dirname(entrypointPath));
@@ -21,6 +26,25 @@ export function collectDaemonProvenance(): DaemonProvenance {
     git_sha: resolveGitSha(sourceRoot),
     git_dirty: resolveGitDirty(sourceRoot),
   };
+}
+
+export function collectGitContext(cwd: string | null | undefined): GitContext {
+  if (!cwd) return { git_branch: null, git_dirty: null };
+  return {
+    git_branch: resolveGitBranch(cwd),
+    git_dirty: resolveGitDirty(cwd),
+  };
+}
+
+function resolveGitBranch(cwd: string): string | null {
+  const result = spawnSync("git", ["branch", "--show-current"], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) return null;
+  const branch = result.stdout.trim();
+  return branch === "" ? null : branch;
 }
 
 function resolveGitSha(cwd: string): string | null {

@@ -65,50 +65,10 @@
 .chat-list.autoscroll            { --scroll-bg: var(--paper); }
 .thread-pane-body.autoscroll     { --scroll-bg: var(--paper); }
 
-/* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────── */
-.scroll-controls {
-  position: absolute;
-  right: 14px;
-  bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  z-index: var(--z-scroll-controls);
-  pointer-events: none; /* let underlying content receive clicks unless on a button */
-}
-.scroll-ctrl {
-  pointer-events: auto;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  background: var(--paper-2);
-  color: var(--ink);
-  border: var(--line-sm);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 160ms ease, transform 80ms ease, box-shadow 80ms ease;
-}
-.scroll-ctrl:hover:not(:disabled) {
-  opacity: 1;
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-}
-.scroll-ctrl.has-new-items {
-  opacity: 1;
-  background: var(--lime);
-  animation: new-message-pop 900ms ease-out infinite;
-}
-.scroll-ctrl:disabled {
-  opacity: 0.18;
-  cursor: default;
-}
-
+/* ─── Scroll-to-top / scroll-to-bottom controls ──────────────────────────
+   Rules migrated to Tailwind utilities in ScrollControls.tsx. Only the
+   keyframes remain here (keyframes are not ported during the migration);
+   the component references them via animate-[new-message-pop_...]. */
 @keyframes new-message-pop {
   0% {
     transform: translateY(0) scale(1);
@@ -124,90 +84,23 @@
   }
 }
 
-/* ─── Composer collapse ──────────────────────────────────────────────────── */
-.composer {
-  position: relative;
-}
-.composer-collapse-btn {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--ink-soft);
-  border: var(--line-none);
-  box-shadow: var(--shadow-none);
-  border-radius: var(--radius-none);
-  padding: 0;
-  font-size: var(--text-11);
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.55;
-  z-index: var(--z-local-control);
-  transition: opacity 140ms ease, color 140ms ease;
-}
-.composer-collapse-btn:hover {
-  opacity: 1;
-  color: var(--ink);
-}
+/* ─── Composer collapse ──────────────────────────────────────────────────────
+   Migrated to inline Tailwind utilities in components/Composer.tsx. Hook classes
+   kept on elements: .composer + .composer-collapsed (skin-glass.css),
+   .composer-collapsed-stub (hooks/useVimNav.ts). Base declarations deleted. */
 
-.composer-collapsed {
-  padding: var(--space-button-pad-md);
-}
-.composer-collapsed-stub {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-10);
-  padding: var(--space-button-pad-md);
-  background: var(--paper-2);
-  color: var(--ink-soft);
-  border: var(--line-sm);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  font: inherit;
-  font-size: var(--text-13);
-  cursor: pointer;
-  text-align: left;
-}
-.composer-collapsed-stub:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-  color: var(--ink);
-}
-.composer-collapsed-text {
-  flex: 1;
+/* ─── AGENTS pill (labeled icon-btn) ───────────────────────────────────────
+   The AGENTS button reuses .icon-btn for chrome (border / paper / shadow /
+   hover, incl. the glass-skin overrides) but is a label + count chip, not a
+   square glyph. .icon-btn hardcodes width:32px / padding:0, which wins over the
+   element's Tailwind w-auto on specificity and clips "AGENTS 5". This compound
+   selector (0,2,0) lets it size to its content. Convention: square glyph →
+   plain .icon-btn; labeled button → .icon-btn + a sizing modifier like this. */
+.icon-btn.room-agents-btn {
+  width: auto;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 0 10px;
 }
-.composer-collapse-toggle {
-  font-size: var(--text-11);
-  color: var(--ink);
-}
-
-/* ─── Theme toggle (floating) ────────────────────────────────────────────── */
-.theme-toggle {
-  position: fixed;
-  bottom: 18px;
-  right: 18px;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-pill);
-  background: var(--paper-2);
-  border: var(--line-2);
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-18);
-  z-index: var(--z-floating-control);
-  display: grid;
-  place-items: center;
-}
-.theme-toggle:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
 
 /* ─── Placeholder tab content ────────────────────────────────────────────── */
 .placeholder {
@@ -232,292 +125,136 @@
   transform: rotate(-2deg);
 }
 
-/* ─── Composer (extras the prototype put inline) ─────────────────────────── */
-.composer {
-  border: var(--line-md);
-  border-top: 3.5px solid var(--rule);
+/* ─── Composer (extras the prototype put inline) ─────────────────────────────
+   Base rules migrated to inline Tailwind utilities in components/Composer.tsx
+   (.composer, .composer-toolbar, .ct-btn, .composer-file-input,
+   .composer-skill-chips/-chip, .composer-input-wrap, .composer-input base +
+   ::placeholder, .composer-foot, .community-open-btn, .composer-hint,
+   .composer-send/.thread-scan-btn base). Kept here: the compact shell margin
+   override below, the .chat-col/.thread-pane border tweaks, the
+   :root[data-theme="kanagawa-wave"] palette overrides, .thread-scan-btn.active,
+   and the styles.css contextual rules (.shell-compact, .community-icon art). */
+.shell-compact .composer { margin: 6px 10px 10px; }
+
+:root .chat-col > .composer,
+:root .thread-pane > .composer {
+  border-top-width: 1.5px;
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  background: var(--paper);
-  margin: 8px 12px 12px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow: hidden;
-  flex-shrink: 0;
 }
-@media (max-width: 920px) {
-  .composer { margin: 8px 10px 10px; }
+
+:root[data-theme="kanagawa-wave"] .composer {
+  background: #2A2A37;
+  border-color: #4F4F5F;
+  border-top-color: #4F4F5F;
+  box-shadow: 4px 4px 0 var(--message-card-shadow-color);
 }
-.composer-toolbar {
-  display: flex;
-  gap: var(--space-8);
-  align-items: center;
-  background: transparent;
-  border: var(--line-none);
-  border-bottom: var(--line-sm);
-  border-radius: var(--radius-none);
-  padding: 8px 10px;
-  width: 100%;
-  box-shadow: var(--shadow-none);
+:root[data-theme="kanagawa-wave"] .chat-region {
+  --composer-separator-line: 2px solid #5E5D66;
 }
-.ct-btn {
-  background: var(--paper-2);
-  border: var(--line-sm);
-  padding: 6px 9px;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
+:root[data-theme="kanagawa-wave"] .thread-scroll-wrap {
+  --composer-separator-line: 2px solid #5E5D66;
+}
+:root[data-theme="kanagawa-wave"] .ct-btn {
+  background: #1F1F28;
   color: var(--ink);
-  font-size: var(--text-13);
-  font-weight: 800;
+  border-color: #5E5D66;
+  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
-.ct-btn:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover-sm); }
-.ct-btn:disabled { opacity: 0.4; cursor: default; }
-
-.composer-input-wrap {
-  position: relative;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-none);
-  box-shadow: var(--shadow-none);
+:root[data-theme="kanagawa-wave"] .ct-btn:disabled {
+  color: #8F8D9A;
+  border-color: #424250;
+  opacity: 1;
 }
-.composer-input {
-  width: 100%;
-  resize: vertical;
-  min-height: 78px;
-  padding: 14px 18px;
-  background: transparent;
+:root[data-theme="kanagawa-wave"] .ct-btn.active,
+:root[data-theme="kanagawa-wave"] .ct-btn:hover:not(:disabled) {
+  box-shadow: 3px 3px 0 var(--message-card-shadow-color);
+}
+:root[data-theme="kanagawa-wave"] .composer-input::placeholder {
+  color: #8F8D9A;
+}
+:root[data-theme="kanagawa-wave"] .composer-send,
+:root[data-theme="kanagawa-wave"] .thread-scan-btn {
+  background: #2A2A37;
   color: var(--ink);
-  border: var(--line-none);
-  outline: none;
-  font: inherit;
-  font-size: var(--text-14);
-  line-height: 1.5;
+  border-color: #5E5D66;
+  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
-.composer-input::placeholder { color: var(--ink-faint); }
+:root[data-theme="kanagawa-wave"] .composer-send {
+  color: #D4CEB0;
+  border-color: #A89562;
+}
+:root[data-theme="kanagawa-wave"] .composer-send:disabled {
+  color: #A89562;
+  opacity: 1;
+  filter: none;
+}
+:root[data-theme="kanagawa-wave"] .thread-scan-btn.active {
+  border-color: var(--lilac);
+  box-shadow: 2px 2px 0 var(--message-card-shadow-color), inset 0 -3px 0 var(--lilac);
+}
 
-.composer-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-top: var(--line-rule-dashed-sm);
-}
-.composer-hint { font-size: var(--text-10-5); color: var(--ink-soft); }
-.composer-send {
-  background: var(--paper-3);
-  color: var(--ink);
-  border: var(--line-2);
-  border-radius: var(--radius-md);
-  padding: 9px 18px;
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-md);
-  box-shadow: var(--shadow-sm);
-}
-.composer-send:disabled { opacity: 0.52; cursor: default; filter: grayscale(0.35); }
-.composer-send:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+/* ─── Mention popup ──────────────────────────────────────────────────────────
+   Base rules migrated to inline Tailwind utilities in components/Composer.tsx
+   (.mention-pop hook class kept for skin-glass.css; .mention-row, .mention-av,
+   .mention-meta, .mention-name, .mention-handle, .mention-note all inlined). */
 
-/* ─── Mention popup ──────────────────────────────────────────────────────── */
-.mention-pop {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  z-index: var(--z-mention-overlay);
-  width: 380px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.mention-pop .mention-name { color: var(--ink); }
-.mention-pop .mention-handle { color: var(--ink-soft); }
-.mention-pop .mention-note { color: var(--ink-soft); }
-.mention-row {
-  display: grid;
-  grid-template-columns: 28px 1fr auto;
-  gap: var(--space-10);
-  align-items: center;
-  padding: 6px 8px;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-sm);
-  text-align: left;
-  cursor: pointer;
-}
-.mention-row.focused, .mention-row:hover { background: var(--paper-2); }
-.mention-av {
-  width: 28px;
-  height: 28px;
-  border: var(--line-sm);
-  border-radius: var(--radius-md);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-  box-shadow: var(--shadow-xs);
-}
-.mention-meta { display: flex; flex-direction: column; min-width: 0; }
-.mention-name { font-weight: 600; font-size: var(--text-13); }
-.mention-handle { font-family: var(--font-mono); font-size: var(--text-11); color: var(--ink-soft); }
-.mention-note { font-size: var(--text-11); color: var(--ink-soft); max-width: 160px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ─── Skill picker ────────────────────────────────────────────────────────────
+   Base + compact layout rules migrated to inline Tailwind utilities in
+   components/Composer.tsx. Hook classes remain for skin overrides. */
 
-/* ─── Room header (extras) ───────────────────────────────────────────────── */
-.room-header {
-  border-bottom: var(--line-bold);
-}
-.room-header-top {
-  gap: var(--space-18);
-  padding: 18px 24px 20px;
-}
-.room-id-text { display: flex; flex-direction: column; min-width: 0; }
-.room-id-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: var(--radius-2xl);
-  box-shadow: var(--shadow-md);
-  font-size: var(--text-26);
-}
-.room-title {
-  font-family: var(--font-display);
-  font-size: var(--text-28);
-  display: flex;
-  align-items: center;
-  gap: var(--space-18);
-  line-height: 1;
-}
-.room-meta {
-  font-family: var(--font-mono);
-  font-size: var(--text-13);
-  color: var(--ink-soft);
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-}
-.busy-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-  color: var(--ink);
-  font-weight: 800;
-}
-.busy-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: var(--radius-pill);
-  background: var(--pink);
-  border: var(--line-sm);
-  box-shadow: var(--shadow-xs);
-}
-.room-topic {
-  font-size: var(--text-12);
-  color: var(--ink-soft);
-  margin-top: 4px;
-  max-width: 60ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.member-pile { display: flex; align-items: center; }
-.member-pile-item {
-  display: inline-block;
-  margin-left: var(--space-0);
-}
-.member-pile-item + .member-pile-item {
-  margin-left: calc(var(--space-8) * -1);
-}
-.room-header-actions { display: flex; gap: 6px; }
-
-.room-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: 8px 18px 7px 18px;
-  border-top: var(--line-2);
-}
-.room-tab {
-  background: transparent;
-  border: var(--line-transparent);
-  padding: 5px 10px;
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-lg);
-  color: var(--ink-soft);
-  transform: rotate(-1deg);
-}
+/* ─── Room header (extras) ───────────────────────────────────────────────
+   .room-header, .room-header-top, .room-id(-text/-icon), .room-title(-name),
+   .room-meta, .busy-inline, .busy-dot, .room-topic, .room-header-summary,
+   .member-pile(-item), .room-header-actions, .room-tabs, .room-tab base, and
+   the .room-thread-* / .room-activity / .activity-spark rules migrated to
+   Tailwind utilities (+ roomTab() CVA) in RoomHeader.tsx. Hook/ancestor classes
+   (room-header, room-id, room-id-icon, room-title, room-meta, member-pile,
+   room-header-actions, room-tabs, room-activity, room-tab) keep their className
+   so skin-glass.css, the .shell-compact descendant rules, and the .room-tab
+   .active + [data-theme] overrides below still bind. Shared classes
+   (author-name, thread-pane-*) are untouched. */
 .room-tab.active {
-  color: var(--ink);
-  background: var(--yellow);
-  border-color: var(--rule);
-  box-shadow: var(--shadow-sm);
+  color: var(--surface-selected-fg);
+  background: var(--surface-selected-bg);
+  border-color: var(--surface-selected-border);
 }
-.room-activity {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
+:root[data-theme="kanagawa-wave"] .room-tab{
+  color: var(--activity-control-fg);
 }
-.activity-spark { letter-spacing: var(--tracking-pixel); color: var(--ink); }
-
+:root[data-theme="kanagawa-wave"] .room-tab.active{
+  background: var(--activity-control-active-bg);
+  color: var(--activity-control-selected-fg);
+  border-color: transparent;
+  box-shadow: 2px 2px 0 var(--activity-control-shadow);
+}
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
-.chat-view {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-}
+/* .chat-view base migrated to inline Tailwind utilities in ChatView.tsx
+   (sync-q48d). .chat-view.has-thread-summary / .is-group-room state + descendant
+   rules remain below / elsewhere. */
 /* Top region of the chat column: chat scroll area + timeline rail beside it.
    Sits above the composer; the composer spans the full chat-column width
    below this row, which is why the timeline visually ends at the composer
-   top rather than running the entire panel height. */
-.chat-region {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
-}
+   top rather than running the entire panel height. .chat-region base migrated
+   to inline utilities in ChatView.tsx; the :has() collapse rule below stays in
+   CSS (Tailwind can't express it), and chat-bg.css paints its ::before. */
 .chat-region:has(.timeline-rail[hidden]),
 .chat-region:not(:has(.timeline-rail)) {
   grid-template-columns: minmax(0, 1fr);
 }
-.chat-scroll-wrap,
-.thread-scroll-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.chat-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 18px 24px 10px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-}
-.chat-list.virtualized-list {
-  display: block;
-}
+/* .chat-scroll-wrap base migrated to inline utilities in ChatView.tsx.
+   .thread-scroll-wrap (ThreadPane) base layout migrated to inline Tailwind
+   utilities in ThreadPane.tsx (sync-vmre); the class is kept as a hook because
+   the kanagawa-wave override above sets the `--composer-separator-line` var that
+   the inlined `border-bottom` reads. */
+/* .chat-list base layout + .virtualized-list reset migrated to inline utilities
+   in ChatView.tsx (sync-q48d). overscroll-behavior + scrollbar styling live in
+   styles.css .chat-list (scroll-perf, not inlinable). */
 .virtualized-spacer {
   position: relative;
   width: 100%;
 }
 .virtualized-row {
-  --bubble-shadow-offset: 2px;
+  --bubble-shadow-offset: var(--message-card-shadow-offset, 2px);
   --bubble-shadow-gutter: calc(var(--bubble-shadow-offset) + 2px);
   position: absolute;
   top: 0;
@@ -529,59 +266,47 @@
      offset message shadows at row edges. */
   contain: layout style;
 }
-.message-virtual-row {
-  padding-bottom: var(--space-16);
-}
-.message-virtual-row.has-followup {
-  padding-bottom: var(--space-6);
-}
-.message-virtual-row.is-grouped {
-  padding-bottom: var(--space-16);
-}
-.message-virtual-row.is-grouped.has-followup {
-  padding-bottom: var(--space-6);
-}
-.thread-virtual-row {
-  padding-bottom: var(--space-18);
-}
+/* .message-virtual-row padding-bottom (base / has-followup / is-grouped) migrated
+   to inline Tailwind utilities in ChatView.tsx (sync-q48d). .virtualized-row
+   above is shared (ActivityView/ThreadPane) and stays. */
+/* .thread-virtual-row padding-bottom migrated to inline Tailwind utilities in
+   ThreadPane.tsx (sync-vmre). .virtualized-row above is shared and stays. */
 .bubble pre,
 .bubble code {
   scrollbar-width: thin;
 }
 .bubble pre::-webkit-scrollbar { height: 6px; }
 .bubble pre::-webkit-scrollbar-thumb { background: var(--ink-soft); border-radius: var(--radius-xs); }
-.message-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 880px);
-  gap: var(--space-4);
-  align-items: start;
-  content-visibility: auto;
-  contain-intrinsic-size: 148px;
-}
-.message-gutter {
-  display: flex;
-  justify-content: center;
-  padding-top: 0;
-  height: 34px;
-}
+/* .message-row base grid + .message-gutter migrated to inline Tailwind utilities
+   in MessageRow.tsx (sync-q48d). The .is-self/.no-avatar/.is-grouped
+   STATE overrides below stay in CSS (they out-specify and reorder the grid).
+   NOTE: deliberately NO content-visibility/contain-intrinsic-size on the row —
+   TanStack Virtual already mounts only visible rows; a second lazy-sizing layer
+   would resize rows from placeholder to real height on scroll-in, firing the
+   virtualizer's ResizeObserver and shifting content mid-scroll. Containment lives
+   on .virtualized-row instead. */
 .message-row.is-grouped { margin-top: 0; }
-.message-row.is-you { justify-self: end; grid-template-columns: minmax(0, 880px) 34px; }
+/* `.is-self` = the local human / web client (see data/identity.ts, isSelfAgent).
+   Own messages right-align and render bubble-only (no avatar gutter, no name
+   chip), so there is nothing to reorder in the grid. */
+.message-row.is-self {
+  justify-self: end;
+  grid-template-columns: minmax(0, 880px);
+}
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
    colored author-name pill above the bubble carries the identity instead. */
 .message-row.no-avatar { grid-template-columns: minmax(0, 1fr); }
-.message-row.no-avatar.is-you { grid-template-columns: minmax(0, 1fr); }
-.message-row.is-you .message-gutter { order: 2; }
-.message-row.is-you .message-body { order: 1; align-items: flex-end; }
+.message-row.no-avatar.is-self { grid-template-columns: minmax(0, 1fr); }
+.message-row.is-self .message-body {
+  align-items: flex-end;
+}
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
-.message-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-  padding-right: var(--bubble-shadow-gutter, 6px);
-  padding-bottom: var(--bubble-shadow-gutter, 6px);
+/* .message-body / .message-stack base migrated to inline Tailwind utilities in
+   MessageRow.tsx (sync-q48d). The .is-self alignment overrides stay in CSS. */
+.message-row.is-self .message-stack {
+  align-self: flex-end;
 }
 
 .author-chip {
@@ -619,47 +344,91 @@
 .mention-chip-self {
   box-shadow: var(--shadow-xs);
 }
-.author-role {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
 
-.bubble {
-  background: var(--bubble);
-  border: var(--line-2);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--rule);
-  padding: var(--space-bubble-pad);
-  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
-  min-width: 0;
-}
-.message-row.is-you .bubble { background: var(--you-bg); color: var(--you-fg); }
-
-.message-status {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-}
+/* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
+   utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
+   skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
+   .is-self override below out-specifies the base utilities (so it still wins —
+   parity preserved). Your own / web-client messages get the accent bubble
+   everywhere (DM and group rooms alike) — one identity, one treatment. */
+.message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
+.markdown {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 .markdown > * { margin: 0 0 8px; }
 .markdown > *:last-child { margin-bottom: 0; }
 .markdown h1, .markdown h2, .markdown h3 {
-  font-family: var(--font-display);
+  font-family: var(--font-heading);
   font-size: var(--text-15);
   letter-spacing: var(--tracking-tight);
   margin: 12px 0 6px;
 }
+.rich-markdown h1 {
+  font-size: var(--rich-heading-h1-size);
+  margin: 14px 0 7px;
+}
+.rich-markdown h2 {
+  font-size: var(--rich-heading-h2-size);
+  margin: 12px 0 6px;
+}
+.rich-markdown h3 {
+  color: var(--rich-heading-h3-fg);
+  font-size: var(--rich-heading-h3-size);
+  letter-spacing: var(--tracking-sm);
+  margin: 10px 0 5px;
+  text-transform: uppercase;
+}
 .markdown p { line-height: 1.6; }
-.markdown ul, .markdown ol { padding-left: 22px; line-height: 1.64; }
-.markdown li { margin: 2px 0; }
+.rich-markdown p {
+  margin: 0;
+  line-height: var(--leading-message-paragraph);
+}
+.rich-markdown p + p {
+  margin-block-start: var(--space-bubble-paragraph-gap);
+}
+.markdown em { font-style: italic; }
+.markdown ul, .markdown ol { margin: 4px 0 8px 0; padding-left: 22px; line-height: 1.64; }
+.markdown li { margin: 2px 0 3px; }
+.markdown ul { list-style: none; padding-left: 4px; }
+.markdown ul li {
+  position: relative;
+  padding-left: 16px;
+}
+.markdown ul li::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  color: var(--ink);
+  font-weight: 900;
+}
+.markdown strong {
+  font-family: var(--font-ui);
+  color: var(--strong-fg, var(--ink));
+  font-weight: var(--strong-weight, 700);
+}
+.markdown h1 strong,
+.markdown h2 strong,
+.markdown h3 strong {
+  font-family: inherit;
+}
+.rich-markdown strong {
+  font-weight: var(--rich-strong-weight, var(--strong-weight, 700));
+}
 .markdown code {
   font-family: var(--font-mono);
   font-size: var(--text-12);
-  background: var(--paper-3);
+  background: var(--code-inline-bg, var(--paper-3));
+  color: var(--code-inline-fg, var(--ink));
+  border: var(--code-inline-border, var(--line-xs));
   padding: var(--space-chip-pad-xs);
   border-radius: var(--radius-xs);
+  /* Long inline tokens (paths, `flag=value`) must break instead of overflowing
+     the bubble at Android widths. Block code (.markdown pre code) opts back out
+     so it keeps scrolling horizontally via pre's overflow-x:auto. */
+  overflow-wrap: anywhere;
 }
 .markdown pre {
   background: var(--code-bg);
@@ -667,114 +436,69 @@
   border: var(--line-2);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
+  margin: 8px 0;
   overflow-x: auto;
+  overflow-wrap: normal;
   box-shadow: var(--shadow-sm);
+  font-size: var(--text-12-5);
+  line-height: 1.55;
 }
 .markdown pre code {
   background: transparent;
+  border: var(--line-none);
   padding: 0;
-  font-size: var(--text-12);
-  line-height: 1.5;
-  color: var(--code-fg);
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow-wrap: normal;
 }
 .markdown blockquote {
-  border-left: 4px solid var(--rule);
-  padding: 4px 12px;
-  color: var(--ink-soft);
-  background: var(--paper-2);
+  margin: 8px 0;
+  padding: 8px 14px;
+  background: var(--paper);
+  border-left: 5px solid var(--pink);
+  border-top: var(--line-sm);
+  border-right: var(--line-sm);
+  border-bottom: var(--line-sm);
+  font-style: italic;
 }
 .markdown table {
-  border-collapse: collapse;
-  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 8px 0;
+  border: var(--line-md);
+  background: var(--paper);
+  font-size: var(--text-12-5);
 }
 .markdown th, .markdown td {
-  border: var(--line-xs);
-  padding: 6px 10px;
+  padding: 5px 10px;
+  border-bottom: var(--line-sm);
+  border-right: var(--line-sm);
   text-align: left;
 }
-.markdown tr:nth-child(2n) td { background: var(--paper-2); }
-.markdown a { color: var(--ink); text-decoration: underline; }
+.markdown th:last-child, .markdown td:last-child { border-right: none; }
+.markdown tr:last-child td { border-bottom: none; }
+.markdown th {
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+  letter-spacing: var(--tracking-sm);
+}
+.markdown a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 .markdown del { color: var(--ink-faint); }
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */
-.agent-roster {
-  border-left: var(--line-2);
-  padding: 14px 14px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-14);
-  overflow-y: auto;
-  min-height: 0;
-}
-.roster-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-family: var(--font-display);
-  font-size: var(--text-14);
-  letter-spacing: var(--tracking-lg);
-  padding: 8px 14px;
-  background: var(--lime);
-  color: var(--on-accent);
-  border: var(--line-md);
-  border-radius: var(--radius-none);
-  box-shadow: var(--shadow-md);
-  transform: rotate(-2deg);
-  width: fit-content;
-  margin: 0 0 6px 4px;
-}
-.focus-banner {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  padding: 6px 8px;
-  background: var(--pink);
-  color: var(--on-accent);
-  border: var(--line-2);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.focus-clear {
-  background: transparent;
-  border: var(--line-none);
-  color: inherit;
-  cursor: pointer;
-  padding: 0 4px;
-  font-weight: 700;
-}
-.roster-section { display: flex; flex-direction: column; gap: 6px; }
-.roster-section-head {
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-md);
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  color: var(--ink-soft);
-}
-.roster-busy { padding-left: 6px; border-left: 2px solid var(--pink); }
-.roster-card {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: var(--space-10);
-  align-items: flex-start;
-  padding: 8px 2px;
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-none);
-  text-align: left;
-  cursor: pointer;
-  transition: transform 80ms ease;
-}
-.roster-card:hover { transform: translateX(1px); }
-.roster-card.focused {
-  transform: translateX(1px);
-}
-.roster-name { font-weight: 600; font-size: var(--text-13); }
-.roster-role { font-family: var(--font-mono); font-size: var(--text-10-5); color: var(--ink-soft); }
-.roster-note { font-size: var(--text-11); color: var(--ink-soft); margin-top: 3px; }
+/* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
+ * (sync-9hqo). Hooks kept on the live elements: `agent-roster` (styles.css
+ * `.shell-overlay` + responsive `display:none`), `roster-head` (skin-glass
+ * backdrop-filter), `roster-card` (vim ring below). `.roster-note` was unused. */
 
 /* ─── Timeline rail slot (V0 reserved space) ────────────────────────────── */
 .timeline-rail-slot {
@@ -792,40 +516,11 @@
    Mount point is `.main` (position: relative is added in styles.css) so toasts
    live OVER the chat content, never over the sidebar or roster. Multiple
    toasts stack vertically with a small gap. Click to dismiss. */
-.toast-stack {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-toast);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  align-items: center;
-  pointer-events: none;
-}
-.toast {
-  pointer-events: auto;
-  max-width: min(560px, 80vw);
-  padding: 8px 16px;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: var(--text-12-5);
-  border: var(--line-sm);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  animation: toast-in 180ms ease;
-  text-align: center;
-}
-.toast:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow);
-}
-.toast-warn  { background: color-mix(in srgb, var(--yellow) 30%, var(--paper)); }
-.toast-error { background: color-mix(in srgb, var(--red) 26%, var(--paper)); }
-.toast-success { background: color-mix(in srgb, var(--lime) 30%, var(--paper)); }
+/* .toast-stack layout + .toast base/hover/-warn/-error/-success migrated to
+   inline Tailwind utilities + the `toast` CVA in components/Toast.tsx. The
+   `.toast-stack` / `.toast` classes stay on the elements: `.toast` is a
+   skin-glass backdrop hook (skin-glass.css), and the keyframe-reset rule below
+   needs both as a descendant selector. The `@keyframes toast-in` stays here. */
 @keyframes toast-in {
   from { transform: translate(-50%, -12px); opacity: 0; }
   to   { transform: translate(-50%, 0);     opacity: 1; }
@@ -837,99 +532,8 @@
 .toast-stack .toast { transform: none; animation-fill-mode: both; }
 
 /* ─── Agent color picker ─────────────────────────────────────────────────── */
-.agent-color-picker {
-  position: fixed;
-  z-index: var(--z-agent-color-picker);
-  width: 240px;
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow);
-  padding: var(--space-10);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-10);
-  font-family: var(--font-mono);
-}
-.acp-head { display: flex; align-items: center; justify-content: space-between; }
-.acp-title {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-sm);
-  color: var(--ink);
-}
-.acp-swatches {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: var(--space-6);
-}
-.acp-swatch {
-  width: 100%;
-  aspect-ratio: 1;
-  border: var(--line-sm);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  display: grid;
-  place-items: center;
-  transition: transform 80ms ease, box-shadow 80ms ease;
-}
-.acp-swatch:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-}
-.acp-swatch.is-current {
-  outline: 2px dashed var(--ink);
-  outline-offset: 2px;
-}
-.acp-custom {
-  border-top: var(--line-rule-dashed-xs);
-  padding-top: var(--space-8);
-}
-.acp-custom-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
-.acp-custom-row input[type="color"] {
-  width: 30px;
-  height: 22px;
-  padding: 0;
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  cursor: pointer;
-}
-.acp-custom-hex { margin-left: auto; font-weight: 600; color: var(--ink); }
-.acp-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: var(--line-rule-dashed-xs);
-  padding-top: var(--space-8);
-}
-.acp-reset {
-  background: transparent;
-  border: var(--line-xs);
-  border-radius: var(--radius-sm);
-  padding: var(--space-button-pad-sm);
-  font: inherit;
-  font-size: var(--text-10-5);
-  color: var(--ink);
-  cursor: pointer;
-}
-.acp-reset:hover { background: var(--paper-2); }
-.acp-default-chip {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  padding: 2px 6px;
-  border: var(--line-xs);
-  border-radius: var(--radius-sm);
-}
+/* AgentColorPicker styles migrated to inline Tailwind utilities in
+   components/AgentColorPicker.tsx (no skin/JS/theme refs). */
 
 /* ─── Vim navigation focus ──────────────────────────────────────────────────
    A subtle steady yellow ring on the item under the J/K cursor. Explicitly
@@ -956,28 +560,8 @@
     var(--shadow-sm);
 }
 
-/* ─── Vim mode chip (rides above the user bubble) ────────────────────────── */
-.vim-mode-chip {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-display);
-  font-size: var(--text-8);
-  letter-spacing: var(--tracking-lg);
-  padding: var(--space-chip-pad-sm);
-  border: var(--line-xs-ink);
-  border-radius: var(--radius-pill);
-  pointer-events: none;
-}
-.vim-mode-chip.vim-mode-navigate {
-  background: var(--tangerine);
-  color: var(--ink);
-}
-.vim-mode-chip.vim-mode-typing {
-  background: var(--lime);
-  color: var(--ink);
-}
+/* ─── Vim mode chip (rides above the user bubble) ─────────────────────────
+   Migrated to the vimModeChip() CVA in Sidebar.tsx (navigate/typing variants). */
 
 /* ─── Flash highlight when scrolled to via timeline ──────────────────────── */
 /* Three-cycle throb with a soft yellow glow ring, plus an opacity pulse on the
@@ -1019,150 +603,27 @@
 }
 
 /* ─── Context menu ──────────────────────────────────────────────────────── */
-.ctx-menu {
-  position: fixed;
-  z-index: var(--z-context-menu);
-  min-width: 220px;
-  background: var(--paper);
-  border: var(--line-md);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-family: var(--font-mono);
-}
-.ctx-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: 7px 10px;
-  background: transparent;
-  border: var(--line-none);
-  text-align: left;
-  font-size: var(--text-13);
-  color: var(--ink);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-}
-.ctx-item:hover { background: var(--paper-2); }
-.ctx-item.ctx-danger { color: var(--pink); }
-.ctx-item.ctx-danger:hover { background: color-mix(in srgb, var(--pink) 18%, transparent); }
-.ctx-shortcut {
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
-.ctx-divider {
-  height: 1.5px;
-  background: var(--ink-faint);
-  margin: 3px 4px;
-}
+/* Migrated to Tailwind utilities in ContextMenu.tsx (sync-mzy3). `.ctx-menu` is
+ * kept ONLY as a skin hook (skin-glass.css backdrop-filter); all visual rules
+ * — ctx-menu / ctx-item / ctx-danger / ctx-shortcut / ctx-divider — now live
+ * inline on the component. */
 
 /* ─── Thread badge under message ─────────────────────────────────────────── */
-.thread-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  margin-top: 1px;
-  padding: 4px 8px 4px 4px;
-  background: transparent;
-  border: var(--line-none);
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink);
-  cursor: pointer;
-  width: fit-content;
-  border-radius: var(--radius-pill);
-}
-.thread-badge:hover { background: var(--paper-2); }
-.thread-badge-avs {
-  display: inline-flex;
-}
-.thread-badge-av {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-xs);
-  border: var(--line-xs);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  box-shadow: var(--shadow-xs);
-  margin-left: -4px;
-}
-.thread-badge-av:first-child { margin-left: 0; }
-.thread-badge-count {
-  font-weight: 700;
-  text-decoration: underline;
-  text-decoration-color: var(--yellow);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
-}
-.thread-badge-time { color: var(--ink-soft); }
+/* .thread-badge family (badge button + :hover, -avs, -av + :first-child, -count,
+   -time) migrated to inline Tailwind utilities in MessageRow.tsx (sync-q48d). */
 
 /* ─── Thread pane (right-side) ───────────────────────────────────────────── */
 /* When a thread is open, App.tsx sets the grid template inline based on the
    user-resizable thread width. We don't override it here. */
 
 /* ─── Resize handle (between chat column and thread pane) ────────────────── */
-.resize-handle {
-  position: relative;
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-  user-select: none;
-}
-/* A 12px-wide invisible overlay makes the handle easy to grab without the
-   visible bar itself being thick. */
-.resize-handle::before {
-  content: "";
-  position: absolute;
-  inset: 0 -3px;
-}
-.resize-handle-grip {
-  display: block;
-  width: 2px;
-  height: 36px;
-  background: color-mix(in srgb, var(--ink) 22%, transparent);
-  border-radius: var(--radius-pill);
-  transition: background 140ms ease, height 140ms ease;
-}
-.resize-handle:hover .resize-handle-grip,
-.resize-handle:focus-visible .resize-handle-grip,
-.resize-handle.is-dragging .resize-handle-grip {
-  background: var(--rule);
-  height: 60px;
-}
-.resize-handle:focus-visible { outline: none; }
-.thread-pane {
-  display: flex;
-  flex-direction: column;
-  border-left: var(--line-md);
-  background: var(--paper);
-  min-height: 0;
-  overflow: hidden;
-}
-.thread-pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-button-pad-md);
-  border-bottom: var(--line);
-  background: var(--paper-2);
-}
-.thread-pane-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  font-family: var(--font-display);
-  font-size: var(--text-13);
-}
+/* ResizeHandle styles migrated to inline Tailwind utilities in
+   components/ResizeHandle.tsx (no skin/JS/theme refs). */
+/* .thread-pane / .thread-pane-head / .thread-pane-title base rules migrated to
+   inline Tailwind utilities in ThreadPane.tsx (sync-vmre). `.thread-pane` is
+   kept as a class hook (data-vim-panel, `:root .thread-pane > .composer`, and
+   the `.chat-view.resizing .thread-pane` animation-kill in styles.css).
+   `.thread-pane-sep`/-sub/-close are SHARED with RoomHeader.tsx and stay below. */
 .thread-pane-sep { color: var(--ink-faint); }
 .thread-pane-sub {
   font-family: var(--font-mono);
@@ -1181,175 +642,30 @@
   border-radius: var(--radius-sm);
 }
 .thread-pane-close:hover { background: var(--paper-3); }
-.thread-pane-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 12px 4px;
-  display: flex;
-  flex-direction: column;
-  /* Without avatar gutters, consecutive messages need more vertical air so the
-     next author's pill doesn't run into the previous bubble. */
-  gap: var(--space-20);
-}
-.thread-replies {
-  display: block;
-}
-.thread-divider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  color: var(--ink-soft);
-  letter-spacing: var(--tracking-md);
-  padding: 4px 0;
-}
-.thread-divider-line {
-  flex: 1;
-  height: 1.5px;
-  background: var(--ink-faint);
-}
-.thread-empty {
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-  padding: 18px 8px;
-  text-align: center;
-}
+/* .thread-pane-body / .thread-divider / .thread-divider-line / .thread-empty /
+   .thread-replies base rules migrated to inline Tailwind utilities in
+   ThreadPane.tsx (sync-vmre). `.thread-pane-body` and `.thread-divider` stay as
+   class hooks for the descendant overrides below (`.thread-pane-body .bubble`,
+   `.thread-pane-body .thread-divider`, and the scrollbar pseudo in styles.css). */
 .thread-parent .bubble {
   background: var(--paper-2);
 }
 /* Slightly tighter bubble padding inside the thread pane — the pane itself is
    narrower than the main chat, so 16px horizontal padding eats too much. */
 .thread-pane-body .bubble {
-  padding: 10px 12px;
+  padding: var(--space-thread-bubble-pad);
 }
 .thread-pane-body .thread-divider {
   margin: 4px 0;
 }
 
 /* ─── Poll widget ────────────────────────────────────────────────────────── */
-.poll-widget {
-  margin-top: 10px;
-  border: var(--line-sm);
-  border-radius: var(--radius-xl);
-  background: var(--paper-2);
-  padding: var(--space-12);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-10);
-  box-shadow: var(--shadow-sm);
-}
-.poll-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-10);
-}
-.poll-label {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-lg);
-  background: var(--ink);
-  color: var(--on-ink);
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-}
-.poll-question {
-  font-family: var(--font-display);
-  font-size: var(--text-14);
-  color: var(--ink);
-}
-.poll-options {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-.poll-option {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: var(--space-10);
-  padding: 8px 10px;
-  border: var(--line-sm);
-  background: var(--paper);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  overflow: hidden;
-  text-align: left;
-  font-family: var(--font-mono);
-  font-size: var(--text-12);
-  color: var(--ink);
-}
-.poll-option:hover { background: var(--paper-3); }
-/* Brutalist rule: borders are always --ink. Picked-state communicates via the
-   fill (the `.poll-option-fill` lime wash) plus a thicker shadow — not a
-   colored border. */
-.poll-option.picked {
-  border-color: var(--rule);
-  box-shadow: var(--shadow-hover);
-}
-.poll-option-icon {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: var(--line-xs);
-  border-radius: var(--radius-xs);
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  z-index: var(--z-local-base);
-}
-.poll-option-label {
-  font-family: var(--font-display);
-  font-size: var(--text-12);
-  letter-spacing: var(--tracking-sm);
-  z-index: var(--z-local-base);
-}
-.poll-option-fill {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--lime) 35%, transparent);
-  transition: width 240ms ease;
-  z-index: var(--z-local-floor);
-  pointer-events: none;
-}
-.poll-option.picked .poll-option-fill {
-  background: color-mix(in srgb, var(--lime) 55%, transparent);
-}
-.poll-option-count {
-  z-index: var(--z-local-base);
-  font-weight: 700;
-}
-.poll-option-voters {
-  display: inline-flex;
-  z-index: var(--z-local-base);
-}
-.poll-voter {
-  width: 18px;
-  height: 18px;
-  border: var(--line-xs);
-  border-radius: var(--radius-xs);
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: var(--text-9);
-  margin-left: -4px;
-  box-shadow: var(--shadow-xs);
-}
-.poll-voter:first-child { margin-left: 0; }
-.poll-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  border-top: var(--line-dashed-faint);
-  padding-top: var(--space-8);
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
-}
-.poll-foot strong { color: var(--ink); }
-.poll-sep { color: var(--ink-faint); }
+/* Migrated to Tailwind utilities in PollWidget.tsx (sync-mzy3). The full
+ * .poll-widget/.poll-head/.poll-label/.poll-question/.poll-options/.poll-option
+ * (+ .picked) /.poll-option-icon/-label/-fill/-count/-voters/.poll-voter/
+ * .poll-foot/.poll-sep family now lives inline on the component. The unrelated
+ * legacy `.poll` / `.poll-opt*` block in styles.css (different, unused markup)
+ * is intentionally untouched. */
 
 .connection-error {
   min-height: 100vh;
@@ -1380,32 +696,345 @@
   line-height: 1.45;
 }
 
-.empty-main {
+/* .empty-main / .empty-main-box (+ h1, p) migrated to inline Tailwind utilities
+   in App.tsx. None are skin/theme/JS hooks, so the classes were dropped. */
+
+/* ═══════════════════════ Kanban board (BOARD tab) ═══════════════════════ */
+/* Ported from the Claude Design prototype (board.jsx); colors/fonts/borders
+   mapped onto the app's existing design tokens. */
+
+.board-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  height: 100%;
-  display: grid;
-  place-items: center;
+  background: var(--paper);
+}
+.board-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: var(--line-2);
+  flex-wrap: wrap;
+}
+.board-title { display: flex; align-items: center; gap: 12px; }
+.board-sub {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  color: var(--ink-soft);
+}
+.board-filters {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-chip {
   background: var(--paper);
   color: var(--ink);
-  border-left: var(--line-2);
-}
-
-.empty-main-box {
-  max-width: 520px;
-  border: var(--line-bold);
-  box-shadow: var(--shadow-lg);
-  background: var(--paper-2);
-  padding: var(--space-24);
-}
-
-.empty-main-box h1 {
-  margin: 16px 0 8px;
+  border: var(--line-md);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
   font-family: var(--font-display);
-  font-size: var(--text-24);
+  font-size: var(--text-10);
+  letter-spacing: var(--tracking-sm);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.filter-chip.active { background: var(--surface-selected-bg); color: var(--surface-selected-fg); }
+.filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
+
+.board-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 18px 22px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+.board-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.board-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: var(--line);
+  border-radius: var(--radius-panel-top);
+  border-bottom-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-md);
+  color: var(--ink);
+}
+.col-count {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  padding: 1px 7px;
+  border-radius: var(--radius-xs);
+}
+.board-col-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px;
+  background: var(--paper-2);
+  border: var(--line);
+  border-radius: var(--radius-panel-bottom);
+  overflow-y: auto;
+  min-height: 0;
+}
+.task-card {
+  background: var(--paper);
+  border: var(--line-md);
+  border-radius: var(--radius-lg);
+  padding: 10px 11px 9px;
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+}
+.task-card:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+.task-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.task-tag {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  padding: 1px 6px;
+  border: var(--line-xs-ink);
+  border-radius: var(--radius-xs);
+  color: var(--ink);
+}
+.task-tag-out {
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+.task-title {
+  font-weight: 600;
+  font-size: var(--text-13);
+  line-height: 1.35;
+  margin-bottom: 9px;
+  text-wrap: pretty;
+}
+.task-progress {
+  position: relative;
+  height: 14px;
+  border: var(--line-sm);
+  border-radius: var(--radius-xs);
+  background: var(--paper-3);
+  margin-bottom: 9px;
+  overflow: hidden;
+}
+.task-progress-fill {
+  height: 100%;
+  background: var(--yellow);
+  border-right: var(--line-sm);
+}
+.task-progress-label {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 700;
+  text-shadow: 0 0 2px var(--paper);
+}
+.task-reviewers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 5px 8px;
+  background: var(--paper-2);
+  border: var(--line-dashed-xs);
+  border-radius: var(--radius-sm);
+}
+.reviewer-label {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  letter-spacing: var(--tracking-md);
+}
+.reviewer-stack { display: flex; }
+.reviewer-stack > * { margin-left: -6px; }
+.reviewer-stack > *:first-child { margin-left: 0; }
+/* Stacked participant pills use the same box corner + offset shadow as the
+   message-row thread badge (.thread-badge-av) — not the default rounder avatar
+   chip — so the small avatars stay consistent with the rest of the UI. */
+.reviewer-stack .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+.task-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 7px;
+  border-top: var(--line-dashed-xs);
+}
+.task-assignee {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.task-assignee-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-weight: 600;
+}
+.task-live-pill {
+  font-family: var(--font-display);
+  font-size: var(--text-9);
+  color: var(--ink);
+  background: var(--pink);
+  border: var(--line-xs-ink);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  animation: ticker 1.4s ease-in-out infinite;
+}
+.task-check {
+  font-family: var(--font-display);
+  font-size: var(--text-16);
+  color: var(--lime);
+  -webkit-text-stroke: 1.5px var(--ink);
+}
+.add-card {
+  background: transparent;
+  color: var(--ink-soft);
+  border: var(--line-dashed-sm);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  margin-top: 4px;
+  cursor: pointer;
+}
+.add-card:hover { background: var(--paper); color: var(--ink); }
+
+.shell-compact .board-header {
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+.shell-compact .board-title {
+  display: none;
+}
+.shell-compact .board-sub {
+  display: none;
+}
+.shell-compact .board-filters {
+  width: 100%;
+  margin-left: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding-bottom: 2px;
+  overscroll-behavior-x: contain;
+}
+.shell-compact .board-filters .filter-chip {
+  flex: 0 0 auto;
+  min-height: 32px;
+}
+.shell-compact .board-cols {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(300px, 86vw, 520px);
+  gap: 12px;
+  padding: 14px 14px 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 14px;
+}
+.shell-compact .board-col {
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+.shell-compact .board-col-head {
+  min-height: 42px;
+}
+.shell-compact .board-col-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.empty-main-box p {
-  margin: 8px 0 0;
-  font-family: var(--font-ui);
-  line-height: 1.45;
+/* ═══════════════════ Thread Summary panel (CHAT tab) ═══════════════════ */
+/* Slides in from the left of the chat column; dots are aligned to each thread's
+   parent message and scroll-synced with the (virtualized) chat list by
+   ThreadSummaryPanel.tsx. Ported from thread-summary.jsx. */
+
+/* Layout glue: the chat column (messages + composer) and the optional summary
+   panel sit side by side inside .chat-view. */
+/* .chat-col base migrated to inline Tailwind utilities in ChatView.tsx
+   (sync-q48d). The .chat-view.has-thread-summary row-flip stays in CSS. */
+.chat-view.has-thread-summary { flex-direction: row; }
+
+/* .thread-summary-panel/-empty(+p)/-scroll/-resize-handle(+::before, hover/
+   focus/dragging grip states, focus-visible outline)/-resize-grip/-track/-axis
+   and .ts-row(+focus child)/.ts-body/.ts-meta/.ts-author/.ts-meta-sep/.ts-time/
+   .ts-replies/.ts-summary base/.ts-foot/.ts-avatars base/.ts-avatars-more/
+   .ts-last/.ts-connector/.ts-dot and the @container(max-width:290px) overrides
+   migrated to inline Tailwind utilities in ThreadSummaryPanel.tsx (sync-vmre).
+   Kept below as hooks: the thread-summary-slide-in keyframes, the .ts-summary
+   `::after` truncation ellipsis + Markdown-descendant rules (p/strong/code/*),
+   and `.ts-avatars .identity-icon` (sets vars on Avatar internals). */
+@keyframes thread-summary-slide-in {
+  from { transform: translateX(-14px); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
+.ts-summary.is-truncated::after {
+  content: "...";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding-left: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 700;
+}
+.ts-summary * { overflow-wrap: anywhere; }
+.ts-summary p { margin: 0; }
+.ts-summary p + p { margin-top: 6px; }
+.ts-summary strong { font-weight: 700; color: var(--ink); }
+.ts-summary code {
+  font-family: var(--font-mono);
+  font-size: var(--text-12-5);
+  background: var(--paper-2);
+  padding: 0 4px;
+  border: var(--line-hair-faint);
+}
+/* .ts-foot / .ts-avatars base migrated inline (sync-vmre); the .ts-avatars
+   stack-offset (`> *`) and `.identity-icon` var overrides stay as hooks. */
+.ts-avatars > * { margin-left: -5px; }
+.ts-avatars > *:first-child { margin-left: 0; }
+/* Match the message-row thread badge: box corner + offset shadow, not the
+   default rounder avatar chip. */
+.ts-avatars .identity-icon {
+  --identity-radius: var(--radius-xs);
+  --identity-shadow: var(--shadow-xs);
+}
+/* .ts-avatars-more / .ts-last / .ts-connector / .ts-dot and the
+   @container(max-width:290px) ts-body/ts-meta/ts-foot overrides migrated to
+   inline Tailwind utilities (@max-[290px]:) in ThreadSummaryPanel.tsx
+   (sync-vmre). */
+
+/* Composer footer toggle that opens/closes the panel */
+.thread-scan-btn {
+  margin-right: auto;
+  gap: 6px;
+  cursor: pointer;
+}
+.thread-scan-btn.active { background: var(--lilac); }

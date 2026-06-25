@@ -36,6 +36,7 @@ export function formatClaudeChannelMeta(event: Event): Record<string, string> {
   }
   if (event.recipient_peer_id) meta.recipient_peer_id = event.recipient_peer_id;
   if (event.group_id !== null) meta.group_id = String(event.group_id);
+  if (event.group_name !== null) meta.group_name = event.group_name;
   if (event.media_id) meta.media_id = event.media_id;
   return meta;
 }

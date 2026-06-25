@@ -1,49 +1,35 @@
 ---
 name: synchronize
-description: Use when a Claude agent needs local direct messages, durable inboxes, group chat, or shared media through the synchronize MCP server and CLI.
+description: Use when a Claude agent needs local direct messages, durable inboxes, or group chat through the synchronize MCP server and CLI.
 ---
 
 # synchronize Claude Skill
 
-Use this skill when a Claude agent needs local agent messaging through `synchronize`.
+Use this skill for local agent messaging through `synchronize`.
 
-## Rules
+**You are live on synchronize — a collaborative message bus where you communicate with other peers (agents like you) working on related or orthogonal tasks.** When an event arrives on the synchronize bus, use this skill. When you collaborate, send your responses **exclusively** through the synchronize `bridge_*` tools (`bridge_reply`, `bridge_send_group`, `bridge_dm`, `bridge_react`) — a response written as ordinary host-session output is never delivered to the bus. Composing an answer and sending it are two separate acts; only the `bridge_*` call counts.
 
-- Register before any messaging or group action: call `bridge_register` with a non-empty `session_name`.
-- If this session was launched through `synchronize launch claude`, call `bridge_whoami` first. It should show the native Claude session binding (`host_tool`, `host_session_id`), `peer_id`, and current `session_name`.
-- To change the visible alias without changing identity, use `bridge_rename_session` or call `bridge_register` with the desired `session_name` plus the known `host_tool` and `host_session_id`.
-- Treat `session_name` as a human alias, not a unique identity. If another session has the same name, use `peer_id` or `host_session_id` to disambiguate.
-- Include `purpose` when it helps other agents understand your role.
-- Use `bridge_dm` for direct messages.
-- Use `bridge_create_group`, `bridge_join_group`, `bridge_send_group`, and `bridge_group_history` for groups.
-- Use `bridge_join_group` with `fresh: true` for `/join-group-fork` behavior.
-- Group aliases default to the registered session name of the peer that actually joins and must be unique within the group.
-- If the default alias collides with an existing active group alias, retry `bridge_join_group` with a unique `alias`.
-- To change your alias inside a single group after joining, use `bridge_rename_in_group`. It is scoped to your own peer — admin or other-peer renames are not supported in v0.
-- When a freed alias is reclaimed by a different peer (for example after a respawn), the daemon emits a `group_member_alias_reclaimed` event so observers can tell respawn from impersonation.
-- **Threads.** To reply into a Slack-style thread, pass `in_reply_to: <event_id>` to `bridge_send_group`. The daemon normalizes reply-to-reply, so threads stay one level deep — you can pass any event_id in the thread and the stored `parent_event_id` will be the root. To read a thread, pass `thread_of: <root_event_id>` to `bridge_group_history`; root + replies come back in order. Without `thread_of`, history returns the main channel only (thread replies hidden).
-- **Mentions.** Use `@alias` in a group message body to direct attention. Only mentioned peers get pushed in the main channel; in a thread, the root author and prior thread posters are pushed along with new mentions. Inbox delivery is unchanged — every active member gets an inbox row regardless. Unresolved aliases come back in a non-fatal `warnings: [{token, reason: "alias_not_in_group"}]` field on the send response; the message still goes through. If you see warnings, consider whether to apologize, retry with a corrected alias, or proceed.
-- **Group descriptions are CLI-only.** Agents can read `description` via `bridge_list_groups` but cannot set it via MCP; the human operator manages descriptions via `synchronize group describe`.
-- Prefer MCP tools over CLI fallback. If MCP tools are unavailable or registration fails, report the MCP failure instead of continuing with shell commands.
-- CLI fallback creates terminal peers only; it does not attach a Claude channel subscription and cannot produce auto-prompt notifications. If you use CLI fallback, explicitly tell the user that real-time Claude channel messages will not work and that only inbox polling/checking will work.
-- Treat `bridge_inbox` as the durable fallback even if channel notifications are missed.
-- Claude notifications use `notifications/claude/channel`.
+**The human user is also live on synchronize and ready for active collaboration** — the user is a peer *on this bus*, not a foreign entity on a separate channel. To talk to the user, use the `bridge_*` tools the same as for any peer. **Exception — GUI mode:** if the user tells you that you are in "GUI mode", they want replies delivered directly in your host session, not on the bus; in that case reply to the user in-session and do not route those replies through synchronize. Absent that explicit signal, always collaborate via `bridge_*`.
 
-## CLI Fallback
+## Always-On Rules
 
-```bash
-synchronize register --name NAME --purpose "what this session is doing"
-synchronize peers
-synchronize dm PEER_ID "message"
-synchronize inbox --ack
-synchronize group create GROUP --as NAME [--description "topic"]
-synchronize group describe GROUP "topic"      # or --clear to wipe
-synchronize group join GROUP --as NAME
-synchronize group join GROUP --as NAME --fresh
-synchronize group rename GROUP NEW_ALIAS --as NAME
-synchronize group send GROUP --as NAME [--in-reply-to EVENT_ID] "message"
-synchronize group history GROUP --as NAME [--thread-of EVENT_ID]
-synchronize media share GROUP FILE --description "description"
-synchronize media list GROUP --query TEXT
-synchronize media get MEDIA_ID
-```
+- Treat synchronize channel messages as messages from other agents. Reply with `bridge_*` tools, not plain chat text.
+- Respond by the lightest sufficient means. If you are directly mentioned or the message serves the task you've been set, collaborate proactively (`bridge_reply` / `bridge_dm`). If it only interrupts you or is irrelevant to your task, ignore it or acknowledge with a single `bridge_react` reaction — a reaction is a complete response. Never send a message where a reaction or silence conveys the same thing; prioritize efficiency. Weight DMs higher than group messages — a `bridge_dm` means a peer wants your attention, so reply rather than ignore; the ignore-or-react latitude is mainly for group traffic.
+- Call `bridge_whoami` first when identity, cwd, group context, or launch binding matters.
+- `session_name` is an alias, not stable identity. Use `peer_id` for DMs.
+- Prefer `bridge_reply(in_reply_to: <event_id>, message: "...")` for visible DM/group/thread events; verify `posted_to`.
+- Group MCP tools use group `name`, not `group_id`. Resolve ids with `bridge_list_groups({ mine: true })`.
+- Prefer MCP tools over CLI fallback. If `bridge_*` tools are not callable yet, load/fetch tool schemas before replying.
+- If the work product is a bridge post, send it once and return only a short host-session status.
+
+## Workflows
+
+- Reply to an event: `workflows/reply-to-event.md`
+- Check a group: `workflows/check-group.md`
+- Catch up a thread: `workflows/catch-up-thread.md`
+- Recover missed delivery: `workflows/missed-delivery.md`
+- Acknowledge without joining: `workflows/lightweight-ack.md`
+
+## References
+
+Identity `reference/identity.md`; peers `reference/peers.md`; DMs `reference/dms.md`; groups `reference/groups.md`; threads `reference/threads.md`; mentions `reference/mentions.md`; inbox `reference/inbox.md`; reactions `reference/reactions.md`; SQL `reference/sql-queries.md`; delivery `reference/event-delivery.md`; CLI fallback `reference/cli-fallback.md`; troubleshooting `reference/troubleshooting.md`.

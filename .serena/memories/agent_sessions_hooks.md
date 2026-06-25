@@ -1,50 +1,32 @@
-# Agent Sessions And Hooks Series
+# Agent Sessions, Hooks, And AOE Launch
 
-Covers native agent-session correlation, auto-registration, and hook setup. Search terms: agent sessions, hooks, auto registration, Claude, Pi, launch, SYNCHRONIZE_SESSION_NAME.
+Search terms: agent sessions, hooks, AOE, launch, bridge_launch, reconcileLaunch, pendingLaunches, Haiku, SYNCHRONIZE_LAUNCH_ID.
 
-## Why this exists
+## Agent-session binding
 
-Synchronize now correlates external coding-agent sessions with daemon peers. This lets tools recover or display which native host session is attached to a peer, instead of only knowing the peer id/name.
+- `src/db.ts` stores native host sessions in `agent_sessions` with `peer_id`, `host_tool`, `host_session_id`, `model`, `agent_type`, `metadata_json`, and optional `launch_id`.
+- `src/api/agent-sessions.ts` exposes `registerAgentSession`, `listAgentSessions`, `renameAgentSession`, `launchAgent`, and `stopAgent` client helpers.
+- `src/daemon.ts` serves `/agent-sessions/register`, `/agent-sessions`, `/agent-sessions/:tool/:host_session_id`, `/agent-sessions/rename`, `/agent-sessions/launch`, and `/agent-sessions/stop`.
 
-## Backend/API pieces
+## Claude/Pi hooks
 
-`src/db.ts` adds an `agent_sessions` table and indexes.
+- `scripts/claude-hooks-config.ts` installs env-gated Claude hooks: `SessionStart` -> `synchronize hook claude-session`; `UserPromptSubmit` and `PreToolUse` -> working activity; `Stop` -> idle activity.
+- `src/cli/commands/hook.ts` ingests Claude SessionStart JSON, requires `session_id`, and registers the binding. It forwards `SYNCHRONIZE_LAUNCH_ID`, `SYNCHRONIZE_PEER_ID`, `SYNCHRONIZE_SESSION_NAME`, cwd, transcript path, source, model, and agent type when available.
+- Pi hook ingestion uses the same `launch_id` / `peer_id` / `session_name` environment shape.
 
-`src/api/agent-sessions.ts` exposes:
+## AOE-backed launch flow
 
-- `registerAgentSession(client, input)`.
-- `listAgentSessions(client, tool?)`.
-- `renameAgentSession(client, input)`.
+- MCP `bridge_launch` in `src/mcp/tools/launch.ts` calls `launchAgent`, which posts to daemon `/agent-sessions/launch`.
+- `LaunchService.launch()` mints `launchId` and pinned `peerId`, resolves a `LaunchSpec`, records a pending intent before spawning, and deletes the intent on backend spawn failure.
+- `src/launch/backend.ts` uses an AOE profile derived from `SYNCHRONIZE_HOME`, runs `aoe add --cmd-override env ... <agent argv>`, then `aoe session start <title>`. It never uses `add --launch` because headless launch can report terminal-open failures.
+- Launched agents inherit `SYNCHRONIZE_HOOK_ENABLE=1`, `SYNCHRONIZE_LAUNCH_ID`, `SYNCHRONIZE_PEER_ID`, `SYNCHRONIZE_SESSION_NAME`, and `SYNCHRONIZE_HOME`.
+- Claude launch commands add dev-channel live push flags and, unless the caller provides `--model`, default to `--model haiku` in `src/launch/service.ts`. This is the Haiku/Hiku launch-path default only; foreground `synchronize launch` is not forced to Haiku.
+- On `/agent-sessions/register`, `reconcileLaunch(ctx, launch_id, peer_id)` consumes the pending intent only when the registering `peer_id` matches the pinned peer id. If a group was requested, it creates the group if needed and joins the peer as alias = launch name with fresh history.
+- Alias collisions during auto-join are logged as `join_failed` and do not block registration; the launched session remains alive but unjoined.
+- `bridge_stop` / `/agent-sessions/stop` can stop by explicit AOE title or by peer id. Stop-by-title is more reliable before registration or after peer rename.
 
-`src/daemon.ts` serves:
+## Current gotchas
 
-- `POST /agent-sessions/register`.
-- `GET /agent-sessions`.
-- `GET /agent-sessions/:tool/:host_session_id`.
-- `POST /agent-sessions/rename`.
-
-Group member listings can carry `host_session_id` when an `agent_sessions` binding exists.
-
-## Environment and identity
-
-`SYNCHRONIZE_SESSION_NAME` was added as `ENV_SESSION_NAME`. It gives hook/Pi-style integrations an explicit session name override, avoiding unstable fallback names.
-
-`SYNCHRONIZE_PEER_ID` remains the sticky peer-id env var used by MCP/Pi registration paths.
-
-## CLI and scripts
-
-`src/cli/commands/hook.ts` and `src/cli/commands/launch.ts` implement user/operator command surfaces for auto-registration and launch flows.
-
-`scripts/claude-hooks-config.ts` writes/merges Claude hook configuration for synchronize. It is intended to be idempotent, similar in spirit to `scripts/pi-mcp-config.ts`.
-
-`AUTO_REGISTRATION.md` documents the workflow.
-
-## Pi extension tie-in
-
-`extensions/pi-synchronize/src/index.ts` now honors `SYNCHRONIZE_SESSION_NAME` over the Pi session id fallback. This matters for deterministic AoE/Pi integration tests and for stable peer naming in real use.
-
-## Tests and docs
-
-- `tests/api.test.ts` covers agent session bindings upsert/rename and group member host-session surfacing.
-- `tests/messaging.test.ts` uses `SYNCHRONIZE_SESSION_NAME` in hook-related paths.
-- `scripts/integration-aoe/sync_itest_aoe/scenarios/pi_mcp_dm.py` checks agent-session state from real Pi/AoE runs.
+- Model override detection currently checks only a literal `--model` arg. A caller using `--model=opus` style args may still get the default `--model haiku` prepended.
+- MCP env-bound bootstrap currently tries `launch_id` before `SYNCHRONIZE_PEER_ID`; launched sessions carry both, so prefer peer-id filtering if hardening this path.
+- Pending launch intents are in-memory only. They clear on consume, spawn failure, or stop-by-title; a launched agent that never registers leaves an operator-visible pending warning until manually cleaned up.

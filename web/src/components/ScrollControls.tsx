@@ -1,4 +1,35 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { cva } from "class-variance-authority";
+import { cn } from "../lib/cn";
+
+/**
+ * Pill button pinned inside the floating controls strip. Tokens come from the
+ * styles.css contract via the tw.css `@theme inline` bridge; values without a
+ * utility namespace (border shorthand, per-property transitions, keyframe
+ * animation) use arbitrary values. The `new-message-pop` keyframes stay in
+ * extra.css — only the rules were migrated, not the @keyframes.
+ */
+const scrollCtrl = cva(
+  [
+    "scroll-ctrl pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center",
+    "rounded-pill bg-paper-2 text-ink shadow-sm [border:var(--line-sm)]",
+    "font-display text-[length:var(--text-13)] leading-none opacity-55",
+    "[transition:opacity_160ms_ease,transform_80ms_ease,box-shadow_80ms_ease]",
+    "hover:enabled:-translate-x-px hover:enabled:-translate-y-px hover:enabled:opacity-100 hover:enabled:shadow-hover",
+    "disabled:cursor-default disabled:opacity-[0.18]",
+  ],
+  {
+    variants: {
+      newItems: {
+        true: [
+          "scroll-ctrl-new animate-[new-message-pop_900ms_ease-out_infinite] bg-lime opacity-100",
+        ],
+        false: null,
+      },
+    },
+    defaultVariants: { newItems: false },
+  },
+);
 
 interface ScrollControlsProps {
   targetRef: RefObject<HTMLElement | null>;
@@ -7,8 +38,12 @@ interface ScrollControlsProps {
 
 type Dir = "up" | "down" | null;
 
+function maxScrollTop(el: HTMLElement): number {
+  return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
 /**
- * Floating direction-aware accelerator pinned to the bottom-right of a
+ * Floating direction-aware accelerator pinned to the bottom-center of a
  * scrollable surface. Visibility is **tied to the scrollbar's visibility** so
  * the two always appear and disappear together — we observe the `.is-scrolling`
  * class that `useAutoScrollbar` adds to the same target. As long as that class
@@ -92,15 +127,22 @@ export function ScrollControls({ targetRef, newItemsKey = null }: ScrollControls
   const jump = () => {
     const el = targetRef.current;
     if (!el) return;
-    if (visible === "down") setHasNewBelow(false);
-    el.scrollTo({ top: visible === "up" ? 0 : el.scrollHeight, behavior: "smooth" });
+    if (visible === "up") {
+      el.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+    setHasNewBelow(false);
+    el.scrollTo({ top: maxScrollTop(el), behavior: "auto" });
   };
 
   return (
-    <div className="scroll-controls" aria-hidden={false}>
+    <div
+      className="pointer-events-none absolute bottom-[12px] left-1/2 z-[var(--z-scroll-controls)] flex -translate-x-1/2 flex-col gap-[var(--space-6)]"
+      aria-hidden={false}
+    >
       <button
         type="button"
-        className={`scroll-ctrl${hasNewBelow && visible === "down" ? " has-new-items" : ""}`}
+        className={cn(scrollCtrl({ newItems: hasNewBelow && visible === "down" }))}
         onClick={jump}
         title={visible === "up" ? "scroll to top" : "scroll to bottom"}
         aria-label={visible === "up" ? "scroll to top" : "scroll to bottom"}

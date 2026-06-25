@@ -1,0 +1,22 @@
+{
+  "accounts": [
+    {
+      "channel": "synchronize",
+      "accountId": "main",
+      "displayName": "Synchronize",
+      "enabled": true,
+      "dmPolicy": "open",
+      "allowedUsers": [],
+      "config": {
+        "daemonUrl": "http://100.126.163.80:58410",
+        "token": "REPLACE_WITH_SYNCHRONIZE_TOKEN",
+        "pollMs": 1500,
+        "peers": [
+          { "chatId": "rocky", "sessionName": "rocky" }
+        ]
+      },
+      "createdAt": "2026-06-13T00:00:00.000Z",
+      "updatedAt": "2026-06-13T00:00:00.000Z"
+    }
+  ]
+}

@@ -1,23 +1,26 @@
 # synchronize — Project Overview
 
-**Purpose**: Local-first messaging bus for multiple Claude/Codex agent sessions running on the same machine. Gives agents a shared bus for direct messages, durable inboxes, group chats, and copied group media — without anything leaving the machine.
+`synchronize` is a local-first messaging bus for multiple local coding-agent sessions. One Bun daemon owns durable state; CLI, MCP stdio adapters, web UI, and the Pi extension talk to it over localhost REST.
 
-**Runtime model**: One long-running Bun daemon owns durable state. Two thin clients (CLI, MCP stdio adapter) talk to it over a localhost REST API. Discovery is via `~/.synchronize/daemon.json`.
+## Runtime model
 
-**Status (as of 2026-05-22): v0.1.0.** `sync-mkj` epic phase 1 is merged (squashed PR #1 = commit `f8b5f24`) — API, CLI, and MCP monoliths have been split into domain folders behind compat shims. **`feat/pi-extension` is now also merged into master** (squashed as `35d01bc`): adds the Pi coding-agent extension under `extensions/pi-synchronize/`, the `synchronize-pi` skill, `make install-{claude,codex,pi,all}` targets, `scripts/pi-mcp-config.ts` MCP config merger, `SYNCHRONIZE_PEER_ID` env-shared peer id, Serena onboarding. **Phase 2 — daemon split** — `src/daemon.ts` is still a ~1077 LOC monolith and is the next target. See `pending_work.md`.
+- `src/daemon.ts` is the entrypoint; daemon runtime is modularized under `src/daemon/server.ts`, `src/daemon/routes/`, `src/daemon/repo/`, and `src/daemon/services/`.
+- Discovery is via `$SYNCHRONIZE_HOME/daemon.json`; clients auto-start or connect through `src/client.ts` and the typed `src/api/` facade.
+- Identity is peer-based. `agent_sessions` binds native Claude/Pi/Codex session ids to synchronize peers.
+- Runtime settings resolve as `defaults < $SYNCHRONIZE_HOME/config.toml < env`; use `docs/configuration/` for current config/env details.
 
-**Out-of-scope for v0**: WebSocket/SSE, cloud sync, encryption, remote peer discovery, GUI, retention/pruning.
+## Surfaces
 
-**Tech stack**:
-- Bun 1.3+ runtime, TypeScript (ESM), no build step (everything runs from source).
-- SQLite (WAL mode) via Bun's built-in bindings for durable state.
-- Filesystem MediaStore for group assets.
-- `@modelcontextprotocol/sdk` for the MCP stdio server.
+- CLI: `src/cli/` and `bin/synchronize`.
+- MCP: `src/mcp/` and `bin/synchronize-mcp`.
+- Launch: `src/launch/` plus daemon launch repositories/services.
+- Web: `web/src/`, `/web/state`, and `/web/events`.
+- Pi extension: `extensions/pi-synchronize/`.
+- Integration harness: `scripts/integration-aoe/`.
 
-**Entrypoints**:
-- `bin/synchronize` → CLI
-- `bin/synchronize-mcp` → MCP stdio server (used by Claude, Codex, and Pi installs)
-- `bun run src/daemon.ts` → daemon (auto-launched by CLI on first call)
-- `extensions/pi-synchronize/src/index.ts` → Pi extension default export; subscribes to the daemon and delivers events as `pi.sendUserMessage` steer/followUp
+## Operating rules
 
-**Issue tracker**: Beads (`bd`). Issues live in `.beads/issues.jsonl`; do NOT use TodoWrite / markdown todos. Session-close requires `git push` succeeding (see CLAUDE.md).
+- Use Beads (`bd`) for durable task tracking; `.beads/issues.jsonl` is canonical issue state.
+- Use throwaway `SYNCHRONIZE_HOME` values for manual tests to avoid clobbering `~/.synchronize`.
+- Keep Serena memories as navigation/orientation only. Detailed current references belong in repo docs: `README.md`, `docs/configuration/`, and `docs/debugging/`.
+- For daemon debugging, start from `.claude/skills/synchronize-debugging/SKILL.md`; it is a minimal symptom router that points to docs/source instead of duplicating recipes.

@@ -1,0 +1,596 @@
+import { afterEach, expect, test } from "bun:test";
+import { DaemonDataSource } from "../web/src/data/daemon.ts";
+import type { Message, MessageAttachment, ThreadSummary } from "../web/src/data/types.ts";
+import type { MutableSnapshot } from "../web/src/data/store.ts";
+
+const originalFetch = globalThis.fetch;
+const originalLocalStorage = globalThis.localStorage;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  globalThis.localStorage = originalLocalStorage;
+});
+
+function stubFetch(handler: (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => Promise<Response>): typeof fetch {
+  const fn = handler as typeof fetch;
+  fn.preconnect = originalFetch.preconnect.bind(originalFetch);
+  return fn;
+}
+
+test("web reactions update message snapshots without resetting room state", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  const roomId = "group:1";
+  const messages = ds.messages(roomId) as MutableSnapshot<Message[]>;
+  messages.set([
+    {
+      id: "e:42",
+      roomId,
+      authorId: "agent:one",
+      body: "react here",
+      createdAt: "2026-05-31T00:00:00.000Z",
+      mentions: [],
+      reactions: [],
+    },
+  ]);
+
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  const responseFor = (reactions: Array<{ emoji: string; by: string[] }>) =>
+    new Response(JSON.stringify({
+      event: {
+        event_id: 42,
+        type: "group_message",
+        sender_peer_id: "agent:one",
+        recipient_peer_id: null,
+        group_id: 1,
+        body: "react here",
+        media_id: null,
+        parent_event_id: null,
+        reply_to_event_id: null,
+        mentions_json: null,
+        skill_directives_json: null,
+        created_at: "2026-05-31T00:00:00.000Z",
+        reactions: reactions.map((reaction) => ({
+          emoji: reaction.emoji,
+          count: reaction.by.length,
+          by: reaction.by.map((peerId) => ({
+            peer_id: peerId,
+            session_name: peerId,
+            tool: "web",
+            alias: peerId === "web:local-human" ? "you" : null,
+            created_at: "2026-05-31T00:00:01.000Z",
+          })),
+        })),
+      },
+    }));
+
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname !== "/events/42/reactions") throw new Error(`unexpected fetch: ${url.pathname}`);
+    return responseFor([{ emoji: "👍", by: ["web:local-human"] }]);
+  });
+
+  const add = ds.reactToMessage({ messageId: "e:42", roomId, emoji: "👍", op: "toggle" });
+  expect(messages.get()[0]?.reactions).toEqual([{ emoji: "👍", by: ["web:local-human"] }]);
+  await add;
+  expect(messages.get()[0]?.reactions).toEqual([{ emoji: "👍", by: ["web:local-human"] }]);
+
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname !== "/events/42/reactions") throw new Error(`unexpected fetch: ${url.pathname}`);
+    return responseFor([]);
+  });
+
+  const remove = ds.reactToMessage({ messageId: "e:42", roomId, emoji: "👍", op: "toggle" });
+  expect(messages.get()[0]?.reactions).toEqual([]);
+  await remove;
+  expect(messages.get()[0]?.reactions).toEqual([]);
+  expect(calls.map((call) => call.path)).toEqual(["/events/42/reactions", "/events/42/reactions"]);
+  expect(calls.every((call) => call.method === "POST")).toBe(true);
+  expect(calls.some((call) => call.path === "/web/state")).toBe(false);
+});
+
+test("daemon data source maps skill catalog from web state", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    cursor: 0,
+    launch_tools: {},
+    peers: [],
+    groups: [],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+    skill_catalog: [
+      {
+        id: "diagnose",
+        name: "diagnose",
+        description: "Diagnosis loop",
+        runtimes: ["claude", "pi"],
+        source_path: "/tmp/diagnose/SKILL.md",
+      },
+    ],
+  });
+
+  expect(ds.skillCatalog().get()).toEqual([
+    {
+      id: "diagnose",
+      name: "diagnose",
+      description: "Diagnosis loop",
+      runtimes: ["claude", "pi"],
+      sourcePath: "/tmp/diagnose/SKILL.md",
+    },
+  ]);
+});
+
+test("daemon data source maps launch profiles from web state", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    cursor: 0,
+    launch_tools: {},
+    launch_profiles: [
+      {
+        name: "glaude",
+        tool: "claude",
+        available: true,
+        path: "/Users/dev/.local/bin/claude",
+        model: "glm-4.6",
+        thinking: "high",
+      },
+    ],
+    peers: [],
+    groups: [{ group_id: 1, name: "glm-test", description: null, created_at: "2026-06-23T00:00:00.000Z" }],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+  });
+
+  expect(ds.launchProfiles().get()).toEqual([
+    {
+      name: "glaude",
+      tool: "claude",
+      available: true,
+      path: "/Users/dev/.local/bin/claude",
+      model: "glm-4.6",
+      thinking: "high",
+    },
+  ]);
+  expect(ds.rooms().get()[0]?.launchProfiles).toEqual(ds.launchProfiles().get());
+});
+
+test("daemon data source keeps room-scoped historical authors resolvable", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    generated_at: "2026-06-05T00:00:00.000Z",
+    cursor: 0,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [],
+    groups: [],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+    skill_catalog: [],
+  });
+  expect(ds.agents().get().map((agent) => agent.id)).not.toContain("peer:expired");
+
+  ds.messages("group:1");
+  (ds as unknown as { applyRoomState(roomId: string, state: unknown, opts: { append: boolean }): void }).applyRoomState("group:1", {
+    ok: true,
+    generated_at: "2026-06-05T00:00:01.000Z",
+    cursor: 42,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [
+      {
+        peer_id: "peer:expired",
+        tool: "claude",
+        session_name: "expired-agent",
+        purpose: "older session",
+        machine_id: null,
+        lease_expires_at: "2026-06-04T23:00:00.000Z",
+        activity_state: "idle",
+        last_activity_at: "2026-06-04T22:59:00.000Z",
+        last_cursor: 42,
+        created_at: "2026-06-04T22:00:00.000Z",
+        updated_at: "2026-06-04T23:00:00.000Z",
+        online: false,
+        presence: "offline",
+      },
+    ],
+    groups: [{ group_id: 1, name: "room", durable: true, description: null, creator_peer_id: null, created_at: "2026-06-04T22:00:00.000Z" }],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [
+      {
+        event_id: 42,
+        type: "group_message",
+        sender_peer_id: "peer:expired",
+        recipient_peer_id: null,
+        group_id: 1,
+        group_name: "room",
+        body: "still visible after the agent is gone",
+        media_id: null,
+        parent_event_id: null,
+        reply_to_event_id: null,
+        mentions_json: null,
+        skill_directives_json: null,
+        created_at: "2026-06-04T22:59:00.000Z",
+        reply_count: 0,
+        last_reply_event_id: null,
+        delivered_count: 0,
+        read_count: 0,
+        acked_count: 0,
+        reactions: [],
+      },
+    ],
+    media: [],
+    skill_catalog: [],
+  }, { append: false });
+
+  expect(ds.messages("group:1").get()).toContainEqual(expect.objectContaining({
+    id: "e:42",
+    authorId: "peer:expired",
+    body: "still visible after the agent is gone",
+  }));
+  expect(ds.agents().get()).toContainEqual(expect.objectContaining({
+    id: "peer:expired",
+    name: "expired-agent",
+    status: "offline",
+  }));
+
+  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
+    ok: true,
+    generated_at: "2026-06-05T00:00:02.000Z",
+    cursor: 42,
+    daemon: { pid: 1, base_url: "http://daemon.test", started_at: "2026-06-05T00:00:00.000Z", token_required: false },
+    launch_tools: {},
+    launch_lifecycle: [],
+    peers: [],
+    groups: [],
+    group_paths: [],
+    memberships: [],
+    room_summaries: [],
+    events: [],
+    media: [],
+    skill_catalog: [],
+  });
+  expect(ds.agents().get()).toContainEqual(expect.objectContaining({
+    id: "peer:expired",
+    name: "expired-agent",
+    status: "offline",
+  }));
+});
+
+test("daemon data source sends selected skill directives with group messages", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+  (ds as unknown as { groupNameByRoomId: Map<string, string> }).groupNameByRoomId = new Map([["group:1", "room"]]);
+
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname === "/groups/room/messages") {
+      return new Response(JSON.stringify({
+        event: {
+          event_id: 77,
+          type: "group_message",
+          sender_peer_id: "web:local-human",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: "please inspect @bob",
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: '["peer:bob"]',
+          skill_directives_json: '["diagnose"]',
+          created_at: "2026-05-31T00:00:00.000Z",
+        },
+      }));
+    }
+    if (url.pathname === "/web/state") {
+      return new Response(JSON.stringify({
+        ok: true,
+        cursor: 77,
+        launch_tools: {},
+        peers: [],
+        groups: [],
+        group_paths: [],
+        memberships: [],
+        room_summaries: [],
+        events: [],
+        media: [],
+        skill_catalog: [],
+      }));
+    }
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await ds.sendMessage({
+    roomId: "group:1",
+    body: "please inspect @bob",
+    mentions: ["peer:bob"],
+    skillDirectives: ["diagnose"],
+  });
+
+  expect(calls[0]).toEqual({
+    path: "/groups/room/messages",
+    method: "POST",
+    body: {
+      sender_peer_id: "web:local-human",
+      message: "please inspect @bob",
+      skill_directives: ["diagnose"],
+    },
+  });
+});
+
+test("daemon data source sends attachment paths while preserving local previews", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+  (ds as unknown as { groupNameByRoomId: Map<string, string> }).groupNameByRoomId = new Map([["group:1", "room"]]);
+  const messages = ds.messages("group:1") as MutableSnapshot<Message[]>;
+  const attachment: MessageAttachment = {
+    id: "att-1",
+    kind: "image",
+    source: "staged",
+    name: "clip.png",
+    mimeType: "image/png",
+    size: 12,
+    extension: "PNG",
+    path: "/tmp/synchronize/tmp/web-attachments/att-1/clip.png",
+    previewUrl: "blob:clip",
+  };
+
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname === "/groups/room/messages") {
+      return new Response(JSON.stringify({
+        event: {
+          event_id: 88,
+          type: "group_message",
+          sender_peer_id: "web:local-human",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: `see this\n\n${attachment.path}`,
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: null,
+          skill_directives_json: null,
+          created_at: "2026-05-31T00:00:00.000Z",
+        },
+      }));
+    }
+    if (url.pathname === "/web/state") {
+      return new Response(JSON.stringify({
+        ok: true,
+        cursor: 88,
+        launch_tools: {},
+        peers: [],
+        groups: [],
+        group_paths: [],
+        memberships: [],
+        room_summaries: [],
+        events: [{
+          event_id: 88,
+          type: "group_message",
+          sender_peer_id: "web:local-human",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: `see this\n\n${attachment.path}`,
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: null,
+          skill_directives_json: null,
+          created_at: "2026-05-31T00:00:00.000Z",
+        }],
+        media: [],
+        skill_catalog: [],
+      }));
+    }
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await ds.sendMessage({
+    roomId: "group:1",
+    body: "see this",
+    mentions: [],
+    attachments: [attachment],
+  });
+
+  expect(calls[0]).toEqual({
+    path: "/groups/room/messages",
+    method: "POST",
+    body: {
+      sender_peer_id: "web:local-human",
+      message: `see this\n\n${attachment.path}`,
+    },
+  });
+  expect(messages.get()).toEqual([
+    expect.objectContaining({
+      id: "e:88",
+      body: "see this",
+      attachments: [attachment],
+    }),
+  ]);
+});
+
+test("daemon data source force-generates pending thread summaries for visible panel rows", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  const calls: Array<{ path: string; method: string }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    calls.push({ path: url.pathname, method });
+    if (url.pathname !== "/threads/123/summary") throw new Error(`unexpected fetch: ${url.pathname}`);
+    if (method === "GET") {
+      return new Response(JSON.stringify({
+        summary: null,
+        model: null,
+        strategy: null,
+        strategy_params: null,
+        prompt_version: null,
+        covered_last_event_id: null,
+        covered_event_count: null,
+        updated_at: null,
+        stale: false,
+        status: "pending",
+      }));
+    }
+    return new Response(JSON.stringify({
+      summary: "Generated summary text.",
+      model: "openrouter:test",
+      strategy: "first_k",
+      strategy_params: { k: 3 },
+      prompt_version: 1,
+      covered_last_event_id: 124,
+      covered_event_count: 2,
+      updated_at: "2026-06-01T00:00:00.000Z",
+      stale: false,
+      status: "ready",
+    }));
+  });
+
+  const summary = ds.threadSummary("e:123") as MutableSnapshot<ThreadSummary>;
+  await waitFor(() => summary.get().status === "ok");
+
+  expect(summary.get()).toEqual({ text: "Generated summary text.", status: "ok" });
+  expect(calls).toEqual([
+    { path: "/threads/123/summary", method: "GET" },
+    { path: "/threads/123/summary", method: "POST" },
+  ]);
+});
+
+test("daemon data source uses cached thread summaries without forcing regeneration", async () => {
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  const calls: Array<{ path: string; method: string }> = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    calls.push({ path: url.pathname, method });
+    if (url.pathname !== "/threads/456/summary") throw new Error(`unexpected fetch: ${url.pathname}`);
+    return new Response(JSON.stringify({
+      summary: "Cached summary text.",
+      model: "openrouter:test",
+      strategy: "first_k",
+      strategy_params: { k: 3 },
+      prompt_version: 1,
+      covered_last_event_id: 457,
+      covered_event_count: 2,
+      updated_at: "2026-06-01T00:00:00.000Z",
+      stale: false,
+      status: "ready",
+    }));
+  });
+
+  const summary = ds.threadSummary("e:456") as MutableSnapshot<ThreadSummary>;
+  await waitFor(() => summary.get().status === "ok");
+
+  expect(summary.get()).toEqual({ text: "Cached summary text.", status: "ok" });
+  expect(calls).toEqual([{ path: "/threads/456/summary", method: "GET" }]);
+});
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    if (predicate()) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("condition was not met");
+}
+
+test("activity feed maps observer rows using the explicit server awaiting flag", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  const event = (over: Record<string, unknown>) => ({
+    event_id: 0, type: "group_message", sender_peer_id: "agent:one", recipient_peer_id: null,
+    group_id: 1, body: "hi", media_id: null, parent_event_id: null, mentions_json: null,
+    skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, ...over,
+  });
+
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    if (!url.pathname.startsWith("/activity/")) throw new Error(`unexpected fetch: ${url.pathname}`);
+    return new Response(JSON.stringify({
+      awaiting_count: 1,
+      next_cursor: 9,
+      peers: [
+        {
+          peer_id: "agent:one",
+          tool: "claude",
+          session_name: "historical-agent",
+          purpose: null,
+          lease_expires_at: "2026-06-04T00:00:00.000Z",
+          online: false,
+          presence: "offline",
+        },
+      ],
+      events: [
+        event({ event_id: 10, awaiting: 1, mentions_json: JSON.stringify(["web:local-human"]), created_at: "2026-06-05T00:02:00.000Z" }),
+        event({ event_id: 9, awaiting: 0, created_at: "2026-06-05T00:01:00.000Z" }),
+      ],
+    }));
+  });
+
+  await (ds as unknown as { refreshActivity(o: object): Promise<void> }).refreshActivity({ reset: true });
+  const feed = ds.activity().get();
+  expect(feed.map((i) => i.eventId)).toEqual([10, 9]); // newest-first
+  expect(feed[0]!.awaiting).toBe(true);   // from server flag, not acked_at
+  expect(feed[0]!.isMention).toBe(true);
+  expect(feed[1]!.awaiting).toBe(false);
+  expect(ds.activityAwaitingCount().get()).toBe(1);
+  expect(ds.agents().get().find((agent) => agent.id === "agent:one")?.name).toBe("historical-agent");
+});
+
+test("ackActivity clears awaiting optimistically and posts to inbox/ack", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.startsWith("/activity/")) {
+      return new Response(JSON.stringify({
+        awaiting_count: 1, next_cursor: null,
+        events: [{
+          event_id: 5, type: "group_message", sender_peer_id: "agent:one", recipient_peer_id: null,
+          group_id: 1, body: "needs you", media_id: null, parent_event_id: null, mentions_json: null,
+          skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, awaiting: 1,
+        }],
+      }));
+    }
+    if (url.pathname.endsWith("/inbox/ack")) return new Response(JSON.stringify({ ok: true, acked: 1 }));
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await (ds as unknown as { refreshActivity(o: object): Promise<void> }).refreshActivity({ reset: true });
+  expect(ds.activity().get()[0]!.awaiting).toBe(true);
+  await ds.ackActivity(5);
+  expect(ds.activity().get()[0]!.awaiting).toBe(false);
+  expect(ds.activityAwaitingCount().get()).toBe(0);
+});

@@ -1,0 +1,7 @@
+{
+  "id": "synchronize",
+  "displayName": "Synchronize",
+  "entry": "./plugin.mjs",
+  "runtimePackages": [],
+  "runtimeModules": []
+}
