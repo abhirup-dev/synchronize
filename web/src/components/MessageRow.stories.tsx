@@ -76,6 +76,89 @@ export const RichWithLongAutolink: Story = {
   },
 };
 
+export const LongMultiParagraphMessage: Story = {
+  render: (args) => (
+    <div className="chat-list" style={{ width: 560 }}>
+      <div className="message-virtual-row">
+        <MessageRow {...args} />
+      </div>
+    </div>
+  ),
+  args: {
+    message: {
+      id: "long-paragraph-edge",
+      roomId: "checkout-revamp",
+      authorId: "atlas",
+      createdAt: new Date().toISOString(),
+      body: [
+        "The first thing I checked was whether the archive result had enough signal to explain the bug without opening another panel. The answer was mostly yes: the event trail had the right people, the right room, and enough timing detail to make the next step obvious.",
+        "",
+        "The second paragraph is intentionally long enough to wrap across several visual lines. This is where the bubble used to feel cramped because paragraph transitions were not visually distinct from ordinary line wrapping inside a single paragraph.",
+        "",
+        "The third paragraph keeps the same body size but should breathe a little more. The message text is unchanged; only the bubble-scoped markdown rhythm should create separation between paragraphs.",
+      ].join("\n"),
+      mentions: [],
+      reactions: [],
+    },
+    author: authorOf("atlas"),
+  },
+  play: async ({ canvasElement }) => {
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    expect(bubble).toBeTruthy();
+    expect(bubble!.querySelector(".markdown.rich-markdown")).toBeTruthy();
+    const paragraphs = [...bubble!.querySelectorAll<HTMLParagraphElement>(".markdown p")];
+    expect(paragraphs).toHaveLength(3);
+    expect(getComputedStyle(paragraphs[0]!).lineHeight).toBe(getComputedStyle(paragraphs[1]!).lineHeight);
+    expect(getComputedStyle(paragraphs[1]!).lineHeight).toBe("21px");
+    expect(parseFloat(getComputedStyle(paragraphs[1]!).marginBlockStart)).toBeGreaterThan(0);
+  },
+};
+
+export const RichWithHeadingLevels: Story = {
+  render: (args) => (
+    <div className="chat-list" style={{ width: 560 }}>
+      <div className="message-virtual-row">
+        <MessageRow {...args} />
+      </div>
+    </div>
+  ),
+  args: {
+    message: {
+      id: "heading-levels-edge",
+      roomId: "checkout-revamp",
+      authorId: "atlas",
+      createdAt: new Date().toISOString(),
+      body: [
+        "# H1 / Report title style",
+        "",
+        "The room-level context should make the top heading feel readable without turning the bubble into a document page. This paragraph includes **bold emphasis** to preview the Kanagawa message weight.",
+        "",
+        "## H2 / Section heading style",
+        "",
+        "The second-level heading introduces the ordered details that usually follow in a longer agent report.",
+        "",
+        "### H3 / Detail label style",
+        "",
+        "- Confirm the daemon state is fresh.",
+        "- Reopen the thread if the archive summary references stale data.",
+        "- Leave the final decision in the room.",
+      ].join("\n"),
+      mentions: [],
+      reactions: [],
+    },
+    author: authorOf("atlas"),
+  },
+  play: async ({ canvasElement }) => {
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    expect(bubble).toBeTruthy();
+    expect(bubble!.querySelector(".markdown.rich-markdown")).toBeTruthy();
+    expect(bubble!.querySelector("h1")?.textContent).toBe("H1 / Report title style");
+    expect(bubble!.querySelector("h2")?.textContent).toBe("H2 / Section heading style");
+    expect(bubble!.querySelector("h3")?.textContent).toBe("H3 / Detail label style");
+    expect(bubble!.querySelector("strong")?.textContent).toBe("bold emphasis");
+  },
+};
+
 export const MessagePermalinkMenu: Story = {
   args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId), onReact: fn(), onOpenThread: fn() },
   play: async ({ canvasElement }) => {
@@ -84,9 +167,8 @@ export const MessagePermalinkMenu: Story = {
     await fireEvent.contextMenu(row!);
     await waitFor(() => expect(screen.getByText("Copy link")).toBeTruthy());
     expect(screen.queryByText("Copy link (soon)")).toBeNull();
-    const item = screen.getByRole("menuitem", { name: "Copy link" }) as HTMLButtonElement;
+    const item = screen.getByRole("button", { name: "Copy link" }) as HTMLButtonElement;
     expect(item.disabled).toBe(false);
-    expect(item.getAttribute("aria-disabled")).toBe("false");
   },
 };
 

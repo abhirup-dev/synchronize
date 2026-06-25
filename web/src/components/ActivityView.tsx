@@ -7,7 +7,7 @@
 // Grouped/Timeline toggle).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
-import { CheckCheck, Settings } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, CheckCheck, LayoutList, Rows3, Settings } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useAckActivity,
@@ -23,14 +23,15 @@ import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/typ
 import { ActivityItem } from "./ActivityItem.tsx";
 import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
-import { Avatar, IdentityBadge } from "./primitives.tsx";
+import { Avatar, IdentityBadge, IdentityLogoTile, RoomNameInline, roomNameText } from "./primitives.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
-import { useActivityPreferences } from "../hooks/useActivityPreferences.ts";
-import { useIsCompact, useShellMode } from "../shell-mode.tsx";
+import { useActivityPreferences, type ActivityViewMode } from "../hooks/useActivityPreferences.ts";
+import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
 
 type Filter = "all" | "awaits" | "mentions";
+type SortDirection = "desc" | "asc";
 type TimelineEntry =
   | { kind: "bucket"; id: string; label: string; count: number }
   | { kind: "item"; id: string; item: ActivityItemModel };
@@ -53,20 +54,20 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
   const ackAll = useAckAllActivity();
   const loadMore = useLoadMoreActivity();
 
-  const { cluster, setCluster, aliveOnly, setAliveOnly } = useActivityPreferences();
+  const { viewMode, setViewMode, aliveOnly, setAliveOnly } = useActivityPreferences();
+  const groupedView = viewMode === "grouped";
   const [filter, setFilter] = useState<Filter>("all");
   const [roomSel, setRoomSel] = useState<Set<string>>(() => new Set());
   const [reacted, setReacted] = useState<Set<number>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [open, setOpen] = useState<{ roomId: string; parentId: string; focusMessageId: string } | null>(null);
   const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
+  const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a] as const)), [agents]);
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r] as const)), [rooms]);
   const busyCount = useMemo(() => agents.filter((a) => a.status === "busy").length, [agents]);
   const compact = useIsCompact();
-  const shellMode = useShellMode();
-  const roomFilterMenuOnly = compact || shellMode === "medium";
 
 
   const onReact = (item: ActivityItemModel) => {
@@ -118,6 +119,11 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
     return xs;
   }, [baseItems, filter, roomSel]);
 
+  const sortedVisible = useMemo(
+    () => [...visible].sort((a, b) => sortDir === "desc" ? b.eventId - a.eventId : a.eventId - b.eventId),
+    [visible, sortDir],
+  );
+
   const counts = useMemo(
     () => ({
       all: baseItems.length,
@@ -135,7 +141,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
 
   const grouped = useMemo(() => {
     const byRoom = new Map<string, ActivityItemModel[]>();
-    for (const it of visible) {
+    for (const it of sortedVisible) {
       const list = byRoom.get(it.roomId) ?? [];
       list.push(it);
       byRoom.set(it.roomId, list);
@@ -146,11 +152,12 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
         room: roomsById.get(roomId),
         items: list,
         maxEventId: Math.max(...list.map((i) => i.eventId)),
+        minEventId: Math.min(...list.map((i) => i.eventId)),
         awaiting: list.filter((i) => i.awaiting).length,
       }))
       .filter((g): g is typeof g & { room: Room } => Boolean(g.room))
-      .sort((a, b) => b.maxEventId - a.maxEventId);
-  }, [visible, roomsById]);
+      .sort((a, b) => sortDir === "desc" ? b.maxEventId - a.maxEventId : a.minEventId - b.minEventId);
+  }, [sortedVisible, roomsById, sortDir]);
 
   const itemProps = (it: ActivityItemModel, showRoom: boolean) => ({
     item: it,
@@ -185,17 +192,17 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
         <header className="act-header">
           <div className="act-header-top">
             <div className="act-title-block">
-              <span className="act-title-mark" aria-hidden="true">
+              <IdentityLogoTile className="act-title-mark" ariaHidden>
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 13 8 13 10.5 19 14 6 16 13 21 13" />
                 </svg>
-              </span>
+              </IdentityLogoTile>
               <div>
                 <div className="act-title">ACTIVITY</div>
                 <div className="act-title-sub">
                   {!compact && (
                     <>
-                      {cluster ? "cross-room feed" : "timeline"}
+                      {groupedView ? "cross-room feed" : "timeline"}
                       <span className="dot-sep">·</span>
                     </>
                   )}
@@ -229,44 +236,10 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
                 </>
               ) : (
                 <>
+                  <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
+                  <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
                   <button
-                    className="act-view-switch"
-                    onClick={() => setCluster((value) => !value)}
-                    type="button"
-                    title={cluster ? "Switch to timeline" : "Switch to grouped"}
-                    aria-label={cluster ? "Switch to timeline" : "Switch to grouped"}
-                  >
-                    {cluster ? (
-                      <>
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
-                        </svg>
-                        TIMELINE
-                      </>
-                    ) : (
-                      <>
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <rect x="3.5" y="3.5" width="7" height="7" /><rect x="13.5" y="3.5" width="7" height="7" />
-                          <rect x="3.5" y="13.5" width="7" height="7" /><rect x="13.5" y="13.5" width="7" height="7" />
-                        </svg>
-                        GROUPED
-                      </>
-                    )}
-                  </button>
-                  <button
-                    className={`act-live${aliveOnly ? " active" : ""}`}
-                    onClick={() => setAliveOnly((value) => !value)}
-                    type="button"
-                    title="Show only activity from working agents"
-                    aria-pressed={aliveOnly}
-                  >
-                    <span className="act-live-dot" />
-                    LIVE
-                    <span className="act-live-sep">·</span>
-                    <span className="act-live-working">▸ {busyCount} working</span>
-                  </button>
-                  <button
-                    className="act-markall"
+                    className="act-markall topbar-control"
                     onClick={() => void ackAll()}
                     disabled={counts.awaits === 0}
                     type="button"
@@ -285,7 +258,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
               {FILTERS.map((f) => (
                 <button
                   key={f.id}
-                  className={`act-filter${filter === f.id ? " active" : ""}${f.hot && f.n > 0 ? " hot" : ""}`}
+                  className={`act-filter topbar-control${filter === f.id ? " active" : ""}${f.hot && f.n > 0 ? " hot" : ""}`}
                   onClick={() => setFilter(f.id)}
                   type="button"
                 >
@@ -295,46 +268,19 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
               ))}
               {compact && (
                 <>
-                  <button
-                    className="act-filter"
-                    onClick={() => setCluster((value) => !value)}
-                    type="button"
-                    title={cluster ? "Switch to timeline view" : "Switch to grouped view"}
-                  >
-                    {cluster ? "GROUPED" : "TIMELINE"}
-                  </button>
-                  <button
-                    className={`act-filter act-filter-live${aliveOnly ? " active" : ""}`}
-                    onClick={() => setAliveOnly((value) => !value)}
-                    type="button"
-                    aria-pressed={aliveOnly}
-                    title={`Show only activity from working agents (${busyCount} working)`}
-                  >
-                    LIVE
-                    <span className="act-filter-n">{busyCount}</span>
-                  </button>
+                  <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
+                  <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
                 </>
               )}
             </div>
-            {roomFilterMenuOnly ? (
-              <RoomFilterBar
-                roomIds={allRoomIds}
-                roomsById={roomsById}
-                selected={roomSel}
-                onToggle={toggleRoom}
-                onClear={() => setRoomSel(new Set())}
-                compact={compact}
-                menuOnly
-              />
-            ) : (
-              <RoomFilterBar
-                roomIds={allRoomIds}
-                roomsById={roomsById}
-                selected={roomSel}
-                onToggle={toggleRoom}
-                onClear={() => setRoomSel(new Set())}
-              />
-            )}
+            <RoomFilterBar
+              roomIds={allRoomIds}
+              roomsById={roomsById}
+              selected={roomSel}
+              onToggle={toggleRoom}
+              onClear={() => setRoomSel(new Set())}
+              compact={compact}
+            />
           </div>
         </header>
 
@@ -344,7 +290,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
               <p>No activity matches this filter. Try <b>ALL</b> or clear the room filter.</p>
             </div>
           </div>
-        ) : cluster ? (
+        ) : groupedView ? (
           <div className="act-scroll layout-digest">
             <div className="act-digest">
               {grouped.map((g) => (
@@ -363,7 +309,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
             </div>
           </div>
         ) : (
-          <TimelineFlat items={visible} itemProps={itemProps} agentsById={agentsById} roomsById={roomsById} onJumpToRoom={onJumpToRoom} onLoad={loadMore} compact={compact} />
+          <TimelineFlat items={sortedVisible} sortDir={sortDir} itemProps={itemProps} agentsById={agentsById} roomsById={roomsById} onJumpToRoom={onJumpToRoom} onLoad={loadMore} compact={compact} />
         )}
       </div>
 
@@ -382,6 +328,80 @@ function LoadMore({ onLoad }: { onLoad(): Promise<void> }) {
   return (
     <button className="act-loadmore" type="button" onClick={() => void onLoad()}>
       load older ↓
+    </button>
+  );
+}
+
+function ActivityViewControls({
+  viewMode,
+  sortDir,
+  onViewMode,
+  onSortDir,
+}: {
+  viewMode: ActivityViewMode;
+  sortDir: SortDirection;
+  onViewMode(value: ActivityViewMode): void;
+  onSortDir(updater: (value: SortDirection) => SortDirection): void;
+}) {
+  const timelineActive = viewMode === "timeline";
+  const groupedActive = viewMode === "grouped";
+  return (
+    <div className="act-view-controls" aria-label="Activity view controls">
+      <button
+        className="act-sort-toggle"
+        onClick={() => onSortDir((value) => value === "desc" ? "asc" : "desc")}
+        type="button"
+        title={sortDir === "desc" ? "Newest first" : "Oldest first"}
+        aria-label={sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"}
+        aria-pressed={sortDir === "desc"}
+      >
+        {sortDir === "desc" ? <ArrowDownWideNarrow size={17} strokeWidth={2.1} aria-hidden /> : <ArrowUpNarrowWide size={17} strokeWidth={2.1} aria-hidden />}
+      </button>
+      <div className="act-view-segment" role="group" aria-label="Activity layout">
+        <button
+          className={`act-view-icon${timelineActive ? " active" : ""}`}
+          onClick={() => onViewMode("timeline")}
+          type="button"
+          title="Timeline view"
+          aria-label="Timeline view"
+          aria-pressed={timelineActive}
+        >
+          <Rows3 size={18} strokeWidth={2.1} aria-hidden />
+        </button>
+        <button
+          className={`act-view-icon${groupedActive ? " active" : ""}`}
+          onClick={() => onViewMode("grouped")}
+          type="button"
+          title="Grouped view"
+          aria-label="Grouped view"
+          aria-pressed={groupedActive}
+        >
+          <LayoutList size={18} strokeWidth={2.1} aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ActivityLiveToggle({
+  aliveOnly,
+  busyCount,
+  onToggle,
+}: {
+  aliveOnly: boolean;
+  busyCount: number;
+  onToggle(): void;
+}) {
+  return (
+    <button
+      className={`act-live${aliveOnly ? " active" : ""}`}
+      onClick={onToggle}
+      type="button"
+      title="Show only activity from working agents"
+      aria-pressed={aliveOnly}
+    >
+      <span className="act-live-dot" />
+      <span className="act-live-working">{busyCount} working</span>
     </button>
   );
 }
@@ -414,18 +434,21 @@ function RoomDigest({
 }) {
   const { room, roomId, items, awaiting } = group;
   const isDm = room.kind === "dm";
-  const label = isDm ? room.name : `#${room.name}`;
+  const label = roomNameText(room.kind, room.name);
   const expanded = !collapsed;
   const last = items[0];
+  const showFooterOpen = !compact && items.length >= 15;
   return (
     <div className={`act-digest-room${expanded ? " open" : ""}`}>
       <div className="act-digest-head">
         <button className="act-digest-toggle" onClick={onToggle} type="button">
           <span className="act-digest-chevron">{expanded ? "▾" : "▸"}</span>
-          <IdentityBadge className="act-room-icon sm" color={room.color}>
-            {room.emoji ?? label[0]}
-          </IdentityBadge>
-          <span className="act-room-name">{label}</span>
+          {isDm ? (
+            <IdentityBadge className="act-room-icon sm" color={room.color}>
+              {room.emoji ?? label[0]}
+            </IdentityBadge>
+          ) : null}
+          <RoomNameInline kind={room.kind} name={room.name} className="act-room-name" />
           <span className="act-room-count">{items.length}</span>
           {awaiting > 0 && <span className="act-room-await">{awaiting} awaiting</span>}
           {!expanded && last && (
@@ -445,7 +468,7 @@ function RoomDigest({
           {items.map((it) => (
             <ActivityItem key={it.id} {...itemProps(it, false)} />
           ))}
-          {!compact && (
+          {showFooterOpen && (
             <button className="act-digest-go" onClick={() => onJumpToRoom(roomId)} type="button">
               open {label} →
             </button>
@@ -458,6 +481,7 @@ function RoomDigest({
 
 function TimelineFlat({
   items,
+  sortDir,
   itemProps,
   agentsById,
   roomsById,
@@ -466,6 +490,7 @@ function TimelineFlat({
   compact,
 }: {
   items: ActivityItemModel[];
+  sortDir: SortDirection;
   itemProps: ItemPropsFn;
   agentsById: Map<string, Agent>;
   roomsById: Map<string, Room>;
@@ -474,8 +499,11 @@ function TimelineFlat({
   compact: boolean;
 }) {
   const scrollRef = useAutoScrollbar<HTMLDivElement>();
-  const latest = items[0];
-  const entries = useMemo(() => bucketTimeline(items), [items]);
+  const latest = useMemo(
+    () => items.reduce<ActivityItemModel | undefined>((best, item) => !best || item.eventId > best.eventId ? item : best, undefined),
+    [items],
+  );
+  const entries = useMemo(() => bucketTimeline(items, sortDir), [items, sortDir]);
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
@@ -536,7 +564,7 @@ function LatestStrip({
       <Avatar agent={actor} size={26} />
       <IdentityBadge className="act-latest-actor" color={actor.color}>{actor.name}</IdentityBadge>
       <span className="act-latest-text">{stripMd(item.text).slice(0, 90)}</span>
-      {room && <span className="act-latest-room">{room.kind === "dm" ? room.name : `#${room.name}`}</span>}
+      {room && <RoomNameInline kind={room.kind} name={room.name} className="act-latest-room" />}
       <span className="act-spacer" />
       <button className="act-act-btn jump" onClick={() => onJumpToRoom(item.roomId, item.msgId)} type="button">
         jump ↳
@@ -545,7 +573,7 @@ function LatestStrip({
   );
 }
 
-function bucketTimeline(items: ActivityItemModel[]): TimelineEntry[] {
+function bucketTimeline(items: ActivityItemModel[], sortDir: SortDirection): TimelineEntry[] {
   // Cascading age buckets: each item belongs to the first matching window, so
   // "Today" excludes the last 5h, "Last 3 days" excludes today, and so on.
   const hour = 60 * 60 * 1000;
@@ -568,7 +596,8 @@ function bucketTimeline(items: ActivityItemModel[]): TimelineEntry[] {
   }
 
   const entries: TimelineEntry[] = [];
-  for (const bucket of byBucket) {
+  const orderedBuckets = sortDir === "desc" ? byBucket : [...byBucket].reverse();
+  for (const bucket of orderedBuckets) {
     if (bucket.items.length === 0) continue;
     entries.push({ kind: "bucket", id: `bucket:${bucket.id}`, label: bucket.label, count: bucket.items.length });
     entries.push(...bucket.items.map((item) => ({ kind: "item" as const, id: item.id, item })));
@@ -584,7 +613,6 @@ function RoomFilterBar({
   onToggle,
   onClear,
   compact = false,
-  menuOnly = false,
 }: {
   roomIds: string[];
   roomsById: Map<string, Room>;
@@ -592,27 +620,9 @@ function RoomFilterBar({
   onToggle(id: string): void;
   onClear(): void;
   compact?: boolean;
-  menuOnly?: boolean;
 }) {
-  // In the compact shell the rail is a plain horizontally-scrollable row of ALL
-  // room chips — NOT the desktop measure-and-fit layout. That measure-and-fit
-  // path is a ResizeObserver feedback loop on a narrow screen: rail width →
-  // pills that fit → whether the "›" overflow button renders → rail width …
-  // which thrashes endlessly. Skipping the observer (railW stays 0 → visN =
-  // all → every pill rendered → CSS scrolls them) removes the loop entirely.
-  const isCompactShell = useIsCompact();
-  const railRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
-  const [railW, setRailW] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
-
-  useEffect(() => {
-    if (isCompactShell) return undefined;
-    if (!railRef.current) return undefined;
-    const ro = new ResizeObserver((entries) => setRailW(entries[0]?.contentRect.width ?? 0));
-    ro.observe(railRef.current);
-    return () => ro.disconnect();
-  }, [isCompactShell]);
 
   useEffect(() => {
     if (!panelOpen) return undefined;
@@ -630,23 +640,6 @@ function RoomFilterBar({
     return arr;
   }, [roomIds, roomsById, selected]);
 
-  const estWidth = (room: Room) => {
-    const name = room.kind === "dm" ? room.name : `#${room.name}`;
-    return 40 + name.length * 7.4;
-  };
-  let visN = ordered.length;
-  if (!isCompactShell && railW > 0) {
-    let avail = railW;
-    visN = 0;
-    for (const r of ordered) {
-      const w = estWidth(r.room) + 6;
-      if (avail - w < 0) break;
-      avail -= w;
-      visN += 1;
-    }
-  }
-  const visiblePills = ordered.slice(0, visN);
-  const hiddenCount = ordered.length - visN;
   const roomList = panelOpen ? (
     <div className="act-roomlist">
       <div className="act-roomlist-head">
@@ -660,8 +653,12 @@ function RoomFilterBar({
           return (
             <button key={id} className={`act-roomlist-row${on ? " on" : ""}`} onClick={() => onToggle(id)} type="button">
               <span className={`act-roomlist-check${on ? " on" : ""}`}>{on ? "✓" : ""}</span>
-              <IdentityBadge className="act-room-icon sm" color={room.color}>{room.emoji ?? (room.kind === "dm" ? room.name[0] : "#")}</IdentityBadge>
-              <span className="act-roomlist-name">{room.kind === "dm" ? room.name : `#${room.name}`}</span>
+              {room.kind === "group" ? (
+                <IdentityLogoTile className="act-room-icon sm room-glyph-icon" color={room.color}>{room.emoji ?? "#"}</IdentityLogoTile>
+              ) : (
+                <IdentityBadge className="act-room-icon sm" color={room.color}>{room.emoji ?? room.name[0]}</IdentityBadge>
+              )}
+              <RoomNameInline kind={room.kind} name={room.name} className="act-roomlist-name" />
               {room.unread > 0 && <span className="act-roomlist-unread">{room.unread}</span>}
             </button>
           );
@@ -670,55 +667,25 @@ function RoomFilterBar({
     </div>
   ) : null;
 
-  if (menuOnly) {
-    return (
-      <div className={`act-roombar act-roombar-inline act-roombar-menuonly${compact ? " act-roombar-compact" : ""}`}>
-        <div className="act-rf-more-wrap" ref={moreRef}>
-          <button
-            className={`act-filter act-room-filter-trigger${selected.size > 0 ? " active" : ""}${panelOpen ? " open" : ""}`}
-            onClick={() => setPanelOpen((o) => !o)}
-            type="button"
-            title="Filter rooms"
-            aria-label="Filter rooms"
-            aria-pressed={selected.size > 0}
-          >
-            ROOMS
-            <span className="act-filter-n">{selected.size || ordered.length}</span>
-          </button>
-          {roomList}
-        </div>
-      </div>
-    );
-  }
-
+  const roomFilterLabel = selected.size === 0 ? "all" : String(selected.size);
+  const roomFilterAria = selected.size === 0 ? "Filter rooms, all rooms" : `Filter rooms, ${selected.size} selected`;
   return (
-    <div className={`act-roombar${compact ? " act-roombar-inline" : ""}`}>
-      {!compact && <span className="act-roombar-label">ROOM</span>}
-      {(!compact || selected.size > 0) && (
-        <button className={`act-rf-chip${selected.size === 0 ? " active" : ""}`} onClick={onClear} type="button">
-          all
-        </button>
-      )}
-      <div className="act-roombar-rail" ref={railRef}>
-        {visiblePills.map(({ id, room }) => (
-          <button key={id} className={`act-rf-chip${selected.has(id) ? " active" : ""}`} onClick={() => onToggle(id)} type="button">
-            <IdentityBadge className="act-rf-dot" color={room.color} />
-            {room.kind === "dm" ? room.name : `#${room.name}`}
-          </button>
-        ))}
-      </div>
-      {(!compact || hiddenCount > 0) && <div className="act-rf-more-wrap" ref={moreRef}>
+    <div className={`act-roombar act-roombar-inline act-roombar-menuonly${compact ? " act-roombar-compact" : ""}`}>
+        <div className="act-room-filter-wrap" ref={moreRef}>
         <button
-          className={`act-rf-more${compact ? " act-rf-more-arrow" : ""}${panelOpen ? " open" : ""}`}
+          className={`act-filter act-room-filter-trigger topbar-control${selected.size > 0 ? " active" : ""}${panelOpen ? " open" : ""}`}
           onClick={() => setPanelOpen((o) => !o)}
           type="button"
-          title={hiddenCount > 0 ? `${hiddenCount} more rooms` : "All rooms"}
-          aria-label={hiddenCount > 0 ? `${hiddenCount} more rooms` : "All rooms"}
+          title="Filter rooms"
+          aria-label={roomFilterAria}
+          aria-pressed={selected.size > 0}
         >
-          {compact ? "›" : `${hiddenCount > 0 ? `+${hiddenCount} more` : "all rooms"} ▾`}
+          ROOM
+          <span className="act-filter-n">{roomFilterLabel}</span>
+          <span className="act-room-filter-caret">▾</span>
         </button>
         {roomList}
-      </div>}
+      </div>
     </div>
   );
 }

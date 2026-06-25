@@ -5,6 +5,7 @@ import { cn } from "../lib/cn";
 import { useLaunchProfiles, useSpawnAgent } from "../data/context.tsx";
 import type { AgentLaunchProfile, AgentLaunchTool, Room } from "../data/types.ts";
 import { useToast } from "./Toast.tsx";
+import { roomNameText } from "./primitives.tsx";
 
 // Styles migrated from styles.css (.spawn-* family) to inline Tailwind v4
 // utilities. `.spawn-agent-dialog` is retained as a class because it is a
@@ -137,7 +138,8 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  const title = useMemo(() => `Spawn into #${room.name}`, [room.name]);
+  const roomLabel = useMemo(() => roomNameText(room.kind, room.name), [room.kind, room.name]);
+  const title = useMemo(() => `Spawn into ${roomLabel}`, [roomLabel]);
   const profiles = useMemo(
     () => mergeLaunchProfiles(launchProfiles, fetchedProfiles, room.launchProfiles ?? []),
     [fetchedProfiles, launchProfiles, room.launchProfiles],
@@ -214,7 +216,7 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
       return;
     }
     if (isAliasInUse(room, trimmed)) {
-      setError(`Alias '${trimmed}' is already in #${room.name}`);
+      setError(`Alias '${trimmed}' is already in ${roomLabel}`);
       return;
     }
     if (!path) {
@@ -241,7 +243,7 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
         ...(selectedModel.model ? { model: selectedModel.model } : {}),
         ...(selectedModel.thinking ? { thinking: selectedModel.thinking } : {}),
       });
-      toast.show(`${result.sessionName} is launching in #${result.group}`, { kind: "success" });
+      toast.show(`${result.sessionName} is launching in ${roomNameText("group", result.group)}`, { kind: "success" });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

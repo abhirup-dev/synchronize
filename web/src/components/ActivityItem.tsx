@@ -6,12 +6,14 @@
 
 import { memo } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
-import { IdentityBadge, StatusDot } from "./primitives.tsx";
+import { IdentityBadge, IdentityLogoTile, RoomNameInline, StatusDot, roomNameText } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { canShowAgentPreview } from "./AgentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { MessageKindIcon, messageKindForActivity } from "./MessageKindIcon.tsx";
+import { InlineMarkdownPreview } from "./InlineMarkdownPreview.tsx";
 
 export interface ActivityItemProps {
   item: ActivityItemModel;
@@ -26,58 +28,27 @@ export interface ActivityItemProps {
   onOpenDm?(agentId: string): void;
 }
 
-function MarkerIcon({ item }: { item: ActivityItemModel }) {
-  if (item.isMention) {
-    return (
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="4" />
-        <path d="M16 8.5 L16 13.2 C16 14.7 17.2 15.4 18.4 14.9 C20.4 14 21 11.5 20.3 9.2 C19 5 14.6 2.8 10.4 3.9 C6 5 3.4 9.4 4.5 13.8 C5.6 18.2 10 20.8 14.4 19.7" />
-      </svg>
-    );
-  }
-  if (item.threadParentId) {
-    return (
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 11.5 C21 15.6 16.97 18.5 12 18.5 C10.8 18.5 9.66 18.33 8.62 18.02 L4 19.5 L5.2 15.7 C4.13 14.5 3.5 13.06 3.5 11.5 C3.5 7.4 7.53 4.5 12 4.5 C16.97 4.5 21 7.4 21 11.5 Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 5.5 h16 v10 H9 l-4 3.5 v-3.5 H4 z" />
-    </svg>
-  );
-}
-
 function RoomChip({ room, onJump }: { room: Room; onJump(): void }) {
   const isDm = room.kind === "dm";
+  const label = roomNameText(room.kind, room.name);
   return (
     <button
       className="act-roomchip sm"
       onClick={(e) => { e.stopPropagation(); onJump(); }}
-      title={`Go to ${isDm ? room.name : `#${room.name}`}`}
+      title={`Go to ${label}`}
       type="button"
     >
-      <IdentityBadge className="act-roomchip-icon" color={room.color}>
-        {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
-      </IdentityBadge>
-      <span className="act-roomchip-name">{isDm ? room.name : `#${room.name}`}</span>
-    </button>
-  );
-}
-
-function ActivityPreview({ text }: { text: string }) {
-  // Keep Activity rows content-first: no leading "posted in" / "mentioned you"
-  // chrome. Mentions are emphasized where they appear in the message body.
-  const parts = text.split(/(@(?:you|web:local-human)\b)/gi);
-  return (
-    <>
-      {parts.map((part, index) =>
-        /^@(?:you|web:local-human)$/i.test(part)
-          ? <mark key={index} className="act-mention-hit">{part}</mark>
-          : <span key={index}>{part}</span>
+      {room.kind === "group" ? (
+        <IdentityLogoTile className="act-roomchip-icon room-glyph-icon" color={room.color}>
+          {room.emoji ?? "#"}
+        </IdentityLogoTile>
+      ) : (
+        <IdentityBadge className="act-roomchip-icon" color={room.color}>
+          {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
+        </IdentityBadge>
       )}
-    </>
+      <RoomNameInline kind={room.kind} name={room.name} className="act-roomchip-name" />
+    </button>
   );
 }
 
@@ -99,6 +70,7 @@ function ActivityItemImpl({
   if (!actor) return null;
   const awaits = item.awaiting;
   const canViewProfile = Boolean(onViewProfile && canShowAgentPreview(actor));
+  const showAuthorChip = room?.kind !== "dm";
 
   const onRowClick = () => {
     onOpenThread(item);
@@ -129,10 +101,8 @@ function ActivityItemImpl({
       }
     >
       {awaits && <span className="act-row-bar" />}
-      <IdentityBadge
-        as="div"
-        className="act-marker sm"
-        color={actor.color}
+      <span
+        className="act-message-marker"
         onContextMenu={(e) =>
           openMenu(e, agentActionMenuItems(e, {
             agent: actor,
@@ -143,26 +113,27 @@ function ActivityItemImpl({
           }))
         }
       >
-        <MarkerIcon item={item} />
-        {actor.status === "busy" && <span className="act-marker-pulse" />}
-      </IdentityBadge>
-      <IdentityBadge
-        className="author-chip xs"
-        color={actor.color}
-        onContextMenu={(e) =>
-          openMenu(e, agentActionMenuItems(e, {
-            agent: actor,
-            toast,
-            archive,
-            ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
-            ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
-          }))
-        }
-      >
-        {actor.name}
-      </IdentityBadge>
+        <MessageKindIcon kind={messageKindForActivity(item, room)} mentioned={item.isMention} size={18} />
+      </span>
+      {showAuthorChip && (
+        <IdentityBadge
+          className="author-chip xs"
+          color={actor.color}
+          onContextMenu={(e) =>
+            openMenu(e, agentActionMenuItems(e, {
+              agent: actor,
+              toast,
+              archive,
+              ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
+              ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
+            }))
+          }
+        >
+          {actor.name}
+        </IdentityBadge>
+      )}
       <span className="act-row-text">
-        <span className="act-row-preview"><ActivityPreview text={item.text} /></span>
+        <span className="act-row-preview"><InlineMarkdownPreview text={item.text} className="act-inline-markdown" /></span>
       </span>
       {showRoom && room && <RoomChip room={room} onJump={() => onJumpToRoom(item.roomId)} />}
       <span className="act-time">{relativeTime(item.createdAt)}</span>

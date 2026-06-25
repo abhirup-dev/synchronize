@@ -11,7 +11,7 @@ import { cn } from "../lib/cn";
  */
 const scrollCtrl = cva(
   [
-    "pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center",
+    "scroll-ctrl pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center",
     "rounded-pill bg-paper-2 text-ink shadow-sm [border:var(--line-sm)]",
     "font-display text-[length:var(--text-13)] leading-none opacity-55",
     "[transition:opacity_160ms_ease,transform_80ms_ease,box-shadow_80ms_ease]",
@@ -22,9 +22,7 @@ const scrollCtrl = cva(
     variants: {
       newItems: {
         true: [
-          "animate-[new-message-pop_900ms_ease-out_infinite] bg-lime opacity-100",
-          "theme-dark:animate-none theme-dark:border-rule theme-dark:bg-paper-3 theme-dark:text-ink",
-          "theme-dark:shadow-[2px_2px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72)),inset_0_-3px_0_var(--lime)]",
+          "scroll-ctrl-new animate-[new-message-pop_900ms_ease-out_infinite] bg-lime opacity-100",
         ],
         false: null,
       },

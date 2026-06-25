@@ -34,6 +34,7 @@ export function IdentityBadge({
   style,
   as = "span",
   onContextMenu,
+  ariaHidden,
 }: {
   color: string;
   ink?: string;
@@ -46,6 +47,7 @@ export function IdentityBadge({
   style?: CSSProperties;
   as?: "span" | "div";
   onContextMenu?: MouseEventHandler;
+  ariaHidden?: boolean;
 }) {
   const Element = as;
   const identityStyle = {
@@ -61,9 +63,103 @@ export function IdentityBadge({
       style={identityStyle}
       title={title}
       onContextMenu={onContextMenu}
+      aria-hidden={ariaHidden}
     >
       {children}
     </Element>
+  );
+}
+
+export function IdentityLogoTile({
+  color,
+  ink,
+  children,
+  className = "",
+  size,
+  fontSize,
+  self = false,
+  title,
+  style,
+  as = "span",
+  onContextMenu,
+  ariaHidden,
+}: {
+  color?: string;
+  ink?: string;
+  children?: ReactNode;
+  className?: string;
+  size?: number;
+  fontSize?: number | string;
+  self?: boolean;
+  title?: string;
+  style?: CSSProperties;
+  as?: "span" | "div";
+  onContextMenu?: MouseEventHandler;
+  ariaHidden?: boolean;
+}) {
+  const logoClassName = `${className ? `${className} ` : ""}identity-logo-tile`;
+
+  if (color) {
+    return (
+      <IdentityBadge
+        as={as}
+        className={logoClassName}
+        color={color}
+        {...(ink !== undefined ? { ink } : null)}
+        {...(self ? { self } : null)}
+        {...(size !== undefined ? { size } : null)}
+        {...(fontSize !== undefined ? { fontSize } : null)}
+        {...(title !== undefined ? { title } : null)}
+        {...(style !== undefined ? { style } : null)}
+        {...(onContextMenu !== undefined ? { onContextMenu } : null)}
+        {...(ariaHidden !== undefined ? { ariaHidden } : null)}
+      >
+        {children}
+      </IdentityBadge>
+    );
+  }
+
+  const Element = as;
+  return (
+    <Element className={logoClassName} style={style} title={title} onContextMenu={onContextMenu} aria-hidden={ariaHidden}>
+      {children}
+    </Element>
+  );
+}
+
+export function PanelSectionHeader({
+  label,
+  count,
+  actionLabel,
+  actionTitle,
+  onAction,
+  className = "",
+}: {
+  label: string;
+  count?: number;
+  actionLabel?: ReactNode;
+  actionTitle?: string;
+  onAction?: MouseEventHandler<HTMLButtonElement>;
+  className?: string;
+}) {
+  return (
+    <div className={`${className ? `${className} ` : ""}panel-section-head`}>
+      <span className="panel-section-title">
+        <span>{label}</span>
+        {count !== undefined && <CountChip n={count} />}
+      </span>
+      {actionLabel !== undefined ? (
+        <button
+          type="button"
+          className="panel-section-action"
+          title={actionTitle}
+          aria-label={actionTitle ?? String(actionLabel)}
+          onClick={onAction}
+        >
+          {actionLabel}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -81,6 +177,32 @@ export function IdentityText({
       {children}
     </span>
   );
+}
+
+export function RoomNameInline({
+  kind,
+  name,
+  className = "",
+  showPrefix = true,
+}: {
+  kind: "group" | "dm";
+  name: string;
+  className?: string;
+  showPrefix?: boolean;
+}) {
+  if (kind === "dm") {
+    return <span className={className}>{name}</span>;
+  }
+  return (
+    <span className={`${className ? `${className} ` : ""}room-name-inline`}>
+      {showPrefix ? <span className="room-name-hash" aria-hidden="true">#</span> : null}
+      <span className="room-name-text">{name}</span>
+    </span>
+  );
+}
+
+export function roomNameText(kind: "group" | "dm", name: string): string {
+  return kind === "group" ? `#${name}` : name;
 }
 
 export function Avatar({

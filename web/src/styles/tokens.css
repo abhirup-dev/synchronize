@@ -30,6 +30,7 @@
   --shadow-lg: 6px 6px 0 var(--rule);
   --shadow-hover: 3px 3px 0 var(--rule);
   --font-display: "Archivo Black", sans-serif;
+  --font-heading: var(--font-ui);
   --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   --text-8: 8px;
@@ -141,7 +142,15 @@
   --space-row-gap: var(--space-14);
   --space-row-gap-compact: var(--space-10);
   --space-bubble-pad: 12px 16px;
-  --space-thread-bubble-pad: 7px 11px;
+  --space-bubble-paragraph-gap: 0.75em;
+  --space-thread-bubble-pad: 10px 12px;
+  --space-thread-bubble-pad-compact: 12px 14px;
+  --leading-message-paragraph: 1.5;
+  --rich-heading-h1-size: var(--text-16);
+  --rich-heading-h2-size: var(--text-14);
+  --rich-heading-h3-size: var(--text-12-5);
+  --rich-heading-h3-fg: var(--ink-soft);
+  --rich-strong-weight: var(--strong-weight);
   --space-chip-pad-xs: 1px 5px;
   --space-chip-pad-sm: 1px 6px;
   --space-chip-pad-md: 2px 7px;
@@ -177,6 +186,13 @@
   --grain-alpha: 0.04;
   --on-ink: var(--paper);
   --on-accent: #111111;
+  --surface-selected-bg: color-mix(in srgb, var(--paper-3) 82%, var(--ink) 10%);
+  --surface-selected-fg: var(--ink);
+  --surface-selected-muted: color-mix(in srgb, var(--ink-soft) 76%, var(--ink) 24%);
+  --surface-selected-border: var(--ink);
+  --count-chip-bg: var(--surface-selected-bg);
+  --count-chip-fg: var(--surface-selected-fg);
+  --count-chip-border: var(--surface-selected-border);
   /* Light/brutal: self bubble + code blocks ride a darker-cream surface (paper-3)
      with ink text rather than stark black — keeps the palette warm and matches
      the roster focused-card treatment. Kanagawa overrides these below. The
@@ -279,6 +295,13 @@
   --ink-faint: #727169;
   --on-ink: #16161D;
   --rule: rgba(212, 206, 176, 0.36);
+  --surface-selected-bg: var(--paper-3);
+  --surface-selected-fg: var(--ink);
+  --surface-selected-muted: var(--ink-soft);
+  --surface-selected-border: var(--rule);
+  --count-chip-bg: var(--ink);
+  --count-chip-fg: var(--paper);
+  --count-chip-border: var(--ink);
   --line: 1.5px solid var(--rule);
   --line-2: 1px solid var(--rule);
   --line-bold: 2px solid var(--rule);
@@ -343,4 +366,5 @@
   --code-inline-border: 1px solid rgba(212, 206, 176, 0.28);
   --strong-fg: #E8E0C2;
   --strong-weight: 800;
+  --rich-strong-weight: 700;
 }

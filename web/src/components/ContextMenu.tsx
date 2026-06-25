@@ -37,7 +37,8 @@ const ctxItem = cva(
 
 export interface MenuItem {
   label: string;
-  onSelect(): void | Promise<void>;
+  onSelect?: () => void | Promise<void>;
+  submenu?: MenuEntry[];
   danger?: boolean;
   disabled?: boolean;
   shortcut?: string;
@@ -52,6 +53,7 @@ interface OpenState {
   x: number;
   y: number;
   items: MenuEntry[];
+  stack: MenuEntry[][];
 }
 
 interface Ctx {
@@ -68,7 +70,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
     e.preventDefault();
     e.stopPropagation();
     window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
-    setState({ x: e.clientX, y: e.clientY, items });
+    setState({ x: e.clientX, y: e.clientY, items, stack: [] });
   }, []);
 
   useEffect(() => {
@@ -124,6 +126,23 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                 "shadow-[4px_4px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72))]",
               )}
             >
+              {state && state.stack.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className={cn(ctxItem({ danger: false }))}
+                    onClick={() => setState((prev) => {
+                      if (!prev) return prev;
+                      const nextStack = prev.stack.slice(0, -1);
+                      const parentItems = prev.stack[prev.stack.length - 1] ?? prev.items;
+                      return { ...prev, items: parentItems, stack: nextStack };
+                    })}
+                  >
+                    <span>← Back</span>
+                  </button>
+                  <Menu.Separator className="my-[3px] mx-[4px] h-[1.5px] bg-ink-faint" />
+                </>
+              ) : null}
               {(state?.items ?? []).map((it, i) => {
                 if ("divider" in it) {
                   return (
@@ -136,26 +155,32 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
                 const runItem = () => {
                   if (it.disabled) return;
+                  if (it.submenu) {
+                    setState((prev) => prev ? { ...prev, items: it.submenu!, stack: [...prev.stack, prev.items] } : prev);
+                    return;
+                  }
+                  if (!it.onSelect) return;
                   setState(null);
                   void Promise.resolve(it.onSelect());
                 };
 
                 return (
-                  <Menu.Item
+                  <button
                     key={i}
+                    type="button"
                     className={cn(ctxItem({ danger: it.danger ?? false }))}
                     disabled={it.disabled ?? false}
-                    nativeButton
-                    render={<button type="button" disabled={it.disabled ?? false} onClick={runItem} />}
                     onClick={runItem}
                   >
                     <span>{it.label}</span>
-                    {it.shortcut && (
+                    {it.submenu ? (
+                      <span className="text-[length:var(--text-11)] text-ink-soft">›</span>
+                    ) : it.shortcut ? (
                       <span className="text-[length:var(--text-11)] text-ink-soft">
                         {it.shortcut}
                       </span>
-                    )}
-                  </Menu.Item>
+                    ) : null}
+                  </button>
                 );
               })}
             </Menu.Popup>

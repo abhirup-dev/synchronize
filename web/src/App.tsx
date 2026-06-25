@@ -24,7 +24,7 @@ import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx
 import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
-import { usePersistentTheme, type ThemeName, themeFamily, themeTraits, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
 
 function titleCase(value: string): string {
@@ -348,7 +348,19 @@ export function Shell() {
   return (
     <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
       {layout.persistentSidebar && (
-        <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
+        <Sidebar
+          activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")}
+          onSelect={selectRoom}
+          mode={vim.mode}
+          displaySettings={{
+            theme,
+            skin,
+            chatBg,
+            onTheme: setTheme,
+            onToggleSkin: () => setSkin((current) => (current === "brutal" ? "glass" : "brutal")),
+            onChatBg: setChatBg,
+          }}
+        />
       )}
       <ShellMainColumn
         style={threadParentId && layout.threadAsSplit ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
@@ -363,7 +375,6 @@ export function Shell() {
                 tab={tab}
                 onTab={setTab}
                 theme={theme}
-                themeIcon={themeTraits(theme).toggleGlyph}
                 onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
                 skin={skin}
                 onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}

@@ -380,7 +380,7 @@ function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
     const re = new RegExp(`@(${handles.map(escapeRegExp).join("|")})(?=$|\\s|[!?;:,)\\]}]|\\.(?=$|\\s))`, "g");
     return body.replace(re, (_, h) => `\`@@${h}\``);
   }, [body, agents]);
-  return <Markdown agents={agents}>{rewritten}</Markdown>;
+  return <Markdown agents={agents} variant="rich">{rewritten}</Markdown>;
 }
 
 function escapeRegExp(value: string): string {

@@ -49,6 +49,23 @@ export const AllStatuses: Story = {
   args: { room: heartbeat },
 };
 
+export const Header: Story = {
+  args: { room: checkoutRevamp },
+  globals: { theme: "kanagawa-wave", skin: "brutal" },
+  play: async ({ canvasElement, step }) => {
+    await step("Roster header follows the shared borderless panel label", async () => {
+      const header = await waitFor(() => {
+        const match = canvasElement.querySelector<HTMLElement>(".roster-head");
+        if (!match) throw new Error("roster header not found");
+        return match;
+      });
+      expect(header.classList.contains("panel-section-head")).toBe(true);
+      expect(getComputedStyle(header).borderRadius).toBe("0px");
+      expect(getComputedStyle(header).borderStyle).toBe("none");
+    });
+  },
+};
+
 export const ViewProfileFlow: Story = {
   args: { room: checkoutRevamp, onOpenDm: fn() },
   decorators: [
