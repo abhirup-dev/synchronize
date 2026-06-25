@@ -189,10 +189,9 @@ export function reactionDmPeerId(event: EventRow, actorPeerId: string): string |
   return event.sender_peer_id === actorPeerId ? event.recipient_peer_id : event.sender_peer_id;
 }
 
-// Engaging with an event — reacting to it, or replying in its thread — clears it
-// from the actor's "awaiting you" set (the web Activity view's awaiting signal is
-// inbox.acked_at IS NULL). Acking here, server-side, keeps the signal correct no
-// matter which surface the engagement came from (Activity, chat, thread pane).
+// Legacy durable-inbox acknowledgement. The web Activity "awaiting you" signal
+// now comes from peer_thread_interactions; callers that are clearing Activity
+// state must also record a thread interaction.
 export function ackInboxEvents(db: Database, peerId: string, eventIds: number[]): number {
   const ids = [...new Set(eventIds.filter((id): id is number => Number.isFinite(id)))];
   if (ids.length === 0) return 0;

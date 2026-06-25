@@ -85,6 +85,37 @@ export const Grouped: Story = {
   },
 };
 
+export const ScopedAcknowledgeControls: Story = {
+  play: async ({ canvasElement, step }) => {
+    await step("Grouped room headers can acknowledge only that room", async () => {
+      const groupAck = await waitFor(() => {
+        const button = canvasElement.querySelector<HTMLButtonElement>(".act-digest-room .act-scope-ack");
+        if (!button) throw new Error("group scoped acknowledge control not found");
+        return button;
+      });
+      await userEvent.click(groupAck);
+      await waitFor(() => {
+        if (groupAck.isConnected) throw new Error("group scoped acknowledge control still visible");
+      });
+    });
+
+    await step("Timeline buckets can acknowledge only that time interval", async () => {
+      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('[aria-label="Timeline view"]');
+      expect(timelineToggle).toBeTruthy();
+      await userEvent.click(timelineToggle!);
+      const bucketAck = await waitFor(() => {
+        const button = canvasElement.querySelector<HTMLButtonElement>(".act-timeline-bucket .act-scope-ack");
+        if (!button) throw new Error("timeline bucket scoped acknowledge control not found");
+        return button;
+      });
+      await userEvent.click(bucketAck);
+      await waitFor(() => {
+        if (bucketAck.isConnected) throw new Error("timeline bucket acknowledge control still visible");
+      });
+    });
+  },
+};
+
 // Same feed with a wider thread side-panel preference. The pane only mounts once
 // a row is opened, so the play opens the deep-dive thread row to actually
 // demonstrate the wider (560px) pane — threadWidth alone reserves nothing.
@@ -93,7 +124,7 @@ export const WideThreadPane: Story = {
   play: async ({ canvasElement }) => {
     const row = await waitFor(() => {
       const match = [...canvasElement.querySelectorAll<HTMLElement>(".act-scroll .act-row")].find((el) =>
-        /rollout checklist deep-dive/i.test(el.textContent ?? ""),
+        /ramp to 50%/i.test(el.textContent ?? ""),
       );
       if (!match) throw new Error("deep-dive activity row not found");
       return match;

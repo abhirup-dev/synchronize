@@ -601,6 +601,7 @@ export class DaemonDataSource implements DataSource {
         delivered = this.rememberLocalMessage(delivered, body, attachments);
         this.replaceOptimistic(input, optimistic.id, delivered);
         await this.refreshRoom(input.roomId);
+        await this.refreshActivity({ force: true });
         return delivered;
       } catch (error) {
         this.removeOptimistic(input, optimistic.id);
@@ -626,6 +627,7 @@ export class DaemonDataSource implements DataSource {
       delivered = this.rememberLocalMessage(delivered, body, attachments);
       this.replaceOptimistic(input, optimistic.id, delivered);
       await this.refreshRoom(input.roomId);
+      await this.refreshActivity({ force: true });
       return delivered;
     } catch (error) {
       this.removeOptimistic(input, optimistic.id);
@@ -685,17 +687,25 @@ export class DaemonDataSource implements DataSource {
     const roomId = roomIdForEvent(response.event, this.peerId) ?? input.roomId;
     const updated = mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId));
     this.updateMessageSnapshots(updated);
+    await this.refreshActivity({ force: true });
     return updated;
   }
 
   async ackActivity(eventId: number): Promise<void> {
-    // Optimistic: clear the row locally, then persist. The server also acks on
-    // react/reply, so this is the explicit-ack path (e.g. the feed react button).
-    this.setActivityAwaiting(eventId, false);
+    await this.ackActivityEvents([eventId]);
+  }
+
+  async ackActivityEvents(eventIds: number[]): Promise<void> {
+    const ids = [...new Set(eventIds.filter((eventId) => Number.isInteger(eventId) && eventId > 0))];
+    if (ids.length === 0) return;
+    // Optimistic: clear rows locally, then persist. The server also acks on
+    // react/reply, so this is the explicit-ack path (feed row, group, bucket).
+    for (const eventId of ids) this.setActivityAwaiting(eventId, false);
     await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
       method: "POST",
-      body: JSON.stringify({ event_ids: [eventId] }),
+      body: JSON.stringify({ event_ids: ids }),
     }).catch(() => undefined);
+    await this.refreshActivity({ force: true });
   }
 
   async ackAllActivity(): Promise<void> {
@@ -708,6 +718,7 @@ export class DaemonDataSource implements DataSource {
       method: "POST",
       body: JSON.stringify({}),
     }).catch(() => undefined);
+    await this.refreshActivity({ force: true });
   }
 
   async loadMoreActivity(): Promise<void> {
@@ -848,9 +859,9 @@ export class DaemonDataSource implements DataSource {
   // Fetch a page of the global feed. reset/head → newest window (merged, with
   // freshly-arrived rows flashed); before → older page appended. The in-memory
   // list is capped at ACTIVITY_CAP (older rows trimmed, re-fetchable).
-  private async refreshActivity(opts: { reset?: boolean; before?: number } = {}): Promise<void> {
+  private async refreshActivity(opts: { reset?: boolean; before?: number; force?: boolean } = {}): Promise<void> {
     if (this.peerId === PENDING_WEB_PEER_ID) return;
-    if (opts.before === undefined && this.activityRefresh) return this.activityRefresh;
+    if (opts.before === undefined && this.activityRefresh && !opts.force) return this.activityRefresh;
     const params = new URLSearchParams({ limit: String(ACTIVITY_WINDOW) });
     if (opts.before !== undefined) params.set("before", String(opts.before));
     const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)

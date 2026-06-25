@@ -41,6 +41,11 @@ export function useAckActivity() {
   return ds.ackActivity.bind(ds);
 }
 
+export function useAckActivityEvents() {
+  const ds = useDataSource();
+  return ds.ackActivityEvents.bind(ds);
+}
+
 export function useAckAllActivity() {
   const ds = useDataSource();
   return ds.ackAllActivity.bind(ds);

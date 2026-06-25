@@ -1011,11 +1011,8 @@ button { font-family: inherit; cursor: pointer; }
   transform: translateY(-1px);
 }
 
-/* Base .message-footer{,-left,-right} / .reactions / .reaction-wrap / .reaction
-   {,.is-mine,.add} / .rcount migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). Per-theme dark overrides for .reaction below are
-   retained — they out-specify the single-class utilities. The @media(max-width:
-   640px) .message-footer{,-left} responsive overrides also remain below. */
+/* Message reaction base styles live in components/extra.css. Per-theme dark
+   overrides stay here with the rest of the theme-specific surface corrections. */
 :root[data-theme="kanagawa-wave"] .reaction {
   background: var(--paper);
   color: var(--ink);
@@ -1678,25 +1675,6 @@ button { font-family: inherit; cursor: pointer; }
 .thread-pane-body::-webkit-scrollbar-thumb { background: var(--ink-faint); }
 .thread-pane-body::-webkit-scrollbar-track { background: var(--paper); }
 
-/* parent message: same visual language as a regular msg row, no extra chrome.
-   .thread-parent base rules migrated to inline Tailwind utilities in
-   ThreadPane.tsx (sync-vmre); the class is kept as a hook for `.thread-parent
-   .bubble` in extra.css. */
-.thread-parent-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-.thread-parent-head .author-chip {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  padding: var(--space-thread-author-chip-pad);
-  border-radius: var(--radius-xs);
-}
-.thread-parent-bubble .markdown p { margin: 0 0 6px; }
-.thread-parent-bubble .markdown p:last-child { margin-bottom: 0; }
-.thread-parent-bubble .poll { margin-top: 8px; }
-
 /* divider between parent and replies — same DNA as .day-divider but quieter.
    .thread-divider / .thread-divider-line base rules migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre); .thread-divider is kept as a hook for
@@ -1709,30 +1687,6 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-soft);
   white-space: nowrap;
 }
-
-/* replies use compressed msg-row vocabulary, no special styling */
-.thread-reply {
-  display: grid;
-  grid-template-columns: 40px 1fr;
-  gap: 0;
-}
-.thread-reply.compact { margin-top: -10px; }
-.thread-reply-head .author-chip.sm {
-  font-family: var(--font-display);
-  font-size: var(--text-10-5);
-  padding: var(--space-chip-pad-sm);
-  border-radius: var(--radius-xs);
-}
-.thread-reply-bubble .markdown p { margin: 0 0 4px; }
-.thread-reply-bubble .markdown p:last-child { margin-bottom: 0; }
-.thread-reply.you .thread-reply-bubble {
-  background: var(--muted);
-}
-.thread-reply.compact .thread-reply-bubble {
-  border-top-left-radius: var(--radius-xs);
-  border-top-right-radius: var(--radius-xs);
-}
-
 /* thread pane uses the standard Composer; ensure the wrap doesn't get squished */
 .thread-pane-composer-wrap {
   flex-shrink: 0;

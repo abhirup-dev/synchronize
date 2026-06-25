@@ -290,7 +290,8 @@
    Own messages right-align and render bubble-only (no avatar gutter, no name
    chip), so there is nothing to reorder in the grid. */
 .message-row.is-self {
-  justify-self: end;
+  width: 100%;
+  justify-self: stretch;
   grid-template-columns: minmax(0, 880px);
 }
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
@@ -303,8 +304,17 @@
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
-/* .message-body / .message-stack base migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). The .is-self alignment overrides stay in CSS. */
+/* Message geometry is centralized here instead of split between JSX utilities
+   and thread-specific overrides. The stack caps the usable column width; the
+   bubble shrink-wraps short prose but clamps at the stack width for long prose. */
+.message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
+  min-width: 0;
+}
 .message-row.is-self .message-stack {
   align-self: flex-end;
 }
@@ -345,18 +355,34 @@
   box-shadow: var(--shadow-xs);
 }
 
-/* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
-   utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
-   skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
-   .is-self override below out-specifies the base utilities (so it still wins —
-   parity preserved). Your own / web-client messages get the accent bubble
-   everywhere (DM and group rooms alike) — one identity, one treatment. */
+.bubble {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  border: var(--message-card-border, var(--line-2));
+  border-color: var(--message-card-border-color, var(--rule));
+  border-radius: var(--radius-xl);
+  background: var(--bubble);
+  padding: var(--space-bubble-pad);
+  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--message-card-shadow-color, var(--rule));
+}
+/* skin-glass.css overrides `.bubble` opacity, vim-focus/flash animate it, and
+   this self override out-specifies the base class. Own / web-client messages get
+   the accent bubble everywhere (DM and group rooms alike). */
 .message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
 .markdown {
-  overflow-wrap: anywhere;
+  /* Keep ordinary prose from using one-character min-content widths in
+     shrink-wrapped bubbles. True long-token surfaces opt into `anywhere`
+     below, so links and inline code still break instead of overflowing. */
+  overflow-wrap: break-word;
   word-break: normal;
+}
+.bubble > .markdown {
+  width: max-content;
+  max-width: 100%;
 }
 .markdown > * { margin: 0 0 8px; }
 .markdown > *:last-child { margin-bottom: 0; }
@@ -493,6 +519,36 @@
   word-break: normal;
 }
 .markdown del { color: var(--ink-faint); }
+
+/* ─── Message reactions ──────────────────────────────────────────────────── */
+.reaction {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: fit-content;
+  padding: 2px 9px;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--line-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-12);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  cursor: pointer;
+}
+.reaction.is-mine {
+  background: var(--paper-2);
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--rule));
+}
+.reaction.add {
+  justify-content: center;
+  min-width: 25px;
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+}
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */
 /* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
