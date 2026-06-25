@@ -4,6 +4,7 @@ import { StorybookProviders } from "../src/storybook/StorybookProviders.tsx";
 // Exact same CSS stack as the app — both import the one shared list so they can
 // never drift (a previous hand-kept copy here silently lost tokens.css).
 import "../src/styles/css.ts";
+import "./preview-scroll.css";
 
 // Product themes (palette) and skins (aesthetic layer) — the SAME contract the
 // app uses (App.tsx writes documentElement.dataset.theme / .skin; styles.css owns

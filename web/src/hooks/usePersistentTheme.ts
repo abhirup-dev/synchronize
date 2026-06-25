@@ -8,9 +8,9 @@ import { chatBackgroundById } from "../data/chatBackgrounds.ts";
 // the DEFAULT_* constants the single source for "which theme does each family
 // open in" — App boot, the family toggle, and the Storybook theme matrix all read
 // them so the default can never drift per call site.
-const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-const DARK_THEMES = ["kanagawa-wave"] as const;
-const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
+export const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
+export const DARK_THEMES = ["kanagawa-wave"] as const;
+export const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
 
 export type ThemeName = (typeof ALL_THEMES)[number];
 

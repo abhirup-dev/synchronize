@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useState, type KeyboardEvent } from "react";
 import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/context.tsx";
-import { IdentityBadge, StatusDot } from "./primitives.tsx";
+import { IdentityBadge, IdentityLogoTile, PanelSectionHeader, RoomNameInline, StatusDot, roomNameText } from "./primitives.tsx";
 import type { Agent, Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
@@ -11,6 +11,10 @@ import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { IconButton } from "./IconButton.tsx";
+import { Pause, Play, Settings } from "lucide-react";
+import { CHAT_BACKGROUNDS, chatBackgroundById } from "../data/chatBackgrounds.ts";
+import { ALL_THEMES, type ThemeName } from "../hooks/usePersistentTheme.ts";
 
 /**
  * Tokens flow from the styles.css contract via the tw.css `@theme inline`
@@ -19,10 +23,6 @@ import { agentActionMenuItems } from "./agentActionMenu.ts";
  * classes (`sidebar`, `brand-mark`, `section-head`, `room-item`+states) are
  * retained alongside the utilities — their base declarations moved here, but
  * the state/`[data-theme]` override rules still live in styles.css. */
-
-// Shared icon-plus button (groups/DMs section heads). No variants → constant.
-const PLUS_BTN =
-  "ml-auto w-[22px] h-[22px] bg-paper text-ink [border:var(--line-2)] rounded-sm shadow-sm font-black text-[length:var(--text-14)] leading-[0] p-0 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-hover";
 
 // Room tile. Keeps the `room-item` hook so skin-glass.css + useVimNav's
 // `.active` lookup + the .active/.archived/[data-theme] state rules still bind.
@@ -62,9 +62,25 @@ interface SidebarProps {
   activeRoomId: string;
   onSelect(id: string): void;
   mode?: "navigate" | "typing";
+  displaySettings?: {
+    theme: ThemeName;
+    skin: "brutal" | "glass";
+    chatBg: string;
+    onTheme(theme: ThemeName): void;
+    onToggleSkin(): void;
+    onChatBg(id: string): void;
+  };
 }
 
-export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarProps) {
+function titleCase(value: string): string {
+  return value
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+    .join(" ");
+}
+
+export function Sidebar({ activeRoomId, onSelect, mode = "navigate", displaySettings }: SidebarProps) {
   const rooms = useRooms();
   const me = useMe();
   const agents = useAgents();
@@ -98,9 +114,9 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       data-vim-panel="sidebar"
     >
       <div className="sidebar-brand flex items-center gap-[var(--space-12)] px-[16px] pt-[18px] pb-[14px] [border-bottom:var(--line)]">
-        <div className={cn("brand-mark", "w-[42px] h-[42px] bg-yellow [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm rotate-[-3deg]")}>
+        <IdentityLogoTile as="div" className={cn("brand-mark", "w-[42px] h-[42px] bg-yellow [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm")}>
           S
-        </div>
+        </IdentityLogoTile>
         <div className="leading-[1.1]">
           <div className="font-display text-[length:var(--text-17)] tracking-[var(--tracking-tight)]">SYNCHRONIZE</div>
           <div className="font-mono text-[length:var(--text-10)] text-ink-soft mt-[2px]">/ agent ops chat</div>
@@ -119,11 +135,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       </div>
 
       <section className="sidebar-section">
-        <div className={cn("section-head", "flex items-center gap-[var(--space-8)] px-[16px] pt-[14px] pb-[8px] font-display text-[length:var(--text-12)] tracking-[var(--tracking-md)] text-ink rotate-[-1.5deg] origin-left")}>
-          GROUPS
-          <span className="count-chip">{groupCount}</span>
-          <button className={PLUS_BTN} title="new group" aria-label="new group">+</button>
-        </div>
+        <PanelSectionHeader className="section-head" label="GROUPS" count={groupCount} actionLabel="+" actionTitle="new group" />
         <div className="list autoscroll" ref={groupsScrollRef}>
           {groups.map((r) => (
             <RoomItem key={r.id} room={r} active={r.id === activeRoomId} onSelect={onSelect} onSpawnAgent={setSpawnRoom} />
@@ -132,11 +144,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
       </section>
 
       <section className="sidebar-section">
-        <div className={cn("section-head", "flex items-center gap-[var(--space-8)] px-[16px] pt-[14px] pb-[8px] font-display text-[length:var(--text-12)] tracking-[var(--tracking-md)] text-ink rotate-[-1.5deg] origin-left")}>
-          DMs
-          <span className="count-chip">{dmCount}</span>
-          <button className={PLUS_BTN} title="new dm" aria-label="new dm">+</button>
-        </div>
+        <PanelSectionHeader className="section-head" label="DMs" count={dmCount} actionLabel="+" actionTitle="new dm" />
         <div className="list autoscroll" ref={dmsScrollRef}>
           {dms.map((r) => {
             const other = agents.find((a) => a.id === r.peerId);
@@ -194,9 +202,56 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate" }: SidebarPr
           </svg>
           {awaitingCount > 0 && <span className="activity-dock-badge absolute top-[-10px] right-[-10px] min-w-[24px] h-[19px] px-[6px] grid place-items-center bg-pink text-ink [border:var(--line-xs-ink)] rounded-pill shadow-chip font-mono text-[length:var(--text-10)] font-extrabold leading-none">{awaitingCount}</span>}
         </button>
-        <button type="button" className="h-[40px] min-w-[84px] px-[12px] bg-yellow text-ink [border:var(--line-md)] rounded-md shadow-sm font-display text-[length:var(--text-10)] tracking-[var(--tracking-md)] cursor-pointer hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-hover" onClick={archive.openConsole} title="Open resume recovery console" aria-label="Open resume recovery console">
-          RESUME
+        <button
+          type="button"
+          className="resume-dock-btn relative flex-[0_0_40px] w-[40px] h-[40px] grid place-items-center bg-paper text-ink [border:var(--line-md)] rounded-md shadow-sm p-0 cursor-pointer [transition:transform_80ms_ease,box-shadow_80ms_ease,background_80ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-hover hover:bg-paper-3"
+          onClick={archive.openConsole}
+          title="Open resume recovery console"
+          aria-label="Open resume recovery console"
+        >
+          <span className="resume-media-glyph flex items-center justify-center gap-[1px]" aria-hidden="true">
+            <Play size={13} strokeWidth={1.7} absoluteStrokeWidth fill="currentColor" />
+            <Pause size={13} strokeWidth={1.7} absoluteStrokeWidth />
+          </span>
         </button>
+        {displaySettings ? (
+          <IconButton
+            icon={Settings}
+            label="open display settings"
+            variant="solid"
+            size={40}
+            iconSize={18}
+            className="sidebar-settings-btn ml-auto"
+            onClick={(event) => {
+              const currentBg = chatBackgroundById(displaySettings.chatBg);
+              openMenu(event, [
+                {
+                  label: "Theme",
+                  shortcut: titleCase(displaySettings.theme),
+                  submenu: ALL_THEMES.map((theme) => ({
+                    label: titleCase(theme),
+                    ...(theme === displaySettings.theme ? { shortcut: "✓" } : {}),
+                    onSelect: () => displaySettings.onTheme(theme),
+                  })),
+                },
+                {
+                  label: "Background",
+                  shortcut: currentBg.name,
+                  submenu: CHAT_BACKGROUNDS.map((preset) => ({
+                    label: preset.name,
+                    ...(preset.id === currentBg.id ? { shortcut: "✓" } : {}),
+                    onSelect: () => displaySettings.onChatBg(preset.id),
+                  })),
+                },
+                {
+                  label: "Skin",
+                  shortcut: displaySettings.skin === "brutal" ? "Brutal" : "Glass",
+                  onSelect: displaySettings.onToggleSkin,
+                },
+              ]);
+            }}
+          />
+        ) : null}
       </div>
       {spawnRoom && <SpawnAgentDialog room={spawnRoom} onClose={() => setSpawnRoom(null)} />}
       <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
@@ -228,6 +283,7 @@ function RoomItem({
   const toast = useToast();
   const iconColor = otherColor ?? room.color;
   const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
+  const roomLabel = roomNameText(room.kind, room.name);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -278,11 +334,7 @@ function RoomItem({
         ]);
       }}
     >
-      {isArchivedGroup ? (
-        <div className="room-icon identity-icon">
-          <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
-        </div>
-      ) : (
+      {room.kind === "dm" ? (
         <IdentityBadge as="div" className="room-icon identity-icon" color={iconColor}>
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
@@ -297,10 +349,10 @@ function RoomItem({
           />
         )}
         </IdentityBadge>
-      )}
+      ) : null}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-[var(--space-6)]">
-          <div className="room-name font-semibold text-[length:var(--text-13-5)] whitespace-nowrap overflow-hidden text-ellipsis">{room.kind === "group" ? `#${room.name}` : room.name}</div>
+          <RoomNameInline kind={room.kind} name={room.name} className="room-name font-semibold text-[length:var(--text-13-5)] whitespace-nowrap overflow-hidden text-ellipsis" />
           {room.pinned && <span className="text-[length:var(--text-9)] opacity-80">📌</span>}
         </div>
         <div className="room-preview text-[length:var(--text-11-5)] text-ink-soft whitespace-nowrap overflow-hidden text-ellipsis">{room.lastPreview}</div>
@@ -310,8 +362,8 @@ function RoomItem({
         <button
           type="button"
           className="room-resume-btn w-[32px] h-[32px] flex-[0_0_auto] grid place-items-center ml-auto bg-yellow text-ink [border:var(--line-md)] rounded-pill shadow-chip cursor-pointer [transition:transform_80ms_ease,box-shadow_80ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-hover"
-          aria-label={`Resume #${room.name}`}
-          title={`Resume #${room.name}`}
+          aria-label={`Resume ${roomLabel}`}
+          title={`Resume ${roomLabel}`}
           onClick={(event) => {
             event.stopPropagation();
             archive.resumeGroup(room);

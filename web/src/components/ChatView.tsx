@@ -96,11 +96,14 @@ export function ChatView({
       if (!row) return 140;
       const body = row.m.body ?? "";
       const CHARS_PER_LINE = 72;
-      const LINE_HEIGHT = 22;
+      const LINE_HEIGHT = 21;
+      const PARAGRAPH_GAP = 12;
       const textLines = body
         .split("\n")
         .reduce((n, line) => n + Math.max(1, Math.ceil(line.length / CHARS_PER_LINE)), 0);
+      const paragraphCount = body.trim() ? body.trim().split(/\n{2,}/).length : 0;
       let h = textLines * LINE_HEIGHT + 26; // text + bubble padding
+      h += Math.max(0, paragraphCount - 1) * PARAGRAPH_GAP;
       if (!row.grouped) h += 26; // author header line
       if (row.m.reactions.length) h += 30;
       if (row.m.poll) h += 60 + row.m.poll.options.length * 34;

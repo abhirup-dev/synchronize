@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { within, userEvent, expect } from "storybook/test";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { AGENTS, GROUPS } from "../data/seed.ts";
+import { roomNameText } from "./primitives.tsx";
 
 // Provider-backed surface: ArchiveRecoveryProvider is mounted by the global
 // StorybookProviders decorator and seeds an archived session ("pulse") via the
@@ -25,7 +26,7 @@ function ArchiveLauncher() {
         Resume @pulse
       </button>
       <button type="button" onClick={() => workflow.archiveGroup(room)}>
-        Archive #{room.name}
+        Archive {roomNameText(room.kind, room.name)}
       </button>
     </div>
   );

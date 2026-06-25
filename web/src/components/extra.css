@@ -89,11 +89,6 @@
    kept on elements: .composer + .composer-collapsed (skin-glass.css),
    .composer-collapsed-stub (hooks/useVimNav.ts). Base declarations deleted. */
 
-/* ─── Theme toggle ─────────────────────────────────────────────────────────
-   Base (font-size) migrated to a Tailwind utility on the button in
-   RoomHeader.tsx; the :hover parity is already covered by .icon-btn:hover. The
-   theme-toggle hook className stays for skin-glass.css. */
-
 /* ─── AGENTS pill (labeled icon-btn) ───────────────────────────────────────
    The AGENTS button reuses .icon-btn for chrome (border / paper / shadow /
    hover, incl. the glass-skin overrides) but is a label + count chip, not a
@@ -219,19 +214,18 @@
    .active + [data-theme] overrides below still bind. Shared classes
    (author-name, thread-pane-*) are untouched. */
 .room-tab.active {
-  color: var(--ink);
-  background: var(--yellow);
-  border-color: var(--rule);
-  box-shadow: var(--shadow-sm);
+  color: var(--surface-selected-fg);
+  background: var(--surface-selected-bg);
+  border-color: var(--surface-selected-border);
 }
 :root[data-theme="kanagawa-wave"] .room-tab{
-  color: var(--ink-soft);
+  color: var(--activity-control-fg);
 }
 :root[data-theme="kanagawa-wave"] .room-tab.active{
-  background: var(--paper-3);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--yellow);
+  background: var(--activity-control-active-bg);
+  color: var(--activity-control-selected-fg);
+  border-color: transparent;
+  box-shadow: 2px 2px 0 var(--activity-control-shadow);
 }
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
 /* .chat-view base migrated to inline Tailwind utilities in ChatView.tsx
@@ -367,12 +361,34 @@
 .markdown > * { margin: 0 0 8px; }
 .markdown > *:last-child { margin-bottom: 0; }
 .markdown h1, .markdown h2, .markdown h3 {
-  font-family: var(--font-display);
+  font-family: var(--font-heading);
   font-size: var(--text-15);
   letter-spacing: var(--tracking-tight);
   margin: 12px 0 6px;
 }
+.rich-markdown h1 {
+  font-size: var(--rich-heading-h1-size);
+  margin: 14px 0 7px;
+}
+.rich-markdown h2 {
+  font-size: var(--rich-heading-h2-size);
+  margin: 12px 0 6px;
+}
+.rich-markdown h3 {
+  color: var(--rich-heading-h3-fg);
+  font-size: var(--rich-heading-h3-size);
+  letter-spacing: var(--tracking-sm);
+  margin: 10px 0 5px;
+  text-transform: uppercase;
+}
 .markdown p { line-height: 1.6; }
+.rich-markdown p {
+  margin: 0;
+  line-height: var(--leading-message-paragraph);
+}
+.rich-markdown p + p {
+  margin-block-start: var(--space-bubble-paragraph-gap);
+}
 .markdown em { font-style: italic; }
 .markdown ul, .markdown ol { margin: 4px 0 8px 0; padding-left: 22px; line-height: 1.64; }
 .markdown li { margin: 2px 0 3px; }
@@ -389,8 +405,17 @@
   font-weight: 900;
 }
 .markdown strong {
+  font-family: var(--font-ui);
   color: var(--strong-fg, var(--ink));
   font-weight: var(--strong-weight, 700);
+}
+.markdown h1 strong,
+.markdown h2 strong,
+.markdown h3 strong {
+  font-family: inherit;
+}
+.rich-markdown strong {
+  font-weight: var(--rich-strong-weight, var(--strong-weight, 700));
 }
 .markdown code {
   font-family: var(--font-mono);
@@ -628,7 +653,7 @@
 /* Slightly tighter bubble padding inside the thread pane — the pane itself is
    narrower than the main chat, so 16px horizontal padding eats too much. */
 .thread-pane-body .bubble {
-  padding: 10px 12px;
+  padding: var(--space-thread-bubble-pad);
 }
 .thread-pane-body .thread-divider {
   margin: 4px 0;
@@ -717,7 +742,7 @@
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
-.filter-chip.active { background: var(--ink); color: var(--paper); }
+.filter-chip.active { background: var(--surface-selected-bg); color: var(--surface-selected-fg); }
 .filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
 
 .board-cols {

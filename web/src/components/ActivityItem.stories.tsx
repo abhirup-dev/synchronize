@@ -1,12 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, within } from "storybook/test";
 import { ActivityItem } from "./ActivityItem.tsx";
 import type { ActivityItem as ActivityItemModel } from "../data/types.ts";
-import { AGENTS, GROUPS, MESSAGES } from "../data/seed.ts";
+import { AGENTS, DMS, GROUPS, MESSAGES } from "../data/seed.ts";
 
 // Derive a few real messages from the checkout-revamp room to back the activity
 // rows so the actor/room chips render against the same character set the design
 // was tuned against — no duplicated fixtures.
 const room = GROUPS.find((g) => g.id === "checkout-revamp")!;
+const dmRoom = DMS.find((dm) => dm.id === "dm-atlas")!;
 const actorFor = (id: string) => AGENTS.find((a) => a.id === id)!;
 
 const msgs = MESSAGES["checkout-revamp"]!;
@@ -47,9 +49,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// A plain inbound message row: speech-bubble marker, no emphasis bar.
-export const Message: Story = {
+// A plain inbound top-level row: text-bubble marker, no emphasis bar.
+export const TopLevelMessage: Story = {
   args: { item: baseRow({}) },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByLabelText("top-level message")).toBeVisible();
+  },
 };
 
 // Mention row — the @-marker glyph and the highlighted @you hit inside the body.
@@ -64,6 +69,11 @@ export const Mention: Story = {
       msgId: mentionMsg.id,
     }),
     actor: actorFor("cortex"),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("top-level message")).toBeVisible();
+    await expect(canvas.getByLabelText("mentions you")).toBeVisible();
   },
 };
 
@@ -98,13 +108,53 @@ export const ThreadReply: Story = {
     }),
     actor: actorFor("nova"),
   },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByLabelText("thread reply")).toBeVisible();
+  },
+};
+
+// Basic markdown preview stays compact but renders inline emphasis instead of
+// leaking raw `**bold**` / `_italic_` syntax into Activity rows.
+export const BasicMarkdownPreview: Story = {
+  args: {
+    item: baseRow({
+      id: "act-basic-markdown",
+      eventId: 105,
+      actorId: actorFor("echo").id,
+      text: "Here are your open TODOs grouped by recency/relevance: **This Week** and _next actions_ with `bd ready`.",
+      awaiting: true,
+      msgId: "basic-preview",
+    }),
+    actor: actorFor("echo"),
+  },
+  play: async ({ canvasElement }) => {
+    const preview = canvasElement.querySelector<HTMLElement>(".act-row-preview");
+    await expect(preview).toBeTruthy();
+    await expect(preview?.textContent).not.toContain("**");
+    await expect(preview?.querySelector("strong")?.textContent).toBe("This Week");
+    await expect(preview?.querySelector("em")?.textContent).toBe("next actions");
+    await expect(preview?.querySelector("code")?.textContent).toBe("bd ready");
+  },
 };
 
 // Already-reacted state in a DM-style context with the room chip hidden.
-export const ReactedNoRoom: Story = {
+export const DirectMessage: Story = {
   args: {
-    item: baseRow({ id: "act-reacted", eventId: 104 }),
+    item: baseRow({
+      id: "act-dm",
+      eventId: 104,
+      roomId: dmRoom.id,
+      actorId: "atlas",
+      text: "want me to try another pass with a smaller patch?",
+      msgId: "da1",
+    }),
+    actor: actorFor("atlas"),
+    room: dmRoom,
     reacted: true,
     showRoom: false,
+  },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByLabelText("direct message")).toBeVisible();
+    await expect(canvasElement.querySelector(".author-chip")).toBeNull();
   },
 };

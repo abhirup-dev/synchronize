@@ -3,7 +3,7 @@ import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import { useAgents, useSetAgentColor } from "../data/context.tsx";
 import type { Agent, Room } from "../data/types.ts";
-import { Avatar, CountChip } from "./primitives.tsx";
+import { Avatar, CountChip, PanelSectionHeader } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { AgentColorPicker } from "./AgentColorPicker.tsx";
 import { AGENTS as SEED_AGENTS } from "../data/seed.ts";
@@ -76,16 +76,7 @@ export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterP
       )}
       data-vim-panel="roster"
     >
-      <div
-        className={cn(
-          "roster-head flex w-fit items-center gap-[var(--space-10)] bg-lime text-on-accent",
-          "mt-0 mr-0 mb-[6px] ml-[4px] px-[14px] py-[8px] font-display text-[length:var(--text-14)]",
-          "tracking-[var(--tracking-lg)] [border:var(--line-md)] rounded-none shadow-md [transform:rotate(-2deg)]",
-        )}
-      >
-        <span>AGENTS</span>
-        <CountChip n={members.length} />
-      </div>
+      <PanelSectionHeader className="roster-head" label="AGENTS" count={members.length} />
       {GROUPS.map(({ title, status }) => {
         const inGroup = members.filter((m) => m.status === status);
         if (inGroup.length === 0) return null;

@@ -14,6 +14,7 @@ import { MentionChip } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { useToast } from "./Toast.tsx";
 import { copyText } from "../utils/clipboard.ts";
+import { cn } from "../lib/cn.ts";
 
 // Permit GFM-specific tags + the class attributes rehype-highlight emits.
 const schema: Schema = {
@@ -45,11 +46,19 @@ const schema: Schema = {
 // is expensive, and the virtualized chat list re-renders MessageRow on every
 // scroll frame. With a stable `children` string and `agents` reference, memo
 // skips re-parsing entirely during scroll.
-export const Markdown = memo(function Markdown({ children, agents }: { children: string; agents?: Agent[] }) {
+export const Markdown = memo(function Markdown({
+  children,
+  agents,
+  variant = "basic",
+}: {
+  children: string;
+  agents?: Agent[];
+  variant?: "basic" | "rich";
+}) {
   const openMenu = useContextMenu();
   const toast = useToast();
   return (
-    <div className="markdown">
+    <div className={cn("markdown", variant === "rich" && "rich-markdown")}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, schema], rehypeHighlight]}

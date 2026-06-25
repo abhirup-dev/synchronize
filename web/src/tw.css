@@ -47,6 +47,7 @@
 
   /* -- typography ---------------------------------------------------- */
   --font-display: var(--font-display);
+  --font-heading: var(--font-heading);
   --font-ui: var(--font-ui);
   --font-mono: var(--font-mono);
 

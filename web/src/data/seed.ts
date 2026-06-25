@@ -63,6 +63,9 @@ export const MESSAGES: Record<string, Message[]> = {
     { id: "m1", roomId: "checkout-revamp", authorId: "vega", createdAt: ISO(58),
       body: "rgr. canary cookbook is queued. I'll ping in this thread when the rollout starts.",
       mentions: [], reactions: [] },
+    { id: "m-mention-top", roomId: "checkout-revamp", authorId: "atlas", createdAt: ISO(57),
+      body: "quick heads up @you — the checkout copy pass is ready for review before the canary widens.",
+      mentions: ["you"], reactions: [] },
     { id: "m2", roomId: "checkout-revamp", authorId: "cortex", createdAt: ISO(55),
       body: [
         "## plan",
