@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from sync_itest_aoe.pi_session.annotation import annotate_session_file
 from sync_itest_aoe.pi_session.watcher import PiSessionWatcher, PiSessionWatcherRegistry
 from sync_itest_aoe.queries.pi_session import (
     forbidden_tool_calls,
@@ -127,6 +128,102 @@ class PiSessionWatcherTest(unittest.TestCase):
 
             self.assertTrue(has_tool_call(state, "bridge_group_history"))
             self.assertEqual([event.tool for event in forbidden_tool_calls(state, ["bridge_group_history"])], ["bridge_group_history"])
+
+    def test_annotation_report_classifies_full_pi_session_shapes(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pi-session-annotation-") as tmp:
+            path = Path(tmp) / "session-abc.jsonl"
+            path.write_text(
+                json_line({"type": "session", "version": 3, "id": "abc", "timestamp": "2026-01-01T00:00:00.000Z", "cwd": "/repo"})
+                + json_line({"type": "model_change", "id": "model-1", "provider": "openai-codex", "modelId": "gpt-5.4"})
+                + json_line({"type": "thinking_level_change", "id": "think-1", "thinkingLevel": "medium"})
+                + json_line(
+                    {
+                        "type": "message",
+                        "id": "m1",
+                        "parentId": "think-1",
+                        "timestamp": "2026-01-01T00:00:01.000Z",
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": '<synchronize_event type="group_message" event_id="123" from="web:local-human" group_id="g1" group_name="ops" sent_at="now">\nhello bus\n</synchronize_event>',
+                                }
+                            ],
+                        },
+                    }
+                )
+                + json_line(
+                    {
+                        "type": "message",
+                        "id": "m2",
+                        "parentId": "m1",
+                        "timestamp": "2026-01-01T00:00:02.000Z",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "thinking", "thinking": "Need to inspect the bus.", "thinkingSignature": "sig"},
+                                {"type": "toolCall", "id": "call-1", "name": "synchronize_bridge_whoami", "arguments": {}},
+                                {"type": "toolCall", "id": "call-2", "name": "bash", "arguments": {"cmd": "pwd"}},
+                                {"type": "toolCall", "id": "call-3", "name": "web_search", "arguments": {"query": "docs"}},
+                                {"type": "toolCall", "id": "call-4", "name": "mcp", "arguments": {"server": "synchronize"}},
+                            ],
+                            "stopReason": "toolUse",
+                        },
+                    }
+                )
+                + json_line(
+                    {
+                        "type": "message",
+                        "id": "m3",
+                        "parentId": "m2",
+                        "timestamp": "2026-01-01T00:00:03.000Z",
+                        "message": {
+                            "role": "toolResult",
+                            "toolCallId": "call-1",
+                            "toolName": "synchronize_bridge_whoami",
+                            "content": [{"type": "text", "text": "{}"}],
+                            "details": {"server": "synchronize", "tool": "bridge_whoami"},
+                            "isError": False,
+                        },
+                    }
+                )
+                + json_line(
+                    {
+                        "type": "message",
+                        "id": "m4",
+                        "parentId": "m3",
+                        "timestamp": "2026-01-01T00:00:04.000Z",
+                        "message": {
+                            "role": "toolResult",
+                            "toolCallId": "call-4",
+                            "toolName": "mcp",
+                            "content": [{"type": "text", "text": "MCP: synchronize connected"}],
+                            "details": {"mode": "status", "totalTools": 11},
+                            "isError": False,
+                        },
+                    }
+                )
+                + json_line({"type": "compaction", "id": "compact-1", "summary": "kept the important work"}),
+                encoding="utf-8",
+            )
+
+            report = annotate_session_file(path)
+            annotations = report.annotations
+
+            self.assertEqual(report.diagnostics, [])
+            self.assertTrue(any(item.kind == "session_metadata" for item in annotations))
+            self.assertTrue(any(item.kind == "model_change" for item in annotations))
+            self.assertTrue(any(item.kind == "thinking_level_change" for item in annotations))
+            self.assertTrue(any(item.kind == "synchronize_event" and item.data["event_id"] == 123 for item in annotations))
+            self.assertTrue(any(item.kind == "assistant_thinking" for item in annotations))
+            self.assertTrue(any(item.kind == "mcp_tool_call" and item.normalized_tool == "bridge_whoami" for item in annotations))
+            self.assertTrue(any(item.kind == "shell_tool_call" and item.tool == "bash" for item in annotations))
+            self.assertTrue(any(item.kind == "web_tool_call" and item.tool == "web_search" for item in annotations))
+            self.assertTrue(any(item.kind == "mcp_tool_result" and item.tool_server == "synchronize" for item in annotations))
+            self.assertTrue(any(item.kind == "mcp_generic_call" and item.tool == "mcp" for item in annotations))
+            self.assertTrue(any(item.kind == "mcp_tool_result" and item.tool == "mcp" for item in annotations))
+            self.assertTrue(any(item.kind == "compaction" for item in annotations))
 
     def test_registry_maps_agent_names_to_watchers(self) -> None:
         with tempfile.TemporaryDirectory(prefix="pi-session-watcher-") as tmp:
