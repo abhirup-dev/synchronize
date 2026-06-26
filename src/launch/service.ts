@@ -256,8 +256,8 @@ export const LETTA_LAUNCH_MODELS = {
   glm47: "zai/glm-4.7",
 } as const;
 
-export const PI_LAUNCH_THINKING_LEVELS = ["low", "medium", "high"] as const;
-export const CLAUDE_LAUNCH_THINKING_LEVELS = ["medium", "high"] as const;
+export const PI_LAUNCH_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const CLAUDE_LAUNCH_THINKING_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 export const CLAUDE_LAUNCH_THINKING_BY_MODEL: Record<string, (typeof CLAUDE_LAUNCH_THINKING_LEVELS)[number]> = {
   [CLAUDE_LAUNCH_MODELS.sonnet]: "medium",
   [CLAUDE_LAUNCH_MODELS.haiku]: "high",
@@ -352,10 +352,9 @@ function stripOption(args: string[], option: string): string[] {
   return filtered;
 }
 
-function forceClaudeLaunchDefaults(args: string[], model: string, _thinking: string): string[] {
-  // Pin the model; do NOT set --effort (left to Claude's default).
+function forceClaudeLaunchDefaults(args: string[], model: string, thinking: string): string[] {
   const filtered = stripOption(stripOption(args, "--model"), "--effort");
-  return ["--model", model, ...filtered];
+  return ["--model", model, "--effort", thinking, ...filtered];
 }
 
 function forcePiLaunchDefaults(args: string[], model: string, thinking: string): string[] {
