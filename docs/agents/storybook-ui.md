@@ -14,6 +14,7 @@ and live `/web` smoke checks.
 ```bash
 cd web && bun run storybook        # dev server + MCP on http://localhost:6006
 cd web && bun run storybook:build  # static build (CI / verification)
+bun run ast-grep:scan              # structural code search rules from sgconfig.yml
 ```
 
 The catalog, conventions, and DataSource/provider contract are documented inside
@@ -68,6 +69,56 @@ Storybook Docs and `test:storybook` even if the preview-stage MCP is down.
    is involved, verify against the live `/web` app and the Bun tests. Storybook
    alone does not prove daemon integration.
 
+## When component changes require story changes
+
+Stories mount the real production components, so a pure internal render or
+styling change appears in Storybook automatically. The separate responsibility is
+keeping the **story contract** current: props, callbacks, states, interactions,
+and deleted behaviours.
+
+| Component change | Storybook responsibility |
+| --- | --- |
+| Pure internal styling/render tweak | Inspect the relevant existing stories; no new story is required if the state is already represented. |
+| Prop added, removed, or renamed | Update story args/types so stories compile against the real component contract. |
+| New visible state or variant | Add or extend a story state using `seed.ts` / `MockDataSource`; do not paste parallel fixtures unless the seed truly lacks the shape. |
+| New interaction | Add or update a `play` test that drives the real UI. |
+| Deleted behaviour | Remove stale story args, stale stories, and stale play assertions; search old labels/callback names under `web/src/**/*.stories.tsx`. |
+| Shared menu, dialog, toast, or flow | Exercise it through every real entry point that should expose it; never duplicate the helper/menu logic inside the story. |
+| Shell/layout behaviour | Mount through `web/src/storybook/shellFrames.tsx`; do not create a story-only layout. |
+| Daemon/API/SSE behaviour | Keep daemon truth in Bun tests and live `/web` smoke checks; Storybook should only model the UI projection over `DataSource`. |
+
+Before editing any `web/src/components/*` file, run a Storybook impact preflight:
+
+1. Use AST-grep for structural navigation: find component imports, JSX call
+   sites, and prop/callback usage before editing. Use `rg` for plain text labels
+   and story names.
+2. Check the matching `web/src/components/Foo.stories.tsx`.
+3. If the component is mainly used inside a composed journey, check
+   `web/src/flows/*.stories.tsx`.
+4. Compare app mounts against story mounts. If the app passes callbacks that
+   unlock UI (`onOpenDm`, `onViewProfile`,
+   `onOpenThread`, etc.), stories should pass equivalent callbacks when they
+   claim to show the app behaviour.
+5. For portal content (context menus, dialogs, sheets, toasts), assert with
+   `screen`, not `canvas`, because the content renders outside the story root.
+6. If you find an existing component story or flow that violates these
+   responsibilities, is stale, or mounts the component differently from the app,
+   tell the user what you found and ask how they want to handle it before
+   broadening the task. Do not silently rewrite unrelated Storybook debt.
+
+Useful AST-grep commands for this preflight:
+
+```bash
+# JSX mounts of a component
+bun run ast-grep -- run --lang tsx --pattern '<Foo $$$PROPS />' web/src
+
+# imports of a component
+bun run ast-grep -- run --lang tsx --pattern 'import { Foo } from "$PATH"' web/src
+
+# call sites for a hook/helper
+bun run ast-grep -- run --lang tsx --pattern 'useFoo($$$ARGS)' web/src
+```
+
 ## Claude Design handoff
 
 Claude Design explores product intent and layout variants → the accepted design
@@ -118,7 +169,7 @@ trait vocabulary, so "passes in Storybook" means "works in the app".
    only because the story under-passed the handlers the app always passes.)
 
 5. **Light-mode surfaces stay warm.** Inverted/elevated surfaces (self bubble, code
-   block, roster focus) use `--paper-3` cream + `--ink` text in light/brutal, never
+   block, active room item) use `--paper-3` cream + `--ink` text in light/brutal, never
    black; the secondary line on an inverted surface mirrors
    `.room-item.active .room-preview` (on-ink @ ~0.65). Light code blocks use the
    scoped light hljs palette in `styles/code-light.css`; dark themes keep

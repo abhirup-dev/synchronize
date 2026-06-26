@@ -312,17 +312,17 @@ The implementation maps prototype files → React + TS components:
 | `timeline.jsx`                | `web/src/components/TimelineRail.tsx`                       | Vertical event rail; types: claim / analyze / deliver / ship / review / alert / kickoff / request. |
 | `board.jsx`                   | `web/src/components/BoardView.tsx`                          | Kanban columns: Backlog / In Progress / In Review / Shipped. |
 | `app.jsx` ArtifactsGrid       | `web/src/components/ArtifactsView.tsx`                      | Filterable grid: IMG / CODE / DOC / DIFF / TF / LOG / CHART. |
-| `app.jsx` AgentRoster         | `web/src/components/AgentRoster.tsx`                        | Right rail, grouped by status, click-to-focus. |
+| `app.jsx` AgentRoster         | `web/src/components/AgentRoster.tsx`                        | Right rail, grouped by status, context menu for agent actions/profile. |
 | `context-menu.jsx`            | `web/src/components/ContextMenu.tsx`                        | Shared portal-rendered menu; consumed by Sidebar / Message / Roster / Timeline. |
 | `tweaks-panel.jsx`            | `web/src/components/TweaksPanel.tsx`                        | Floating debug toolbar: theme / accent / density / shadow size / roster on-off. |
 | `primitives.jsx`              | `web/src/components/primitives.tsx` (Avatar, Sticker, …)    | Inline primitive set: `Avatar`, `Sticker`, `StatusDot`, `MentionChip`. |
 
-Stateful surfaces (focused agent, open thread, active room, theme) live in the top-level `App.tsx` component. There is no global store in v0 — props + a small set of context providers (`ThemeContext`, `TweaksContext`) are enough.
+Stateful surfaces (open thread, active room, theme, profile dialogs) live in the top-level `App.tsx` component or the owning surface. There is no global store in v0 — props + a small set of context providers (`ThemeContext`, `TweaksContext`) are enough.
 
 ### Component states worth calling out
 
 - **Sidebar room item** — three states: idle / hover (paper background + ink border + shadow) / active (ink-filled, paper text, `room-preview` at 0.65 opacity).
-- **Message bubble** — additional states: `dimmed` (other authors when an agent is focused; 32 % opacity, desaturated) and `thread-dimmed` (when a thread is open; 32 % opacity, 75 % opacity on hover). The active thread parent gets a 2 px pink ring.
+- **Message bubble** — additional state: `thread-dimmed` (when a thread is open; 32 % opacity, 75 % opacity on hover). The active thread parent gets a 2 px pink ring.
 - **Composer** — toolbar glyphs always render `color: var(--ink)` (explicit theme-aware fix from chat 1).
 - **Roster cards** — transparent background with faint border in both themes (no white pop). `WORKING` group gets a 2 px pink left tick so busy agents still stand out.
 - **Timeline rail** — `opacity: 0.55` by default; full opacity on rail hover; node markers translate + grow shadow on hover; tooltip renders via React portal to `body` so it escapes overflow clipping.
@@ -469,7 +469,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - RoomHeader with the CHAT / BOARD / ARTIFACTS tab strip (only CHAT renders; the other two are placeholder panels).
 - ChatView: grouped bubbles, author chip, identity colors, status row, markdown body (GFM + code highlight + sanitized).
 - Composer: textarea, toolbar (B / I / `</>` / link / @ / 📎 — only @ and send are wired in V0), `@mention` autocomplete with arrow / tab / enter / live status notes, Enter sends / Shift+Enter newline.
-- AgentRoster (right rail), grouped by presence; click-to-focus is V0 visual only (focus state, no dim semantics yet).
+- AgentRoster (right rail), grouped by presence; right-click exposes the shared agent action/profile menu.
 - Light + dark theming via `data-theme` and CSS custom properties.
 
 **V1 (immediately after merge):**
@@ -477,7 +477,7 @@ V0 ships the shape of the prototype against a `MockDataSource`, plus a working `
 - SSE event-stream endpoint on the daemon (`GET /events/stream`) + adapter swap from polling.
 - Threads: `ThreadPane`, resize handle, parent-pin, dimming of non-thread messages.
 - TimelineRail with portal tooltips, claim/analyze/deliver/ship/review/alert/kickoff/request markers.
-- Focus-agent mode (dim other-agent messages + timeline nodes; pink ring on focused agent's bubbles).
+- Agent profile flow from roster/sidebar/activity/message-avatar context menus.
 - ContextMenu (4 surfaces: sidebar / message / roster / timeline).
 - TweaksPanel.
 

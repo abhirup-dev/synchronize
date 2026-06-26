@@ -1,6 +1,7 @@
 import type {
   ActivityItem,
   Agent,
+  AgentLaunchProfile,
   AgentStatus,
   ArchivePreview,
   ArchivePreviewMember,
@@ -228,6 +229,7 @@ interface WebStateResponse {
   ok: true;
   cursor: number;
   launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
+  launch_profiles?: DaemonLaunchProfile[];
   launch_lifecycle?: DaemonLaunchLifecycle[];
   agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
@@ -281,6 +283,18 @@ interface DaemonLaunchResponse {
   sessionName: string;
   title: string;
   group?: string;
+}
+
+interface DaemonLaunchProfile {
+  name: string;
+  tool: "claude" | "pi" | "letta";
+  available: boolean;
+  path?: string;
+  model?: string;
+  thinking?: string;
+  session_name?: string;
+  repo?: string;
+  disabled_reason?: string;
 }
 
 interface DaemonArchivedSession {
@@ -375,6 +389,7 @@ export class DaemonDataSource implements DataSource {
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
+  private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>([]);
@@ -410,6 +425,7 @@ export class DaemonDataSource implements DataSource {
   rooms(): Snapshot<Room[]> { return this._rooms; }
   me(): Snapshot<Agent> { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+  launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
 
   activity(): Snapshot<ActivityItem[]> {
     if (!this.activityRequested) {
@@ -585,6 +601,7 @@ export class DaemonDataSource implements DataSource {
         delivered = this.rememberLocalMessage(delivered, body, attachments);
         this.replaceOptimistic(input, optimistic.id, delivered);
         await this.refreshRoom(input.roomId);
+        await this.refreshActivity({ force: true });
         return delivered;
       } catch (error) {
         this.removeOptimistic(input, optimistic.id);
@@ -610,6 +627,7 @@ export class DaemonDataSource implements DataSource {
       delivered = this.rememberLocalMessage(delivered, body, attachments);
       this.replaceOptimistic(input, optimistic.id, delivered);
       await this.refreshRoom(input.roomId);
+      await this.refreshActivity({ force: true });
       return delivered;
     } catch (error) {
       this.removeOptimistic(input, optimistic.id);
@@ -669,17 +687,25 @@ export class DaemonDataSource implements DataSource {
     const roomId = roomIdForEvent(response.event, this.peerId) ?? input.roomId;
     const updated = mapMessage(response.event, roomId, statusForEvent(response.event, this.peerId));
     this.updateMessageSnapshots(updated);
+    await this.refreshActivity({ force: true });
     return updated;
   }
 
   async ackActivity(eventId: number): Promise<void> {
-    // Optimistic: clear the row locally, then persist. The server also acks on
-    // react/reply, so this is the explicit-ack path (e.g. the feed react button).
-    this.setActivityAwaiting(eventId, false);
+    await this.ackActivityEvents([eventId]);
+  }
+
+  async ackActivityEvents(eventIds: number[]): Promise<void> {
+    const ids = [...new Set(eventIds.filter((eventId) => Number.isInteger(eventId) && eventId > 0))];
+    if (ids.length === 0) return;
+    // Optimistic: clear rows locally, then persist. The server also acks on
+    // react/reply, so this is the explicit-ack path (feed row, group, bucket).
+    for (const eventId of ids) this.setActivityAwaiting(eventId, false);
     await this.request(`/peers/${encodeURIComponent(this.peerId)}/inbox/ack`, {
       method: "POST",
-      body: JSON.stringify({ event_ids: [eventId] }),
+      body: JSON.stringify({ event_ids: ids }),
     }).catch(() => undefined);
+    await this.refreshActivity({ force: true });
   }
 
   async ackAllActivity(): Promise<void> {
@@ -692,6 +718,7 @@ export class DaemonDataSource implements DataSource {
       method: "POST",
       body: JSON.stringify({}),
     }).catch(() => undefined);
+    await this.refreshActivity({ force: true });
   }
 
   async loadMoreActivity(): Promise<void> {
@@ -832,9 +859,9 @@ export class DaemonDataSource implements DataSource {
   // Fetch a page of the global feed. reset/head → newest window (merged, with
   // freshly-arrived rows flashed); before → older page appended. The in-memory
   // list is capped at ACTIVITY_CAP (older rows trimmed, re-fetchable).
-  private async refreshActivity(opts: { reset?: boolean; before?: number } = {}): Promise<void> {
+  private async refreshActivity(opts: { reset?: boolean; before?: number; force?: boolean } = {}): Promise<void> {
     if (this.peerId === PENDING_WEB_PEER_ID) return;
-    if (opts.before === undefined && this.activityRefresh) return this.activityRefresh;
+    if (opts.before === undefined && this.activityRefresh && !opts.force) return this.activityRefresh;
     const params = new URLSearchParams({ limit: String(ACTIVITY_WINDOW) });
     if (opts.before !== undefined) params.set("before", String(opts.before));
     const run = this.request<ActivityResponse>(`/activity/${encodeURIComponent(this.peerId)}?${params.toString()}`)
@@ -912,10 +939,11 @@ export class DaemonDataSource implements DataSource {
       method: "POST",
       body: JSON.stringify({
         tool: input.tool,
+        ...(input.profileName ? { profile_name: input.profileName } : {}),
         name,
         repo: input.path,
         group,
-        model: input.model,
+        ...(input.model ? { model: input.model } : {}),
         ...(input.thinking ? { thinking: input.thinking } : {}),
       }),
     });
@@ -1155,6 +1183,7 @@ export class DaemonDataSource implements DataSource {
           ...(path.label ? { label: path.label } : {}),
         })),
         ...(state.launch_tools ? { launchTools: state.launch_tools } : {}),
+        ...(state.launch_profiles ? { launchProfiles: mapLaunchProfiles(state.launch_profiles) } : {}),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,
@@ -1179,6 +1208,7 @@ export class DaemonDataSource implements DataSource {
     this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, agents)));
     this._me.set(me);
     this._rooms.set(reuseEqualRooms(this._rooms.get(), [...groupRooms, ...dmRooms]));
+    this._launchProfiles.set(reuseEqualLaunchProfiles(this._launchProfiles.get(), mapLaunchProfiles(state.launch_profiles ?? [])));
     this._skillCatalog.set(reuseEqualSkillCatalog(this._skillCatalog.get(), mapSkillCatalog(state.skill_catalog ?? [])));
   }
 
@@ -1748,6 +1778,20 @@ function mapResumeGroupPreview(result: DaemonResumeGroupPreview): ResumePreview 
   };
 }
 
+function mapLaunchProfiles(profiles: DaemonLaunchProfile[]): AgentLaunchProfile[] {
+  return profiles.map((profile) => ({
+    name: profile.name,
+    tool: profile.tool,
+    available: profile.available,
+    ...(profile.path ? { path: profile.path } : {}),
+    ...(profile.model ? { model: profile.model } : {}),
+    ...(profile.thinking ? { thinking: profile.thinking } : {}),
+    ...(profile.session_name ? { sessionName: profile.session_name } : {}),
+    ...(profile.repo ? { repo: profile.repo } : {}),
+    ...(profile.disabled_reason ? { disabledReason: profile.disabled_reason } : {}),
+  }));
+}
+
 function pushMap<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const existing = map.get(key);
   if (existing) existing.push(value);
@@ -1794,6 +1838,10 @@ function reuseEqualMessages(prev: Message[], next: Message[]): Message[] {
 }
 
 function reuseEqualSkillCatalog(prev: SkillCatalogEntry[], next: SkillCatalogEntry[]): SkillCatalogEntry[] {
+  return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+}
+
+function reuseEqualLaunchProfiles(prev: AgentLaunchProfile[], next: AgentLaunchProfile[]): AgentLaunchProfile[] {
   return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 }
 

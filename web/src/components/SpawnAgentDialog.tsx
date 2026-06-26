@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn";
-import { useSpawnAgent } from "../data/context.tsx";
-import type { AgentLaunchTool, Room } from "../data/types.ts";
+import { useLaunchProfiles, useSpawnAgent } from "../data/context.tsx";
+import type { AgentLaunchProfile, AgentLaunchTool, Room } from "../data/types.ts";
 import { useToast } from "./Toast.tsx";
+import { roomNameText } from "./primitives.tsx";
 
 // Styles migrated from styles.css (.spawn-* family) to inline Tailwind v4
 // utilities. `.spawn-agent-dialog` is retained as a class because it is a
@@ -59,12 +60,34 @@ interface ToolOption {
   label: string;
 }
 
+interface RuntimeTarget {
+  id: string;
+  kind: "tool" | "profile";
+  tool: AgentLaunchTool;
+  profileName?: string;
+  label: string;
+  meta: string;
+  available: boolean;
+}
+
 interface ModelOption {
   id: string;
   tool: AgentLaunchTool;
   label: string;
-  model: string;
-  thinking?: "low" | "medium" | "high";
+  model?: string;
+  thinking?: string;
+}
+
+interface DaemonLaunchProfile {
+  name: string;
+  tool: AgentLaunchTool;
+  available: boolean;
+  path?: string;
+  model?: string;
+  thinking?: string;
+  session_name?: string;
+  repo?: string;
+  disabled_reason?: string;
 }
 
 const TOOL_OPTIONS: ToolOption[] = [
@@ -75,7 +98,7 @@ const TOOL_OPTIONS: ToolOption[] = [
 
 const MODEL_OPTIONS: Record<AgentLaunchTool, ModelOption[]> = {
   claude: [
-    { id: "claude-sonnet", tool: "claude", label: "Sonnet", model: "claude-sonnet-4-6-20251114", thinking: "medium" },
+    { id: "claude-sonnet", tool: "claude", label: "Sonnet", model: "claude-sonnet-4-6", thinking: "medium" },
     { id: "claude-haiku", tool: "claude", label: "Haiku", model: "claude-haiku-4-5-20251001", thinking: "high" },
     { id: "claude-opus", tool: "claude", label: "Opus", model: "claude-opus-4-8", thinking: "medium" },
   ],
@@ -103,8 +126,10 @@ interface SpawnAgentDialogProps {
 
 export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const spawnAgent = useSpawnAgent();
+  const launchProfiles = useLaunchProfiles();
   const toast = useToast();
-  const [tool, setTool] = useState<AgentLaunchTool>("pi");
+  const [fetchedProfiles, setFetchedProfiles] = useState<AgentLaunchProfile[]>([]);
+  const [targetId, setTargetId] = useState("tool:pi");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID.pi);
   const [name, setName] = useState(() => defaultAgentName("pi", room));
   const [path, setPath] = useState(() => room.paths?.[0]?.path ?? "");
@@ -113,8 +138,15 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  const title = useMemo(() => `Spawn into #${room.name}`, [room.name]);
-  const modelOptions = MODEL_OPTIONS[tool];
+  const roomLabel = useMemo(() => roomNameText(room.kind, room.name), [room.kind, room.name]);
+  const title = useMemo(() => `Spawn into ${roomLabel}`, [roomLabel]);
+  const profiles = useMemo(
+    () => mergeLaunchProfiles(launchProfiles, fetchedProfiles, room.launchProfiles ?? []),
+    [fetchedProfiles, launchProfiles, room.launchProfiles],
+  );
+  const targets = useMemo(() => runtimeTargets(room, profiles), [room, profiles]);
+  const selectedTarget = targets.find((target) => target.id === targetId) ?? targets[0] ?? fallbackRuntimeTarget();
+  const modelOptions = useMemo(() => modelOptionsForTarget(profiles, selectedTarget), [profiles, selectedTarget]);
   const selectedModel = modelOptions.find((option) => option.id === modelId) ?? modelOptions[0];
 
   useEffect(() => {
@@ -123,22 +155,48 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   }, []);
 
   useEffect(() => {
-    if (!nameTouched) setName(defaultAgentName(tool, room));
-  }, [nameTouched, room, tool]);
+    if ((room.launchProfiles?.length ?? 0) > 0 || launchProfiles.length > 0) return;
+    let cancelled = false;
+    const token = sessionStorage.getItem("SYNCHRONIZE_TOKEN") ?? localStorage.getItem("SYNCHRONIZE_TOKEN");
+    const headers = new Headers({ accept: "application/json" });
+    if (token) headers.set("authorization", `Bearer ${token}`);
+    void fetch("/web/state?limit=1", { headers })
+      .then((response) => response.ok ? response.json() : null)
+      .then((state: { launch_profiles?: DaemonLaunchProfile[] } | null) => {
+        if (!cancelled) setFetchedProfiles(mapDaemonLaunchProfiles(state?.launch_profiles ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedProfiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [launchProfiles.length, room.launchProfiles]);
 
   useEffect(() => {
-    if (!MODEL_OPTIONS[tool].some((option) => option.id === modelId)) {
-      setModelId(DEFAULT_MODEL_ID[tool]);
+    if (!profiles.some((profile) => profile.name === selectedTarget.profileName)) return;
+    if (!modelOptions.some((option) => option.id === modelId)) {
+      setModelId(modelOptions[0]?.id ?? DEFAULT_MODEL_ID[selectedTarget.tool]);
     }
-  }, [modelId, tool]);
+  }, [modelId, modelOptions, profiles, selectedTarget.profileName, selectedTarget.tool]);
 
   useEffect(() => {
-    if (isToolAvailable(room, tool)) return;
-    const fallback = TOOL_OPTIONS.find((option) => isToolAvailable(room, option.value))?.value;
+    if (!nameTouched) setName(defaultAgentName(selectedTarget.profileName ?? selectedTarget.tool, room));
+  }, [nameTouched, room, selectedTarget]);
+
+  useEffect(() => {
+    if (!modelOptions.some((option) => option.id === modelId)) {
+      setModelId(modelOptions[0]?.id ?? DEFAULT_MODEL_ID[selectedTarget.tool]);
+    }
+  }, [modelId, modelOptions, selectedTarget.tool]);
+
+  useEffect(() => {
+    if (selectedTarget.available) return;
+    const fallback = targets.find((target) => target.available);
     if (!fallback) return;
-    setTool(fallback);
-    setModelId(DEFAULT_MODEL_ID[fallback]);
-  }, [room, tool]);
+    setTargetId(fallback.id);
+    setModelId(modelOptionsForTarget(profiles, fallback)[0]?.id ?? DEFAULT_MODEL_ID[fallback.tool]);
+  }, [profiles, selectedTarget, targets]);
 
   useEffect(() => {
     const paths = room.paths ?? [];
@@ -158,15 +216,15 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
       return;
     }
     if (isAliasInUse(room, trimmed)) {
-      setError(`Alias '${trimmed}' is already in #${room.name}`);
+      setError(`Alias '${trimmed}' is already in ${roomLabel}`);
       return;
     }
     if (!path) {
       setError("Path is required");
       return;
     }
-    if (!isToolAvailable(room, tool)) {
-      setError(`${toolLabel(tool)} is not installed`);
+    if (!selectedTarget.available) {
+      setError(`${selectedTarget.label} is not available`);
       return;
     }
     if (!selectedModel) {
@@ -178,13 +236,14 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
     try {
       const result = await spawnAgent({
         roomId: room.id,
-        tool,
+        tool: selectedTarget.tool,
+        ...(selectedTarget.profileName ? { profileName: selectedTarget.profileName } : {}),
         name: trimmed,
         path,
-        model: selectedModel.model,
+        ...(selectedModel.model ? { model: selectedModel.model } : {}),
         ...(selectedModel.thinking ? { thinking: selectedModel.thinking } : {}),
       });
-      toast.show(`${result.sessionName} is launching in #${result.group}`, { kind: "success" });
+      toast.show(`${result.sessionName} is launching in ${roomNameText("group", result.group)}`, { kind: "success" });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -249,30 +308,26 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
         <fieldset className="grid gap-[8px] p-0 m-0 border-0">
           <legend className={labelKicker}>Runtime</legend>
           <div className="grid gap-[8px] grid-cols-2">
-            {TOOL_OPTIONS.map((option) => {
-              const availability = room.launchTools?.[option.value];
-              const available = isToolAvailable(room, option.value);
-              return (
-              <label key={option.value} className={optionCard({ selected: tool === option.value, disabled: !available })}>
+            {targets.map((option) => (
+              <label key={option.id} className={optionCard({ selected: targetId === option.id, disabled: !option.available })}>
                 <input
                   type="radio"
                   name="spawn-agent-tool"
                   className="accent-blue"
-                  value={option.value}
-                  checked={tool === option.value}
-                  disabled={submitting || !available}
+                  value={option.id}
+                  checked={targetId === option.id}
+                  disabled={submitting || !option.available}
                   onChange={() => {
-                    setTool(option.value);
-                    setModelId(DEFAULT_MODEL_ID[option.value]);
+                    setTargetId(option.id);
+                    setModelId(modelOptionsForTarget(profiles, option)[0]?.id ?? DEFAULT_MODEL_ID[option.tool]);
                   }}
                 />
                 <span className={optionCopy}>
                   <span className={optionLabel}>{option.label}</span>
-                  <span className={optionMeta}>{available ? availability?.path ?? "installed" : "not installed"}</span>
+                  <span className={optionMeta}>{option.meta}</span>
                 </span>
               </label>
-              );
-            })}
+            ))}
           </div>
         </fieldset>
 
@@ -342,7 +397,7 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   );
 }
 
-function defaultAgentName(tool: AgentLaunchTool, room: Room): string {
+function defaultAgentName(tool: string, room: Room): string {
   const slug = room.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "group";
   return normalizeAliasDraft(`${tool}-${slug}`).replace(/^-+|-+$/g, "") || tool;
 }
@@ -355,20 +410,85 @@ function normalizeAliasDraft(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/--+/g, "-").slice(0, 11);
 }
 
-function isToolAvailable(room: Room, tool: AgentLaunchTool): boolean {
-  return room.launchTools?.[tool]?.available ?? true;
+function runtimeTargets(room: Room, profiles: AgentLaunchProfile[]): RuntimeTarget[] {
+  const builtinTargets = TOOL_OPTIONS.map((option) => {
+    const availability = room.launchTools?.[option.value];
+    const available = availability?.available ?? true;
+    return {
+      id: `tool:${option.value}`,
+      kind: "tool" as const,
+      tool: option.value,
+      label: option.label,
+      meta: available ? availability?.path ?? "installed" : "not installed",
+      available,
+    };
+  });
+  const profileTargets = profiles.map((profile) => ({
+    id: `profile:${profile.name}`,
+    kind: "profile" as const,
+    tool: profile.tool,
+    profileName: profile.name,
+    label: profile.name,
+    meta: profile.available
+      ? `profile / ${profile.tool}${profile.model ? ` / ${profile.model}` : ""}`
+      : profile.disabledReason ?? "not available",
+    available: profile.available,
+  }));
+  return [...builtinTargets, ...profileTargets];
+}
+
+function fallbackRuntimeTarget(): RuntimeTarget {
+  return {
+    id: "tool:pi",
+    kind: "tool",
+    tool: "pi",
+    label: "Pi",
+    meta: "installed",
+    available: true,
+  };
+}
+
+function modelOptionsForTarget(profiles: AgentLaunchProfile[], target: RuntimeTarget): ModelOption[] {
+  if (target.kind === "tool") return MODEL_OPTIONS[target.tool];
+  const profile = profiles.find((candidate) => candidate.name === target.profileName);
+  return [
+    {
+      id: `${target.id}:default`,
+      tool: target.tool,
+      label: profile?.model ? "Profile model" : "Profile default",
+      ...(profile?.model ? { model: profile.model } : {}),
+      ...(profile?.thinking ? { thinking: profile.thinking } : {}),
+    },
+  ];
+}
+
+function mergeLaunchProfiles(...sources: AgentLaunchProfile[][]): AgentLaunchProfile[] {
+  const byName = new Map<string, AgentLaunchProfile>();
+  for (const profiles of sources) {
+    for (const profile of profiles) byName.set(profile.name, profile);
+  }
+  return [...byName.values()];
+}
+
+function mapDaemonLaunchProfiles(profiles: DaemonLaunchProfile[]): AgentLaunchProfile[] {
+  return profiles.map((profile) => ({
+    name: profile.name,
+    tool: profile.tool,
+    available: profile.available,
+    ...(profile.path ? { path: profile.path } : {}),
+    ...(profile.model ? { model: profile.model } : {}),
+    ...(profile.thinking ? { thinking: profile.thinking } : {}),
+    ...(profile.session_name ? { sessionName: profile.session_name } : {}),
+    ...(profile.repo ? { repo: profile.repo } : {}),
+    ...(profile.disabled_reason ? { disabledReason: profile.disabled_reason } : {}),
+  }));
 }
 
 function isAliasInUse(room: Room, alias: string): boolean {
   return Object.values(room.memberAliases ?? {}).some((existing) => normalizeAliasDraft(existing) === alias);
 }
 
-function toolLabel(tool: AgentLaunchTool): string {
-  if (tool === "claude") return "Claude";
-  if (tool === "letta") return "Letta";
-  return "Pi";
-}
-
 function modelMeta(option: ModelOption): string {
+  if (!option.model) return "from profile env/config";
   return option.thinking ? `${option.model} / ${option.thinking}` : option.model;
 }

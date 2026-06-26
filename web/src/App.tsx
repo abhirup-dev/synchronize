@@ -24,7 +24,7 @@ import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx
 import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
-import { usePersistentTheme, type ThemeName, themeFamily, themeTraits, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
 
 function titleCase(value: string): string {
@@ -107,7 +107,6 @@ export function Shell() {
   const ds = useDataSource();
   const [activeId, setActiveId] = useState<string>(rooms[0]?.id ?? ACTIVITY_ID);
   const [tab, setTab] = useState<RoomTab>("chat");
-  const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
   const [threadParentId, setThreadParentId] = useState<string | null>(null);
   // Deep-link target waiting to be applied once its room window has hydrated, and
   // the message id the chat/thread surface should scroll to and flash.
@@ -208,7 +207,6 @@ export function Shell() {
   // is handled in selectRoom instead.
   useEffect(() => {
     setTab("chat");
-    setFocusedAgent(null);
     setThreadParentId(null);
     setThreadSummaryOpen(false);
     setFocusMessageId(null);
@@ -218,6 +216,15 @@ export function Shell() {
   const roomMessages = useMessages(room?.id ?? "");
   const agents = useAgents();
   const toast = useToast();
+  const openDmForAgent = (agentId: string) => {
+    const dm = rooms.find((candidate) => candidate.kind === "dm" && candidate.peerId === agentId);
+    if (!dm) {
+      const agent = agents.find((candidate) => candidate.id === agentId);
+      toast.show(`No direct message for ${agent?.name ?? "this agent"}`, { kind: "info" });
+      return;
+    }
+    jumpToRoom(dm.id);
+  };
 
   // Apply a pending deep link once its room is active and the target message has
   // hydrated. Declared after the room-reset effect so, on the activeId change it
@@ -341,13 +348,25 @@ export function Shell() {
   return (
     <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
       {layout.persistentSidebar && (
-        <Sidebar activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")} onSelect={selectRoom} mode={vim.mode} />
+        <Sidebar
+          activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")}
+          onSelect={selectRoom}
+          mode={vim.mode}
+          displaySettings={{
+            theme,
+            skin,
+            chatBg,
+            onTheme: setTheme,
+            onToggleSkin: () => setSkin((current) => (current === "brutal" ? "glass" : "brutal")),
+            onChatBg: setChatBg,
+          }}
+        />
       )}
       <ShellMainColumn
         style={threadParentId && layout.threadAsSplit ? ({ "--thread-pane-width": `${threadWidth}px` } as CSSProperties) : undefined}
       >
         {isActivity ? (
-          <ActivityView onJumpToRoom={jumpToRoom} threadWidth={threadWidth} onThreadWidth={setThreadWidth} onOpenSettings={openCompactSettings} />
+          <ActivityView onJumpToRoom={jumpToRoom} onOpenDm={openDmForAgent} threadWidth={threadWidth} onThreadWidth={setThreadWidth} onOpenSettings={openCompactSettings} />
         ) : room ? (
           <>
             {!pushedThreadOpen && (
@@ -356,7 +375,6 @@ export function Shell() {
                 tab={tab}
                 onTab={setTab}
                 theme={theme}
-                themeIcon={themeTraits(theme).toggleGlyph}
                 onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
                 skin={skin}
                 onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
@@ -388,6 +406,7 @@ export function Shell() {
                     <ChatView
                       room={room}
                       onOpenThread={setThreadParentId}
+                      onOpenDm={openDmForAgent}
                       isThreadOpen={!!threadParentId}
                       threadSummaryOpen={threadSummaryOpen}
                       onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
@@ -420,9 +439,8 @@ export function Shell() {
               ) : rosterPersistent ? (
                 <AgentRoster
                   room={room}
-                  focusedAgent={focusedAgent}
-                  onFocus={setFocusedAgent}
                   onAgentDoubleClick={jumpToAgentLast}
+                  onOpenDm={openDmForAgent}
                 />
               ) : null}
             </ShellMainBody>
@@ -464,9 +482,8 @@ export function Shell() {
           />
           <AgentRoster
             room={room}
-            focusedAgent={focusedAgent}
-            onFocus={setFocusedAgent}
             onAgentDoubleClick={jumpToAgentLast}
+            onOpenDm={openDmForAgent}
           />
         </div>
       )}

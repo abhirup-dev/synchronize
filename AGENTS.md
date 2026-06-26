@@ -44,7 +44,7 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
-- User-facing CLI install and Carapace completion instructions live in `README.md`; keep agent docs minimal and point there for detailed setup steps.
+- User-facing CLI install and Tab completion instructions live in `README.md`; keep agent docs minimal and point there for detailed setup steps.
 - Use `bd` for all project task tracking. Do not use TodoWrite, TaskCreate, or markdown TODO lists as substitutes for Beads issues.
 - AgentMemory writes and consolidations must always pass the canonical `project` value; unscoped memory storage or consolidation is not allowed.
 - DO NOT CHANGE: The next directive is intentional and must remain in sync with `CLAUDE.md`.
@@ -67,6 +67,33 @@ Use the default Matt Pocock skill triage labels as Beads labels. See `docs/agent
 ### Domain docs
 
 This is a single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
+
+### Web UI / Storybook
+
+Before editing or adding `web/` components, use the Storybook component glossary
+(MCP at `http://localhost:6006/mcp` while `cd web && bun run storybook` runs) to
+reuse existing components and patterns. See `docs/agents/storybook-ui.md`.
+
+**If you are adding or modifying any `web/` component OR its states/variants, you
+MUST first read the "Wiring conventions" section of `docs/agents/storybook-ui.md`.**
+It is the gated contract for how stories mount through shared shell cells, how
+mode/theme behaviour is expressed as traits (`shellLayout`/`themeTraits`) instead
+of if-else, and why theme/skin are global toolbar traits (never duplicate stories
+per theme). Wiring a story differently than the app mounts the component is the
+single biggest source of false-positive UI findings — the conventions exist to
+prevent it.
+
+When changing `web/src/components/*`, also run the Storybook staleness audit in
+`docs/agents/storybook-ui.md`: stories render real components automatically, but
+story args, callbacks, visible states, interaction `play` tests, deleted behavior,
+and composed flows must stay in sync with the component contract. If you find a
+stale or divergent story/flow outside the requested scope, tell the user what you
+found and ask how to proceed instead of silently expanding the task.
+
+Use AST-grep for structural code scanning when it fits the question; it is the
+preferred tool for code navigation beyond plain-text search. Project config
+lives in `sgconfig.yml`; run it with `bun run ast-grep -- ...` or
+`bun run ast-grep:scan`.
 
 ## Environment
 

@@ -14,6 +14,11 @@ export function parseFlags(argv: string[]): ParsedFlags {
       if (arg) rest.push(arg);
       continue;
     }
+    const equalsIndex = arg.indexOf("=");
+    if (equalsIndex > 2) {
+      flags[arg.slice(2, equalsIndex)] = arg.slice(equalsIndex + 1);
+      continue;
+    }
     const name = arg.slice(2);
     const next = argv[index + 1];
     if (!next || next.startsWith("--")) {

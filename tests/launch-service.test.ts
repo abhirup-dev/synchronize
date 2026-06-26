@@ -236,6 +236,56 @@ test("resolveLaunchSpec defaults claude to Haiku high when no model given", asyn
   expect(spec.command).not.toContain("--effort");
 });
 
+test("resolveLaunchSpec leaves profile-owned claude model selection to profile env", async () => {
+  const spec = resolveLaunchSpec(
+    { tool: "claude", profileName: "glaude", name: "alice", repo: "/r" },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+    {
+      profile: {
+        profileName: "glaude",
+        tool: "claude",
+        bin: "/opt/bin/claude",
+        args: ["--enable-auto-mode"],
+        env: { ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-4.5-air" },
+        raw: { tool: "claude" },
+      },
+    },
+  );
+  expect(spec.command[0]).toBe("/opt/bin/claude");
+  expect(spec.command).toContain("--enable-auto-mode");
+  expect(spec.command).not.toContain("--model");
+  expect(spec.command).not.toContain("claude-haiku-4-5-20251001");
+  expect(spec.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("glm-4.5-air");
+});
+
+test("resolveLaunchSpec still applies explicit selected model over profile args", async () => {
+  const spec = resolveLaunchSpec(
+    {
+      tool: "claude",
+      profileName: "glaude",
+      name: "alice",
+      repo: "/r",
+      model: "claude-sonnet-4-6",
+      args: ["--caller-arg"],
+    },
+    { launchId: "lid", peerId: "peer-abcdef12", home: "/home" },
+    {
+      profile: {
+        profileName: "glaude",
+        tool: "claude",
+        args: ["--model", "claude-opus-4-8", "--profile-arg"],
+        env: {},
+        raw: { tool: "claude" },
+      },
+    },
+  );
+  expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
+  expect(spec.command).not.toContain("claude-opus-4-8");
+  expect(spec.command).toContain("--profile-arg");
+  expect(spec.command).toContain("--caller-arg");
+});
+
 test("resolveLaunchSpec strips caller-provided claude --model before applying selected model", async () => {
   const spec = resolveLaunchSpec(
     { tool: "claude", name: "alice", repo: "/r", model: "claude-sonnet-4-6", args: ["--model", "claude-opus-4-8"] },

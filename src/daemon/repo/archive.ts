@@ -181,8 +181,11 @@ export function planResume(db: Database, peerId: string): ResumePlan {
   }
 
   const session = db
-    .query<{ host_session_id: string; host_session_file: string | null; cwd: string | null; git_branch: string | null; pid: number | null }, [string]>(
-      `SELECT host_session_id, host_session_file, cwd, git_branch, pid
+    .query<
+      { host_session_id: string; host_session_file: string | null; cwd: string | null; git_branch: string | null; pid: number | null; metadata_json: string | null },
+      [string]
+    >(
+      `SELECT host_session_id, host_session_file, cwd, git_branch, pid, metadata_json
        FROM agent_sessions WHERE peer_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1`,
     )
     .get(peerId);
@@ -222,8 +225,22 @@ export function planResume(db: Database, peerId: string): ResumePlan {
     alias: membership?.alias ?? null,
     isAoe: Boolean(launch?.backend_title),
     backendTitle: launch?.backend_title ?? null,
-    profileName: launch?.profile_name ?? null,
+    profileName: launch?.profile_name ?? profileNameFromMetadata(session.metadata_json),
     model: launch?.model ?? null,
     args,
   };
+}
+
+function profileNameFromMetadata(metadataJson: string | null): string | null {
+  if (!metadataJson) return null;
+  try {
+    const parsed = JSON.parse(metadataJson) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const value = (parsed as Record<string, unknown>).profile_name;
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  } catch {
+    return null;
+  }
 }

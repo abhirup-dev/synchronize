@@ -156,17 +156,34 @@ button { font-family: inherit; cursor: pointer; }
 /* .sidebar, .brand, .brand-mark base, .brand-text/-name/-sub, .searchbox(+input/
    placeholder/focus), .search-key, .section-head migrated to Tailwind utilities
    in Sidebar.tsx. Skin hooks (.sidebar, .brand-mark, .section-head) keep their
-   className;
-:root[data-theme="kanagawa-wave"] .brand-mark{
-  background: var(--paper-3);
+   className. */
+.brand-mark {
+  transform: rotate(-3deg);
+  transform-origin: center;
+}
+.identity-logo-tile {
+  border-radius: 0;
+  transform: rotate(-3deg);
+  transform-origin: center;
+}
+:root[data-theme="kanagawa-wave"] .identity-logo-tile {
+  background: var(--paper);
   color: var(--ink);
-  border-color: var(--rule);
+  border-color: var(--message-card-border-color);
+  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+}
+:root[data-theme="kanagawa-wave"] .brand-mark{
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--message-card-border-color);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
 }
 
 .count-chip {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--count-chip-bg);
+  color: var(--count-chip-fg);
+  border: var(--line-xs);
+  border-color: var(--count-chip-border);
   font-family: var(--font-mono);
   font-size: var(--text-10);
   padding: var(--space-chip-pad-sm);
@@ -174,7 +191,158 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
 }
 
-/* .plus-btn migrated to the PLUS_BTN constant in Sidebar.tsx. */
+.panel-section-head {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  padding: 10px 44px 8px;
+  color: var(--ink);
+}
+.panel-section-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-12);
+  line-height: 1;
+  letter-spacing: var(--tracking-md);
+  text-align: center;
+}
+.panel-section-action {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: var(--text-16);
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.panel-section-action:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.topbar-strip {
+  background: var(--paper-2);
+}
+.topbar-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  border: var(--line-sm);
+  border-radius: var(--radius-xs);
+  box-shadow: 1.5px 1.5px 0 var(--ink);
+  font-family: var(--font-display);
+  font-size: var(--text-10);
+  line-height: 1;
+  letter-spacing: var(--tracking-md);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease, background 80ms ease, color 80ms ease;
+}
+.topbar-control:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+  transform: translate(-1px, -1px);
+  box-shadow: 2.5px 2.5px 0 var(--ink);
+}
+.topbar-control.active,
+.topbar-control[aria-pressed="true"] {
+  background: var(--surface-selected-bg);
+  color: var(--surface-selected-fg);
+  border-color: var(--surface-selected-border);
+}
+.topbar-control .act-filter-n,
+.topbar-control .count-chip {
+  background: var(--paper-3);
+  color: var(--ink);
+  border: var(--line-xs);
+  box-shadow: none;
+}
+.topbar-control.active .act-filter-n,
+.topbar-control[aria-pressed="true"] .act-filter-n,
+.topbar-control.active .count-chip,
+.topbar-control[aria-pressed="true"] .count-chip {
+  background: var(--paper-2);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+:root[data-theme="kanagawa-wave"] .topbar-control {
+  background: var(--activity-control-bg);
+  color: var(--activity-control-fg);
+  border-color: transparent;
+  box-shadow: 2px 2px 0 var(--activity-control-shadow);
+}
+:root[data-theme="kanagawa-wave"] .topbar-control:hover {
+  background: var(--activity-control-bg-raised);
+  color: var(--activity-control-fg);
+  box-shadow: 3px 3px 0 var(--activity-control-shadow);
+}
+:root[data-theme="kanagawa-wave"] .topbar-control.active,
+:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] {
+  background: var(--activity-control-active-bg);
+  color: var(--activity-control-selected-fg);
+  border-color: transparent;
+}
+:root[data-theme="kanagawa-wave"] .topbar-control:focus-visible {
+  outline: 2px solid var(--activity-control-selected-fg);
+  outline-offset: 2px;
+}
+:root[data-theme="kanagawa-wave"] .topbar-control .act-filter-n,
+:root[data-theme="kanagawa-wave"] .topbar-control .count-chip {
+  background: var(--paper);
+  color: var(--activity-control-fg);
+  border-color: var(--activity-control-border);
+  box-shadow: 1px 1px 0 var(--activity-control-shadow);
+}
+:root[data-theme="kanagawa-wave"] .topbar-control.active .act-filter-n,
+:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] .act-filter-n,
+:root[data-theme="kanagawa-wave"] .topbar-control.active .count-chip,
+:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] .count-chip {
+  background: var(--activity-control-badge-bg);
+  color: var(--activity-control-badge-fg);
+  border-color: var(--activity-control-badge-bg);
+}
+
+.room-name-inline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.36em;
+  min-width: 0;
+  max-width: 100%;
+}
+.room-name-hash {
+  flex: 0 0 auto;
+  font-size: 1.14em;
+  font-style: italic;
+  line-height: 1;
+  opacity: 0.92;
+}
+.room-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -215,14 +383,14 @@ button { font-family: inherit; cursor: pointer; }
   color: #777777;
 }
 .room-item.active {
-  background: var(--ink);
-  color: var(--on-ink);
-  border-color: var(--rule);
+  background: var(--surface-selected-bg);
+  color: var(--surface-selected-fg);
+  border-color: var(--surface-selected-border);
   box-shadow: var(--shadow-sm);
   transform: none;
 }
-.room-item.active .room-preview { color: var(--on-ink); opacity: 0.65; }
-.room-item.active .room-name { color: var(--on-ink); }
+.room-item.active .room-preview { color: var(--surface-selected-muted); opacity: 1; }
+.room-item.active .room-name { color: var(--surface-selected-fg); }
 :root[data-theme="kanagawa-wave"] .room-item.active{
   background: var(--paper-3);
   color: var(--ink);
@@ -303,26 +471,30 @@ button { font-family: inherit; cursor: pointer; }
   right: -2px;
 }
 
-/* .activity-dock-btn base + .activity-dock-badge base migrated to Tailwind
-   utilities in Sidebar.tsx (activityDockBtn() CVA + inline badge utils). The
-   hook classes stay so the .activity-dock-btn:hover/.active rule and the
-   kanagawa-wave overrides below bind. */
+/* Sidebar dock buttons: base utilities live in Sidebar.tsx; hook classes stay
+   here for active/hover parity and kanagawa-wave shadow treatment. */
 .activity-dock-btn:hover,
-.activity-dock-btn.active {
+.activity-dock-btn.active,
+.resume-dock-btn:hover {
   transform: translate(-1px, -1px);
   box-shadow: var(--shadow-hover);
   background: var(--paper-3);
 }
 
 :root[data-theme="kanagawa-wave"] .activity-dock-btn,
-:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble {
+:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble,
+:root[data-theme="kanagawa-wave"] .resume-dock-btn,
+:root[data-theme="kanagawa-wave"] .sidebar-settings-btn {
   background: var(--paper);
+  color: var(--ink);
   border-color: var(--message-card-border-color);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
 :root[data-theme="kanagawa-wave"] .activity-dock-btn:hover,
 :root[data-theme="kanagawa-wave"] .activity-dock-btn.active,
-:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble:hover {
+:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble:hover,
+:root[data-theme="kanagawa-wave"] .resume-dock-btn:hover,
+:root[data-theme="kanagawa-wave"] .sidebar-settings-btn:hover {
   background: var(--paper-3);
   box-shadow: 3px 3px 0 var(--message-card-shadow-color);
 }
@@ -345,6 +517,14 @@ button { font-family: inherit; cursor: pointer; }
   padding: 0;
 }
 .icon-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
+
+:root[data-theme="kanagawa-wave"] .scroll-ctrl-new {
+  animation: none;
+  background: var(--paper-3);
+  color: var(--ink);
+  border-color: var(--rule);
+  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--lime);
+}
 
 /* .room-agents-btn base + .room-agents-count migrated to Tailwind utilities in
    RoomHeader.tsx. room-agents-btn keeps its className so the .shell-compact
@@ -831,11 +1011,8 @@ button { font-family: inherit; cursor: pointer; }
   transform: translateY(-1px);
 }
 
-/* Base .message-footer{,-left,-right} / .reactions / .reaction-wrap / .reaction
-   {,.is-mine,.add} / .rcount migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). Per-theme dark overrides for .reaction below are
-   retained — they out-specify the single-class utilities. The @media(max-width:
-   640px) .message-footer{,-left} responsive overrides also remain below. */
+/* Message reaction base styles live in components/extra.css. Per-theme dark
+   overrides stay here with the rest of the theme-specific surface corrections. */
 :root[data-theme="kanagawa-wave"] .reaction {
   background: var(--paper);
   color: var(--ink);
@@ -937,7 +1114,7 @@ button { font-family: inherit; cursor: pointer; }
   letter-spacing: var(--tracking-sm);
   box-shadow: var(--shadow-chip);
 }
-.filter-chip.active { background: var(--ink); color: var(--paper); }
+.filter-chip.active { background: var(--surface-selected-bg); color: var(--surface-selected-fg); }
 .filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
 
 .board-cols {
@@ -1487,7 +1664,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .shell-compact .thread-pane-body .bubble {
-  padding: 12px 14px;
+  padding: var(--space-thread-bubble-pad-compact);
   line-height: 1.58;
 }
 
@@ -1497,25 +1674,6 @@ button { font-family: inherit; cursor: pointer; }
 .thread-pane-body::-webkit-scrollbar { width: 8px; }
 .thread-pane-body::-webkit-scrollbar-thumb { background: var(--ink-faint); }
 .thread-pane-body::-webkit-scrollbar-track { background: var(--paper); }
-
-/* parent message: same visual language as a regular msg row, no extra chrome.
-   .thread-parent base rules migrated to inline Tailwind utilities in
-   ThreadPane.tsx (sync-vmre); the class is kept as a hook for `.thread-parent
-   .bubble` in extra.css. */
-.thread-parent-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-}
-.thread-parent-head .author-chip {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  padding: var(--space-thread-author-chip-pad);
-  border-radius: var(--radius-xs);
-}
-.thread-parent-bubble .markdown p { margin: 0 0 6px; }
-.thread-parent-bubble .markdown p:last-child { margin-bottom: 0; }
-.thread-parent-bubble .poll { margin-top: 8px; }
 
 /* divider between parent and replies — same DNA as .day-divider but quieter.
    .thread-divider / .thread-divider-line base rules migrated to inline Tailwind
@@ -1529,30 +1687,6 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-soft);
   white-space: nowrap;
 }
-
-/* replies use compressed msg-row vocabulary, no special styling */
-.thread-reply {
-  display: grid;
-  grid-template-columns: 40px 1fr;
-  gap: 0;
-}
-.thread-reply.compact { margin-top: -10px; }
-.thread-reply-head .author-chip.sm {
-  font-family: var(--font-display);
-  font-size: var(--text-10-5);
-  padding: var(--space-chip-pad-sm);
-  border-radius: var(--radius-xs);
-}
-.thread-reply-bubble .markdown p { margin: 0 0 4px; }
-.thread-reply-bubble .markdown p:last-child { margin-bottom: 0; }
-.thread-reply.you .thread-reply-bubble {
-  background: var(--muted);
-}
-.thread-reply.compact .thread-reply-bubble {
-  border-top-left-radius: var(--radius-xs);
-  border-top-right-radius: var(--radius-xs);
-}
-
 /* thread pane uses the standard Composer; ensure the wrap doesn't get squished */
 .thread-pane-composer-wrap {
   flex-shrink: 0;

@@ -1,7 +1,7 @@
 import { requestJson, type ClientConfig } from "../client.ts";
 
 export interface ResumeSessionResult {
-  mode: "launch" | "print";
+  mode: "launch" | "foreground" | "print";
   peer_id: string;
   tool: string;
   cwd: string;
@@ -28,13 +28,14 @@ export interface ResumeGroupResult {
 
 export function resumeSession(
   client: ClientConfig,
-  input: { peerId?: string; sessionId?: string; print?: boolean; force?: boolean },
+  input: { peerId?: string; sessionId?: string; mode?: "spawn" | "foreground" | "print"; print?: boolean; force?: boolean },
 ): Promise<ResumeSessionResult> {
   return requestJson<ResumeSessionResult>(client, "/resume/session", {
     method: "POST",
     body: JSON.stringify({
       ...(input.peerId ? { peer_id: input.peerId } : {}),
       ...(input.sessionId ? { session_id: input.sessionId } : {}),
+      ...(input.mode ? { mode: input.mode } : {}),
       ...(input.print ? { print: true } : {}),
       ...(input.force ? { force: true } : {}),
     }),

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildAgentCommand, buildLaunchEnv, isLaunchTool, sanitizeLaunchBaseEnv } from "../src/launch/build.ts";
-import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../src/constants.ts";
+import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_PROFILE_NAME, ENV_SESSION_NAME } from "../src/constants.ts";
 
 test("isLaunchTool accepts claude, pi, and letta", () => {
   expect(isLaunchTool("claude")).toBe(true);
@@ -57,9 +57,16 @@ test("buildLaunchEnv always sets hook-enable + launch id, omits optional keys wh
   expect(env[ENV_HOME]).toBeUndefined();
 });
 
-test("buildLaunchEnv includes session name, peer id, and home when provided", () => {
-  const env = buildLaunchEnv({ launchId: "lid-2", sessionName: "alice", peerId: "peer-9", home: "/tmp/sync-home" });
+test("buildLaunchEnv includes session name, profile name, peer id, and home when provided", () => {
+  const env = buildLaunchEnv({
+    launchId: "lid-2",
+    sessionName: "alice",
+    profileName: "glaude",
+    peerId: "peer-9",
+    home: "/tmp/sync-home",
+  });
   expect(env[ENV_SESSION_NAME]).toBe("alice");
+  expect(env[ENV_PROFILE_NAME]).toBe("glaude");
   expect(env[ENV_PEER_ID]).toBe("peer-9");
   expect(env[ENV_HOME]).toBe("/tmp/sync-home");
 });

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect } from "storybook/test";
 import { RoomHeader } from "./RoomHeader.tsx";
 import { AGENTS, GROUPS, DMS } from "../data/seed.ts";
 import { inMainColumn } from "../storybook/shellFrames.tsx";
@@ -29,7 +30,6 @@ const meta = {
     tab: "chat",
     onTab: noop,
     theme: "paper",
-    themeIcon: "☀️",
     onToggleTheme: noop,
     skin: "brutal",
     onToggleSkin: noop,
@@ -41,9 +41,17 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Group room: `#name`, full member pile, working count, and the AGENTS button.
+// Group room: boxed `#` glyph, plain title, full member pile, working count, and
+// the AGENTS button.
 export const Group: Story = {
   args: { room: group, showAgentsButton: true, onOpenAgents: noop },
+  play: async ({ canvasElement }) => {
+    const title = canvasElement.querySelector(".room-title");
+    await expect(title?.textContent).toBe(group.name);
+    const tabs = canvasElement.querySelectorAll(".room-tab");
+    await expect(tabs.length).toBe(3);
+    tabs.forEach((tab) => expect(tab.classList.contains("topbar-control")).toBe(true));
+  },
 };
 
 // DM room: plain name (no `#`), two members, no agents button.
@@ -69,7 +77,7 @@ export const WithThreadBanner: Story = {
 
 // Glass skin + board tab selected — alternate visual state of the toggles/tabs.
 export const GlassSkinBoardTab: Story = {
-  args: { room: group, skin: "glass", tab: "board", themeIcon: "🌙", theme: "ink" },
+  args: { room: group, skin: "glass", tab: "board", theme: "ink" },
 };
 
 // Compact (mobile-narrow, 390): title truncation, member-pile collapse, and the

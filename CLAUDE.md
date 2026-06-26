@@ -46,7 +46,7 @@ Key invariants:
 ## Conventions
 
 - Bun runtime + TypeScript, ESM. No build step; everything runs from source.
-- User-facing CLI install and Carapace completion instructions live in `README.md`; keep this file to repository workflow directives.
+- User-facing CLI install and Tab completion instructions live in `README.md`; keep this file to repository workflow directives.
 - Squash-merge feature branches into `master`. No merge commits for feature integration.
 - Use non-interactive shell flags (`cp -f`, `rm -rf`, etc.) — see `AGENTS.md`.
 - Project task tracking via `bd` (beads): tickets, work items, issues, bugs, features — anything that outlives the session. Don't use TodoWrite or markdown TODO files for these. Run `bd prime` for the full workflow.
@@ -86,6 +86,18 @@ of if-else, and why theme/skin are global toolbar traits (never duplicate storie
 per theme). Wiring a story differently than the app mounts the component is the
 single biggest source of false-positive UI findings — the conventions exist to
 prevent it.
+
+When changing `web/src/components/*`, also run the Storybook staleness audit in
+`docs/agents/storybook-ui.md`: stories render real components automatically, but
+story args, callbacks, visible states, interaction `play` tests, deleted behavior,
+and composed flows must stay in sync with the component contract. If you find a
+stale or divergent story/flow outside the requested scope, tell the user what you
+found and ask how to proceed instead of silently expanding the task.
+
+Use AST-grep for structural code scanning when it fits the question; it is the
+preferred tool for code navigation beyond plain-text search. Project config
+lives in `sgconfig.yml`; run it with `bun run ast-grep -- ...` or
+`bun run ast-grep:scan`.
 
 ## Environment
 

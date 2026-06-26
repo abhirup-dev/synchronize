@@ -26,32 +26,14 @@ exact event the agent answered.
 
 ## Variations
 
-Prefer:
+Prefer `bridge_reply` when responding to a visible event. It preserves the
+event surface and lets the daemon choose the right thread or DM target.
 
-```text
-bridge_reply(in_reply_to: <visible_event_id>, message: "...")
-```
+Use explicit group send only when deliberately choosing the group surface
+yourself. Before carrying an `in_reply_to` value forward, confirm it still
+points at the event you mean to answer.
 
-Use explicit group send when choosing the surface yourself:
-
-```text
-bridge_send_group(name: "room", in_reply_to: <event_id>, message: "...")
-```
-
-Thread readers:
-
-```text
-bridge_group_history(name: "room", view: "threads")
-bridge_get_thread(root_event_id: 12, format: "summary")
-bridge_get_thread(root_event_id: 12, format: "status")
-bridge_get_thread(root_event_id: 12, format: "events")
-bridge_get_thread(root_event_id: 12, format: "transcript")
-```
-
-Selectors:
-
-```text
-{ strategy: "last", k: 5 }   # default
-{ strategy: "first", k: 5 }
-{ strategy: "all" }
-```
+Use thread readers when the main group view looks incomplete. Flat history is
+for recent group traffic; thread view is for replies that landed under a root.
+Selectors trade context shape, not thread membership: `last` favors recent
+activity, `first` favors origin context, and `all` is best for short threads.

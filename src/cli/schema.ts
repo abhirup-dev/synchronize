@@ -1,6 +1,7 @@
 export type DynamicCompletionProvider =
   | "group-names"
   | "peer-ids"
+  | "session-ids"
   | "session-names"
   | "media-ids"
   | "thread-root-event-ids";
@@ -53,6 +54,7 @@ export interface CliSchema {
 }
 
 const sessionNameValue: CliValueSpec = { kind: "dynamic", provider: "session-names" };
+const sessionIdValue: CliValueSpec = { kind: "dynamic", provider: "session-ids" };
 const groupNameValue: CliValueSpec = { kind: "dynamic", provider: "group-names" };
 const peerIdValue: CliValueSpec = { kind: "dynamic", provider: "peer-ids" };
 const mediaIdValue: CliValueSpec = { kind: "dynamic", provider: "media-ids" };
@@ -78,7 +80,8 @@ export const cliSchema: CliSchema = {
     "synchronize group history NAME --as SESSION_NAME [--thread-of EVENT_ID]",
     "synchronize archive session (--peer-id PEER_ID | --session-id SESSION_ID) [--reason TEXT] [--dry-run]",
     "synchronize archive group NAME [--reason TEXT] [--dry-run]",
-    "synchronize resume launch (--peer-id PEER_ID | --session-id SESSION_ID) [--force] [--print]",
+    "synchronize resume launch (--peer-id PEER_ID | --session-id SESSION_ID) [--force]",
+    "synchronize resume spawn (--peer-id PEER_ID | --session-id SESSION_ID) [--force]",
     "synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]",
     "synchronize media share GROUP FILE --description TEXT",
     "synchronize media list GROUP [--query TEXT]",
@@ -92,8 +95,8 @@ export const cliSchema: CliSchema = {
     "synchronize launch [--name NAME] [--] claude|pi|letta|PROFILE [--] [TOOL_ARGS...]",
     "synchronize spawn claude|pi|letta|PROFILE [--name NAME] [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]",
     "synchronize host --bind HOST --token TOKEN [--port PORT] [--home PATH] [--restart]",
-    "synchronize completion carapace",
-    "synchronize completion install --shell carapace",
+    "synchronize completion tab zsh|bash|fish|powershell",
+    "synchronize completion install --shell zsh|bash|fish|powershell",
     "synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]",
     "synchronize remote use NAME | ls | show [NAME] | remove NAME",
     "synchronize remote provision HOST | sync HOST --hub-url URL | connect HOST | harness HOST --hub-url URL [--all]",
@@ -242,7 +245,7 @@ export const cliSchema: CliSchema = {
           ],
           flags: [
             { name: "peer-id", description: "Peer id to archive", value: peerIdValue },
-            { name: "session-id", description: "Host session id to archive" },
+            { name: "session-id", description: "Host session id to archive", value: sessionIdValue },
             { name: "reason", description: "Archive reason" },
             { name: "dry-run", description: "Print the archive plan without mutating", boolean: true },
           ],
@@ -263,24 +266,38 @@ export const cliSchema: CliSchema = {
       name: "resume",
       description: "Resume archived sessions or groups",
       usage: [
-        "synchronize resume launch --peer-id PEER_ID [--force] [--print]",
-        "synchronize resume launch --session-id SESSION_ID [--force] [--print]",
+        "synchronize resume launch --peer-id PEER_ID [--force]",
+        "synchronize resume launch --session-id SESSION_ID [--force]",
+        "synchronize resume spawn --peer-id PEER_ID [--force]",
+        "synchronize resume spawn --session-id SESSION_ID [--force]",
         "synchronize resume show (--peer-id PEER_ID | --session-id SESSION_ID)",
         "synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]",
       ],
       subcommands: [
         {
           name: "launch",
-          description: "Resume one archived launch-backed session",
+          description: "Resume one archived session in this terminal",
           usage: [
-            "synchronize resume launch --peer-id PEER_ID [--force] [--print]",
-            "synchronize resume launch --session-id SESSION_ID [--force] [--print]",
+            "synchronize resume launch --peer-id PEER_ID [--force]",
+            "synchronize resume launch --session-id SESSION_ID [--force]",
           ],
           flags: [
             { name: "peer-id", description: "Peer id to resume", value: peerIdValue },
-            { name: "session-id", description: "Host session id to resume" },
+            { name: "session-id", description: "Host session id to resume", value: sessionIdValue },
             { name: "force", description: "Terminate a blocking live peer before resume", boolean: true },
-            { name: "print", description: "Print the resume command instead of launching", boolean: true },
+          ],
+        },
+        {
+          name: "spawn",
+          description: "Resume one archived session inside AOE",
+          usage: [
+            "synchronize resume spawn --peer-id PEER_ID [--force]",
+            "synchronize resume spawn --session-id SESSION_ID [--force]",
+          ],
+          flags: [
+            { name: "peer-id", description: "Peer id to resume", value: peerIdValue },
+            { name: "session-id", description: "Host session id to resume", value: sessionIdValue },
+            { name: "force", description: "Terminate a blocking live peer before resume", boolean: true },
           ],
         },
         {
@@ -292,7 +309,7 @@ export const cliSchema: CliSchema = {
           ],
           flags: [
             { name: "peer-id", description: "Peer id to inspect", value: peerIdValue },
-            { name: "session-id", description: "Host session id to inspect" },
+            { name: "session-id", description: "Host session id to inspect", value: sessionIdValue },
           ],
         },
         {
@@ -440,12 +457,24 @@ export const cliSchema: CliSchema = {
     },
     {
       name: "completion",
-      description: "Generate shell completion specs",
-      usage: ["synchronize completion carapace", "synchronize completion install --shell carapace"],
+      description: "Generate and install Tab shell completions",
+      usage: [
+        "synchronize completion tab zsh|bash|fish|powershell",
+        "synchronize completion tab complete -- [ARGS...]",
+        "synchronize completion install --shell zsh|bash|fish|powershell",
+      ],
       subcommands: [
         {
-          name: "carapace",
-          description: "Print a Carapace spec for synchronize",
+          name: "tab",
+          description: "Print a Tab completion script or serve shell completion requests",
+          positionals: [
+            {
+              name: "SHELL_OR_COMPLETE",
+              description: "Shell target, or the internal complete protocol",
+              value: { kind: "enum", values: ["zsh", "bash", "fish", "powershell", "complete"] },
+              required: true,
+            },
+          ],
         },
         {
           name: "complete",
@@ -456,7 +485,7 @@ export const cliSchema: CliSchema = {
               description: "Dynamic provider name",
               value: {
                 kind: "enum",
-                values: ["group-names", "peer-ids", "session-names", "media-ids", "thread-root-event-ids"],
+                values: ["group-names", "peer-ids", "session-ids", "session-names", "media-ids", "thread-root-event-ids"],
               },
               required: true,
             },
@@ -470,7 +499,7 @@ export const cliSchema: CliSchema = {
             {
               name: "shell",
               description: "Completion shell target",
-              value: { kind: "enum", values: ["carapace"] },
+              value: { kind: "enum", values: ["zsh", "bash", "fish", "powershell"] },
               required: true,
             },
           ],

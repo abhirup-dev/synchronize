@@ -10,11 +10,8 @@ silently switching to CLI.
 
 Group MCP tools expect `name`, not `group_id`.
 
-```text
-bridge_list_groups(mine: true)
-```
-
-Use that to map event `group_id` to group `name`.
+Use the group list to map event `group_id` to group `name`, then retry with
+the group name. Do not pass numeric ids to group MCP tools.
 
 ## Hidden Reply
 
@@ -26,11 +23,8 @@ posted_to.thread_root_event_id
 posted_to.thread_root_preview
 ```
 
-Then use:
-
-```text
-bridge_get_thread(root_event_id: <root>)
-```
+If `posted_to.thread_root_event_id` is present, read that thread. A reply can
+be delivered correctly while staying hidden from the flat group view.
 
 ## Mention Miss
 
@@ -40,11 +34,8 @@ Check the send response warnings:
 warnings: [{ token, reason: "alias_not_in_group" }]
 ```
 
-Then inspect the group roster:
-
-```text
-bridge_list_peers(group: "room")
-```
+Then inspect the group roster and match the alias exactly. Mentions use group
+aliases, not daemon-wide session names.
 
 ## Daemon Not Reachable
 

@@ -6,6 +6,7 @@
 import type {
   ActivityItem,
   Agent,
+  AgentLaunchProfile,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
@@ -116,12 +117,13 @@ export class MockDataSource implements DataSource {
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
+  private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>(MOCK_ARCHIVED_SESSIONS);
   // Activity feed: aggregated once from the seed (every other agent's message
-  // across all rooms), then awaiting is recomputed from `ackedActivity`. This
-  // mirrors the daemon's inbox-backed feed and ack semantics in memory.
+  // across all rooms), then awaiting is recomputed from explicit handled
+  // markers. This mirrors the daemon's thread-interaction projection in memory.
   private readonly activityBase: ActivityItem[] = buildMockActivity(this._me.get().id);
-  private readonly ackedActivity = new Set<number>();
+  private readonly handledActivityScopes = new Map<string, number>();
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
 
@@ -129,6 +131,7 @@ export class MockDataSource implements DataSource {
   rooms(): Snapshot<Room[]>   { return this._rooms; }
   me(): Snapshot<Agent>        { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
+  launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
 
   activity(): Snapshot<ActivityItem[]> {
     if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();
@@ -145,19 +148,30 @@ export class MockDataSource implements DataSource {
   private emitActivity(): void {
     const items = this.activityBase.map((item) => ({
       ...item,
-      awaiting: item.awaiting && !this.ackedActivity.has(item.eventId),
+      awaiting:
+        item.awaiting &&
+        item.eventId > (this.handledActivityScopes.get(activityScopeKey(item)) ?? 0),
     }));
     this._activity.set(items);
     this._activityAwaiting.set(items.filter((item) => item.awaiting).length);
   }
 
   async ackActivity(eventId: number): Promise<void> {
-    this.ackedActivity.add(eventId);
+    await this.ackActivityEvents([eventId]);
+  }
+
+  async ackActivityEvents(eventIds: number[]): Promise<void> {
+    for (const eventId of eventIds) {
+      this.markActivityScopeByEventId(eventId);
+    }
     this.emitActivity();
   }
 
   async ackAllActivity(): Promise<void> {
-    for (const item of this.activityBase) if (item.awaiting) this.ackedActivity.add(item.eventId);
+    for (const item of this.activityBase) {
+      if (!item.awaiting) continue;
+      this.markActivityScope(item, item.eventId);
+    }
     this.emitActivity();
   }
 
@@ -166,13 +180,24 @@ export class MockDataSource implements DataSource {
     return;
   }
 
-  // Engaging with a message (react/reply) clears its activity row — mirrors the
-  // daemon's server-side auto-ack.
+  // Engaging with a message (react/reply) advances the handled marker for that
+  // thread — mirrors the daemon's server-side activity projection.
   private ackActivityByMsgId(msgId: string): void {
     const item = this.activityBase.find((entry) => entry.msgId === msgId);
     if (!item) return;
-    this.ackedActivity.add(item.eventId);
+    this.markActivityScope(item, item.eventId);
     if (this._activity.get().length > 0) this.emitActivity();
+  }
+
+  private markActivityScopeByEventId(eventId: number): void {
+    const item = this.activityBase.find((entry) => entry.eventId === eventId);
+    if (!item) return;
+    this.markActivityScope(item, eventId);
+  }
+
+  private markActivityScope(item: ActivityItem, eventId: number): void {
+    const scope = activityScopeKey(item);
+    this.handledActivityScopes.set(scope, Math.max(this.handledActivityScopes.get(scope) ?? 0, eventId));
   }
 
   messages(roomId: string): Snapshot<Message[]> {
@@ -354,7 +379,7 @@ export class MockDataSource implements DataSource {
       name: sessionName,
       handle: sessionName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || peerId.slice(-8),
       color: "#B49BFF",
-      role: input.tool,
+      role: input.profileName ?? input.tool,
       status: "idle",
       lifecycleState: "active",
       avatar: (sessionName[0] ?? input.tool[0] ?? "?").toUpperCase(),
@@ -642,36 +667,63 @@ function activeAgent(agent: Agent): Agent {
   return { ...rest, lifecycleState: "active", status: "idle" };
 }
 
+function activityScopeKey(item: Pick<ActivityItem, "roomId" | "threadParentId" | "msgId">): string {
+  return `${item.roomId}:${item.threadParentId ?? item.msgId}`;
+}
+
+function activityRepresentativeKey(item: Pick<ActivityItem, "roomId" | "threadParentId" | "msgId" | "actorId">): string {
+  return `${activityScopeKey(item)}:${item.actorId}`;
+}
+
 // Aggregate the seed into a global, newest-first Activity feed — the in-memory
-// analogue of the daemon's observer feed. The feed shows every other agent's
-// messages across all rooms (own sends excluded). `awaiting` here is a narrower
-// demo APPROXIMATION of the daemon (an item "needs you" when it's an @-mention,
-// one of your DMs, or a reply in a thread you started). The daemon's real
-// awaiting set is every un-acked inbox row in your joined rooms + DMs — a
-// superset; the mock just makes the offline demo feel right.
+// analogue of the daemon's observer feed. Awaiting follows the same interaction
+// shape as the daemon: agent-authored group messages after the local user's
+// latest message/reaction in the same thread. Activity shows one representative
+// row per actor within a thread, so repeated agent replies don't crowd out the
+// actual set of active threads.
 function buildMockActivity(meId: string): ActivityItem[] {
   const dmRoomIds = new Set(DMS.map((dm) => dm.id));
+  const agentIds = new Set(AGENTS.filter((agent) => agent.id !== meId).map((agent) => agent.id));
   const all: Message[] = [];
   for (const list of Object.values(MESSAGES)) all.push(...list);
   for (const list of Object.values(THREAD_REPLIES)) all.push(...list);
-  const yourMessageIds = new Set(all.filter((m) => m.authorId === meId).map((m) => m.id));
 
   const seen = new Set<string>();
+  const chronological = all
+    .filter((message) => {
+      if (seen.has(message.id)) return false;
+      seen.add(message.id);
+      return Boolean(message.roomId);
+    })
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const lastInteractionAt = new Map<string, number>();
   const candidates: Array<{ message: Message; awaiting: boolean; isMention: boolean }> = [];
-  for (const message of all) {
-    if (message.authorId === meId) continue; // exclude own sends
-    if (!message.roomId || seen.has(message.id)) continue;
-    seen.add(message.id);
-    const isMention = message.mentions.includes(meId) || /@you\b/i.test(message.body);
+  for (const message of chronological) {
     const isDm = dmRoomIds.has(message.roomId);
-    const isReplyToYou = Boolean(message.parentId && yourMessageIds.has(message.parentId));
-    candidates.push({ message, awaiting: isMention || isDm || isReplyToYou, isMention });
+    const scope = `${message.roomId}:${message.parentId ?? message.id}`;
+    const timestamp = Date.parse(message.createdAt);
+    const hasSelfReaction = message.reactions.some((reaction) => reaction.by.includes(meId));
+    if (message.authorId === meId && !isDm) {
+      lastInteractionAt.set(scope, timestamp);
+      continue;
+    }
+    if (message.authorId === meId) continue; // exclude own sends
+    const isMention = message.mentions.includes(meId) || /@you\b/i.test(message.body);
+    const awaiting =
+      !isDm &&
+      agentIds.has(message.authorId) &&
+      !hasSelfReaction &&
+      timestamp > (lastInteractionAt.get(scope) ?? Number.NEGATIVE_INFINITY);
+    candidates.push({ message, awaiting, isMention });
+    if (hasSelfReaction && !isDm) lastInteractionAt.set(scope, timestamp);
   }
-  // Oldest-first to assign monotonic event ids, then present newest-first.
+  // Oldest-first to assign monotonic event ids before collapsing. That mirrors
+  // daemon event ids: hidden older rows leave gaps, but ordering stays truthful.
   candidates.sort((a, b) => Date.parse(a.message.createdAt) - Date.parse(b.message.createdAt));
-  const items = candidates.map((entry, index): ActivityItem => {
+  const representatives = new Map<string, ActivityItem>();
+  for (const [index, entry] of candidates.entries()) {
     const { message } = entry;
-    return {
+    const item: ActivityItem = {
       id: message.id,
       eventId: index + 1,
       roomId: message.roomId,
@@ -685,6 +737,7 @@ function buildMockActivity(meId: string): ActivityItem[] {
       ...(message.threadReplyCount !== undefined ? { replyCount: message.threadReplyCount } : {}),
       msgId: message.id,
     };
-  });
-  return items.reverse();
+    representatives.set(activityRepresentativeKey(item), item);
+  }
+  return [...representatives.values()].sort((a, b) => b.eventId - a.eventId);
 }

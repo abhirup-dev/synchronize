@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_SESSION_NAME } from "../constants.ts";
+import { ENV_HOME, ENV_HOOK_ENABLE, ENV_LAUNCH_ID, ENV_PEER_ID, ENV_PROFILE_NAME, ENV_SESSION_NAME } from "../constants.ts";
 
 export type LaunchTool = "claude" | "pi" | "letta";
 
@@ -95,6 +95,8 @@ export interface LaunchEnvInput {
   launchId: string;
   /** Stable session name for hook/Pi registration. */
   sessionName?: string;
+  /** Configured [agent.NAME] launch profile, if this process came from one. */
+  profileName?: string;
   /** Pinned peer id so the daemon knows the durable identity before boot. */
   peerId?: string;
   /** SYNCHRONIZE_HOME, so the agent registers to the launching daemon. */
@@ -114,6 +116,7 @@ export function buildLaunchEnv(input: LaunchEnvInput): Record<string, string> {
     [ENV_LAUNCH_ID]: input.launchId,
   };
   if (input.sessionName) env[ENV_SESSION_NAME] = input.sessionName;
+  if (input.profileName) env[ENV_PROFILE_NAME] = input.profileName;
   if (input.peerId) env[ENV_PEER_ID] = input.peerId;
   if (input.home) env[ENV_HOME] = input.home;
   return env;

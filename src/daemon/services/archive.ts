@@ -194,7 +194,7 @@ export async function archiveGroupApply(
 }
 
 export interface ResumeSessionResult {
-  mode: "launch" | "print";
+  mode: "launch" | "foreground" | "print";
   peer_id: string;
   tool: LaunchTool;
   cwd: string;
@@ -208,7 +208,7 @@ export interface ResumeSessionResult {
 }
 
 export interface ResumeSessionPreview {
-  mode: "launch" | "print";
+  mode: "launch" | "foreground" | "print";
   peer_id: string;
   session_name: string;
   alias: string | null;
@@ -235,14 +235,15 @@ export function peerStillLiveMessage(plan: ResumePlan): string {
     `  pid ${plan.pid ?? "?"}   tool ${plan.tool}   cwd ${plan.cwd ?? "?"}`,
     `  host_session ${plan.hostSessionId}`,
     plan.pid != null ? `  stop it yourself:   kill ${plan.pid}   (or close its terminal)` : `  stop it yourself (close its terminal)`,
-    `  or let synchronize do it:   synchronize resume launch --peer-id ${plan.peerId} --force`,
+    `  resume in this terminal:   synchronize resume launch --peer-id ${plan.peerId} --force`,
+    `  or spawn in AOE:           synchronize resume spawn --peer-id ${plan.peerId} --force`,
     `  or reboot — the lease lapses and resume unblocks.`,
   ].join("\n");
 }
 
 function previewFromPlan(
   plan: ResumePlan,
-  mode: "launch" | "print",
+  mode: "launch" | "foreground" | "print",
   action: ResumeSessionPreview["action"],
   extra: Pick<ResumeSessionPreview, "code" | "force_available" | "warning">,
 ): ResumeSessionPreview {
@@ -263,7 +264,7 @@ function previewFromPlan(
 function skippedResumePreview(
   ctx: DaemonContext,
   peerId: string,
-  mode: "launch" | "print",
+  mode: "launch" | "foreground" | "print",
   code: ResumeSessionPreview["code"],
   warning: string,
 ): ResumeSessionPreview {
@@ -291,7 +292,7 @@ function skippedResumePreview(
 export async function resumeSessionPreview(
   ctx: DaemonContext,
   peerId: string,
-  opts: { mode: "launch" | "print"; force?: boolean },
+  opts: { mode: "launch" | "foreground" | "print"; force?: boolean },
 ): Promise<ResumeSessionPreview> {
   let plan: ResumePlan;
   try {
@@ -345,13 +346,14 @@ export async function resumeSessionPreview(
 
 // Orchestrates a single-session resume: validate (archived/cwd/liveness) →
 // optionally --force kill a live peer → build the faithful-resume launch and
-// either enqueue it via AOE (mode=launch) or emit the exact command for the user
-// to run in their own terminal (mode=print). The actual reattach happens on
+// either enqueue it via AOE (mode=launch), emit the exact command for inspection
+// (mode=print), or return the exact command/env for the CLI to execute in the
+// foreground (mode=foreground). The actual reattach happens on
 // re-registration (Flow G), which resurrects the archived identity.
 export async function resumeSessionApply(
   ctx: DaemonContext,
   peerId: string,
-  opts: { mode: "launch" | "print"; force?: boolean },
+  opts: { mode: "launch" | "foreground" | "print"; force?: boolean },
 ): Promise<ResumeSessionResult> {
   const plan = planResume(ctx.db, peerId);
 
@@ -416,7 +418,7 @@ export async function resumeSessionApply(
     forced,
   };
 
-  if (opts.mode === "print") {
+  if (opts.mode === "print" || opts.mode === "foreground") {
     // Build the exact command + env + cwd for the plain-terminal path without
     // spawning. The user runs it; the hook re-registers by host_session_id
     // correlation and resurrects the identity (Flow F).
@@ -429,15 +431,15 @@ export async function resumeSessionApply(
       { profile },
     );
     result.command = spec.command;
-    result.env = redactProfileEnv(spec.env, profile?.env ?? {});
-    log(`resume print peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""}`);
-    debug(`resume: print command peer=${peerId} ${spec.command.join(" ")}`);
+    result.env = opts.mode === "print" ? redactProfileEnv(spec.env, profile?.env ?? {}) : spec.env;
+    log(`resume ${opts.mode} peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""}`);
+    debug(`resume: ${opts.mode} command peer=${peerId} ${spec.command.join(" ")}`);
     return result;
   }
 
   // AOE path: enqueue the spawn through the launch machinery (Flow E).
   result.launch = await ctx.launchService.launch(req);
-  log(`resume launch peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""} (AOE spawn enqueued)`);
+  log(`resume spawn peer=${peerId} cwd=${plan.cwd}${forced ? " (forced)" : ""} (AOE spawn enqueued)`);
   debug(`resume: AOE spawn enqueued peer=${peerId} host_session=${plan.hostSessionId}`);
   return result;
 }

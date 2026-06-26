@@ -2,7 +2,7 @@ import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import { useAgents } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
-import { Avatar, IdentityBadge } from "./primitives.tsx";
+import { Avatar, IdentityBadge, IdentityLogoTile, RoomNameInline } from "./primitives.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
 import type { Agent } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
@@ -26,8 +26,7 @@ export type RoomTab = "chat" | "board" | "artifacts";
 // [data-theme] rules in extra.css still bind; the active state is a plain class
 // appended at the call site so those CSS rules own the active styling.
 const roomTab = cva([
-  "room-tab bg-transparent [border:var(--line-transparent)] px-[10px] py-[5px] font-display",
-  "text-[length:var(--text-11)] tracking-[var(--tracking-lg)] text-ink-soft rotate-[-1deg]",
+  "room-tab topbar-control",
 ]);
 
 interface RoomHeaderProps {
@@ -35,7 +34,6 @@ interface RoomHeaderProps {
   tab: RoomTab;
   onTab(t: RoomTab): void;
   theme: string;
-  themeIcon: string;
   onToggleTheme(shiftKey: boolean): void;
   skin: "brutal" | "glass";
   onToggleSkin(): void;
@@ -55,7 +53,6 @@ export function RoomHeader({
   tab,
   onTab,
   theme,
-  themeIcon,
   onToggleTheme,
   skin,
   onToggleSkin,
@@ -77,12 +74,23 @@ export function RoomHeader({
     <header className={cn("room-header", "[border-bottom:var(--line)] bg-paper")}>
       <div className="room-header-top flex items-center gap-[var(--space-16)] pt-[16px] px-[22px] pb-[12px]">
         <div className="room-id flex items-center gap-[14px] flex-[1_1_520px] min-w-0">
-          <IdentityBadge as="div" className="room-id-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] rounded-lg grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color}>
-            {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
-          </IdentityBadge>
+          {room.kind === "group" ? (
+            <IdentityLogoTile as="div" className="room-id-icon room-glyph-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color}>
+              {room.emoji ?? "#"}
+            </IdentityLogoTile>
+          ) : (
+            <IdentityBadge as="div" className="room-id-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] rounded-lg grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color}>
+              {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
+            </IdentityBadge>
+          )}
           <div className="flex flex-col justify-center min-w-0 flex-[1_1_auto]">
-            <div className="room-title font-display text-[length:var(--text-22)] flex items-center gap-[var(--space-0)] leading-[1.1] min-w-0">
-              <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{room.kind === "group" ? `#${room.name}` : room.name}</span>
+            <div className="room-title font-display text-[length:var(--text-22)] flex items-center leading-[1.1] min-w-0">
+              <RoomNameInline
+                kind={room.kind}
+                name={room.name}
+                showPrefix={room.kind !== "group"}
+                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+              />
             </div>
             {room.description ? <div className="text-[length:var(--text-11)] text-ink-soft mt-[5px] max-w-[min(72ch,100%)] overflow-hidden text-ellipsis whitespace-nowrap">{room.description}</div> : null}
           </div>
@@ -145,43 +153,11 @@ export function RoomHeader({
                 <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
               </button>
             )}
-            <button
-              className="icon-btn theme-toggle text-[length:var(--text-17)]"
-              onClick={(event) => onToggleTheme(event.shiftKey)}
-              title={`${theme} · click toggles light/dark, shift-click cycles variants`}
-              aria-label="toggle theme"
-            >
-              {themeIcon}
-            </button>
-            <button
-              className="icon-btn chat-bg-toggle"
-              onClick={(event) =>
-                openMenu(
-                  event,
-                  CHAT_BACKGROUNDS.map((preset) => ({
-                    label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
-                    onSelect: () => onChatBg(preset.id),
-                  })),
-                )
-              }
-              title="chat background"
-              aria-label="choose chat background"
-            >
-              🖼
-            </button>
-            <button
-              className="icon-btn skin-toggle"
-              onClick={onToggleSkin}
-              title={`${skin} skin · click to switch to ${skin === "brutal" ? "glass" : "brutal"}`}
-              aria-label="toggle skin"
-            >
-              {skin === "brutal" ? "🫧" : "🧱"}
-            </button>
           </div>
         )}
       </div>
 
-      <div className="room-tabs relative flex items-center gap-[var(--space-8)] pt-[12px] px-[22px] pb-[14px] [border-top:var(--line-2)]">
+      <div className="room-tabs topbar-strip relative flex items-center gap-[var(--space-8)] pt-[10px] px-[22px] pb-[10px] [border-top:var(--line-2)]">
         {(["chat", "board", "artifacts"] as RoomTab[]).map((t) => (
           <button
             key={t}

@@ -422,6 +422,7 @@ export interface RuntimeConfig {
   connection: ResolvedConnection;
   active?: string;
   remotes: Record<string, RemoteProfile>;
+  agents: Record<string, AgentProfile>;
 }
 
 export const CONFIG_DEFAULTS = {
@@ -457,6 +458,7 @@ export function resolveRuntimeConfig(
     connection: resolveConnection(config, env),
     ...(config.active ? { active: config.active } : {}),
     remotes: config.remotes,
+    agents: config.agents ?? {},
   };
 }
 

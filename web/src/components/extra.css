@@ -89,11 +89,6 @@
    kept on elements: .composer + .composer-collapsed (skin-glass.css),
    .composer-collapsed-stub (hooks/useVimNav.ts). Base declarations deleted. */
 
-/* ─── Theme toggle ─────────────────────────────────────────────────────────
-   Base (font-size) migrated to a Tailwind utility on the button in
-   RoomHeader.tsx; the :hover parity is already covered by .icon-btn:hover. The
-   theme-toggle hook className stays for skin-glass.css. */
-
 /* ─── AGENTS pill (labeled icon-btn) ───────────────────────────────────────
    The AGENTS button reuses .icon-btn for chrome (border / paper / shadow /
    hover, incl. the glass-skin overrides) but is a label + count chip, not a
@@ -219,19 +214,18 @@
    .active + [data-theme] overrides below still bind. Shared classes
    (author-name, thread-pane-*) are untouched. */
 .room-tab.active {
-  color: var(--ink);
-  background: var(--yellow);
-  border-color: var(--rule);
-  box-shadow: var(--shadow-sm);
+  color: var(--surface-selected-fg);
+  background: var(--surface-selected-bg);
+  border-color: var(--surface-selected-border);
 }
 :root[data-theme="kanagawa-wave"] .room-tab{
-  color: var(--ink-soft);
+  color: var(--activity-control-fg);
 }
 :root[data-theme="kanagawa-wave"] .room-tab.active{
-  background: var(--paper-3);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--yellow);
+  background: var(--activity-control-active-bg);
+  color: var(--activity-control-selected-fg);
+  border-color: transparent;
+  box-shadow: 2px 2px 0 var(--activity-control-shadow);
 }
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
 /* .chat-view base migrated to inline Tailwind utilities in ChatView.tsx
@@ -296,7 +290,8 @@
    Own messages right-align and render bubble-only (no avatar gutter, no name
    chip), so there is nothing to reorder in the grid. */
 .message-row.is-self {
-  justify-self: end;
+  width: 100%;
+  justify-self: stretch;
   grid-template-columns: minmax(0, 880px);
 }
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
@@ -309,8 +304,17 @@
 /* Tight gap between the author pill and the bubble it labels — they should
    read as a single unit. Inter-message spacing is governed by the parent
    container (`.chat-list` / `.thread-replies` / `.thread-pane-body`). */
-/* .message-body / .message-stack base migrated to inline Tailwind utilities in
-   MessageRow.tsx (sync-q48d). The .is-self alignment overrides stay in CSS. */
+/* Message geometry is centralized here instead of split between JSX utilities
+   and thread-specific overrides. The stack caps the usable column width; the
+   bubble shrink-wraps short prose but clamps at the stack width for long prose. */
+.message-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: fit-content;
+  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
+  min-width: 0;
+}
 .message-row.is-self .message-stack {
   align-self: flex-end;
 }
@@ -351,24 +355,66 @@
   box-shadow: var(--shadow-xs);
 }
 
-/* .bubble base (fill/border/radius/offset-shadow/pad) migrated to inline Tailwind
-   utilities in MessageRow.tsx (sync-q48d). .bubble is KEPT as a class hook:
-   skin-glass.css overrides its opacity, vim-focus/flash animate it, and the
-   .is-self override below out-specifies the base utilities (so it still wins —
-   parity preserved). Your own / web-client messages get the accent bubble
-   everywhere (DM and group rooms alike) — one identity, one treatment. */
+.bubble {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  border: var(--message-card-border, var(--line-2));
+  border-color: var(--message-card-border-color, var(--rule));
+  border-radius: var(--radius-xl);
+  background: var(--bubble);
+  padding: var(--space-bubble-pad);
+  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--message-card-shadow-color, var(--rule));
+}
+/* skin-glass.css overrides `.bubble` opacity, vim-focus/flash animate it, and
+   this self override out-specifies the base class. Own / web-client messages get
+   the accent bubble everywhere (DM and group rooms alike). */
 .message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
+.markdown {
+  /* Keep ordinary prose from using one-character min-content widths in
+     shrink-wrapped bubbles. True long-token surfaces opt into `anywhere`
+     below, so links and inline code still break instead of overflowing. */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.bubble > .markdown {
+  width: max-content;
+  max-width: 100%;
+}
 .markdown > * { margin: 0 0 8px; }
 .markdown > *:last-child { margin-bottom: 0; }
 .markdown h1, .markdown h2, .markdown h3 {
-  font-family: var(--font-display);
+  font-family: var(--font-heading);
   font-size: var(--text-15);
   letter-spacing: var(--tracking-tight);
   margin: 12px 0 6px;
 }
+.rich-markdown h1 {
+  font-size: var(--rich-heading-h1-size);
+  margin: 14px 0 7px;
+}
+.rich-markdown h2 {
+  font-size: var(--rich-heading-h2-size);
+  margin: 12px 0 6px;
+}
+.rich-markdown h3 {
+  color: var(--rich-heading-h3-fg);
+  font-size: var(--rich-heading-h3-size);
+  letter-spacing: var(--tracking-sm);
+  margin: 10px 0 5px;
+  text-transform: uppercase;
+}
 .markdown p { line-height: 1.6; }
+.rich-markdown p {
+  margin: 0;
+  line-height: var(--leading-message-paragraph);
+}
+.rich-markdown p + p {
+  margin-block-start: var(--space-bubble-paragraph-gap);
+}
 .markdown em { font-style: italic; }
 .markdown ul, .markdown ol { margin: 4px 0 8px 0; padding-left: 22px; line-height: 1.64; }
 .markdown li { margin: 2px 0 3px; }
@@ -385,8 +431,17 @@
   font-weight: 900;
 }
 .markdown strong {
+  font-family: var(--font-ui);
   color: var(--strong-fg, var(--ink));
   font-weight: var(--strong-weight, 700);
+}
+.markdown h1 strong,
+.markdown h2 strong,
+.markdown h3 strong {
+  font-family: inherit;
+}
+.rich-markdown strong {
+  font-weight: var(--rich-strong-weight, var(--strong-weight, 700));
 }
 .markdown code {
   font-family: var(--font-mono);
@@ -409,6 +464,7 @@
   padding: 12px 14px;
   margin: 8px 0;
   overflow-x: auto;
+  overflow-wrap: normal;
   box-shadow: var(--shadow-sm);
   font-size: var(--text-12-5);
   line-height: 1.55;
@@ -455,8 +511,44 @@
   font-size: var(--text-11);
   letter-spacing: var(--tracking-sm);
 }
-.markdown a { color: var(--blue); text-decoration: underline; text-decoration-thickness: 2px; }
+.markdown a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 .markdown del { color: var(--ink-faint); }
+
+/* ─── Message reactions ──────────────────────────────────────────────────── */
+.reaction {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: fit-content;
+  padding: 2px 9px;
+  color: var(--ink);
+  background: var(--paper);
+  border: var(--line-sm);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-12);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  cursor: pointer;
+}
+.reaction.is-mine {
+  background: var(--paper-2);
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--rule));
+}
+.reaction.add {
+  justify-content: center;
+  min-width: 25px;
+  font-family: var(--font-display);
+  font-size: var(--text-11);
+}
 
 /* ─── Agent roster ───────────────────────────────────────────────────────── */
 /* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
@@ -617,7 +709,7 @@
 /* Slightly tighter bubble padding inside the thread pane — the pane itself is
    narrower than the main chat, so 16px horizontal padding eats too much. */
 .thread-pane-body .bubble {
-  padding: 10px 12px;
+  padding: var(--space-thread-bubble-pad);
 }
 .thread-pane-body .thread-divider {
   margin: 4px 0;
@@ -706,7 +798,7 @@
   box-shadow: var(--shadow-sm);
   cursor: pointer;
 }
-.filter-chip.active { background: var(--ink); color: var(--paper); }
+.filter-chip.active { background: var(--surface-selected-bg); color: var(--surface-selected-fg); }
 .filter-chip.add { background: transparent; box-shadow: none; border-style: dashed; }
 
 .board-cols {

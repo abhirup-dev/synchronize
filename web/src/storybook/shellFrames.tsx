@@ -11,7 +11,7 @@
 // width via the single-source `shellModeForWidth`, so sweeping the toolbar viewport
 // (compact/tablet/desktop) moves a story through the real breakpoints automatically.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Decorator } from "@storybook/react-vite";
 import { shellModeForWidth, type ShellMode } from "../shell-mode.tsx";
 import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "../shell-layout.tsx";
@@ -47,6 +47,43 @@ function ChatSurfaceFrame({ children }: { children: ReactNode }) {
       <ShellMainColumn>
         <ShellMainBody>
           <ShellChatColumn>{children}</ShellChatColumn>
+        </ShellMainBody>
+      </ShellMainColumn>
+    </AppShellGrid>
+  );
+}
+
+// Chat surface plus app-level right pane (ThreadPane today). This mirrors the
+// App.tsx composition where ChatView and ThreadPane are siblings inside
+// ShellMainBody, so flow stories can show the complete split UI without
+// rebuilding shell geometry locally.
+export function ChatSplitSurfaceFrame({
+  children,
+  pane,
+  paneWidth = 420,
+}: {
+  children: ReactNode;
+  pane?: ReactNode;
+  paneWidth?: number;
+}) {
+  const mode = useViewportShellMode();
+  const split = Boolean(pane) && mode === "desktop";
+  return (
+    <AppShellGrid mode={mode} threadOpen={split} style={{ gridTemplateColumns: "1fr" }}>
+      <ShellMainColumn
+        style={split ? ({
+          "--thread-pane-width": `${paneWidth}px`,
+        } as CSSProperties) : undefined}
+      >
+        <ShellMainBody
+          threadOpen={split}
+          style={split ? ({
+            gridTemplateColumns: `minmax(0, 1fr) ${paneWidth}px`,
+            "--thread-pane-width": `${paneWidth}px`,
+          } as CSSProperties) : undefined}
+        >
+          <ShellChatColumn>{children}</ShellChatColumn>
+          {split ? pane : null}
         </ShellMainBody>
       </ShellMainColumn>
     </AppShellGrid>

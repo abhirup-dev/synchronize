@@ -22,12 +22,17 @@ Claude/Pi channel subscription for the current agent session.
 
 ## Variations
 
-Group descriptions are CLI-only:
+Command-specific help is available and should be trusted over memorized CLI
+syntax:
 
 ```bash
-synchronize group describe GROUP "topic"
-synchronize group describe GROUP --clear
+synchronize help group describe
+synchronize help threads
+synchronize help query
 ```
+
+Group descriptions are CLI-only. Use `synchronize help group describe` before
+editing a description so flag shape stays current.
 
 Thread and SQL CLI commands mirror the MCP concepts but are not a replacement
 for MCP in live agent workflows.

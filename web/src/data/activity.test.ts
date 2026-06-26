@@ -1,7 +1,7 @@
 // Activity feed behavior against the MockDataSource — the in-memory analogue of
 // the daemon's observer feed. Verifies aggregation/ordering, filters, the
 // awaiting model, and that react/reply/mark-all clear awaiting (the parity the
-// daemon enforces server-side via ackInboxEvents).
+// daemon enforces server-side via peer_thread_interactions).
 
 import { describe, expect, test } from "bun:test";
 import { MockDataSource } from "./mock.ts";
@@ -23,6 +23,16 @@ describe("activity feed (mock)", () => {
     expect(items.every((item) => item.actorId !== me)).toBe(true);
     // spans more than one room (genuinely cross-room)
     expect(new Set(items.map((item) => item.roomId)).size).toBeGreaterThan(1);
+  });
+
+  test("shows only the latest message per actor within a thread", () => {
+    const { items } = freshFeed();
+    const keys = items.map((item) => `${item.roomId}:${item.threadParentId ?? item.msgId}:${item.actorId}`);
+    expect(new Set(keys).size).toBe(keys.length);
+
+    const mlDeepdiveRows = items.filter((item) => item.threadParentId === "ml-deepdive");
+    expect(mlDeepdiveRows.map((item) => item.actorId).sort()).toEqual(["echo", "pulse", "vega"]);
+    expect(mlDeepdiveRows.map((item) => item.msgId).sort()).toEqual(["mld-r11", "mld-r13", "mld-r14"]);
   });
 
   test("awaiting count matches the awaiting items", () => {
@@ -49,7 +59,7 @@ describe("activity feed (mock)", () => {
     await ds.reactToMessage({ messageId: target!.msgId, roomId: target!.roomId, emoji: "👍", op: "add" });
     const after = ds.activity().get();
     expect(after.find((item) => item.eventId === target!.eventId)!.awaiting).toBe(false);
-    expect(ds.activityAwaitingCount().get()).toBe(before - 1);
+    expect(ds.activityAwaitingCount().get()).toBeLessThan(before);
   });
 
   test("replying in a thread clears its parent from awaiting", async () => {

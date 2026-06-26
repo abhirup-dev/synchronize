@@ -285,20 +285,6 @@
    only the .act-roomlist popover (fixed chrome) gets blur, above.
    ========================================================================= */
 
-/* -- activity: control-variable system,
-:root[data-skin="glass"][data-theme="kanagawa-wave"]{
-  --activity-control-bg: var(--paper);
-  --activity-control-bg-raised: var(--paper-3);
-  --activity-control-fg: var(--ink);
-  --activity-control-muted: var(--ink-soft);
-  --activity-control-border: var(--rule);
-  --activity-control-shadow: rgba(0, 0, 0, 0.32);
-  --activity-control-active-bg: var(--ink);
-  --activity-control-active-fg: var(--on-ink);
-  --activity-control-badge-bg: var(--pink);
-  --activity-control-badge-fg: var(--on-accent);
-}
-
 /* -- activity: sidebar nav entry ------------------------------------------ */
 :root[data-skin="glass"] .act-nav {
   border-radius: var(--radius-md);
@@ -324,24 +310,18 @@
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
 }
-:root[data-skin="glass"] :is(.act-live, .act-markall, .act-view-switch, .act-liveonly, .act-viewtoggle, .act-rf-chip, .act-rf-more, .act-rf-more-arrow) {
+:root[data-skin="glass"] :is(.act-live, .act-markall, .act-sort-toggle, .act-view-icon) {
   border-width: 1px;
   border-color: var(--rule);
   box-shadow: var(--shadow-chip);
 }
 :root[data-skin="glass"] .act-markall { border-radius: var(--radius-sm); }
-:root[data-skin="glass"] .act-view-switch { border-radius: var(--radius-sm); }
-:root[data-skin="glass"] .act-live-dot,
-:root[data-skin="glass"] .act-rf-dot { border: 1px solid var(--rule); }
-:root[data-skin="glass"] .act-view-switch:hover,
-:root[data-skin="glass"] .act-rf-chip:hover,
-:root[data-skin="glass"] .act-rf-more:hover,
-:root[data-skin="glass"] .act-liveonly:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover-sm);
+:root[data-skin="glass"] .act-view-segment {
+  border: 0;
+  box-shadow: none;
 }
-:root[data-skin="glass"] .act-markall:hover:not(:disabled) {
-  color: var(--on-accent);
+:root[data-skin="glass"] .act-live-dot { border: 1px solid var(--rule); }
+:root[data-skin="glass"] :is(.act-sort-toggle, .act-view-icon:not(.active), .act-markall):hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);
 }
@@ -388,14 +368,16 @@
 }
 :root[data-skin="glass"] .act-room-go,
 :root[data-skin="glass"] .act-digest-go,
-:root[data-skin="glass"] .act-digest-headgo {
+:root[data-skin="glass"] .act-digest-headgo,
+:root[data-skin="glass"] .act-scope-ack {
   border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
   box-shadow: var(--shadow-chip);
 }
 :root[data-skin="glass"] .act-room-go:hover,
 :root[data-skin="glass"] .act-digest-go:hover,
-:root[data-skin="glass"] .act-digest-headgo:hover {
+:root[data-skin="glass"] .act-digest-headgo:hover,
+:root[data-skin="glass"] .act-scope-ack:hover {
   color: var(--on-accent);
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);
@@ -518,8 +500,7 @@
    hover lift (`translate(-1px,-1px)` + offset shadow) and the placeholder's
    hardcoded hatch pattern need glass-side replacements.
    ========================================================================= */
-:root[data-skin="glass"] .task-card:hover,
-:root[data-skin="glass"] .theme-toggle:hover {
+:root[data-skin="glass"] .task-card:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);
 }

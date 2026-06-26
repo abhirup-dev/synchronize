@@ -246,8 +246,8 @@ link: setup
 	@bun link >/dev/null
 	@command -v synchronize >/dev/null || { echo "synchronize not on PATH after 'bun link'"; exit 1; }
 	@command -v $(MCP_BIN) >/dev/null || { echo "$(MCP_BIN) not on PATH after 'bun link'"; exit 1; }
-	@synchronize completion install --shell carapace >/dev/null
-	@echo "installed Carapace completion spec for synchronize"
+	@synchronize completion install --shell zsh >/dev/null
+	@echo "installed Tab zsh completion script for synchronize"
 	@echo "linked synchronize -> $$(readlink $$(command -v synchronize))"
 	@echo "linked $(MCP_BIN) -> $$(readlink $$(command -v $(MCP_BIN)))"
 

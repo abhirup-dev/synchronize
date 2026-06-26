@@ -14,7 +14,11 @@ export async function run(argv: string[]): Promise<void> {
   const env = {
     ...sanitizeLaunchBaseEnv(process.env),
     ...(resolved.profile?.env ?? {}),
-    ...buildLaunchEnv({ launchId, ...(resolved.name ? { sessionName: resolved.name } : {}) }),
+    ...buildLaunchEnv({
+      launchId,
+      ...(resolved.name ? { sessionName: resolved.name } : {}),
+      ...(resolved.profile ? { profileName: resolved.profile.profileName } : {}),
+    }),
   };
   const cmd = buildAgentCommand(
     resolved.target,

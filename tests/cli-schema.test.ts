@@ -32,11 +32,11 @@ describe("CLI schema", () => {
   test("covers nested commands used by the current command modules", () => {
     expect(subcommandNames("group")).toEqual(["create", "describe", "join", "leave", "rename", "send", "history"]);
     expect(subcommandNames("archive")).toEqual(["session", "group"]);
-    expect(subcommandNames("resume")).toEqual(["launch", "show", "group"]);
+    expect(subcommandNames("resume")).toEqual(["launch", "spawn", "show", "group"]);
     expect(subcommandNames("media")).toEqual(["share", "list", "get"]);
     expect(subcommandNames("threads")).toEqual(["list", "status", "show", "summary"]);
     expect(subcommandNames("hook")).toEqual(["claude-session"]);
-    expect(subcommandNames("completion")).toEqual(["carapace", "complete", "install"]);
+    expect(subcommandNames("completion")).toEqual(["tab", "complete", "install"]);
     expect(subcommandNames("remote")).toEqual([
       "add",
       "use",
@@ -50,6 +50,17 @@ describe("CLI schema", () => {
       "status",
       "doctor",
     ]);
+  });
+
+  test("marks resume/archive session ids as dynamic completion values", () => {
+    const resumeLaunch = cliSchema.commands
+      .find((command) => command.name === "resume")
+      ?.subcommands?.find((command) => command.name === "launch");
+    const archiveSession = cliSchema.commands
+      .find((command) => command.name === "archive")
+      ?.subcommands?.find((command) => command.name === "session");
+    expect(resumeLaunch?.flags?.find((flag) => flag.name === "session-id")?.value).toEqual({ kind: "dynamic", provider: "session-ids" });
+    expect(archiveSession?.flags?.find((flag) => flag.name === "session-id")?.value).toEqual({ kind: "dynamic", provider: "session-ids" });
   });
 
   test("keeps help generated from schema aligned with the current CLI surface", () => {
@@ -72,7 +83,8 @@ Usage:
   synchronize group history NAME --as SESSION_NAME [--thread-of EVENT_ID]
   synchronize archive session (--peer-id PEER_ID | --session-id SESSION_ID) [--reason TEXT] [--dry-run]
   synchronize archive group NAME [--reason TEXT] [--dry-run]
-  synchronize resume launch (--peer-id PEER_ID | --session-id SESSION_ID) [--force] [--print]
+  synchronize resume launch (--peer-id PEER_ID | --session-id SESSION_ID) [--force]
+  synchronize resume spawn (--peer-id PEER_ID | --session-id SESSION_ID) [--force]
   synchronize resume group NAME [--only ALIASES] [--exclude ALIASES] [--force] [--print]
   synchronize media share GROUP FILE --description TEXT
   synchronize media list GROUP [--query TEXT]
@@ -86,8 +98,8 @@ Usage:
   synchronize launch [--name NAME] [--] claude|pi|letta|PROFILE [--] [TOOL_ARGS...]
   synchronize spawn claude|pi|letta|PROFILE [--name NAME] [--repo PATH] [--group GROUP] [--model MODEL] [--thinking LEVEL] [-- TOOL_ARGS...]
   synchronize host --bind HOST --token TOKEN [--port PORT] [--home PATH] [--restart]
-  synchronize completion carapace
-  synchronize completion install --shell carapace
+  synchronize completion tab zsh|bash|fish|powershell
+  synchronize completion install --shell zsh|bash|fish|powershell
   synchronize remote add NAME --url URL [--token-env ENV | --token LITERAL] [--ssh-host HOST] [--use]
   synchronize remote use NAME | ls | show [NAME] | remove NAME
   synchronize remote provision HOST | sync HOST --hub-url URL | connect HOST | harness HOST --hub-url URL [--all]
@@ -113,7 +125,7 @@ Commands:
   launch     Start an agent in the foreground with synchronize daemon/env setup
   spawn      Launch a persistent agent session via the backend (AOE), optionally into a group
   host       Start or verify a token-protected daemon for LAN/tailnet clients
-  completion Generate shell completion specs
+  completion Generate and install Tab shell completions
   remote     Manage multi-machine profiles, provision/sync remotes, run the harness, and inspect status
 
 Environment:

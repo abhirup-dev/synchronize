@@ -1,0 +1,24 @@
+/*
+ * Storybook-only scroll repair.
+ *
+ * The production app intentionally sets `html, body, #root { height: 100%;
+ * overflow: hidden; }` because `/web` owns scrolling inside shell panes
+ * (chat list, thread pane, sidebar, activity lanes). Storybook imports the same
+ * CSS stack so stories match production, but that global app-shell rule also
+ * traps ordinary long component stories inside the preview iframe.
+ *
+ * Keep this override in `.storybook/` and import it after the shared app CSS.
+ * It makes Storybook canvases usable for long typography/docs/component previews
+ * without changing production `/web` behavior.
+ */
+html,
+body {
+  height: auto !important;
+  min-height: 100%;
+  overflow-y: auto !important;
+}
+
+#storybook-root {
+  height: auto !important;
+  min-height: 100%;
+}

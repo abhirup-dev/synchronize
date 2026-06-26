@@ -5,6 +5,7 @@ import { useArchiveCommands, useArchivedSessions, useRooms } from "../data/conte
 import type { Agent, ArchivePreview, ArchivedSession, ResumePreview, Room } from "../data/types.ts";
 import { useToast } from "./Toast.tsx";
 import { copyText } from "../utils/clipboard.ts";
+import { roomNameText } from "./primitives.tsx";
 
 interface ArchiveWorkflow {
   openConsole(): void;
@@ -63,7 +64,7 @@ export function ArchiveRecoveryProvider({ children }: { children: ReactNode }) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const loadArchiveGroup = (room: Room, reason = "") => {
-    const next: PreviewState = { kind: "archive", target: "group", title: `Archive #${room.name}`, group: room.name, reason, loading: true };
+    const next: PreviewState = { kind: "archive", target: "group", title: `Archive ${roomNameText(room.kind, room.name)}`, group: room.name, reason, loading: true };
     setPreview(next);
     void commands.archiveGroupPreview({ group: room.name, reason }).then(
       (result) => setPreview({ ...next, loading: false, preview: result }),
@@ -81,7 +82,7 @@ export function ArchiveRecoveryProvider({ children }: { children: ReactNode }) {
   };
 
   const loadResumeGroup = (room: Room, force = false) => {
-    const next: PreviewState = { kind: "resume", target: "group", title: `Resume #${room.name}`, group: room.name, force, loading: true };
+    const next: PreviewState = { kind: "resume", target: "group", title: `Resume ${roomNameText(room.kind, room.name)}`, group: room.name, force, loading: true };
     setPreview(next);
     void commands.resumeGroupPreview({ group: room.name, force }).then(
       (result) => setPreview({ ...next, loading: false, preview: result }),

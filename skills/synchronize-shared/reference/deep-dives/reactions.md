@@ -18,11 +18,13 @@ giving acknowledgement.
 
 ## Variations
 
-```text
-bridge_react(event_id: 123, emoji: "👍")               # add
-bridge_react(event_id: 123, emoji: "👍", op: "remove")
-bridge_react(event_id: 123, emoji: "👍", op: "toggle")
-bridge_list_reactions(event_id: 123)
-```
+Use `add` when the desired end state is definitely present, `remove` when the
+desired end state is definitely absent, and `toggle` only for interactive
+correction where flipping the current state is intentional.
 
-`add` and `remove` are idempotent for `(event_id, emoji, peer)`.
+List reactions when deciding whether a message already has acknowledgement.
+Do not infer reaction state from later text replies; reactions are stored
+separately from message events.
+
+`add` and `remove` are idempotent for `(event_id, emoji, peer)`, which makes
+them safer than `toggle` in agent workflows.

@@ -31,6 +31,7 @@ export function useTasks(roomId: string)    { return useSnapshot(useDataSource()
 export function useArtifacts(roomId: string) { return useSnapshot(useDataSource().artifacts(roomId)); }
 export function useThreadSummary(parentMessageId: string) { return useSnapshot(useDataSource().threadSummary(parentMessageId)); }
 export function useSkillCatalog() { return useSnapshot(useDataSource().skillCatalog()); }
+export function useLaunchProfiles() { return useSnapshot(useDataSource().launchProfiles()); }
 export function useActivity() { return useSnapshot(useDataSource().activity()); }
 export function useActivityAwaitingCount() { return useSnapshot(useDataSource().activityAwaitingCount()); }
 export function useArchivedSessions() { return useSnapshot(useDataSource().archivedSessions()); }
@@ -38,6 +39,11 @@ export function useArchivedSessions() { return useSnapshot(useDataSource().archi
 export function useAckActivity() {
   const ds = useDataSource();
   return ds.ackActivity.bind(ds);
+}
+
+export function useAckActivityEvents() {
+  const ds = useDataSource();
+  return ds.ackActivityEvents.bind(ds);
 }
 
 export function useAckAllActivity() {

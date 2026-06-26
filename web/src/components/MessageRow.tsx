@@ -1,29 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import type { Agent, Message } from "../data/types.ts";
-
-// Per-theme dark overrides for `.reaction` live in styles.css (data-theme blocks
-// out-specify these single-class utilities), so only the base brutal values move
-// here. `.is-mine` / `.add` legacy state classes stay on the element as the
-// dark-theme selectors still target them.
-const reactionBtn = cva(
-  "reaction inline-flex cursor-pointer items-center gap-[var(--space-4)] rounded-pill bg-paper px-[9px] py-[2px] text-[length:var(--text-12)] leading-tight text-ink shadow-sm [border:var(--line-sm)]",
-  {
-    variants: {
-      mine: {
-        true: "is-mine bg-paper-2 [border-color:color-mix(in_srgb,var(--yellow)_45%,var(--rule))]",
-        false: null,
-      },
-      add: {
-        true: "add min-w-[25px] justify-center font-display text-[length:var(--text-11)]",
-        false: null,
-      },
-    },
-    defaultVariants: { mine: false, add: false },
-  },
-);
 import { Avatar, IdentityBadge, MentionChip } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
@@ -31,6 +9,12 @@ import { PollWidget } from "./PollWidget.tsx";
 import { useMe } from "../data/context.tsx";
 import { isSelfAgent } from "../data/identity.ts";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
+import { AgentProfileDialog } from "./AgentPreview.tsx";
+import { useToast } from "./Toast.tsx";
+import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
+import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { messageDeepLinkUrl } from "../deeplinks.ts";
+import { copyText } from "../utils/clipboard.ts";
 
 interface MessageRowProps {
   message: Message;
@@ -46,6 +30,7 @@ interface MessageRowProps {
   hideAuthor?: boolean;
   /** Compact thread rows use the composer/context menu as the primary action surface. */
   hideReactionAdd?: boolean;
+  onOpenDm?(agentId: string): void;
 }
 
 const QUICK_REACTIONS = ["👍", "✅", "👀", "🎉", "🚀", "❤️", "🙏", "😂"];
@@ -75,10 +60,13 @@ export const MessageRow = memo(function MessageRow({
   hideAvatar,
   hideAuthor,
   hideReactionAdd,
+  onOpenDm,
 }: MessageRowProps) {
   const openMenu = useContextMenu();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const me = useMe();
+  const toast = useToast();
+  const archive = useArchiveWorkflow();
   // "You" / web-client messages: right-aligned accent bubble, no avatar or name
   // chip. Single source of truth — see data/identity.ts.
   const isSelf = isSelfAgent(author, me);
@@ -86,6 +74,7 @@ export const MessageRow = memo(function MessageRow({
   const [pickerStyle, setPickerStyle] = useState<FloatingStyle | null>(null);
   const [detailsEmoji, setDetailsEmoji] = useState<string | null>(null);
   const [detailsStyle, setDetailsStyle] = useState<FloatingStyle | null>(null);
+  const [profileAgent, setProfileAgent] = useState<Agent | null>(null);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent] as const)), [agents]);
   const threadReplyCount = message.threadReplyCount ?? 0;
   const hasThreadBadge = threadReplyCount > 0 && Boolean(onOpenThread);
@@ -124,6 +113,7 @@ export const MessageRow = memo(function MessageRow({
   }, []);
 
   return (
+    <>
     <div
       ref={rowRef}
       id={`msg-${message.id}`}
@@ -139,7 +129,13 @@ export const MessageRow = memo(function MessageRow({
           { label: "Reply in thread", onSelect: () => onOpenThread?.(message.id) },
           ...(!hideReactionAdd ? [{ label: "Add reaction", onSelect: () => openPicker(rowRef.current?.querySelector(".reaction.add")) }] : []),
           { label: "Copy text", shortcut: "⌘C", onSelect: () => navigator.clipboard?.writeText(message.body) },
-          { label: "Copy link (soon)", disabled: true, onSelect: () => {} },
+          {
+            label: "Copy link",
+            onSelect: async () => {
+              const copied = await copyText(messageDeepLinkUrl(message.id));
+              toast.show(copied ? "Message link copied" : "Could not copy message link", { kind: copied ? "success" : "error" });
+            },
+          },
           { divider: true },
           { label: "Pin to room (soon)", disabled: true, onSelect: () => {} },
           { divider: true },
@@ -148,7 +144,18 @@ export const MessageRow = memo(function MessageRow({
       }
     >
       {!hideAvatar && !isSelf && (
-        <div className="message-gutter flex h-[34px] justify-center pt-0">
+        <div
+          className="message-gutter flex h-[34px] justify-center pt-0"
+          onContextMenu={(e) =>
+            openMenu(e, agentActionMenuItems(e, {
+              agent: author,
+              toast,
+              archive,
+              ...(onOpenDm ? { onOpenDm: () => onOpenDm(author.id) } : {}),
+              onViewProfile: () => setProfileAgent(author),
+            }))
+          }
+        >
           {!groupedWithPrev && <Avatar agent={author} size={34} showStatus />}
         </div>
       )}
@@ -175,8 +182,8 @@ export const MessageRow = memo(function MessageRow({
             </IdentityBadge>
           </div>
         )}
-        <div className="message-stack flex min-w-0 max-w-[min(880px,calc(100%_-_var(--bubble-shadow-gutter,6px)))] w-fit flex-col gap-[var(--space-2)]">
-          <div className="bubble min-w-0 max-w-full rounded-xl bg-bubble p-[var(--space-bubble-pad)] [border:var(--message-card-border,var(--line-2))] [border-color:var(--message-card-border-color,var(--rule))] [box-shadow:var(--bubble-shadow-offset,4px)_var(--bubble-shadow-offset,4px)_0_var(--message-card-shadow-color,var(--rule))]">
+        <div className="message-stack">
+          <div className="bubble">
             {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
             {message.attachments?.length ? (
               <AttachmentPreviewList attachments={message.attachments} mode="message" />
@@ -231,7 +238,7 @@ export const MessageRow = memo(function MessageRow({
                     const names = reaction.by.map((id) => agentById.get(id)?.name ?? id);
                     return (
                       <span
-                        className="reaction-wrap relative inline-flex"
+                        className="reaction-wrap relative inline-flex shrink-0"
                         key={reaction.emoji}
                         onMouseEnter={(event) => {
                           window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
@@ -244,7 +251,7 @@ export const MessageRow = memo(function MessageRow({
                         }}
                       >
                         <button
-                          className={reactionBtn({ mine })}
+                          className={cn("reaction", mine && "is-mine")}
                           title={names.join(", ")}
                           aria-pressed={mine}
                           aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
@@ -287,9 +294,9 @@ export const MessageRow = memo(function MessageRow({
                     );
                   })}
                   {onReact && !hideReactionAdd && (
-                    <span className="reaction-wrap relative inline-flex">
+                    <span className="reaction-wrap relative inline-flex shrink-0">
                       <button
-                        className={reactionBtn({ add: true })}
+                        className="reaction add"
                         aria-label="add reaction"
                         onClick={(event) => {
                           if (pickerOpen) {
@@ -336,6 +343,8 @@ export const MessageRow = memo(function MessageRow({
         </div>
       </div>
     </div>
+    <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
+    </>
   );
 });
 
@@ -349,7 +358,7 @@ function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
     const re = new RegExp(`@(${handles.map(escapeRegExp).join("|")})(?=$|\\s|[!?;:,)\\]}]|\\.(?=$|\\s))`, "g");
     return body.replace(re, (_, h) => `\`@@${h}\``);
   }, [body, agents]);
-  return <Markdown agents={agents}>{rewritten}</Markdown>;
+  return <Markdown agents={agents} variant="rich">{rewritten}</Markdown>;
 }
 
 function escapeRegExp(value: string): string {

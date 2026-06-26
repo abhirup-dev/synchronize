@@ -25,7 +25,7 @@ Returns:
 | `thread_events` | group messages with normalized thread-root and direct-target fields |
 | `discoverable_threads` | thread roots that have replies |
 
-## Examples
+## Minimal Example
 
 ```sql
 select event_id, type, group_name, sender_session_name, body
@@ -34,9 +34,5 @@ order by event_id desc
 limit 20;
 ```
 
-```sql
-select event_id, body, reply_to_event_id, direct_body, thread_root_event_id
-from thread_events
-where thread_root_event_id = ?
-order by event_id;
-```
+For thread forensics, delivery tracing, or parameterized reply-target queries,
+move to the deep dive.
