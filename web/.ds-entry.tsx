@@ -16,6 +16,7 @@ export * from "./src/components/ChatView.tsx";
 export * from "./src/components/Composer.tsx";
 export * from "./src/components/ContextMenu.tsx";
 export * from "./src/components/IconButton.tsx";
+export * from "./src/components/Iconography.tsx";
 export * from "./src/components/Markdown.tsx";
 export * from "./src/components/MessageRow.tsx";
 export * from "./src/components/PollWidget.tsx";

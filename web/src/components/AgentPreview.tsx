@@ -43,7 +43,7 @@ export function AgentPreview({ agent, details, density = "default" }: AgentPrevi
   const compact = density === "compact";
 
   return (
-    <article className={cn(cardBase, compact ? "w-[320px]" : "w-[min(660px,100%)]")}>
+    <article className={cn(cardBase, "@container", compact ? "w-[320px]" : "w-[660px] max-w-full")}>
       <header className="flex min-w-0 items-start gap-[var(--space-10)] bg-surface-raised p-[12px] [border-bottom:var(--line-sm)]">
         <Avatar agent={agent} size={compact ? 38 : 42} showStatus />
         <div className="min-w-0 flex-1">
@@ -63,7 +63,7 @@ export function AgentPreview({ agent, details, density = "default" }: AgentPrevi
         </div>
       </header>
 
-      <div className={cn("grid gap-[10px] p-[12px]", compact ? "grid-cols-1" : "grid-cols-2")}>
+      <div className={cn("grid gap-[10px] p-[12px]", compact ? "grid-cols-1" : "grid-cols-1 @[360px]:grid-cols-2")}>
         <Section title="Runtime" icon={<Brain size={15} />}>
           <Detail compact={compact} label="tool" value={runtimeDetails?.tool ?? agent.role ?? "unknown"} />
           <Detail compact={compact} label="model" value={runtimeDetails?.model ?? "unknown"} />

@@ -115,6 +115,24 @@ pieces, all captured below so a re-sync replays them.
   8 components changed: ActivityItem, ActivityView, AgentRoster, ArchiveRecoveryProvider, MessageRow,
   RoomHeader, Sidebar, SpawnAgentDialog) and added the 11 glass twins above. Final vision grade
   (Gemini, raw-verified): 146 match / 5 close / 0 mismatch across 43 components.
+- **`Iconography` card — real showcase component (`web/src/components/Iconography.tsx`).** The master
+  story `Design/Iconography` is a gallery (identity tiles + message-kind markers), render-only with no
+  export → `[TITLE_UNMAPPED]`. Promoted to a real showcase component (parallel to `Identity`→
+  `IdentityBadge`): `Iconography.tsx` exports the gallery, the story renders `<Iconography />`, and the
+  barrel re-exports it so the title maps. `Typography` stays dropped (font specimen gallery, no API) —
+  re-adopt only if it becomes a real component.
+- **`AgentPreview` — container-query fix for narrow-width collapse (2026-06-27).** At narrow display
+  widths the card's default 2-column section grid collapsed each `Detail` value column to ~1 char
+  (vertical text): the fixed `72px` label + `18px` copy button left no room. Fix is a CSS container
+  query on the card itself — `@container` on the `<article>`, section grid `grid-cols-1 @[360px]:grid-cols-2`
+  — so it is single-column under 360px and two-column above, driven by the CARD's own width (no JS, no
+  shell-context dependency; works in the design-sync card, the dialog, and mobile). TWO gotchas pinned:
+  (1) the card width MUST be definite (`w-[660px] max-w-full`), NOT `w-[min(660px,100%)]` — a percentage
+  width under `container-type:inline-size` resolves to ~0 in the storybook `layout:centered` parent
+  (indefinite width) and collapses the reference to a 36px strip; (2) the design-sync preview grid mounts
+  a sibling `AgentProfileDialog` cell (both are PascalCase exports), so the AgentPreview cell is ~416px,
+  still ≥360px → two-column (matches the reference). Don't widen the threshold past ~390px or the preview
+  half-width cell flips to single-column and diverges from the reference.
 - **Theme/skin wiring (post-2026-06-20 master merge).** Theme = palette, skin = aesthetic, both carried on
   `<html data-theme>`/`<html data-skin>`. CSS load order is centralized in `web/src/styles/css.ts`, imported
   by BOTH `main.tsx` and `.storybook/preview.tsx` (never duplicate the list — drift silently dropped
