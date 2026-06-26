@@ -187,6 +187,7 @@ export const MessageRow = memo(function MessageRow({
             <IdentityBadge
               className="author-name"
               color={author.color}
+              {...(author.colorRef ? { colorRef: author.colorRef } : null)}
               style={{
                 fontFamily: "var(--font-display)",
                 fontSize: "var(--text-12)",
@@ -235,6 +236,7 @@ export const MessageRow = memo(function MessageRow({
                             key={aid}
                             className="thread-badge-av -ml-1 grid h-5 w-5 place-items-center rounded-xs font-display text-[length:var(--text-10)] shadow-xs [border:var(--line-xs)] first:ml-0"
                             color={a.color}
+                            {...(a.colorRef ? { colorRef: a.colorRef } : null)}
                             title={a.name}
                           >
                             {a.avatar}

@@ -158,7 +158,7 @@ async function chatTopThreadTraversal(ctx: PlayCtx, options: FlowOptions = {}) {
     await userEvent.click(roomButton(ctx.canvasElement, "checkout-revamp"));
     await waitFor(() => {
       expect(ctx.canvasElement.querySelector(".chat-view")).toBeTruthy();
-      expect(ctx.canvasElement.querySelector(".room-header")?.textContent).toContain("#checkout-revamp");
+      expect(ctx.canvasElement.querySelector(".room-header")?.textContent).toContain("checkout-revamp");
     });
   });
 

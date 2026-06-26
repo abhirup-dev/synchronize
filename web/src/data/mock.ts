@@ -32,6 +32,12 @@ import type {
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath } from "../utils/attachments.ts";
 import {
+  identityColorCss,
+  identityRefForId,
+  normalizeIdentityColorRef,
+  type IdentityColorRef,
+} from "../theme/identity.ts";
+import {
   AGENTS,
   ARTIFACTS,
   DMS,
@@ -46,24 +52,25 @@ import {
 // Persistent overrides for agent identity colors. Stored in localStorage so the
 // user's customizations survive reloads; we restore them on construction.
 const COLOR_OVERRIDES_KEY = "synchronize.agentColors";
-function readColorOverrides(): Record<string, string> {
+function readColorOverrides(): Record<string, IdentityColorRef> {
   try {
     const raw = localStorage.getItem(COLOR_OVERRIDES_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return typeof parsed === "object" && parsed ? parsed : {};
+    if (typeof parsed !== "object" || !parsed) return {};
+    return Object.fromEntries(Object.entries(parsed).map(([id, value]) => [id, normalizeIdentityColorRef(value, id)]));
   } catch {
     return {};
   }
 }
-function writeColorOverrides(overrides: Record<string, string>): void {
+function writeColorOverrides(overrides: Record<string, IdentityColorRef>): void {
   try {
     localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
   } catch {
     /* localStorage full / blocked — ignore */
   }
 }
-const SEEDED_COLOR_BY_ID = new Map(AGENTS.map((a) => [a.id, a.color] as const));
+const SEEDED_COLOR_REF_BY_ID = new Map(AGENTS.map((a) => [a.id, a.colorRef ?? normalizeIdentityColorRef(a.color, a.id)] as const));
 const MOCK_SKILL_CATALOG: SkillCatalogEntry[] = [
   {
     id: "diagnose",
@@ -105,7 +112,8 @@ export class MockDataSource implements DataSource {
     AGENTS.map((a) => {
       const overrides = readColorOverrides();
       const override = overrides[a.id];
-      return override ? { ...a, color: override } : a;
+      const colorRef = override ?? a.colorRef ?? normalizeIdentityColorRef(a.color, a.id);
+      return { ...a, colorRef, color: identityColorCss(colorRef) };
     }),
   );
   private readonly _rooms = createSnapshot<Room[]>([...GROUPS, ...DMS]);
@@ -352,11 +360,13 @@ export class MockDataSource implements DataSource {
     const sessionName = input.name.trim();
     if (!sessionName) throw new Error("agent name is required");
     const peerId = `mock:${input.tool}:${Date.now().toString(36)}`;
+    const colorRef = identityRefForId(peerId);
     const agent: Agent = {
       id: peerId,
       name: sessionName,
       handle: sessionName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || peerId.slice(-8),
-      color: "#B49BFF",
+      color: identityColorCss(colorRef),
+      colorRef,
       role: input.profileName ?? input.tool,
       status: "idle",
       lifecycleState: "active",
@@ -457,22 +467,22 @@ export class MockDataSource implements DataSource {
     return { ok: true };
   }
 
-  setAgentColor(agentId: string, hex: string | null): void {
+  setAgentColor(agentId: string, color: IdentityColorRef | string | null): void {
     const overrides = readColorOverrides();
-    if (hex === null) {
+    if (color === null) {
       delete overrides[agentId];
     } else {
-      overrides[agentId] = hex;
+      overrides[agentId] = normalizeIdentityColorRef(color, agentId);
     }
     writeColorOverrides(overrides);
-    const fallback = SEEDED_COLOR_BY_ID.get(agentId);
-    const next = hex ?? fallback;
+    const fallbackRef = SEEDED_COLOR_REF_BY_ID.get(agentId) ?? identityRefForId(agentId);
+    const nextRef = color === null ? fallbackRef : normalizeIdentityColorRef(color, agentId);
     this._agents.update((prev) =>
-      prev.map((a) => (a.id === agentId ? { ...a, color: next ?? a.color } : a)),
+      prev.map((a) => (a.id === agentId ? { ...a, colorRef: nextRef, color: identityColorCss(nextRef) } : a)),
     );
     // Mirror onto `me` if it's the same agent.
     if (this._me.get().id === agentId) {
-      this._me.set({ ...this._me.get(), color: next ?? this._me.get().color });
+      this._me.set({ ...this._me.get(), colorRef: nextRef, color: identityColorCss(nextRef) });
     }
   }
 

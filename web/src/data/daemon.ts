@@ -30,6 +30,13 @@ import type {
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
 import { attachmentKindFor, extensionFor, makeExternalAttachment, nativeFilePath, outgoingBodyWithAttachmentPaths } from "../utils/attachments.ts";
+import {
+  identityColorCss,
+  identityRefForId,
+  normalizeIdentityColorRef,
+  type IdentityColorRef,
+} from "../theme/identity.ts";
+import { readIdentityOverride, writeIdentityOverride } from "../theme/storage.ts";
 
 // crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
 // The daemon UI is often reached over plain HTTP on a tailnet IP, where it is
@@ -362,12 +369,13 @@ const PENDING_WEB_PEER_ID = "web:pending";
 // first load when their latest non-own author is expired/offline.
 const ACTIVITY_WINDOW = 200;
 const ACTIVITY_CAP = 500;
-const COLORS = ["#FFD23F", "#FF5DA2", "#4D7CFE", "#7BE389", "#FF8A3D", "#B49BFF", "#F45B69", "#2EC4B6"];
+const EMPTY_AGENT_COLOR_REF = { kind: "token", token: "--ink" } satisfies IdentityColorRef;
 const EMPTY_AGENT: Agent = {
   id: "web:pending",
   name: "Web",
   handle: "web",
-  color: "#111111",
+  color: identityColorCss(EMPTY_AGENT_COLOR_REF),
+  colorRef: EMPTY_AGENT_COLOR_REF,
   role: "web",
   status: "online",
   avatar: "W",
@@ -946,11 +954,11 @@ export class DaemonDataSource implements DataSource {
     };
   }
 
-  setAgentColor(agentId: string, hex: string | null): void {
+  setAgentColor(agentId: string, color: IdentityColorRef | string | null): void {
     const key = `synchronize.agentColor.${agentId}`;
-    if (hex) localStorage.setItem(key, hex);
-    else localStorage.removeItem(key);
-    this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, color: colorForPeer(agentId) } : agent));
+    const colorRef = color === null ? identityRefForId(agentId) : normalizeIdentityColorRef(color, agentId);
+    writeIdentityOverride(key, color === null ? null : colorRef);
+    this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, colorRef, color: identityColorCss(colorRef) } : agent));
   }
 
   async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
@@ -1154,12 +1162,14 @@ export class DaemonDataSource implements DataSource {
       const roomId = groupRoomId(group.group_id);
       this.groupNameByRoomId.set(roomId, group.name);
       const summary = summaryByGroup.get(group.group_id);
+      const colorRef = colorRefForGroup(group.group_id);
       return {
         id: roomId,
         kind: "group" as const,
         name: group.name,
         emoji: "#",
-        color: colorForGroup(group.group_id),
+        color: identityColorCss(colorRef),
+        colorRef,
         members: activeMembers.map((member) => member.peer_id),
         memberAliases: Object.fromEntries(members.map((member) => [member.peer_id, member.alias])),
         memberStates: Object.fromEntries(members.map((member) => [member.peer_id, member.member_state ?? (member.active ? "active" : "left")])),
@@ -1181,11 +1191,13 @@ export class DaemonDataSource implements DataSource {
     const dmRooms = state.peers
       .filter((peer) => peer.peer_id !== this.peerId && peer.lifecycle_state !== "archived")
       .map((peer) => {
+        const colorRef = colorRefForPeer(peer.peer_id);
         return {
           id: dmRoomId(peer.peer_id),
           kind: "dm" as const,
           name: peer.session_name,
-          color: colorForPeer(peer.peer_id),
+          color: identityColorCss(colorRef),
+          colorRef,
           members: [this.peerId, peer.peer_id],
           peerId: peer.peer_id,
           lastPreview: "open direct message",
@@ -1440,11 +1452,13 @@ function mapAgent(
   const isMe = peer.peer_id === mePeerId;
   const name = isMe ? "You" : peer.session_name;
   const launchNote = launch ? launchStatusNote(launch) : undefined;
+  const colorRef = colorRefForPeer(peer.peer_id);
   return {
     id: peer.peer_id,
     name,
     handle: isMe ? "you" : handleFor(peer),
-    color: colorForPeer(peer.peer_id),
+    color: identityColorCss(colorRef),
+    colorRef,
     role: peer.tool,
     status: statusForPeer(peer, isMe),
     lifecycleState: peer.lifecycle_state ?? "active",
@@ -1652,14 +1666,12 @@ function handleFor(peer: DaemonPeer): string {
   return peer.session_name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || peer.peer_id.slice(0, 8);
 }
 
-function colorForPeer(peerId: string): string {
-  const override = localStorage.getItem(`synchronize.agentColor.${peerId}`);
-  if (override) return override;
-  return COLORS[hashString(peerId) % COLORS.length] ?? COLORS[0]!;
+function colorRefForPeer(peerId: string): IdentityColorRef {
+  return readIdentityOverride(`synchronize.agentColor.${peerId}`, peerId) ?? identityRefForId(peerId);
 }
 
-function colorForGroup(groupId: number): string {
-  return COLORS[groupId % COLORS.length] ?? COLORS[0]!;
+function colorRefForGroup(groupId: number): IdentityColorRef {
+  return identityRefForId(`group:${groupId}`);
 }
 
 function groupRoomId(groupId: number): string {
@@ -1806,12 +1818,6 @@ function mergeAgents(prev: Agent[], next: Agent[]): Agent[] {
   const byId = new Map(prev.map((item) => [item.id, item] as const));
   for (const item of next) byId.set(item.id, item);
   return [...byId.values()];
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  return hash;
 }
 
 function reuseEqualAgents(prev: Agent[], next: Agent[]): Agent[] {

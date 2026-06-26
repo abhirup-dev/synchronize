@@ -76,7 +76,7 @@
   display: grid;
   place-items: center;
   background: var(--accent);
-  color: #111;
+  color: var(--on-accent);
   border: var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
@@ -273,7 +273,7 @@
   color: var(--ink);
 }
 .act-filter.active:not(.topbar-control) .act-filter-n { background: var(--surface-selected-bg); color: var(--surface-selected-fg); }
-.act-filter.hot:not(.topbar-control) .act-filter-n { background: var(--pink); color: #111; }
+.act-filter.hot:not(.topbar-control) .act-filter-n { background: var(--pink); color: var(--on-accent); }
 .act-filter.hot.active:not(.topbar-control) { box-shadow: inset 0 -4px 0 var(--pink); }
 /* ── scroll area ── */
 .act-scroll {
@@ -311,7 +311,7 @@
   border-radius: 6px;
   font-size: 15px;
   font-family: "Archivo Black", sans-serif;
-  color: #111;
+  color: var(--on-accent);
   box-shadow: 1.5px 1.5px 0 var(--ink);
 }
 .act-room-icon.sm { width: 24px; height: 24px; font-size: 12px; border-width: 2px; box-shadow: 1px 1px 0 var(--ink); }
@@ -330,7 +330,7 @@
   font-size: 9.5px;
   letter-spacing: 0.04em;
   background: var(--pink);
-  color: #111;
+  color: var(--on-accent);
   border: 1.5px solid var(--ink);
   padding: 2px 7px;
   border-radius: 999px;
@@ -482,7 +482,7 @@
   border-radius: 999px;
   font-size: 11px;
   font-family: "Archivo Black", sans-serif;
-  color: #111;
+  color: var(--on-accent);
 }
 .act-roomchip.sm .act-roomchip-icon { width: 17px; height: 17px; font-size: 9px; }
 
@@ -524,7 +524,7 @@
 }
 .act-preview .markdown p { margin: 0; }
 .act-preview .markdown p + p { margin-top: 4px; }
-.act-reaction-chip.you { background: var(--lime); color: #111; }
+.act-reaction-chip.you { background: var(--lime); color: var(--on-accent); }
 .act-act-btn {
   display: inline-flex;
   align-items: center;
@@ -540,9 +540,9 @@
   box-shadow: 1.5px 1.5px 0 var(--ink);
 }
 .act-act-btn:hover { transform: translate(-1px, -1px); box-shadow: 2.5px 2.5px 0 var(--ink); background: var(--paper); }
-.act-act-btn.jump:hover { background: var(--blue); color: #fff; }
-.act-act-btn.react:hover { background: var(--accent); color: #111; }
-.act-act-btn.react.done { background: var(--lime); color: #111; }
+.act-act-btn.jump:hover { background: var(--blue); color: var(--on-accent); }
+.act-act-btn.react:hover { background: var(--accent); color: var(--on-accent); }
+.act-act-btn.react.done { background: var(--lime); color: var(--on-accent); }
 
 /* artifact + task inline blocks */
 .act-artifact {
@@ -841,7 +841,7 @@
   place-items: center;
   font-size: 11px;
   font-weight: 900;
-  color: #111;
+  color: var(--on-accent);
 }
 .act-roomlist-check.on { background: var(--lime); }
 .act-roomlist-name { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -850,7 +850,7 @@
   font-size: 10px;
   font-weight: 700;
   background: var(--pink);
-  color: #111;
+  color: var(--on-accent);
   border: 1.5px solid var(--ink);
   border-radius: 999px;
   padding: 0 6px;
@@ -888,7 +888,7 @@
   padding: 4px 10px;
   box-shadow: 1.5px 1.5px 0 var(--ink);
 }
-.act-digest-headgo:hover { background: var(--accent); color: #111; transform: translate(-1px, -1px); box-shadow: 2.5px 2.5px 0 var(--ink); }
+.act-digest-headgo:hover { background: var(--accent); color: var(--on-accent); transform: translate(-1px, -1px); box-shadow: 2.5px 2.5px 0 var(--ink); }
 
 /* ═══════════ flat timeline view ═══════════ */
 .act-scroll.layout-flat { }
@@ -975,17 +975,17 @@
 :root[data-theme="kanagawa-wave"] .act-row,
 :root[data-theme="kanagawa-wave"] .act-latest,
 :root[data-theme="kanagawa-wave"] .act-digest-room {
-  background: #2A2A37;
-  border-color: #4F4F5F;
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  background: var(--activity-row-bg);
+  border-color: var(--activity-row-border);
+  box-shadow: var(--activity-row-shadow);
 }
 
 :root[data-theme="kanagawa-wave"] .act-row.awaits {
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  box-shadow: var(--activity-row-shadow);
 }
 
 :root[data-theme="kanagawa-wave"] .act-digest-room.open .act-digest-head {
-  border-bottom-color: #5E5D66;
+  border-bottom-color: var(--activity-control-border);
 }
 
 :root[data-theme="kanagawa-wave"] .act-marker,
@@ -997,20 +997,20 @@
 :root[data-theme="kanagawa-wave"] .act-digest-go,
 :root[data-theme="kanagawa-wave"] .act-act-btn,
 :root[data-theme="kanagawa-wave"] .act-reaction-chip {
-  border-color: #5E5D66;
+  border-color: var(--activity-control-border);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
 
 :root[data-theme="kanagawa-wave"] .act-marker-pulse,
 :root[data-theme="kanagawa-wave"] .act-row-presence {
-  --status-dot-border: #5E5D66;
-  border-color: #5E5D66;
+  --status-dot-border: var(--activity-control-border);
+  border-color: var(--activity-control-border);
 }
 
 :root[data-theme="kanagawa-wave"] .message-kind-mention {
   background: var(--paper-2);
   color: var(--ink);
-  border-color: #5E5D66;
+  border-color: var(--activity-control-border);
   box-shadow: 1px 1px 0 var(--message-card-shadow-color);
 }
 
@@ -1025,17 +1025,6 @@
 }
 :root[data-theme="kanagawa-wave"] {
   --activity-control-height: 32px;
-  --activity-control-bg: #2A2A37;
-  --activity-control-bg-raised: #343440;
-  --activity-control-fg: #A7A59B;
-  --activity-control-muted: #7C7B82;
-  --activity-control-border: #5E5D66;
-  --activity-control-shadow: #05060C;
-  --activity-control-active-bg: #2A2A37;
-  --activity-control-active-fg: #F4EFD7;
-  --activity-control-selected-fg: #F4EFD7;
-  --activity-control-badge-bg: #5E5D66;
-  --activity-control-badge-fg: #F4EFD7;
 }
 :root[data-theme="kanagawa-wave"] .act-header-actions{
   gap: 14px;
@@ -1234,10 +1223,11 @@
 .identity-tint {
   background: var(--identity-color, var(--mention-color, var(--paper-3)));
   color: var(--identity-ink, var(--mention-ink, var(--ink)));
+  border-color: var(--identity-border, var(--rule));
 }
 
 .identity-text-tint {
-  color: var(--identity-color, var(--ink));
+  color: var(--identity-text, var(--identity-color, var(--ink)));
 }
 :root[data-theme="kanagawa-wave"] .identity-tint {
   background: color-mix(
@@ -1258,7 +1248,7 @@
   border-color: var(--message-card-border-color, var(--rule));
 }
 :root[data-theme="kanagawa-wave"] .identity-text-tint {
-  color: color-mix(in srgb, var(--identity-color, var(--ink)) 56%, var(--ink) 44%);
+  color: color-mix(in srgb, var(--identity-text, var(--identity-color, var(--ink))) 56%, var(--ink) 44%);
 }
 :root[data-theme="kanagawa-wave"] .identity-icon{
   --identity-shadow:

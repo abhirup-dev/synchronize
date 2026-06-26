@@ -97,6 +97,7 @@ function TaskCard({ task, agentById }: { task: Task; agentById: Map<string, Agen
             as="div"
             className="task-progress-fill"
             color={assignee?.color ?? "var(--ink)"}
+            {...(assignee?.colorRef ? { colorRef: assignee.colorRef } : null)}
             style={{ width: `${Math.round(task.progress)}%` }}
           />
           <span className="task-progress-label">{Math.round(task.progress)}%</span>

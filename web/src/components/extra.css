@@ -143,26 +143,26 @@
 }
 
 :root[data-theme="kanagawa-wave"] .composer {
-  background: #2A2A37;
-  border-color: #4F4F5F;
-  border-top-color: #4F4F5F;
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  border-top-color: var(--composer-border);
   box-shadow: 4px 4px 0 var(--message-card-shadow-color);
 }
 :root[data-theme="kanagawa-wave"] .chat-region {
-  --composer-separator-line: 2px solid #5E5D66;
+  --composer-separator-line: 2px solid var(--composer-control-border);
 }
 :root[data-theme="kanagawa-wave"] .thread-scroll-wrap {
-  --composer-separator-line: 2px solid #5E5D66;
+  --composer-separator-line: 2px solid var(--composer-control-border);
 }
 :root[data-theme="kanagawa-wave"] .ct-btn {
-  background: #1F1F28;
-  color: var(--ink);
-  border-color: #5E5D66;
+  background: var(--composer-control-bg);
+  color: var(--composer-control-fg);
+  border-color: var(--composer-control-border);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
 :root[data-theme="kanagawa-wave"] .ct-btn:disabled {
-  color: #8F8D9A;
-  border-color: #424250;
+  color: var(--composer-control-muted, var(--ink-faint));
+  border-color: color-mix(in srgb, var(--composer-control-border) 72%, var(--paper) 28%);
   opacity: 1;
 }
 :root[data-theme="kanagawa-wave"] .ct-btn.active,
@@ -170,21 +170,21 @@
   box-shadow: 3px 3px 0 var(--message-card-shadow-color);
 }
 :root[data-theme="kanagawa-wave"] .composer-input::placeholder {
-  color: #8F8D9A;
+  color: var(--composer-control-muted, var(--ink-faint));
 }
 :root[data-theme="kanagawa-wave"] .composer-send,
 :root[data-theme="kanagawa-wave"] .thread-scan-btn {
-  background: #2A2A37;
-  color: var(--ink);
-  border-color: #5E5D66;
+  background: var(--composer-send-bg);
+  color: var(--composer-control-fg);
+  border-color: var(--composer-control-border);
   box-shadow: 2px 2px 0 var(--message-card-shadow-color);
 }
 :root[data-theme="kanagawa-wave"] .composer-send {
-  color: #D4CEB0;
-  border-color: #A89562;
+  color: var(--composer-send-fg);
+  border-color: var(--composer-send-border);
 }
 :root[data-theme="kanagawa-wave"] .composer-send:disabled {
-  color: #A89562;
+  color: var(--composer-send-border);
   opacity: 1;
   filter: none;
 }

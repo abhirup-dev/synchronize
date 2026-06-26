@@ -3,6 +3,8 @@
 // against the synchronize daemon). Components never see either directly — they
 // go through the hooks in ./context.tsx.
 
+import type { IdentityColorRef } from "../theme/identity.ts";
+
 export type AgentStatus = "online" | "busy" | "idle" | "offline";
 export type AgentLifecycleState = "active" | "archived";
 export type MemberState = "active" | "archived" | "left";
@@ -41,7 +43,10 @@ export interface Agent {
   id: string;
   name: string;
   handle: string;
+  /** CSS-ready compatibility color. New code should prefer colorRef. */
   color: string;
+  /** Theme-aware identity color reference for agents and rooms. */
+  colorRef?: IdentityColorRef;
   role: string;
   status: AgentStatus;
   lifecycleState?: AgentLifecycleState;
@@ -78,7 +83,10 @@ export interface Room {
   kind: RoomKind;
   name: string;
   emoji?: string;
+  /** CSS-ready compatibility color. New code should prefer colorRef. */
   color: string;
+  /** Theme-aware identity color reference for room identity chrome. */
+  colorRef?: IdentityColorRef;
   members: string[]; // agent ids; for DMs always [you, other]
   memberAliases?: Record<string, string>; // group-scoped peer_id -> alias
   memberStates?: Record<string, MemberState>; // group-scoped peer_id -> lifecycle seat state
@@ -427,9 +435,10 @@ export interface DataSource {
   resumeGroupPreview(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<ResumePreview>;
   confirmResumeSession(input: { peerId: string; print?: boolean; force?: boolean }): Promise<unknown>;
   confirmResumeGroup(input: { group: string; print?: boolean; force?: boolean; only?: string[]; exclude?: string[] }): Promise<unknown>;
-  /** Override an agent's identity color. Pass `null` to revert to the seeded
-   *  color. Mutates the agents snapshot so every component re-renders. */
-  setAgentColor(agentId: string, hex: string | null): void;
+  /** Override an agent's identity color. Pass `null` to revert to the
+   *  deterministic theme slot. Mutates the agents snapshot so every component
+   *  re-renders. */
+  setAgentColor(agentId: string, color: IdentityColorRef | string | null): void;
 
   // deep links — resolve a /web/e/:id event id into a navigable target, then
   // hydrate enough room context for the target to render even if it is older
