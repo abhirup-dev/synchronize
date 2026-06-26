@@ -82,6 +82,39 @@ pieces, all captured below so a re-sync replays them.
   (`export { ChatView as ChatViewDark }` …). `ChatViewDark`/`ActivityViewDark` carry `cardMode:column`
   like their bases. To add more dark siblings: add `<Name>Dark.stories.tsx` + the alias in the barrel
   (+ a column override if the base has one). They are the SAME components — encoded in conventions.md.
+- **Glass-skin sibling components — real `*Glass.stories.tsx` files (11).** Skin is an ORTHOGONAL axis
+  to theme (`data-skin="glass"` layers translucent `backdrop-filter` surfaces; composes with ANY theme).
+  The gallery ships glass twins of the surface + navigation + composer components:
+  {ChatView,BoardView,ThreadPane,ThreadSummaryPanel,TimelineRail,ContextMenu}Glass (Surfaces),
+  {Sidebar,AgentRoster,RoomHeader,CompactAppBar}Glass (Navigation), `ComposerGlass` (Composer). Each
+  `<Name>Glass.stories.tsx` re-exports its base stories under a `… Glass` title with a decorator that
+  sets `data-skin="glass"` (+ `globals.skin:"glass"`); `Sidebar`/`RoomHeader` also override
+  `args.skin:"glass"` (they take skin as a prop → the settings-toggle label agrees with the surface).
+  Discovery needs the names on the global — `web/.ds-entry.tsx` aliases them
+  (`export { ChatView as ChatViewGlass }` …; `ContextMenuProvider as ContextMenuGlass`).
+  `ContextMenuGlass` is special: the base menu opens only via a `play()` (static capture doesn't run
+  it), so the glass sibling authors an `AutoOpenTarget` that dispatches `contextmenu` in a `useEffect`
+  → the menu is open at capture on BOTH sides. To add more: `<Name>Glass.stories.tsx` + barrel alias
+  (+ column override if the base has one). SAME components — encoded in conventions.md.
+- **Glass capture artifacts (rubric-exempt — do NOT "fix" the components).** Glass = translucency over
+  content. On the fixed 900×700 WHITE canvas a glass surface reads PALER vs the tight storybook
+  reference crop → canvas artifact (rubric teaches this), graded `match`. Two more classes (2026-06-26),
+  both `close`: (a) tall glass (ThreadPaneGlass 908px) loses the bottom composer to the 700px capture
+  FOLD — DOM-verified present (`.render-check.json`), same class as base ThreadPane; (b) the shrunken
+  480px compare SHEET cell is too small to resolve fine detail — Gemini mis-flagged ChatViewGlass's
+  right-hand timeline rail as "missing"; the RAW full-res `_screenshots/compare/raw/*__ds.png`
+  confirmed it present on BOTH sides. Lesson: a sheet-grade "missing X" on a glass card → verify
+  against the raw full-res + render-check texts before believing it. (CompactAppBarGlass/Controls
+  `close` = close-button focus border is an interactive state, not captured statically.) All glass
+  cards are DOM-faithful.
+- **`Iconography` + `Typography` storybook titles — dropped `[TITLE_UNMAPPED]` (intentional).** Added
+  on master 2026-06-26 (iconography/typography polish). They are showcase galleries (icon/font
+  specimens), not reusable single-component exports with APIs — correctly excluded. Re-adopt only if
+  they become real components (add a `titleMap` entry + barrel export).
+- **2026-06-26 re-sync.** Merged `origin/master` (iconography/typography polish + agent-profile menus;
+  8 components changed: ActivityItem, ActivityView, AgentRoster, ArchiveRecoveryProvider, MessageRow,
+  RoomHeader, Sidebar, SpawnAgentDialog) and added the 11 glass twins above. Final vision grade
+  (Gemini, raw-verified): 146 match / 5 close / 0 mismatch across 43 components.
 - **Theme/skin wiring (post-2026-06-20 master merge).** Theme = palette, skin = aesthetic, both carried on
   `<html data-theme>`/`<html data-skin>`. CSS load order is centralized in `web/src/styles/css.ts`, imported
   by BOTH `main.tsx` and `.storybook/preview.tsx` (never duplicate the list — drift silently dropped

@@ -28,6 +28,20 @@ falls back to light/brutal.
 > `kanagawa-wave`, `dark`, `catppuccin-mocha`) + glass skin via the root
 > attributes above.
 
+> **Glass-skin sibling cards.** Skin is an **orthogonal axis** to theme — it does
+> not swap the palette, it layers a translucent `backdrop-filter` surface treatment
+> over whatever theme is active. The gallery ships glass twins of the surface and
+> navigation components — **ChatViewGlass, BoardViewGlass, ThreadPaneGlass,
+> ThreadSummaryPanelGlass, TimelineRailGlass, ComposerGlass, SidebarGlass,
+> AgentRosterGlass, RoomHeaderGlass, CompactAppBarGlass, ContextMenuGlass** — each shown beside its
+> brutal default. A `*Glass` card is **the exact same component** as its base,
+> rendered with `data-skin="glass"` (the `skin-glass.css` layer). There is no
+> separate "glass" component to import: to build in glass, use the base component
+> (`ChatView`, …) and set `data-skin="glass"` on the root — it composes with every
+> palette (e.g. light+glass, kanagawa-wave+glass). Glass's effect is translucency
+> over content, so it reads most on surfaces that sit above a busy backdrop
+> (chat regions, sheets, dock bars).
+
 ### Provider wrapping
 
 Data-backed components (`ChatView`, `Sidebar`, `ActivityView`, `RoomHeader`,

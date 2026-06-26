@@ -50,3 +50,19 @@ export { ChatView as ChatViewDark } from "./src/components/ChatView.tsx";
 export { Sidebar as SidebarDark } from "./src/components/Sidebar.tsx";
 export { ActivityView as ActivityViewDark } from "./src/components/ActivityView.tsx";
 export { BoardView as BoardViewDark } from "./src/components/BoardView.tsx";
+
+// Glass-skin reference siblings — aliases of the same components so the
+// *Glass.stories.tsx titles resolve to distinct design-system cards. Same
+// component, rendered with data-skin="glass" (see the *Glass stories +
+// conventions.md). Skin is an orthogonal axis: compose with any theme.
+export { ChatView as ChatViewGlass } from "./src/components/ChatView.tsx";
+export { BoardView as BoardViewGlass } from "./src/components/BoardView.tsx";
+export { ThreadPane as ThreadPaneGlass } from "./src/components/ThreadPane.tsx";
+export { ThreadSummaryPanel as ThreadSummaryPanelGlass } from "./src/components/ThreadSummaryPanel.tsx";
+export { TimelineRail as TimelineRailGlass } from "./src/components/TimelineRail.tsx";
+export { Composer as ComposerGlass } from "./src/components/Composer.tsx";
+export { Sidebar as SidebarGlass } from "./src/components/Sidebar.tsx";
+export { AgentRoster as AgentRosterGlass } from "./src/components/AgentRoster.tsx";
+export { RoomHeader as RoomHeaderGlass } from "./src/components/RoomHeader.tsx";
+export { CompactAppBar as CompactAppBarGlass } from "./src/App.tsx";
+export { ContextMenuProvider as ContextMenuGlass } from "./src/components/ContextMenu.tsx";

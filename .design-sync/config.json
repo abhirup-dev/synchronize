@@ -134,7 +134,10 @@
       "skip": [
         "primitives-settingsrow--taps"
       ]
-    }
+    },
+    "ChatViewGlass": { "cardMode": "column" },
+    "ThreadSummaryPanelGlass": { "cardMode": "column" },
+    "RoomHeaderGlass": { "cardMode": "column" }
   },
   "titleMap": {
     "ArchiveRecovery": "ArchiveRecoveryProvider",
