@@ -74,7 +74,7 @@ Supported fields:
 | `bin` | Optional absolute binary path. Use this instead of shell aliases or zsh wrapper functions. |
 | `repo` | Repository path for `spawn PROFILE`, and foreground cwd for `launch PROFILE`. |
 | `model` | Optional model selector. CLI flags override config when provided. |
-| `thinking` | Optional thinking/effort selector. CLI flags override config when provided. |
+| `thinking` | Optional thinking/effort selector. Claude maps this to `--effort` (`low`, `medium`, `high`, `xhigh`, `max`); Pi maps it to `--thinking` (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`). CLI flags override config when provided. |
 | `args` | Extra runtime arguments prepended before CLI passthrough args. |
 | `session_name` | Default synchronize session name. Required for Claude/Pi `spawn PROFILE` when `--name` is omitted. |
 | `[agent.NAME.env]` | Environment overlay for the launched process. Values can be literal strings, `{ from_env = "SOURCE" }`, or `{ from_file = "/path" }`. |
