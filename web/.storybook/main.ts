@@ -16,6 +16,20 @@ const config: StorybookConfig = {
   viteFinal: async (cfg) => {
     cfg.plugins = cfg.plugins ?? [];
     cfg.plugins.push(tailwindcss());
+    cfg.server = {
+      ...cfg.server,
+      watch: {
+        ...cfg.server?.watch,
+        ignored: [
+          ...(Array.isArray(cfg.server?.watch?.ignored)
+            ? cfg.server.watch.ignored
+            : cfg.server?.watch?.ignored
+              ? [cfg.server.watch.ignored]
+              : []),
+          "**/storybook-static/**",
+        ],
+      },
+    };
     return cfg;
   },
 };

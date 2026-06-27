@@ -59,6 +59,10 @@ export const TopLevelMessage: Story = {
   },
 };
 
+// Legacy URL compatibility for older Storybook tabs/bookmarks:
+// activity-activityitem--message now resolves to the canonical top-level state.
+export const Message: Story = { ...TopLevelMessage, name: "Message (legacy)" };
+
 // Mention row — the @-marker glyph and the highlighted @you hit inside the body.
 export const Mention: Story = {
   args: {
