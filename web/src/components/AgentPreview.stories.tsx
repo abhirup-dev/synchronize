@@ -95,6 +95,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+export const Default: Story = {
+  args: { agent: claudeAgent, details: claudeDetails },
+};
+
 export const ClaudeRichMetadata: Story = {
   args: { agent: claudeAgent, details: claudeDetails },
 };
