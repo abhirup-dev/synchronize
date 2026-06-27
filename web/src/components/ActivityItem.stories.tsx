@@ -12,9 +12,11 @@ const dmRoom = DMS.find((dm) => dm.id === "dm-atlas")!;
 const actorFor = (id: string) => AGENTS.find((a) => a.id === id)!;
 
 const msgs = MESSAGES["checkout-revamp"]!;
-const plainMsg = msgs[0]!; // vega, no mention
-const mentionMsg = msgs[3]!; // "you" authored, mentions vega/cortex — reuse body as a @you preview
-const threadMsg = msgs[4]!; // cortex, has thread replies
+const msg = (id: string) => msgs.find((message) => message.id === id)!;
+const plainMsg = msg("m1"); // vega, no mention
+const mentionMsg = msg("m4"); // "you" authored, mentions vega/cortex — reuse body as a @you preview
+const mergedMsg = msg("m5"); // cortex, has thread replies
+const planThreadMsg = msg("m2"); // parent for m2-r2 thread reply
 
 // The Activity feed model is its own projection (it is built from inbox + events
 // in the live adapter); construct rows here rather than importing a seed export.
@@ -88,7 +90,7 @@ export const Awaiting: Story = {
       text: "PR #4128 merged ✅ — running the abandoned-cart backfill now, ETA 22 min.",
       awaiting: true,
       isMention: true,
-      msgId: threadMsg.id,
+      msgId: mergedMsg.id,
     }),
     actor: actorFor("cortex"),
   },
@@ -102,7 +104,7 @@ export const ThreadReply: Story = {
       eventId: 103,
       actorId: actorFor("nova").id,
       text: "I'll add coverage on the coupon_id path before we flip the flag.",
-      threadParentId: threadMsg.id,
+      threadParentId: planThreadMsg.id,
       replyCount: 2,
       msgId: "m2-r2",
     }),
