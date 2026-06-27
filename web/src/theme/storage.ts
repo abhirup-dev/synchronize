@@ -1,6 +1,5 @@
 import {
   normalizeIdentityColorRef,
-  serializeIdentityColorRef,
   type IdentityColorRef,
 } from "./identity.ts";
 
@@ -32,6 +31,6 @@ export function readIdentityOverride(key: string, fallbackId: string): IdentityC
 }
 
 export function writeIdentityOverride(key: string, ref: IdentityColorRef | null): void {
-  if (ref) localStorage.setItem(key, serializeIdentityColorRef(ref));
+  if (ref) localStorage.setItem(key, JSON.stringify(ref));
   else localStorage.removeItem(key);
 }

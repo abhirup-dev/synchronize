@@ -1,6 +1,5 @@
 import { inkForHex, isHexColor, type HexColor } from "./contrast.ts";
 
-export const IDENTITY_SLOT_COUNT = 16;
 export const IDENTITY_SLOTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const;
 
 export type IdentitySlot = (typeof IDENTITY_SLOTS)[number];
@@ -33,7 +32,7 @@ export function hashString(value: string): number {
 }
 
 export function identitySlotForId(id: string): IdentitySlot {
-  return IDENTITY_SLOTS[hashString(id) % IDENTITY_SLOT_COUNT]!;
+  return IDENTITY_SLOTS[hashString(id) % IDENTITY_SLOTS.length]!;
 }
 
 export function identityRefForId(id: string): IdentityColorRef {
@@ -75,10 +74,6 @@ export function normalizeIdentityColorRef(value: unknown, fallbackId = ""): Iden
   return fallbackId ? identityRefForId(fallbackId) : { kind: "token", token: "--ink" };
 }
 
-export function serializeIdentityColorRef(ref: IdentityColorRef): string {
-  return JSON.stringify(ref);
-}
-
 export function identityColorCss(ref: IdentityColorRef): string {
   if (ref.kind === "slot") return `var(--identity-${ref.slot}-bg)`;
   if (ref.kind === "custom") return ref.hex;
@@ -91,23 +86,12 @@ export function identityInkCss(ref: IdentityColorRef): string {
   return "var(--paper)";
 }
 
-export function identityBorderCss(ref: IdentityColorRef): string {
-  if (ref.kind === "slot") return `var(--identity-${ref.slot}-border)`;
-  if (ref.kind === "custom") return "var(--rule)";
-  return "var(--rule)";
-}
-
-export function identityTextCss(ref: IdentityColorRef): string {
-  if (ref.kind === "slot") return `var(--identity-${ref.slot}-text)`;
-  return identityColorCss(ref);
-}
-
 export function identityStyleVars(ref: IdentityColorRef): Record<string, string> {
   return {
     "--identity-color": identityColorCss(ref),
     "--identity-ink": identityInkCss(ref),
-    "--identity-border": identityBorderCss(ref),
-    "--identity-text": identityTextCss(ref),
+    "--identity-border": ref.kind === "slot" ? `var(--identity-${ref.slot}-border)` : "var(--rule)",
+    "--identity-text": ref.kind === "slot" ? `var(--identity-${ref.slot}-text)` : identityColorCss(ref),
   };
 }
 

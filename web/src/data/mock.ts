@@ -37,6 +37,7 @@ import {
   normalizeIdentityColorRef,
   type IdentityColorRef,
 } from "../theme/identity.ts";
+import { readIdentityOverrideMap, writeIdentityOverrideMap } from "../theme/storage.ts";
 import {
   AGENTS,
   ARTIFACTS,
@@ -52,25 +53,17 @@ import {
 // Persistent overrides for agent identity colors. Stored in localStorage so the
 // user's customizations survive reloads; we restore them on construction.
 const COLOR_OVERRIDES_KEY = "synchronize.agentColors";
-function readColorOverrides(): Record<string, IdentityColorRef> {
-  try {
-    const raw = localStorage.getItem(COLOR_OVERRIDES_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== "object" || !parsed) return {};
-    return Object.fromEntries(Object.entries(parsed).map(([id, value]) => [id, normalizeIdentityColorRef(value, id)]));
-  } catch {
-    return {};
-  }
-}
-function writeColorOverrides(overrides: Record<string, IdentityColorRef>): void {
-  try {
-    localStorage.setItem(COLOR_OVERRIDES_KEY, JSON.stringify(overrides));
-  } catch {
-    /* localStorage full / blocked — ignore */
-  }
-}
 const SEEDED_COLOR_REF_BY_ID = new Map(AGENTS.map((a) => [a.id, a.colorRef ?? normalizeIdentityColorRef(a.color, a.id)] as const));
+
+function agentsWithColorOverrides(): Agent[] {
+  const overrides = readIdentityOverrideMap(COLOR_OVERRIDES_KEY);
+  return AGENTS.map((a) => {
+    const override = overrides[a.id];
+    const colorRef = override ?? a.colorRef ?? normalizeIdentityColorRef(a.color, a.id);
+    return { ...a, colorRef, color: identityColorCss(colorRef) };
+  });
+}
+
 const MOCK_SKILL_CATALOG: SkillCatalogEntry[] = [
   {
     id: "diagnose",
@@ -108,14 +101,7 @@ const MOCK_ARCHIVED_SESSIONS: ArchivedSession[] = [
 export class MockDataSource implements DataSource {
   readonly kind = "mock" as const;
 
-  private readonly _agents = createSnapshot<Agent[]>(
-    AGENTS.map((a) => {
-      const overrides = readColorOverrides();
-      const override = overrides[a.id];
-      const colorRef = override ?? a.colorRef ?? normalizeIdentityColorRef(a.color, a.id);
-      return { ...a, colorRef, color: identityColorCss(colorRef) };
-    }),
-  );
+  private readonly _agents = createSnapshot<Agent[]>(agentsWithColorOverrides());
   private readonly _rooms = createSnapshot<Room[]>([...GROUPS, ...DMS]);
   private readonly _messages = new Map<string, MutableSnapshot<Message[]>>();
   private readonly _threadReplies = new Map<string, MutableSnapshot<Message[]>>();
@@ -468,13 +454,13 @@ export class MockDataSource implements DataSource {
   }
 
   setAgentColor(agentId: string, color: IdentityColorRef | string | null): void {
-    const overrides = readColorOverrides();
+    const overrides = readIdentityOverrideMap(COLOR_OVERRIDES_KEY);
     if (color === null) {
       delete overrides[agentId];
     } else {
       overrides[agentId] = normalizeIdentityColorRef(color, agentId);
     }
-    writeColorOverrides(overrides);
+    writeIdentityOverrideMap(COLOR_OVERRIDES_KEY, overrides);
     const fallbackRef = SEEDED_COLOR_REF_BY_ID.get(agentId) ?? identityRefForId(agentId);
     const nextRef = color === null ? fallbackRef : normalizeIdentityColorRef(color, agentId);
     this._agents.update((prev) =>
