@@ -146,7 +146,7 @@
   background: var(--composer-bg);
   border-color: var(--composer-border);
   border-top-color: var(--composer-border);
-  box-shadow: 4px 4px 0 var(--message-card-shadow-color);
+  box-shadow: var(--composer-shadow);
 }
 :root[data-theme="kanagawa-wave"] .chat-region {
   --composer-separator-line: 2px solid var(--composer-control-border);
@@ -158,7 +158,7 @@
   background: var(--composer-control-bg);
   color: var(--composer-control-fg);
   border-color: var(--composer-control-border);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  box-shadow: var(--composer-control-shadow);
 }
 :root[data-theme="kanagawa-wave"] .ct-btn:disabled {
   color: var(--composer-control-muted, var(--ink-faint));
@@ -167,7 +167,7 @@
 }
 :root[data-theme="kanagawa-wave"] .ct-btn.active,
 :root[data-theme="kanagawa-wave"] .ct-btn:hover:not(:disabled) {
-  box-shadow: 3px 3px 0 var(--message-card-shadow-color);
+  box-shadow: var(--composer-control-shadow-hover);
 }
 :root[data-theme="kanagawa-wave"] .composer-input::placeholder {
   color: var(--composer-control-muted, var(--ink-faint));
@@ -177,7 +177,7 @@
   background: var(--composer-send-bg);
   color: var(--composer-control-fg);
   border-color: var(--composer-control-border);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  box-shadow: var(--composer-send-shadow);
 }
 :root[data-theme="kanagawa-wave"] .composer-send {
   color: var(--composer-send-fg);
@@ -190,7 +190,7 @@
 }
 :root[data-theme="kanagawa-wave"] .thread-scan-btn.active {
   border-color: var(--lilac);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color), inset 0 -3px 0 var(--lilac);
+  box-shadow: var(--composer-send-shadow), inset 0 -3px 0 var(--lilac);
 }
 
 /* ─── Mention popup ──────────────────────────────────────────────────────────
@@ -254,7 +254,6 @@
   width: 100%;
 }
 .virtualized-row {
-  --bubble-shadow-offset: var(--message-card-shadow-offset, 2px);
   --bubble-shadow-gutter: calc(var(--bubble-shadow-offset) + 2px);
   position: absolute;
   top: 0;
@@ -360,12 +359,12 @@
   width: max-content;
   max-width: 100%;
   min-width: 0;
-  border: var(--message-card-border, var(--line-2));
-  border-color: var(--message-card-border-color, var(--rule));
+  border: var(--bubble-border);
+  border-color: var(--bubble-border-color);
   border-radius: var(--radius-xl);
   background: var(--bubble);
   padding: var(--space-bubble-pad);
-  box-shadow: var(--bubble-shadow-offset, 4px) var(--bubble-shadow-offset, 4px) 0 var(--message-card-shadow-color, var(--rule));
+  box-shadow: var(--bubble-shadow);
 }
 /* skin-glass.css overrides `.bubble` opacity, vim-focus/flash animate it, and
    this self override out-specifies the base class. Own / web-client messages get

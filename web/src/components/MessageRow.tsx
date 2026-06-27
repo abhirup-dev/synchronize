@@ -278,7 +278,7 @@ export const MessageRow = memo(function MessageRow({
                         {detailsEmoji === reaction.emoji && createPortal(
                           <div
                             className={cn(
-                              "reaction-popover absolute right-0 bottom-[calc(100%+8px)] z-40 min-w-[168px] overflow-hidden rounded-lg bg-paper p-3 text-left text-[length:var(--text-12)] [border:var(--line-md)] [box-shadow:4px_4px_0_var(--message-card-shadow-color,var(--rule))]",
+                              "reaction-popover absolute right-0 bottom-[calc(100%+8px)] z-40 min-w-[168px] overflow-hidden rounded-lg bg-paper p-3 text-left text-[length:var(--text-12)] [border:var(--line-md)] shadow-overlay",
                               detailsStyle && "is-floating fixed z-[var(--z-context-menu)]",
                             )}
                             role="dialog"
@@ -313,7 +313,7 @@ export const MessageRow = memo(function MessageRow({
                       {pickerOpen && createPortal(
                         <div
                           className={cn(
-                            "reaction-picker absolute right-0 bottom-[calc(100%+8px)] z-40 grid grid-cols-[repeat(4,34px)] gap-1 overflow-hidden rounded-lg bg-paper p-[6px] [border:var(--line-md)] [box-shadow:4px_4px_0_var(--message-card-shadow-color,var(--rule))]",
+                            "reaction-picker absolute right-0 bottom-[calc(100%+8px)] z-40 grid grid-cols-[repeat(4,34px)] gap-1 overflow-hidden rounded-lg bg-paper p-[6px] [border:var(--line-md)] shadow-overlay",
                             pickerStyle && "is-floating fixed z-[var(--z-context-menu)]",
                           )}
                           role="menu"
@@ -323,7 +323,7 @@ export const MessageRow = memo(function MessageRow({
                           {QUICK_REACTIONS.map((emoji) => (
                             <button
                               key={emoji}
-                              className="reaction-choice grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-md bg-paper text-[18px] text-ink [border:var(--line-sm)] hover:bg-paper-3 hover:[box-shadow:2px_2px_0_var(--message-card-shadow-color,var(--rule))]"
+                              className="reaction-choice grid h-[34px] w-[34px] cursor-pointer place-items-center rounded-md bg-paper text-[18px] text-ink [border:var(--line-sm)] hover:bg-paper-3 hover:shadow-control"
                               onClick={() => {
                                 onReact(message.id, emoji);
                                 setPickerOpen(false);

@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
 import { chatBackgroundById } from "../data/chatBackgrounds.ts";
+import {
+  ALL_THEMES,
+  DARK_THEMES,
+  DEFAULT_DARK_THEME,
+  DEFAULT_LIGHT_THEME,
+  INITIAL_SKIN,
+  INITIAL_THEME,
+  LIGHT_THEMES,
+  normalizeStoredSkin,
+  normalizeStoredTheme,
+  type SkinName,
+  type ThemeName,
+} from "../theme/registry.generated.ts";
 
 // Theme = palette; skin = aesthetic system (border/shadow/radius language),
 // orthogonal axes. Both persist to localStorage as plain strings and are
@@ -8,23 +21,8 @@ import { chatBackgroundById } from "../data/chatBackgrounds.ts";
 // the DEFAULT_* constants the single source for "which theme does each family
 // open in" — App boot, the family toggle, and the Storybook theme matrix all read
 // them so the default can never drift per call site.
-export const LIGHT_THEMES = ["light", "rose-pine-dawn"] as const;
-export const DARK_THEMES = ["kanagawa-wave"] as const;
-export const ALL_THEMES = [...LIGHT_THEMES, ...DARK_THEMES] as const;
-
-export type ThemeName = (typeof ALL_THEMES)[number];
-
-export const DEFAULT_LIGHT_THEME: ThemeName = "light";
-export const DEFAULT_DARK_THEME: ThemeName = "kanagawa-wave";
-
-function isThemeName(value: string | null): value is ThemeName {
-  return ALL_THEMES.includes(value as ThemeName);
-}
-
-function normalizeStoredTheme(value: string | null): ThemeName {
-  if (value === "dark" || value === "catppuccin-mocha") return DEFAULT_DARK_THEME;
-  return isThemeName(value) ? value : DEFAULT_DARK_THEME;
-}
+export { ALL_THEMES, DARK_THEMES, DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME, LIGHT_THEMES };
+export type { SkinName, ThemeName };
 
 export function themeFamily(theme: ThemeName): "light" | "dark" {
   return LIGHT_THEMES.includes(theme as (typeof LIGHT_THEMES)[number]) ? "light" : "dark";
@@ -69,8 +67,8 @@ export function themeTraits(theme: ThemeName): ThemeTraits {
 export interface PersistentTheme {
   theme: ThemeName;
   setTheme: React.Dispatch<React.SetStateAction<ThemeName>>;
-  skin: "brutal" | "glass";
-  setSkin: React.Dispatch<React.SetStateAction<"brutal" | "glass">>;
+  skin: SkinName;
+  setSkin: React.Dispatch<React.SetStateAction<SkinName>>;
   chatBg: string;
   setChatBg: React.Dispatch<React.SetStateAction<string>>;
 }
@@ -83,16 +81,14 @@ export interface PersistentTheme {
 export function usePersistentTheme(): PersistentTheme {
   const [theme, setTheme] = useState<ThemeName>(() => {
     const stored = localStorage.getItem("synchronize.theme");
-    return normalizeStoredTheme(stored);
+    return normalizeStoredTheme(stored) ?? INITIAL_THEME;
   });
   useEffect(() => {
     document.documentElement.dataset["theme"] = theme;
     localStorage.setItem("synchronize.theme", theme);
   }, [theme]);
 
-  const [skin, setSkin] = useState<"brutal" | "glass">(() =>
-    localStorage.getItem("synchronize.skin") === "glass" ? "glass" : "brutal",
-  );
+  const [skin, setSkin] = useState<SkinName>(() => normalizeStoredSkin(localStorage.getItem("synchronize.skin")) ?? INITIAL_SKIN);
   useEffect(() => {
     document.documentElement.dataset["skin"] = skin;
     localStorage.setItem("synchronize.skin", skin);

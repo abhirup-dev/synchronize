@@ -90,8 +90,8 @@
 :root[data-theme="kanagawa-wave"] .act-title-mark {
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  border-color: var(--card-border-color);
+  box-shadow: var(--card-shadow);
 }
 .act-title {
   font-family: "Archivo Black", sans-serif;
@@ -1018,7 +1018,7 @@
 :root[data-theme="kanagawa-wave"] .act-act-btn,
 :root[data-theme="kanagawa-wave"] .act-reaction-chip {
   border-color: var(--activity-control-border);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  box-shadow: 2px 2px 0 var(--activity-control-shadow);
 }
 
 :root[data-theme="kanagawa-wave"] .act-marker-pulse,
@@ -1031,7 +1031,7 @@
   background: var(--paper-2);
   color: var(--ink);
   border-color: var(--activity-control-border);
-  box-shadow: 1px 1px 0 var(--message-card-shadow-color);
+  box-shadow: 1px 1px 0 var(--activity-control-shadow);
 }
 
 :root[data-theme="kanagawa-wave"] .act-mention-hit {
@@ -1041,7 +1041,7 @@
 
 :root[data-theme="kanagawa-wave"] .act-digest-go:hover,
 :root[data-theme="kanagawa-wave"] .act-act-btn:hover {
-  box-shadow: 3px 3px 0 var(--message-card-shadow-color);
+  box-shadow: 3px 3px 0 var(--activity-control-shadow);
 }
 :root[data-theme="kanagawa-wave"] {
   --activity-control-height: 32px;
@@ -1261,13 +1261,13 @@
   border-color: color-mix(
     in srgb,
     var(--identity-color, var(--mention-color, var(--paper-3))) 42%,
-    var(--message-card-border-color, var(--rule)) 58%
+    var(--card-border-color) 58%
   );
 }
 :root[data-theme="kanagawa-wave"] .identity-tint.identity-self{
   background: var(--paper-3);
   color: var(--ink);
-  border-color: var(--message-card-border-color, var(--rule));
+  border-color: var(--card-border-color);
 }
 :root[data-theme="kanagawa-wave"] .identity-text-tint {
   color: color-mix(in srgb, var(--identity-text, var(--identity-color, var(--ink))) 56%, var(--ink) 44%);
@@ -1281,8 +1281,8 @@
 :root[data-theme="kanagawa-wave"] .room-glyph-icon{
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  border-color: var(--card-border-color);
+  box-shadow: var(--card-shadow);
 }
 :root[data-theme="kanagawa-wave"] .room-id-icon.room-glyph-icon{
   border-radius: 0;

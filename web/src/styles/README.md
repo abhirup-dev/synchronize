@@ -11,16 +11,18 @@ concerns from cross-cutting each other.
 2. **`styles/tokens.css`** — the **design-token contract**. The ONLY home for CSS
    custom properties. Two orthogonal axes: `:root[data-theme]` (palette) and
    `:root[data-skin]` (aesthetic). Components reference role tokens (`var(--ink)`),
-   never raw hex.
+   never raw hex. Skin/theme token values live here, even when Glass needs a
+   completely different value set from Brutal.
 3. **`styles.css`** — reset, base element styles (`body`, `kbd`, keyframes), and
    the component rules that are *not yet* migrated to inline Tailwind, plus the
    structural shell/layout rules and `[data-theme]` state overrides that need a
    real stylesheet. Reference tokens here; never redefine them.
 4. **`components/extra.css`, `components/activity.css`** — component-scoped rules
    for the message/chat and activity surfaces.
-5. **`skin-glass.css`** — the `[data-skin="glass"]` aesthetic layer. Overrides
-   token values + adds glass-only effects. **`backdrop-filter` only on fixed
-   chrome (sidebar/header/composer), never on scrolling lists** (WebView perf).
+5. **`skin-glass.css`** — the `[data-skin="glass"]` selector-behavior layer.
+   Adds glass-only effects and component tuning that cannot be expressed as
+   reusable role tokens. **`backdrop-filter` only on fixed chrome
+   (sidebar/header/composer), never on scrolling lists** (WebView perf).
 6. **`chat-bg.css`** — chat background presets.
 
 ## Rules of thumb
@@ -28,6 +30,12 @@ concerns from cross-cutting each other.
 - **New styling → inline Tailwind** in the component. Reach for a `.css` file only
   for: `:root`/token defs (tokens.css), keyframes/base elements, `[data-theme]` /
   `[data-skin]` overrides, or a class that is a genuine skin/JS hook.
+- **Theme identities → `src/theme/theme-registry.json`**, then run
+  `bun run generate:theme-registry`. Do not hand-edit Storybook toolbar theme
+  lists or `ThemeName` unions.
+- **Before committing theme/CSS work**, run `bun run check:theme-contract`.
+  `bun run check:theme-contract:strict` is the cleanup target; it currently fails
+  only on known legacy warnings.
 - **A class kept only as a hook** (skin override target or `classList`/vim target)
   gets a one-line comment saying so, so it isn't mistaken for dead.
 - **Mode is a capability, not a selector.** Prefer the `shellLayout()` contract

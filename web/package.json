@@ -7,6 +7,10 @@
   "scripts": {
     "build": "bun run build.ts",
     "build:watch": "bun run build.ts --watch",
+    "generate:theme-registry": "bun run scripts/generate-theme-registry.mjs",
+    "check:theme-registry": "bun run scripts/generate-theme-registry.mjs --check",
+    "check:theme-contract": "bun run check:theme-registry && bun run scripts/check-theme-contract.mjs",
+    "check:theme-contract:strict": "bun run check:theme-registry && bun run scripts/check-theme-contract.mjs --strict",
     "typecheck": "tsc --noEmit -p .",
     "storybook": "storybook dev -p 6006 --no-open",
     "storybook:build": "storybook build",

@@ -45,7 +45,7 @@ kbd {
   background: var(--paper-2);
   color: var(--ink);
   border-color: var(--control-border);
-  box-shadow: 1px 1px 0 var(--message-card-shadow-color);
+  box-shadow: var(--control-shadow);
 }
 
 button { font-family: inherit; cursor: pointer; }
@@ -169,14 +169,14 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .identity-logo-tile {
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+  border-color: var(--card-border-color);
+  box-shadow: var(--card-shadow);
 }
 :root[data-theme="kanagawa-wave"] .brand-mark{
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+  border-color: var(--card-border-color);
+  box-shadow: var(--card-shadow);
 }
 
 .count-chip {
@@ -395,7 +395,7 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+  box-shadow: var(--card-shadow);
 }
 :root[data-theme="kanagawa-wave"] .room-item.active .room-preview{
   color: var(--ink-soft);
@@ -487,8 +487,8 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .sidebar-settings-btn {
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  border-color: var(--control-border-color);
+  box-shadow: var(--control-shadow);
 }
 :root[data-theme="kanagawa-wave"] .activity-dock-btn:hover,
 :root[data-theme="kanagawa-wave"] .activity-dock-btn.active,
@@ -496,13 +496,13 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .resume-dock-btn:hover,
 :root[data-theme="kanagawa-wave"] .sidebar-settings-btn:hover {
   background: var(--paper-3);
-  box-shadow: 3px 3px 0 var(--message-card-shadow-color);
+  box-shadow: var(--control-shadow-hover);
 }
 :root[data-theme="kanagawa-wave"] .activity-dock-badge {
   background: var(--activity-control-badge-bg);
   color: var(--activity-control-badge-fg);
   border-color: var(--activity-control-badge-bg);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  box-shadow: var(--control-shadow);
 }
 
 .icon-btn {
@@ -523,7 +523,7 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72)), inset 0 -3px 0 var(--lime);
+  box-shadow: var(--card-shadow), inset 0 -3px 0 var(--lime);
 }
 
 /* .room-agents-btn base + .room-agents-count migrated to Tailwind utilities in
@@ -1016,14 +1016,14 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .reaction {
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--message-card-border-color);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  border-color: var(--control-border-color);
+  box-shadow: var(--control-shadow);
 }
 :root[data-theme="kanagawa-wave"] .reaction.is-mine {
   background: var(--paper-2);
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--yellow) 46%, var(--message-card-border-color));
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color);
+  border-color: color-mix(in srgb, var(--yellow) 46%, var(--control-border-color));
+  box-shadow: var(--control-shadow);
 }
 :root[data-theme="kanagawa-wave"] .reaction .rcount,
 :root[data-theme="kanagawa-wave"] .reaction.add {
@@ -1033,9 +1033,9 @@ button { font-family: inherit; cursor: pointer; }
 :root[data-theme="kanagawa-wave"] .reaction-popover{
   background: var(--paper);
   color: var(--ink);
-  border-color: var(--rule);
+  border-color: var(--overlay-border-color);
   border-radius: var(--radius-lg);
-  box-shadow: 4px 4px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+  box-shadow: var(--overlay-shadow);
 }
 :root[data-theme="kanagawa-wave"] .reaction-choice{
   background: var(--paper);
@@ -1045,7 +1045,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 :root[data-theme="kanagawa-wave"] .reaction-choice:hover{
   background: var(--paper-3);
-  box-shadow: 2px 2px 0 var(--message-card-shadow-color, rgba(0, 0, 0, 0.72));
+  box-shadow: var(--control-shadow);
 }
 @media (max-width: 640px) {
   .message-footer {

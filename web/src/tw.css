@@ -1,13 +1,12 @@
 /* Tailwind v4 entry — theme + utilities only (no preflight while the legacy
  * stylesheets still own the base look; revisit once the migration completes).
  *
- * All theme values are *references* to the existing token contract in
- * styles.css (`:root` / `:root[data-theme="..."]`), so utilities like
- * `bg-paper` or `shadow-md` track the live theme and any future
- * `data-skin` automatically. `@theme inline` makes utilities inline the
- * var() reference instead of pointing at Tailwind's own emitted variable;
- * the layered emission below always loses to the unlayered styles.css
- * declarations, so the legacy tokens stay authoritative.
+ * All theme values are *references* to the token contract in
+ * styles/tokens.css (`:root[data-skin="..."][data-theme="..."]`), so
+ * utilities like `bg-paper` or `shadow-card` track the live skin/theme pair.
+ * `@theme inline` makes utilities inline the var() reference instead of
+ * pointing at Tailwind's own emitted variable; the token contract stays
+ * authoritative.
  */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
@@ -67,17 +66,27 @@
   --radius-2xl: var(--radius-2xl);
   --radius-pill: var(--radius-pill);
 
-  /* -- semantic roles (skin contract — see styles.css) ---------------- */
+  /* -- semantic roles (skin contract — see styles/tokens.css) ---------- */
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-sunken: var(--surface-sunken);
   --color-fg: var(--fg);
   --color-fg-soft: var(--fg-soft);
   --color-fg-faint: var(--fg-faint);
+  --color-card-border: var(--card-border-color);
+  --color-control-border: var(--control-border-color);
+  --color-overlay-border: var(--overlay-border-color);
   --shadow-card: var(--card-shadow);
+  --shadow-card-hover: var(--card-shadow-hover);
+  --shadow-card-raised: var(--card-shadow-raised);
+  --shadow-bubble: var(--bubble-shadow);
   --shadow-control: var(--control-shadow);
   --shadow-control-hover: var(--control-shadow-hover);
   --shadow-overlay: var(--overlay-shadow);
+  --shadow-composer: var(--composer-shadow);
+  --shadow-composer-control: var(--composer-control-shadow);
+  --shadow-composer-control-hover: var(--composer-control-shadow-hover);
+  --shadow-composer-send: var(--composer-send-shadow);
   --shadow-focus-ring: var(--focus-ring);
   --radius-card: var(--card-radius);
   --radius-control: var(--control-radius);
