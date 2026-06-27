@@ -248,6 +248,8 @@
   --identity-15-border: var(--rule);
   --identity-15-text: color-mix(in srgb, #8B6F47 74%, var(--ink) 26%);
   --grain-alpha: 0.04;
+  --grain-dot: rgba(0, 0, 0, var(--grain-alpha));
+  --placeholder-stripe: rgba(0, 0, 0, 0.03);
   --on-ink: var(--paper);
   --on-accent: #111111;
   --surface-selected-bg: color-mix(in srgb, var(--paper-3) 82%, var(--ink) 10%);
@@ -307,6 +309,9 @@
   --card-shadow-hover: var(--shadow-hover);
   --card-shadow-raised: var(--shadow-md);
   --card-radius: var(--radius-lg);
+  --identity-icon-shadow: var(--shadow-chip);
+  --activity-identity-icon-shadow: var(--identity-icon-shadow);
+  --activity-identity-badge-shadow: var(--identity-icon-shadow);
   --bubble-border: var(--card-border);
   --bubble-border-color: var(--card-border-color);
   --bubble-shadow-offset: 2px;
@@ -345,6 +350,8 @@
   --activity-control-selected-fg: var(--surface-selected-fg);
   --activity-control-badge-bg: var(--pink);
   --activity-control-badge-fg: var(--on-accent);
+  --activity-control-height: 34px;
+  --status-dot-border: var(--rule);
   --composer-bg: var(--paper);
   --composer-border: var(--rule);
   --composer-shadow: var(--card-shadow-raised);
@@ -357,6 +364,7 @@
   --composer-send-fg: var(--ink);
   --composer-send-border: var(--rule);
   --composer-send-shadow: var(--composer-control-shadow);
+  --composer-separator-line: 2px solid var(--rule);
   --archived-room-bg: #e6e6e6;
   --archived-room-fg: #555555;
   --archived-room-border: #cfcfcf;
@@ -600,6 +608,8 @@
   --identity-15-border: #B99A72;
   --identity-15-text: #B99A72;
   --grain-alpha: 0.045;
+  --grain-dot: rgba(255, 255, 255, 0.025);
+  --placeholder-stripe: rgba(255, 255, 255, 0.025);
   --on-accent: #16161D;
   --you-bg: #3A3A46;
   --you-fg: #D4CEB0;
@@ -614,6 +624,13 @@
   --bubble-border-color: var(--card-border-color);
   --bubble-shadow-offset: 4px;
   --bubble-shadow: var(--bubble-shadow-offset) var(--bubble-shadow-offset) 0 var(--card-shadow-color);
+  --identity-icon-shadow: 0 0 0 1px rgba(17, 17, 17, 0.58), var(--shadow-chip);
+  --activity-identity-icon-shadow:
+    1px 1px 0 rgba(5, 6, 12, 0.72),
+    3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent);
+  --activity-identity-badge-shadow:
+    1px 1px 0 rgba(5, 6, 12, 0.72),
+    2.5px 2.5px 0 color-mix(in srgb, var(--ink) 28%, transparent);
   --control-border-color: #5E5D66;
   --control-shadow-color: var(--card-shadow-color);
   --control-shadow: 2px 2px 0 var(--control-shadow-color);
@@ -635,6 +652,8 @@
   --activity-control-selected-fg: #F4EFD7;
   --activity-control-badge-bg: #5E5D66;
   --activity-control-badge-fg: #F4EFD7;
+  --activity-control-height: 32px;
+  --status-dot-border: var(--activity-control-border);
   --composer-bg: var(--paper-3);
   --composer-border: var(--card-border-color);
   --composer-shadow: var(--card-shadow-raised);
@@ -648,6 +667,7 @@
   --composer-send-fg: #D4CEB0;
   --composer-send-border: #A89562;
   --composer-send-shadow: var(--composer-control-shadow);
+  --composer-separator-line: 2px solid var(--composer-control-border);
   --code-bg: #1B1B24;
   --code-fg: #E4DCBE;
   --code-inline-bg: #383847;
@@ -677,6 +697,8 @@
   --you-bg: rgba(87, 82, 121, 0.86);
   --you-fg: #faf4ed;
   --grain-alpha: 0;
+  --grain-dot: rgba(0, 0, 0, 0);
+  --placeholder-stripe: rgba(87, 82, 121, 0.08);
 
   --yellow: #ea9d34;
   --pink: #d7827e;
@@ -847,6 +869,7 @@
   --overlay-shadow: var(--shadow-lg);
   --overlay-radius: var(--radius-xl);
   --focus-ring: 0 0 0 3px rgba(144, 122, 169, 0.48);
+  --status-dot-border: var(--rule);
 }
 
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {

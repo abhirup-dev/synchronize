@@ -268,7 +268,6 @@
   box-shadow: var(--shadow-xxs);
 }
 :root[data-skin="glass"] .act-row-presence {
-  --status-dot-border: var(--rule);
   border-color: var(--rule);
 }
 :root[data-skin="glass"] .act-latest {

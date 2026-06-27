@@ -111,7 +111,7 @@
     repeating-linear-gradient(
       45deg,
       transparent 0 16px,
-      rgba(0,0,0,0.03) 16px 17px
+      var(--placeholder-stripe) 16px 17px
     );
 }
 .placeholder-stamp {
@@ -132,7 +132,7 @@
    ::placeholder, .composer-foot, .community-open-btn, .composer-hint,
    .composer-send/.thread-scan-btn base). Kept here: the compact shell margin
    override below, the .chat-col/.thread-pane border tweaks, the
-   :root[data-theme="kanagawa-wave"] palette overrides, .thread-scan-btn.active,
+   :root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) palette overrides, .thread-scan-btn.active,
    and the styles.css contextual rules (.shell-compact, .community-icon art). */
 .shell-compact .composer { margin: 6px 10px 10px; }
 
@@ -142,53 +142,47 @@
   border-radius: var(--radius-xl);
 }
 
-:root[data-theme="kanagawa-wave"] .composer {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer {
   background: var(--composer-bg);
   border-color: var(--composer-border);
   border-top-color: var(--composer-border);
   box-shadow: var(--composer-shadow);
 }
-:root[data-theme="kanagawa-wave"] .chat-region {
-  --composer-separator-line: 2px solid var(--composer-control-border);
-}
-:root[data-theme="kanagawa-wave"] .thread-scroll-wrap {
-  --composer-separator-line: 2px solid var(--composer-control-border);
-}
-:root[data-theme="kanagawa-wave"] .ct-btn {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn {
   background: var(--composer-control-bg);
   color: var(--composer-control-fg);
   border-color: var(--composer-control-border);
   box-shadow: var(--composer-control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .ct-btn:disabled {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn:disabled {
   color: var(--composer-control-muted, var(--ink-faint));
   border-color: color-mix(in srgb, var(--composer-control-border) 72%, var(--paper) 28%);
   opacity: 1;
 }
-:root[data-theme="kanagawa-wave"] .ct-btn.active,
-:root[data-theme="kanagawa-wave"] .ct-btn:hover:not(:disabled) {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn.active,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn:hover:not(:disabled) {
   box-shadow: var(--composer-control-shadow-hover);
 }
-:root[data-theme="kanagawa-wave"] .composer-input::placeholder {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-input::placeholder {
   color: var(--composer-control-muted, var(--ink-faint));
 }
-:root[data-theme="kanagawa-wave"] .composer-send,
-:root[data-theme="kanagawa-wave"] .thread-scan-btn {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .thread-scan-btn {
   background: var(--composer-send-bg);
   color: var(--composer-control-fg);
   border-color: var(--composer-control-border);
   box-shadow: var(--composer-send-shadow);
 }
-:root[data-theme="kanagawa-wave"] .composer-send {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send {
   color: var(--composer-send-fg);
   border-color: var(--composer-send-border);
 }
-:root[data-theme="kanagawa-wave"] .composer-send:disabled {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send:disabled {
   color: var(--composer-send-border);
   opacity: 1;
   filter: none;
 }
-:root[data-theme="kanagawa-wave"] .thread-scan-btn.active {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .thread-scan-btn.active {
   border-color: var(--lilac);
   box-shadow: var(--composer-send-shadow), inset 0 -3px 0 var(--lilac);
 }
@@ -218,10 +212,10 @@
   background: var(--surface-selected-bg);
   border-color: var(--surface-selected-border);
 }
-:root[data-theme="kanagawa-wave"] .room-tab{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-tab{
   color: var(--activity-control-fg);
 }
-:root[data-theme="kanagawa-wave"] .room-tab.active{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-tab.active{
   background: var(--activity-control-active-bg);
   color: var(--activity-control-selected-fg);
   border-color: transparent;
@@ -244,8 +238,7 @@
 /* .chat-scroll-wrap base migrated to inline utilities in ChatView.tsx.
    .thread-scroll-wrap (ThreadPane) base layout migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre); the class is kept as a hook because
-   the kanagawa-wave override above sets the `--composer-separator-line` var that
-   the inlined `border-bottom` reads. */
+   the inlined `border-bottom` reads `--composer-separator-line`. */
 /* .chat-list base layout + .virtualized-list reset migrated to inline utilities
    in ChatView.tsx (sync-q48d). overscroll-behavior + scrollbar styling live in
    styles.css .chat-list (scroll-perf, not inlinable). */

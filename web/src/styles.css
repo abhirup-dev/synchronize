@@ -19,13 +19,11 @@ body {
   -webkit-font-smoothing: antialiased;
   /* Paper grain — very subtle dotted noise; alpha adjusts per theme */
   background-image:
-    radial-gradient(rgba(0,0,0,var(--grain-alpha)) 1px, transparent 1px);
+    radial-gradient(var(--grain-dot) 1px, transparent 1px);
   background-size: 18px 18px;
   transition: background-color 200ms ease, color 200ms ease;
 }
-:root[data-theme="kanagawa-wave"] body{
-  background-image:
-    radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) body{
   /* Bump body weight slightly to combat halation on thin glyphs over deep
      backgrounds. */
   font-weight: 500;
@@ -41,7 +39,7 @@ kbd {
   box-shadow: var(--shadow-xs);
 }
 
-:root[data-theme="kanagawa-wave"] kbd {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) kbd {
   background: var(--paper-2);
   color: var(--ink);
   border-color: var(--control-border);
@@ -166,13 +164,13 @@ button { font-family: inherit; cursor: pointer; }
   transform: rotate(-3deg);
   transform-origin: center;
 }
-:root[data-theme="kanagawa-wave"] .identity-logo-tile {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .identity-logo-tile {
   background: var(--paper);
   color: var(--ink);
   border-color: var(--card-border-color);
   box-shadow: var(--card-shadow);
 }
-:root[data-theme="kanagawa-wave"] .brand-mark{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .brand-mark{
   background: var(--paper);
   color: var(--ink);
   border-color: var(--card-border-color);
@@ -285,38 +283,38 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
   border-color: var(--ink);
 }
-:root[data-theme="kanagawa-wave"] .topbar-control {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control {
   background: var(--activity-control-bg);
   color: var(--activity-control-fg);
   border-color: transparent;
   box-shadow: 2px 2px 0 var(--activity-control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .topbar-control:hover {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control:hover {
   background: var(--activity-control-bg-raised);
   color: var(--activity-control-fg);
   box-shadow: 3px 3px 0 var(--activity-control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .topbar-control.active,
-:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] {
   background: var(--activity-control-active-bg);
   color: var(--activity-control-selected-fg);
   border-color: transparent;
 }
-:root[data-theme="kanagawa-wave"] .topbar-control:focus-visible {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control:focus-visible {
   outline: 2px solid var(--activity-control-selected-fg);
   outline-offset: 2px;
 }
-:root[data-theme="kanagawa-wave"] .topbar-control .act-filter-n,
-:root[data-theme="kanagawa-wave"] .topbar-control .count-chip {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control .act-filter-n,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control .count-chip {
   background: var(--paper);
   color: var(--activity-control-fg);
   border-color: var(--activity-control-border);
   box-shadow: 1px 1px 0 var(--activity-control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .topbar-control.active .act-filter-n,
-:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] .act-filter-n,
-:root[data-theme="kanagawa-wave"] .topbar-control.active .count-chip,
-:root[data-theme="kanagawa-wave"] .topbar-control[aria-pressed="true"] .count-chip {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active .act-filter-n,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] .act-filter-n,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active .count-chip,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] .count-chip {
   background: var(--activity-control-badge-bg);
   color: var(--activity-control-badge-fg);
   border-color: var(--activity-control-badge-bg);
@@ -391,17 +389,17 @@ button { font-family: inherit; cursor: pointer; }
 }
 .room-item.active .room-preview { color: var(--surface-selected-muted); opacity: 1; }
 .room-item.active .room-name { color: var(--surface-selected-fg); }
-:root[data-theme="kanagawa-wave"] .room-item.active{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active{
   background: var(--paper-3);
   color: var(--ink);
   border-color: var(--rule);
   box-shadow: var(--card-shadow);
 }
-:root[data-theme="kanagawa-wave"] .room-item.active .room-preview{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active .room-preview{
   color: var(--ink-soft);
   opacity: 1;
 }
-:root[data-theme="kanagawa-wave"] .room-item.active .room-name{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active .room-name{
   color: var(--ink);
 }
 
@@ -418,8 +416,8 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--identity-shadow, var(--shadow-chip));
   position: relative;
 }
-:root[data-theme="kanagawa-wave"] .identity-icon{
-  --identity-shadow: 0 0 0 1px rgba(17, 17, 17, 0.58), var(--shadow-chip);
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .identity-icon{
+  box-shadow: var(--identity-icon-shadow);
 }
 
 .room-icon {
@@ -440,7 +438,6 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .identity-status-dot {
-  --status-dot-border: var(--rule);
   color: var(--status-online);
   transform-origin: center;
 }
@@ -481,24 +478,24 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--paper-3);
 }
 
-:root[data-theme="kanagawa-wave"] .activity-dock-btn,
-:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble,
-:root[data-theme="kanagawa-wave"] .resume-dock-btn,
-:root[data-theme="kanagawa-wave"] .sidebar-settings-btn {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-bottom .user-bubble,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .resume-dock-btn,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-settings-btn {
   background: var(--paper);
   color: var(--ink);
   border-color: var(--control-border-color);
   box-shadow: var(--control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .activity-dock-btn:hover,
-:root[data-theme="kanagawa-wave"] .activity-dock-btn.active,
-:root[data-theme="kanagawa-wave"] .sidebar-bottom .user-bubble:hover,
-:root[data-theme="kanagawa-wave"] .resume-dock-btn:hover,
-:root[data-theme="kanagawa-wave"] .sidebar-settings-btn:hover {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn:hover,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn.active,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-bottom .user-bubble:hover,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .resume-dock-btn:hover,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-settings-btn:hover {
   background: var(--paper-3);
   box-shadow: var(--control-shadow-hover);
 }
-:root[data-theme="kanagawa-wave"] .activity-dock-badge {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-badge {
   background: var(--activity-control-badge-bg);
   color: var(--activity-control-badge-fg);
   border-color: var(--activity-control-badge-bg);
@@ -518,7 +515,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .icon-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
 
-:root[data-theme="kanagawa-wave"] .scroll-ctrl-new {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .scroll-ctrl-new {
   animation: none;
   background: var(--paper-3);
   color: var(--ink);
@@ -1013,37 +1010,37 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Message reaction base styles live in components/extra.css. Per-theme dark
    overrides stay here with the rest of the theme-specific surface corrections. */
-:root[data-theme="kanagawa-wave"] .reaction {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction {
   background: var(--paper);
   color: var(--ink);
   border-color: var(--control-border-color);
   box-shadow: var(--control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .reaction.is-mine {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction.is-mine {
   background: var(--paper-2);
   color: var(--ink);
   border-color: color-mix(in srgb, var(--yellow) 46%, var(--control-border-color));
   box-shadow: var(--control-shadow);
 }
-:root[data-theme="kanagawa-wave"] .reaction .rcount,
-:root[data-theme="kanagawa-wave"] .reaction.add {
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction .rcount,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction.add {
   color: var(--ink);
 }
-:root[data-theme="kanagawa-wave"] .reaction-picker,
-:root[data-theme="kanagawa-wave"] .reaction-popover{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-picker,
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-popover{
   background: var(--paper);
   color: var(--ink);
   border-color: var(--overlay-border-color);
   border-radius: var(--radius-lg);
   box-shadow: var(--overlay-shadow);
 }
-:root[data-theme="kanagawa-wave"] .reaction-choice{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-choice{
   background: var(--paper);
   color: var(--ink);
   border-color: var(--rule);
   box-shadow: none;
 }
-:root[data-theme="kanagawa-wave"] .reaction-choice:hover{
+:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-choice:hover{
   background: var(--paper-3);
   box-shadow: var(--control-shadow);
 }
@@ -1441,41 +1438,6 @@ button { font-family: inherit; cursor: pointer; }
 }
 .poll.closed { opacity: 0.78; }
 
-.poll-opt {
-  position: relative;
-  background: var(--paper-2);
-  border: var(--line-xs-faint);
-  border-radius: var(--radius-lg);
-  padding: var(--space-button-pad-md);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  box-shadow: var(--shadow-none);
-  transition: transform 100ms, box-shadow 100ms, border-color 100ms;
-}
-.poll-opt:hover:not(.disabled) {
-  border-color: var(--ink-soft);
-}
-.poll-opt.disabled { cursor: default; }
-.poll-opt.selected {
-  background: var(--paper);
-  border-color: var(--opt-color);
-  box-shadow: var(--shadow-none);
-  transform: none;
-}
-
-/* the filled bar showing vote share */
-.poll-opt-bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--opt-color);
-  opacity: 0.32;
-  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.poll-opt.selected .poll-opt-bar { opacity: 0.55; }
-.poll-voters > div { margin-left: -5px; }
-.poll-voters > div:first-child { margin-left: 6px; }
 .poll-status-open b {
   font-family: var(--font-display);
   font-size: var(--text-10);
