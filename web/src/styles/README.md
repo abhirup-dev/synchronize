@@ -34,8 +34,9 @@ concerns from cross-cutting each other.
   `bun run generate:theme-registry`. Do not hand-edit Storybook toolbar theme
   lists or `ThemeName` unions.
 - **Before committing theme/CSS work**, run `bun run check:theme-contract`.
-  `bun run check:theme-contract:strict` is the cleanup target; it currently fails
-  only on known legacy warnings.
+  `bun run check:theme-contract:strict` is the cleanup target; it fails on raw
+  color leaks, undefined legacy vars, scoped variable definitions outside
+  `tokens.css`, and theme selectors that are not explicitly skin-scoped.
 - **A class kept only as a hook** (skin override target or `classList`/vim target)
   gets a one-line comment saying so, so it isn't mistaken for dead.
 - **Mode is a capability, not a selector.** Prefer the `shellLayout()` contract
