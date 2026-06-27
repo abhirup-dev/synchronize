@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { hostname } from "node:os";
 
-import { ACTIVITY_STATES, type ActivityState } from "../../constants.ts";
+import { ACTIVITY_STATES, WORK_PHASES, type ActivityState } from "../../constants.ts";
+import type { PeerWorkState, PeerWorkStateStatus, WorkScope } from "../../api/types.ts";
 import { HttpError } from "../../http.ts";
 import { transitionArchive } from "../../lifecycle/archive.ts";
 import { debug, log } from "../server.ts";
@@ -25,11 +26,27 @@ export interface PeerRow {
   archived_at: string | null;
   archived_reason: string | null;
   archive_source: string | null;
+  deleted_at?: string | null;
+  work_phase?: string | null;
+  work_summary?: string | null;
+  work_scope_json?: string | null;
+  work_task?: string | null;
+  work_trigger_event_id?: number | null;
+  work_started_at?: string | null;
+  work_updated_at?: string | null;
+  work_expires_at?: string | null;
+  work_source?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type Presence = "offline" | "online" | ActivityState;
+export type FormattedPeer<T extends Partial<PeerRow> & { online?: number | boolean }> = Omit<T, "online"> & {
+  online: boolean;
+  presence: Presence;
+  work_state: PeerWorkState | null;
+  work_state_status: PeerWorkStateStatus;
+};
 
 export function getPeer(db: Database, peerId: string): PeerRow {
   const peer = db
@@ -69,6 +86,92 @@ export function derivePresence(online: boolean, activityState: string | null): P
     return activityState as ActivityState;
   }
   return "online";
+}
+
+export function derivePeerWorkState(row: Partial<PeerRow>, now = new Date().toISOString()): PeerWorkState | null {
+  if (row.deleted_at || row.lifecycle_state === "archived") return null;
+  if (!row.work_phase || !row.work_summary || !row.work_started_at || !row.work_updated_at || !row.work_expires_at || !row.work_source) {
+    return null;
+  }
+  if (row.work_expires_at <= now) return null;
+  if (!(WORK_PHASES as readonly string[]).includes(row.work_phase)) return null;
+  if (!["mcp", "hook", "api"].includes(row.work_source)) return null;
+
+  const scope = parseWorkScope(row.work_scope_json ?? null);
+  return {
+    phase: row.work_phase as PeerWorkState["phase"],
+    summary: row.work_summary,
+    ...(scope ? { scope } : {}),
+    ...(row.work_task ? { task: row.work_task } : {}),
+    ...(row.work_trigger_event_id !== null && row.work_trigger_event_id !== undefined ? { trigger_event_id: row.work_trigger_event_id } : {}),
+    started_at: row.work_started_at,
+    updated_at: row.work_updated_at,
+    expires_at: row.work_expires_at,
+    source: row.work_source as PeerWorkState["source"],
+  };
+}
+
+export function formatPeer<T extends Partial<PeerRow> & { online?: number | boolean }>(row: T, now = new Date().toISOString()): FormattedPeer<T> {
+  const workState = derivePeerWorkState(row, now);
+  return {
+    ...row,
+    online: Boolean(row.online),
+    presence: derivePresence(Boolean(row.online), row.activity_state ?? null),
+    work_state: workState,
+    work_state_status: derivePeerWorkStateStatus(row, workState, now),
+  } as FormattedPeer<T>;
+}
+
+export function derivePeerWorkStateStatus(
+  row: Partial<PeerRow>,
+  workState = derivePeerWorkState(row),
+  now = new Date().toISOString(),
+): PeerWorkStateStatus {
+  if (!hasAnyStoredWorkState(row)) return { state: "absent" };
+  if (!workState) {
+    if (row.work_expires_at && row.work_expires_at <= now && !row.deleted_at && row.lifecycle_state !== "archived") {
+      return { state: "stale", expires_at: row.work_expires_at, seconds_remaining: 0 };
+    }
+    return { state: "absent" };
+  }
+  const remaining = Math.max(0, Math.ceil((Date.parse(workState.expires_at) - Date.parse(now)) / 1000));
+  return {
+    state: remaining <= 120 ? "near_expiry" : "active",
+    expires_at: workState.expires_at,
+    seconds_remaining: remaining,
+  };
+}
+
+function hasAnyStoredWorkState(row: Partial<PeerRow>): boolean {
+  return Boolean(
+    row.work_phase ||
+      row.work_summary ||
+      row.work_scope_json ||
+      row.work_task ||
+      row.work_trigger_event_id ||
+      row.work_started_at ||
+      row.work_updated_at ||
+      row.work_expires_at ||
+      row.work_source,
+  );
+}
+
+function parseWorkScope(value: string | null): WorkScope | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as Partial<WorkScope>;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    if (!["group", "dm", "issue", "file", "repo", "branch", "url", "custom"].includes(String(parsed.kind))) return undefined;
+    if (typeof parsed.value !== "string" || parsed.value.trim() === "") return undefined;
+    if (parsed.label !== undefined && typeof parsed.label !== "string") return undefined;
+    return {
+      kind: parsed.kind as WorkScope["kind"],
+      value: parsed.value,
+      ...(parsed.label ? { label: parsed.label } : {}),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 // Agents (pi/claude) start at "initializing" and stay there until their first

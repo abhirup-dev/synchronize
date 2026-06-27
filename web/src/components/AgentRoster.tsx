@@ -12,6 +12,7 @@ import { useToast } from "./Toast.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { phaseLabel, workStateSummary } from "../workState.ts";
 
 interface AgentRosterProps {
   room: Room;
@@ -110,6 +111,7 @@ export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterP
                     {agent.role}
                     {agent.statusNote && agent.statusNote !== agent.name ? ` (${agent.statusNote})` : ""}
                   </div>
+                  <RosterWorkState agent={agent} />
                 </div>
               </button>
             ))}
@@ -130,5 +132,26 @@ export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterP
       )}
       <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </aside>
+  );
+}
+
+function RosterWorkState({ agent }: { agent: Agent }) {
+  const summary = workStateSummary(agent);
+  if (!summary) return null;
+  const stale = !agent.workState && agent.workStateStatus?.state === "stale";
+  return (
+    <div className="mt-[5px] flex min-w-0 items-center gap-[6px] font-mono text-[length:var(--text-10)] leading-[1.2] text-ink-soft">
+      <span
+        className={cn(
+          "shrink-0 rounded-[4px] px-[5px] py-[1px] uppercase [border:var(--control-border)]",
+          stale ? "text-ink-faint" : agent.workState?.phase === "blocked" ? "text-danger" : "text-ink",
+        )}
+      >
+        {agent.workState ? phaseLabel(agent.workState.phase) : "Stale"}
+      </span>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" title={summary}>
+        {agent.workState?.task ?? agent.workState?.summary ?? "expired"}
+      </span>
+    </div>
   );
 }

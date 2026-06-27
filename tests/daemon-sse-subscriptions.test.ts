@@ -26,6 +26,26 @@ async function flushPushQueue(): Promise<void> {
   await Bun.sleep(100);
 }
 
+async function readStateChange(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<Record<string, unknown>> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value);
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (!frame.includes("event: state_changed")) continue;
+      const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice("data: ".length);
+      if (!data) continue;
+      return JSON.parse(data) as Record<string, unknown>;
+    }
+  }
+  throw new Error("timed out waiting for state_changed SSE frame");
+}
+
 test("subscriber callback failure removes the callback before the next event", async () => {
   const d = await daemon();
   const hits: Array<{ token: string | null; body: unknown }> = [];
@@ -89,6 +109,40 @@ test("/web/events sends connected and cancellation does not retain a dead writer
     const nextFirst = await nextReader.read();
     expect(new TextDecoder().decode(nextFirst.value)).toContain("event: connected");
     await nextReader.cancel();
+  } finally {
+    await d.stop();
+  }
+});
+
+test("/web/events emits granular peer presence and work-state domains with agent payloads", async () => {
+  const d = await daemon();
+  try {
+    expect((await post(d.baseUrl, "/peers/register", { peer_id: "peer:delta", session_name: "delta", tool: "claude" })).status).toBe(201);
+    const stream = await fetch(`${d.baseUrl}/web/events`);
+    const reader = stream.body!.getReader();
+    await reader.read(); // connected frame
+
+    expect((await fetch(`${d.baseUrl}/peers/peer%3Adelta/heartbeat`, { method: "PATCH" })).status).toBe(200);
+    const heartbeat = await readStateChange(reader);
+    expect(heartbeat.domains).toEqual(["peer_presence"]);
+    expect(heartbeat.peer_id).toBe("peer:delta");
+    expect(heartbeat.agent).toMatchObject({ peer_id: "peer:delta", work_state_status: { state: "absent" } });
+
+    expect((await post(d.baseUrl, "/peers/work-state", {
+      peer_id: "peer:delta",
+      phase: "testing",
+      summary: "Verify granular SSE",
+      ttl_minutes: 1,
+    })).status).toBe(200);
+    const workState = await readStateChange(reader);
+    expect(workState.domains).toEqual(["work_state"]);
+    expect(workState.agent).toMatchObject({ peer_id: "peer:delta", work_state: { phase: "testing" } });
+
+    expect((await post(d.baseUrl, "/peers/activity", { peer_id: "peer:delta", state: "idle" })).status).toBe(200);
+    const activity = await readStateChange(reader);
+    expect(activity.domains).toEqual(["peer_presence"]);
+    expect(activity.agent).toMatchObject({ peer_id: "peer:delta", presence: "idle" });
+    await reader.cancel();
   } finally {
     await d.stop();
   }

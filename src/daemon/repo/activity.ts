@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 
-import { derivePresence, type PeerRow } from "./peers.ts";
+import { formatPeer, type FormattedPeer, type PeerRow } from "./peers.ts";
 import type { EventRow } from "./events.ts";
 
 // Row for the read-only web Activity feed: the standard event columns plus a
@@ -20,7 +20,7 @@ export function listActivityPage(
   input: { peerId: string; before: number; limit: number; awaitingOnly: boolean },
 ): {
   rows: ActivityRow[];
-  peers: Array<PeerRow & { online: boolean; presence: ReturnType<typeof derivePresence> }>;
+  peers: Array<FormattedPeer<PeerRow & { online: number | boolean }>>;
   awaitingCount: number;
 } {
   const visibleActivityCte = `
@@ -114,16 +114,15 @@ export function listActivityPage(
     : db
       .query<PeerRow & { online: number }, [string, ...string[]]>(
         `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-                activity_state, last_activity_at, last_cursor, created_at, updated_at,
+                activity_state, last_activity_at, last_cursor, lifecycle_state, deleted_at,
+                work_phase, work_summary, work_scope_json, work_task, work_trigger_event_id,
+                work_started_at, work_updated_at, work_expires_at, work_source,
+                created_at, updated_at,
                 lease_expires_at > ? AS online
          FROM peers
          WHERE peer_id IN (${ids.map(() => "?").join(",")})`,
       )
       .all(now, ...ids)
-      .map((peer) => ({
-        ...peer,
-        online: Boolean(peer.online),
-        presence: derivePresence(Boolean(peer.online), peer.activity_state),
-      }));
+      .map((peer) => formatPeer(peer, now));
   return { rows, peers, awaitingCount };
 }

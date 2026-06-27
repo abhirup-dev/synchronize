@@ -6,7 +6,7 @@ import { getLaunchIntent } from "../../launch/store.ts";
 import { HttpError } from "../../http.ts";
 import type { DaemonProvenance } from "../../provenance.ts";
 import { requireLaunchPath } from "../validation.ts";
-import { getPeer } from "./peers.ts";
+import { formatPeer, getPeer, type FormattedPeer } from "./peers.ts";
 
 export interface GroupRow {
   group_id: number;
@@ -40,13 +40,25 @@ export interface MemberRow {
   left_at: string | null;
   session_name: string;
   tool: string;
+  lease_expires_at?: string;
   activity_state: string | null;
+  lifecycle_state?: string;
+  deleted_at?: string | null;
+  work_phase?: string | null;
+  work_summary?: string | null;
+  work_scope_json?: string | null;
+  work_task?: string | null;
+  work_trigger_event_id?: number | null;
+  work_started_at?: string | null;
+  work_updated_at?: string | null;
+  work_expires_at?: string | null;
+  work_source?: string | null;
   host_session_id: string | null;
 }
 
 export type FormattedGroup = Omit<GroupRow, "durable"> & { durable: boolean };
 export type FormattedGroupPath = Omit<GroupPathRow, "active"> & { active: boolean };
-export type FormattedMember = Omit<MemberRow, "active"> & { active: boolean };
+export type FormattedMember = FormattedPeer<Omit<MemberRow, "active"> & { active: number | boolean; online?: number | boolean }>;
 
 export function getGroup(db: Database, name: string): GroupRow {
   const group = db.query<GroupRow, [string]>("SELECT * FROM groups WHERE name = ?").get(name);
@@ -94,22 +106,26 @@ export function defaultGroupPath(ctx: { provenance?: Pick<DaemonProvenance, "sou
   return requireLaunchPath(ctx.provenance?.source_root ?? process.cwd());
 }
 
-export const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.activity_state,
+export const MEMBER_SELECT_SQL = `gm.*, p.session_name, p.tool, p.lease_expires_at, p.activity_state,
+  p.lifecycle_state, p.deleted_at, p.work_phase, p.work_summary, p.work_scope_json,
+  p.work_task, p.work_trigger_event_id, p.work_started_at, p.work_updated_at,
+  p.work_expires_at, p.work_source,
   (SELECT s.host_session_id FROM agent_sessions s
    WHERE s.peer_id = gm.peer_id
    ORDER BY s.updated_at DESC, s.created_at DESC LIMIT 1) AS host_session_id`;
 
 export function getGroupMembers(db: Database, groupId: number): FormattedMember[] {
+  const now = new Date().toISOString();
   return db
-    .query<MemberRow & { host_session_id: string | null }, [number]>(
-      `SELECT ${MEMBER_SELECT_SQL}
+    .query<MemberRow & { host_session_id: string | null; online: number }, [string, number]>(
+      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ?
        ORDER BY gm.active DESC, gm.alias ASC`,
     )
-    .all(groupId)
-    .map((member) => ({ ...member, active: Boolean(member.active) }));
+    .all(now, groupId)
+    .map((member) => ({ ...formatPeer(member, now), active: Boolean(member.active) }));
 }
 
 export function deriveBackendTitleForPeer(db: Database, peerId: string): string {
@@ -151,16 +167,17 @@ export function deriveBackendTitleForPeer(db: Database, peerId: string): string 
 }
 
 export function getGroupMember(db: Database, groupId: number, peerId: string): FormattedMember {
+  const now = new Date().toISOString();
   const member = db
-    .query<MemberRow & { host_session_id: string | null }, [number, string]>(
-      `SELECT ${MEMBER_SELECT_SQL}
+    .query<MemberRow & { host_session_id: string | null; online: number }, [string, number, string]>(
+      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
        FROM group_members gm
        JOIN peers p ON p.peer_id = gm.peer_id
        WHERE gm.group_id = ? AND gm.peer_id = ?`,
     )
-    .get(groupId, peerId);
+    .get(now, groupId, peerId);
   if (!member) throw new HttpError(404, "member_not_found", `Peer is not a group member: ${peerId}`);
-  return { ...member, active: Boolean(member.active) } as FormattedMember;
+  return { ...formatPeer(member, now), active: Boolean(member.active) };
 }
 
 export function ensureActiveMember(db: Database, groupId: number, peerId: string): MemberRow {

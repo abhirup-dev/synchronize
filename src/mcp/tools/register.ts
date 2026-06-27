@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { listAgentSessions, renameAgentSession } from "../../api/agent-sessions.ts";
-import { registerPeer } from "../../api/peers.ts";
+import { listPeers, registerPeer } from "../../api/peers.ts";
 import type { Peer } from "../../api/types.ts";
 import { ENV_LAUNCH_ID, ENV_PEER_ID } from "../../constants.ts";
 import { EventSubscription } from "../claude-subscription.ts";
@@ -66,8 +66,9 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
     {
       description:
         "Show this adapter peer identity. " +
-        "Returns: { peer, registered, runtime_context, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Returns: { peer, registered, work_state, work_state_status, runtime_context, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
         "Agent-session bindings include cwd, git_branch, and git_dirty when the host provided a cwd. " +
+        "work_state_status.state is absent, active, near_expiry, or stale. " +
         "Idempotency: pure read.",
     },
     wrap(async () => {
@@ -79,11 +80,19 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
         lifecycle.startHeartbeat();
       }
     }
+    let freshPeer = state.peer;
+    if (client && state.peer) {
+      const roster = await listPeers(client);
+      freshPeer = (roster.peers as Peer[]).find((peer) => peer.peer_id === state.peer?.peer_id) ?? state.peer;
+    }
+    if (freshPeer) state.peer = freshPeer;
     const agentSessions = client && state.peer ? (await listAgentSessions(client, { peerId: state.peer.peer_id })).bindings : [];
     const activeSession = agentSessions[0] ?? null;
     return text({
-      peer: state.peer,
+      peer: freshPeer,
       registered: Boolean(state.peer),
+      work_state: freshPeer?.work_state ?? null,
+      work_state_status: freshPeer?.work_state_status ?? { state: "absent" },
       agent_sessions: agentSessions,
       runtime_context: activeSession
         ? {

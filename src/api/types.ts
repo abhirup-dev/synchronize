@@ -30,6 +30,59 @@ export type ActivityState = "initializing" | "working" | "idle";
 /** Derived presence shown in rosters. */
 export type Presence = "offline" | "online" | ActivityState;
 
+export type WorkPhase =
+  | "research"
+  | "analysis"
+  | "planning"
+  | "implementation"
+  | "testing"
+  | "review"
+  | "coordination"
+  | "blocked"
+  | "other";
+
+export interface WorkScope {
+  kind: "group" | "dm" | "issue" | "file" | "repo" | "branch" | "url" | "custom";
+  value: string;
+  label?: string;
+}
+
+export interface PeerWorkState {
+  phase: WorkPhase;
+  summary: string;
+  scope?: WorkScope;
+  task?: string;
+  trigger_event_id?: number;
+  started_at: string;
+  updated_at: string;
+  expires_at: string;
+  source: "mcp" | "hook" | "api";
+}
+
+export interface PeerWorkStateHistoryEntry {
+  history_id: number;
+  peer_id: string;
+  phase: WorkPhase | null;
+  summary: string | null;
+  scope?: WorkScope;
+  task?: string;
+  trigger_event_id?: number;
+  inferred_event_id?: number;
+  correlation_method: "explicit" | "none" | "timestamp_inferred";
+  source: "mcp" | "hook" | "api";
+  started_at: string | null;
+  updated_at: string;
+  expires_at: string | null;
+  cleared_at: string | null;
+  created_at: string;
+}
+
+export interface PeerWorkStateStatus {
+  state: "absent" | "active" | "near_expiry" | "stale";
+  expires_at?: string;
+  seconds_remaining?: number;
+}
+
 export interface Peer {
   peer_id: string;
   tool: string;
@@ -44,6 +97,10 @@ export interface Peer {
   last_activity_at?: string | null;
   /** Derived: offline if lease lapsed, else activity_state, else generic "online". */
   presence?: Presence;
+  /** Current semantic work state, hidden once expired, archived, or deleted. */
+  work_state?: PeerWorkState | null;
+  /** Derived freshness for current/stale/absent work-state UI and agent checks. */
+  work_state_status?: PeerWorkStateStatus;
 }
 
 export interface AgentSessionBinding {
@@ -244,6 +301,7 @@ export interface GroupMember {
   session_name: string;
   tool: string;
   host_session_id: string | null;
+  work_state?: PeerWorkState | null;
 }
 
 export interface MediaItem {
@@ -299,6 +357,7 @@ export interface SummaryResponse {
     online: boolean;
     presence: Presence;
     activity_state: ActivityState | null;
+    work_state?: PeerWorkState | null;
     pending_inbox: number;
     groups: number;
     updated_at: string;

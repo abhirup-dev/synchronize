@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { requestJson, type ClientConfig } from "../client.ts";
 import type { ActivityState } from "../constants.ts";
-import type { GroupMember, Peer } from "./types.ts";
+import type { GroupMember, Peer, PeerWorkState, PeerWorkStateHistoryEntry, WorkPhase, WorkScope } from "./types.ts";
 
 // /peers returns a different shape depending on whether `group` is set.
 // Without a group, it's plain Peer[] (daemon-wide roster). With a group, the
@@ -69,6 +69,112 @@ export function setPeerActivity(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export type SetPeerWorkStateInput =
+  | {
+      peerId: string;
+      phase: WorkPhase;
+      summary: string;
+      scope?: WorkScope;
+      task?: string;
+      triggerEventId?: number;
+      ttlMinutes?: number;
+      source?: PeerWorkState["source"];
+    }
+  | {
+      hostTool: string;
+      hostSessionId: string;
+      phase: WorkPhase;
+      summary: string;
+      scope?: WorkScope;
+      task?: string;
+      triggerEventId?: number;
+      ttlMinutes?: number;
+      source?: PeerWorkState["source"];
+    }
+  | {
+      peerId: string;
+      clear: true;
+      triggerEventId?: number;
+      source?: PeerWorkState["source"];
+    }
+  | {
+      hostTool: string;
+      hostSessionId: string;
+      clear: true;
+      triggerEventId?: number;
+      source?: PeerWorkState["source"];
+    };
+
+export interface SetPeerWorkStateResponse {
+  peer: Peer;
+  work_state: PeerWorkState | null;
+  ttl_minutes: number | null;
+  expires_at: string | null;
+}
+
+export function setPeerWorkState(client: ClientConfig, input: SetPeerWorkStateInput): Promise<SetPeerWorkStateResponse> {
+  const identity =
+    "peerId" in input
+      ? { peer_id: input.peerId }
+      : { host_tool: input.hostTool, host_session_id: input.hostSessionId };
+  const body =
+    "clear" in input
+      ? {
+          ...identity,
+          clear: true,
+          trigger_event_id: input.triggerEventId,
+          source: input.source,
+        }
+      : {
+          ...identity,
+          phase: input.phase,
+          summary: input.summary,
+          scope: input.scope,
+          task: input.task,
+          trigger_event_id: input.triggerEventId,
+          ttl_minutes: input.ttlMinutes,
+          source: input.source,
+        };
+  return requestJson<SetPeerWorkStateResponse>(client, "/peers/work-state", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface ListPeerWorkStateHistoryInput {
+  peerId: string;
+  limit?: number;
+  from?: string;
+  to?: string;
+  phase?: WorkPhase;
+  taskContains?: string;
+  scopeKind?: WorkScope["kind"];
+  scopeValue?: string;
+  eventId?: number;
+  correlation?: PeerWorkStateHistoryEntry["correlation_method"];
+}
+
+export function listPeerWorkStateHistory(
+  client: ClientConfig,
+  input: ListPeerWorkStateHistoryInput,
+): Promise<{ history: PeerWorkStateHistoryEntry[]; truncated: boolean }> {
+  const params = new URLSearchParams();
+  if (input.limit !== undefined) params.set("limit", String(input.limit));
+  if (input.from !== undefined) params.set("from", input.from);
+  if (input.to !== undefined) params.set("to", input.to);
+  if (input.phase !== undefined) params.set("phase", input.phase);
+  if (input.taskContains !== undefined) params.set("task_contains", input.taskContains);
+  if (input.scopeKind !== undefined) params.set("scope_kind", input.scopeKind);
+  if (input.scopeValue !== undefined) params.set("scope_value", input.scopeValue);
+  if (input.eventId !== undefined) params.set("event_id", String(input.eventId));
+  if (input.correlation !== undefined) params.set("correlation", input.correlation);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return requestJson<{ history: PeerWorkStateHistoryEntry[]; truncated: boolean }>(
+    client,
+    `/peers/${encodeURIComponent(input.peerId)}/work-state-history${query}`,
+  );
 }
 
 export function listPeers(client: ClientConfig, input: { group?: string } = {}): Promise<ListPeersResponse> {

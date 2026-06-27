@@ -2,7 +2,7 @@
 // wraps the tree in <DataSourceProvider>. Every component reads via the
 // typed hooks below — they never touch the adapter object directly.
 
-import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import type { DataSource, Snapshot } from "./types.ts";
 
 const Ctx = createContext<DataSource | null>(null);
@@ -35,6 +35,11 @@ export function useLaunchProfiles() { return useSnapshot(useDataSource().launchP
 export function useActivity() { return useSnapshot(useDataSource().activity()); }
 export function useActivityAwaitingCount() { return useSnapshot(useDataSource().activityAwaitingCount()); }
 export function useArchivedSessions() { return useSnapshot(useDataSource().archivedSessions()); }
+
+export function useAgentWorkStateHistory() {
+  const ds = useDataSource();
+  return useMemo(() => ds.agentWorkStateHistory.bind(ds), [ds]);
+}
 
 export function useAckActivity() {
   const ds = useDataSource();

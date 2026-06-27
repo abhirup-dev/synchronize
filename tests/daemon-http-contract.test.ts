@@ -90,9 +90,9 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
           provenance: { api_version: "number", entrypoint_path: "string", git_dirty: "boolean", git_sha: "string", source_root: "string" },
         },
       },
-      { name: "peers.register", status: 201, body: { peer: peerShape({ deleted_at: null, lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
-      { name: "peers.list", status: 200, body: { peers: [peerShape({ deleted_at: null, online: true, presence: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null })] } },
-      { name: "peers.activity", status: 200, body: { peer: peerShape({ deleted_at: null, activity_state: "string", last_activity_at: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
+      { name: "peers.register", status: 201, body: { peer: peerShape({ online: true, presence: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
+      { name: "peers.list", status: 200, body: { peers: [peerShape({ online: true, presence: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null })] } },
+      { name: "peers.activity", status: 200, body: { peer: peerShape({ activity_state: "string", last_activity_at: "string", online: true, presence: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
       { name: "agent-sessions.register", status: 201, body: { binding: agentSessionShape() } },
       { name: "agent-sessions.lookup", status: 200, body: { binding: agentSessionShape() } },
       { name: "groups.create", status: 201, body: { group: groupShape() } },
@@ -102,7 +102,7 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
       { name: "events.lookup", status: 200, body: { event: eventShape() } },
       { name: "threads.status", status: 200, body: { status: threadStatusShape() } },
       { name: "inbox.read", status: 200, body: { events: [], next_cursor: "number" } },
-      { name: "activity.feed", status: 200, body: { events: [eventShape({ acked_at: "string", awaiting: "number", reply_count: "number" })], peers: [peerShape({ activity_state: "string", last_activity_at: "string", online: true, presence: "string" })], next_cursor: "number", awaiting_count: "number" } },
+      { name: "activity.feed", status: 200, body: { events: [eventShape({ acked_at: "string", awaiting: "number", reply_count: "number" })], peers: [peerShape({ activity_state: "string", last_activity_at: "string", online: true, presence: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string" })], next_cursor: "number", awaiting_count: "number" } },
       { name: "query.events", status: 200, body: { columns: ["string"], rows: [{ event_id: "number", type: "string" }], row_count: "number", truncated: true, elapsed_ms: "number" } },
       { name: "web.session", status: 200, body: { peer: peerShape({ deleted_at: null, purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
       { name: "web.state", status: 200, body: webStateShape() },
@@ -124,10 +124,24 @@ function peerShape(extra: Record<string, unknown> = {}): Record<string, unknown>
     activity_state: null,
     last_activity_at: null,
     last_cursor: "number",
+    deleted_at: null,
+    work_phase: null,
+    work_summary: null,
+    work_scope_json: null,
+    work_task: null,
+    work_trigger_event_id: null,
+    work_started_at: null,
+    work_updated_at: null,
+    work_expires_at: null,
+    work_source: null,
     created_at: "string",
     updated_at: "string",
     ...extra,
   };
+}
+
+function workStateStatusShape(): Record<string, unknown> {
+  return { state: "string" };
 }
 
 function agentSessionShape(): Record<string, unknown> {
@@ -149,7 +163,7 @@ function agentSessionShape(): Record<string, unknown> {
     created_at: "string",
     updated_at: "string",
     last_seen_at: "string",
-    peer: peerShape({ online: true, presence: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null }),
+    peer: peerShape({ online: true, presence: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null }),
   };
 }
 
@@ -182,6 +196,22 @@ function memberShape(extra: Record<string, unknown> = {}): Record<string, unknow
     tool: "string",
     host_session_id: null,
     activity_state: null,
+    deleted_at: null,
+    lease_expires_at: "string",
+    lifecycle_state: "string",
+    online: true,
+    presence: "string",
+    work_phase: null,
+    work_summary: null,
+    work_scope_json: null,
+    work_task: null,
+    work_trigger_event_id: null,
+    work_started_at: null,
+    work_updated_at: null,
+    work_expires_at: null,
+    work_source: null,
+    work_state: null,
+    work_state_status: workStateStatusShape(),
     ...extra,
   };
 }
@@ -255,8 +285,9 @@ function webStateShape(): Record<string, unknown> {
     daemon: { pid: "number", base_url: "string", started_at: "string", token_required: false },
     generated_at: "string",
     agent_runtime_details: [agentRuntimeDetailsShape()],
+    agents: [agentProjectionShape()],
     cursor: "number",
-    peers: [peerShape({ online: true, presence: "string", purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
+    peers: [peerShape({ online: true, presence: "string", purpose: "string", work_state: null, work_state_status: workStateStatusShape(), lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
     groups: [groupShape()],
     group_paths: [groupPathShape()],
     memberships: [memberShape({ activity_state: "string", online: true, presence: "string" })],
@@ -271,6 +302,24 @@ function webStateShape(): Record<string, unknown> {
     launch_profiles: [],
     launch_lifecycle: [],
     skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
+  };
+}
+
+function agentProjectionShape(): Record<string, unknown> {
+  return {
+    ...peerShape({
+      purpose: "string",
+      online: true,
+      presence: "string",
+      work_state: null,
+      work_state_status: workStateStatusShape(),
+      lifecycle_state: "string",
+      archive_source: null,
+      archived_at: null,
+      archived_reason: null,
+    }),
+    runtime_details: agentRuntimeDetailsShape(),
+    launch_lifecycle: null,
   };
 }
 

@@ -1,8 +1,12 @@
 # Agent Work State v1
 
-Status: revised after Plannotator feedback; Beads filed under `sync-08gl`.
-Branch: `codex/agent-work-state-plan`. Implementation is deferred to the Beads
-tree below.
+Status: implemented in `codex/agent-work-state-plan` under Beads epic
+`sync-08gl`. Core v1 includes daemon storage/history, REST, MCP, skills,
+efficient web projection/invalidation, AOE proof, and web UI feedback.
+
+Deferred follow-up: Beads claim/close nudges remain advisory future work. V1
+keeps `task` as free-form text so issue ids and abstract objectives can coexist
+without coupling work state to Beads availability.
 
 ## Purpose
 

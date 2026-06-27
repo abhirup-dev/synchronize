@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { LoggingMessageNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Database } from "bun:sqlite";
 import { z } from "zod";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -46,6 +47,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_register",
         "bridge_whoami",
         "bridge_list_peers",
+        "bridge_set_work_state",
         "bridge_dm",
         "bridge_reply",
         "bridge_inbox",
@@ -66,6 +68,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_get_thread",
       ]),
     );
+    expect(toolNames).not.toContain("bridge_clear_work_state");
 
     const registered = parseToolText(
       await client.callTool({ name: "bridge_register", arguments: { session_name: "codex-e2e", purpose: "test" } }),
@@ -116,6 +119,53 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
     ) as { event: { event_id: number; group_name: string | null; reply_to_event_id: number | null } };
     expect(root.event.group_name).toBe("mcp-room");
     expect(root.event.reply_to_event_id).toBeNull();
+    const workState = parseToolText(
+      await client.callTool({
+        name: "bridge_set_work_state",
+        arguments: {
+          phase: "implementation",
+          summary: "Exercise MCP work-state tool",
+          task: "sync-08gl.3.1",
+          trigger_event_id: root.event.event_id,
+          ttl_minutes: 1,
+        },
+      }),
+    ) as { work_state: { phase: string; source: string; task: string; trigger_event_id: number } | null; ttl_minutes: number | null };
+    expect(workState.ttl_minutes).toBe(1);
+    expect(workState.work_state).toMatchObject({
+      phase: "implementation",
+      source: "mcp",
+      task: "sync-08gl.3.1",
+      trigger_event_id: root.event.event_id,
+    });
+    const workWhoami = parseToolText(await client.callTool({ name: "bridge_whoami", arguments: {} })) as {
+      work_state: { phase: string } | null;
+      work_state_status: { state: string; seconds_remaining?: number };
+    };
+    expect(workWhoami.work_state?.phase).toBe("implementation");
+    expect(workWhoami.work_state_status.state).toBe("near_expiry");
+    const peersWithWork = parseToolText(await client.callTool({ name: "bridge_list_peers", arguments: {} })) as {
+      peers: Array<{ peer_id: string; work_state_status?: { state: string } }>;
+    };
+    expect(peersWithWork.peers.find((peer) => peer.peer_id === peerId)?.work_state_status?.state).toBe("near_expiry");
+
+    const db = new Database(join(home, "synchronize.db"));
+    db.query("UPDATE peers SET work_expires_at = '2026-06-27T00:00:00.000Z' WHERE peer_id = ?").run(peerId);
+    db.close();
+    const staleWhoami = parseToolText(await client.callTool({ name: "bridge_whoami", arguments: {} })) as {
+      work_state: unknown;
+      work_state_status: { state: string };
+    };
+    expect(staleWhoami).toMatchObject({ work_state: null, work_state_status: { state: "stale" } });
+
+    const clearedWorkState = parseToolText(
+      await client.callTool({ name: "bridge_set_work_state", arguments: { clear: true } }),
+    ) as { work_state: unknown; ttl_minutes: number | null; expires_at: string | null };
+    expect(clearedWorkState).toMatchObject({ work_state: null, ttl_minutes: null, expires_at: null });
+    const clearedWhoami = parseToolText(await client.callTool({ name: "bridge_whoami", arguments: {} })) as {
+      work_state_status: { state: string };
+    };
+    expect(clearedWhoami.work_state_status.state).toBe("absent");
     const threadReply = parseToolText(
       await client.callTool({
         name: "bridge_send_group",

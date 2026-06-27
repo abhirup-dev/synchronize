@@ -60,6 +60,51 @@ class SyncRestClient:
     def inbox(self, peer_id: str) -> dict[str, Any]:
         return self.http_json(f"/peers/{peer_id}/inbox")
 
+    def set_work_state(
+        self,
+        *,
+        peer_id: str,
+        phase: str | None = None,
+        summary: str | None = None,
+        scope: dict[str, Any] | None = None,
+        task: str | None = None,
+        trigger_event_id: int | None = None,
+        ttl_minutes: int | None = None,
+        source: str = "api",
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"peer_id": peer_id, "source": source}
+        if clear:
+            body["clear"] = True
+        else:
+            if phase is not None:
+                body["phase"] = phase
+            if summary is not None:
+                body["summary"] = summary
+            if scope is not None:
+                body["scope"] = scope
+            if task is not None:
+                body["task"] = task
+            if ttl_minutes is not None:
+                body["ttl_minutes"] = ttl_minutes
+        if trigger_event_id is not None:
+            body["trigger_event_id"] = trigger_event_id
+        return self.http_json("/peers/work-state", method="POST", body=body)
+
+    def work_state_history(self, peer_id: str, **query: Any) -> dict[str, Any]:
+        params = {
+            key: str(value)
+            for key, value in query.items()
+            if value is not None
+        }
+        suffix = f"?{urllib.parse.urlencode(params)}" if params else ""
+        return self.http_json(f"/peers/{peer_id}/work-state-history{suffix}")
+
+    def web_agents(self, peer_id: str | None = None) -> dict[str, Any]:
+        if peer_id is not None:
+            return self.http_json(f"/web/agents/{url_quote(peer_id)}")
+        return self.http_json("/web/agents")
+
     def agent_sessions(self, tool: str) -> dict[str, Any]:
         return self.http_json(f"/agent-sessions?tool={url_quote(tool)}")
 

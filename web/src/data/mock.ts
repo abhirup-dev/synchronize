@@ -7,6 +7,7 @@ import type {
   ActivityItem,
   Agent,
   AgentLaunchProfile,
+  AgentWorkStateHistoryEntry,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
@@ -41,6 +42,7 @@ import {
   THREAD_REPLIES,
   THREAD_SUMMARIES,
   TIMELINE,
+  WORK_STATE_HISTORY,
 } from "./seed.ts";
 
 // Persistent overrides for agent identity colors. Stored in localStorage so the
@@ -144,6 +146,10 @@ export class MockDataSource implements DataSource {
   }
 
   archivedSessions(): Snapshot<ArchivedSession[]> { return this._archivedSessions; }
+
+  async agentWorkStateHistory(agentId: string): Promise<AgentWorkStateHistoryEntry[]> {
+    return WORK_STATE_HISTORY[agentId] ?? [];
+  }
 
   private emitActivity(): void {
     const items = this.activityBase.map((item) => ({

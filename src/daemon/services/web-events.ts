@@ -12,11 +12,12 @@ interface WebStateChange {
   event_id?: number;
   group_id?: number | null;
   peer_id?: string | null;
+  agent?: unknown;
 }
 
 export function emitWebStateChanged(
   ctx: { db: Database; webStateClients: Set<WebStateClient>; stateVersion: number },
-  input: { domains: string[]; eventId?: number; groupId?: number | null; peerId?: string | null },
+  input: { domains: string[]; eventId?: number; groupId?: number | null; peerId?: string | null; agent?: unknown },
 ): void {
   ctx.stateVersion += 1;
   const change: WebStateChange = {
@@ -26,6 +27,7 @@ export function emitWebStateChanged(
     ...(input.eventId !== undefined ? { event_id: input.eventId } : {}),
     ...(input.groupId !== undefined ? { group_id: input.groupId } : {}),
     ...(input.peerId !== undefined ? { peer_id: input.peerId } : {}),
+    ...(input.agent !== undefined ? { agent: input.agent } : {}),
   };
   for (const client of [...ctx.webStateClients]) client.send(change);
 }

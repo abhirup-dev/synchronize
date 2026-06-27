@@ -56,13 +56,14 @@ import { applyLaunchTransition } from "./repo/launch.ts";
 import type { EventSubscriber } from "./services/subscriptions.ts";
 import { emitWebStateChanged, type WebStateClient } from "./services/web-events.ts";
 import {
-  derivePresence,
   ensurePeer,
+  formatPeer,
   getPeer,
   LOCAL_WEB_PEER_ID,
   selectExpiredPeerIds,
   selectStoppedLaunchPeerIds,
   softDeletePeerIfPresent,
+  type FormattedPeer,
   type PeerRow,
 } from "./repo/peers.ts";
 import { assertLanModeIsProtected, resolveBind } from "./auth.ts";
@@ -129,6 +130,17 @@ export interface SummaryPeerRow {
   purpose: string | null;
   online: number;
   activity_state: string | null;
+  lifecycle_state?: string;
+  deleted_at?: string | null;
+  work_phase?: string | null;
+  work_summary?: string | null;
+  work_scope_json?: string | null;
+  work_task?: string | null;
+  work_trigger_event_id?: number | null;
+  work_started_at?: string | null;
+  work_updated_at?: string | null;
+  work_expires_at?: string | null;
+  work_source?: string | null;
   pending_inbox: number;
   groups: number;
   updated_at: string;
@@ -470,11 +482,12 @@ interface WebStateResponse {
   launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
   launch_profiles: WebLaunchProfileStatus[];
   launch_lifecycle: WebLaunchLifecycleRow[];
+  agents: WebAgentProjection[];
   agent_runtime_details: WebAgentRuntimeDetails[];
-  peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
+  peers: Array<FormattedPeer<PeerRow & { online: number | boolean }> & { aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
-  memberships: Array<FormattedMember & { online: boolean }>;
+  memberships: Array<FormattedPeer<FormattedMember & { online: number | boolean }>>;
   room_summaries: WebRoomSummary[];
   events: WebEventRow[];
   media: MediaRow[];
@@ -550,6 +563,12 @@ interface WebAgentRuntimeDetails {
 
 type WebAgentRuntimeDetailsRow = Omit<WebAgentRuntimeDetails, "git_dirty"> & { git_dirty: number | null };
 
+export type WebAgentProjection = FormattedPeer<PeerRow & { online: number | boolean }> & {
+  runtime_details: WebAgentRuntimeDetails | null;
+  launch_lifecycle: WebLaunchLifecycleRow | null;
+  aoe_session?: WebAoeSession;
+};
+
 interface WebLaunchToolStatus {
   tool: "claude" | "pi" | "letta";
   available: boolean;
@@ -594,6 +613,131 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
   const aroundEventId = Number.isInteger(aroundRaw) && aroundRaw >= 1 ? aroundRaw : null;
   const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
   const aoeProfile = aoeProfileName(ctx.paths.home);
+  const { launchLifecycle, agentRuntimeDetails, agents } = buildWebAgentProjectionSet(ctx, now, aoeProfile);
+  const peers = agents.map((agent) => stripAgentProjection(agent));
+  const groups = ctx.db
+    .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
+    .all()
+    .map(formatGroup);
+  const groupPaths = ctx.db
+    .query<GroupPathRow, []>("SELECT * FROM group_paths WHERE active = 1 ORDER BY group_id ASC, path ASC")
+    .all()
+    .map(formatGroupPath);
+  const memberships = ctx.db
+    .query<MemberRow & { online: number }, [string]>(
+      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
+       FROM group_members gm
+       JOIN peers p ON p.peer_id = gm.peer_id
+       WHERE gm.member_state IN ('active','archived')
+         AND p.deleted_at IS NULL
+       ORDER BY gm.group_id ASC, gm.alias ASC`,
+    )
+    .all(now)
+    .map((member) => ({ ...formatPeer(member, now), active: Boolean(member.active) }));
+  const roomSummaries = ctx.db
+    .query<WebRoomSummary, []>(
+      `SELECT
+         g.group_id,
+         MAX(e.event_id) AS last_event_id,
+         MAX(e.created_at) AS last_event_at,
+         (SELECT body FROM events latest
+          WHERE latest.group_id = g.group_id AND latest.parent_event_id IS NULL
+          ORDER BY latest.event_id DESC LIMIT 1) AS last_preview,
+         COUNT(CASE WHEN e.type = 'group_message' AND e.parent_event_id IS NULL THEN 1 END) AS message_count
+       FROM groups g
+       LEFT JOIN events e ON e.group_id = g.group_id
+       GROUP BY g.group_id
+       ORDER BY last_event_id DESC, g.name ASC`,
+    )
+    .all();
+  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId, aroundEventId });
+  const media = readWebRoomMedia(ctx, { room, limit });
+  const target = aroundEventId === null
+    ? undefined
+    : {
+        event_id: aroundEventId,
+        included: events.some((event) => event.event_id === aroundEventId),
+        before_count: events.filter((event) => event.event_id < aroundEventId).length,
+        after_count: events.filter((event) => event.event_id > aroundEventId).length,
+      };
+  // A soft-deleted (evicted / lease-lapsed) peer can still be the author of
+  // historical events. The active `peers` directory above excludes deleted peers
+  // (correct for the live roster), but the web client resolves an event's sender
+  // by looking it up in `peers` — so without the author present the message
+  // renders authorless/blank and effectively disappears. Re-include any
+  // sender/recipient referenced by the returned events that is not already in the
+  // active list (bounded to this room's referenced peers), so durable messages
+  // stay visible after their author is evicted. The roster/memberships queries are
+  // intentionally left filtered — this only feeds identity resolution.
+  const knownPeerIds = new Set(peers.map((peer) => peer.peer_id));
+  const referencedPeerIds = new Set<string>();
+  for (const event of events) {
+    if (event.sender_peer_id && !knownPeerIds.has(event.sender_peer_id)) referencedPeerIds.add(event.sender_peer_id);
+    if (event.recipient_peer_id && !knownPeerIds.has(event.recipient_peer_id)) referencedPeerIds.add(event.recipient_peer_id);
+  }
+  const extraPeers = [...referencedPeerIds].flatMap((peerId) => {
+    const row = ctx.db
+      .query<PeerRow & { online: number }, [string, string]>(
+        `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
+                activity_state, last_activity_at, last_cursor, deleted_at,
+                lifecycle_state, archived_at, archived_reason, archive_source,
+                work_phase, work_summary, work_scope_json, work_task, work_trigger_event_id,
+                work_started_at, work_updated_at, work_expires_at, work_source,
+                created_at, updated_at, lease_expires_at > ? AS online
+         FROM peers WHERE peer_id = ?`,
+      )
+      .get(now, peerId);
+    if (!row) return [];
+    return [formatPeer(row, now)];
+  });
+  return {
+    ok: true,
+    generated_at: now,
+    cursor,
+    daemon: {
+      pid: process.pid,
+      base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
+      started_at: ctx.startedAt,
+      token_required: Boolean(ctx.token),
+    },
+    launch_tools: launchToolStatus(),
+    launch_profiles: launchProfileStatus(ctx),
+    launch_lifecycle: launchLifecycle,
+    agents,
+    agent_runtime_details: agentRuntimeDetails,
+    peers: [...peers, ...extraPeers],
+    groups,
+    group_paths: groupPaths,
+    memberships,
+    room_summaries: roomSummaries,
+    events,
+    media,
+    skill_catalog: ctx.skillCatalog,
+    ...(target ? { target } : {}),
+  };
+}
+
+export function buildWebAgents(ctx: DaemonContext, url: URL): { ok: true; generated_at: string; agents: WebAgentProjection[] } {
+  const now = new Date().toISOString();
+  const aoeProfile = aoeProfileName(ctx.paths.home);
+  const peerId = url.pathname.match(/^\/web\/agents\/([^/]+)$/)?.[1];
+  const agents = buildWebAgentProjectionSet(ctx, now, aoeProfile).agents;
+  const filtered = peerId ? agents.filter((agent) => agent.peer_id === decodeURIComponent(peerId)) : agents;
+  if (peerId && filtered.length === 0) throw new HttpError(404, "peer_not_found", `Peer not found: ${decodeURIComponent(peerId)}`);
+  return { ok: true, generated_at: now, agents: filtered };
+}
+
+export function buildWebAgent(ctx: DaemonContext, peerId: string): WebAgentProjection | null {
+  const now = new Date().toISOString();
+  const aoeProfile = aoeProfileName(ctx.paths.home);
+  return buildWebAgentProjectionSet(ctx, now, aoeProfile).agents.find((agent) => agent.peer_id === peerId) ?? null;
+}
+
+function buildWebAgentProjectionSet(
+  ctx: DaemonContext,
+  now: string,
+  aoeProfile: string,
+): { launchLifecycle: WebLaunchLifecycleRow[]; agentRuntimeDetails: WebAgentRuntimeDetails[]; agents: WebAgentProjection[] } {
   const launchLifecycle = ctx.db
     .query<WebLaunchLifecycleRow, []>(
       `SELECT launch_id, peer_id, tool, profile_name, session_name, alias, cwd, target_group,
@@ -606,6 +750,11 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
        LIMIT 200`,
     )
     .all();
+  const launchById = new Map(launchLifecycle.map((launch) => [launch.launch_id, launch]));
+  const latestLaunchByPeer = new Map<string, WebLaunchLifecycleRow>();
+  for (const launch of launchLifecycle) {
+    if (!latestLaunchByPeer.has(launch.peer_id)) latestLaunchByPeer.set(launch.peer_id, launch);
+  }
   const agentRuntimeDetails = ctx.db
     .query<WebAgentRuntimeDetailsRow, []>(
       `SELECT
@@ -663,128 +812,38 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       ...row,
       git_dirty: row.git_dirty === null ? null : Boolean(row.git_dirty),
     }));
-  const peers = ctx.db
+  const runtimeByPeer = new Map(agentRuntimeDetails.map((details) => [details.peer_id, details]));
+  const agents = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-              activity_state, last_activity_at,
+              activity_state, last_activity_at, deleted_at,
               last_cursor, lifecycle_state, archived_at, archived_reason, archive_source,
+              work_phase, work_summary, work_scope_json, work_task, work_trigger_event_id,
+              work_started_at, work_updated_at, work_expires_at, work_source,
               created_at, updated_at, lease_expires_at > ? AS online
        FROM peers
        WHERE deleted_at IS NULL
        ORDER BY updated_at DESC, session_name ASC`,
     )
     .all(now)
-    .map((peer) => ({
-      ...peer,
-      online: Boolean(peer.online),
-      presence: derivePresence(Boolean(peer.online), peer.activity_state),
-    }))
+    .map((peer) => formatPeer(peer, now))
     .map((peer) => {
+      const runtime = runtimeByPeer.get(peer.peer_id) ?? null;
+      const launch = runtime?.launch_id ? launchById.get(runtime.launch_id) ?? null : latestLaunchByPeer.get(peer.peer_id) ?? null;
       const aoeSession = deriveAoeSessionForPeer(ctx.db, peer.peer_id, aoeProfile);
-      return aoeSession ? { ...peer, aoe_session: aoeSession } : peer;
-    });
-  const groups = ctx.db
-    .query<GroupRow, []>("SELECT * FROM groups ORDER BY name ASC")
-    .all()
-    .map(formatGroup);
-  const groupPaths = ctx.db
-    .query<GroupPathRow, []>("SELECT * FROM group_paths WHERE active = 1 ORDER BY group_id ASC, path ASC")
-    .all()
-    .map(formatGroupPath);
-  const memberships = ctx.db
-    .query<MemberRow & { online: number }, [string]>(
-      `SELECT ${MEMBER_SELECT_SQL}, p.lease_expires_at > ? AS online
-       FROM group_members gm
-       JOIN peers p ON p.peer_id = gm.peer_id
-       WHERE gm.member_state IN ('active','archived')
-         AND p.deleted_at IS NULL
-       ORDER BY gm.group_id ASC, gm.alias ASC`,
-    )
-    .all(now)
-    .map((member) => ({
-      ...member,
-      active: Boolean(member.active),
-      online: Boolean(member.online),
-      presence: derivePresence(Boolean(member.online), member.activity_state),
-    }));
-  const roomSummaries = ctx.db
-    .query<WebRoomSummary, []>(
-      `SELECT
-         g.group_id,
-         MAX(e.event_id) AS last_event_id,
-         MAX(e.created_at) AS last_event_at,
-         (SELECT body FROM events latest
-          WHERE latest.group_id = g.group_id AND latest.parent_event_id IS NULL
-          ORDER BY latest.event_id DESC LIMIT 1) AS last_preview,
-         COUNT(CASE WHEN e.type = 'group_message' AND e.parent_event_id IS NULL THEN 1 END) AS message_count
-       FROM groups g
-       LEFT JOIN events e ON e.group_id = g.group_id
-       GROUP BY g.group_id
-       ORDER BY last_event_id DESC, g.name ASC`,
-    )
-    .all();
-  const events = readWebRoomEvents(ctx, { room, since, limit, webPeerId, aroundEventId });
-  const media = readWebRoomMedia(ctx, { room, limit });
-  const target = aroundEventId === null
-    ? undefined
-    : {
-        event_id: aroundEventId,
-        included: events.some((event) => event.event_id === aroundEventId),
-        before_count: events.filter((event) => event.event_id < aroundEventId).length,
-        after_count: events.filter((event) => event.event_id > aroundEventId).length,
+      return {
+        ...peer,
+        runtime_details: runtime,
+        launch_lifecycle: launch,
+        ...(aoeSession ? { aoe_session: aoeSession } : {}),
       };
-  // A soft-deleted (evicted / lease-lapsed) peer can still be the author of
-  // historical events. The active `peers` directory above excludes deleted peers
-  // (correct for the live roster), but the web client resolves an event's sender
-  // by looking it up in `peers` — so without the author present the message
-  // renders authorless/blank and effectively disappears. Re-include any
-  // sender/recipient referenced by the returned events that is not already in the
-  // active list (bounded to this room's referenced peers), so durable messages
-  // stay visible after their author is evicted. The roster/memberships queries are
-  // intentionally left filtered — this only feeds identity resolution.
-  const knownPeerIds = new Set(peers.map((peer) => peer.peer_id));
-  const referencedPeerIds = new Set<string>();
-  for (const event of events) {
-    if (event.sender_peer_id && !knownPeerIds.has(event.sender_peer_id)) referencedPeerIds.add(event.sender_peer_id);
-    if (event.recipient_peer_id && !knownPeerIds.has(event.recipient_peer_id)) referencedPeerIds.add(event.recipient_peer_id);
-  }
-  const extraPeers = [...referencedPeerIds].flatMap((peerId) => {
-    const row = ctx.db
-      .query<PeerRow & { online: number }, [string, string]>(
-        `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
-                activity_state, last_activity_at, last_cursor,
-                lifecycle_state, archived_at, archived_reason, archive_source,
-                created_at, updated_at, lease_expires_at > ? AS online
-         FROM peers WHERE peer_id = ?`,
-      )
-      .get(now, peerId);
-    if (!row) return [];
-    return [{ ...row, online: Boolean(row.online), presence: derivePresence(Boolean(row.online), row.activity_state) }];
-  });
-  return {
-    ok: true,
-    generated_at: now,
-    cursor,
-    daemon: {
-      pid: process.pid,
-      base_url: `http://${ctx.server.hostname}:${ctx.server.port}`,
-      started_at: ctx.startedAt,
-      token_required: Boolean(ctx.token),
-    },
-    launch_tools: launchToolStatus(),
-    launch_profiles: launchProfileStatus(ctx),
-    launch_lifecycle: launchLifecycle,
-    agent_runtime_details: agentRuntimeDetails,
-    peers: [...peers, ...extraPeers],
-    groups,
-    group_paths: groupPaths,
-    memberships,
-    room_summaries: roomSummaries,
-    events,
-    media,
-    skill_catalog: ctx.skillCatalog,
-    ...(target ? { target } : {}),
-  };
+    });
+  return { launchLifecycle, agentRuntimeDetails, agents };
+}
+
+function stripAgentProjection(agent: WebAgentProjection): FormattedPeer<PeerRow & { online: number | boolean }> & { aoe_session?: WebAoeSession } {
+  const { runtime_details: _runtimeDetails, launch_lifecycle: _launchLifecycle, ...peer } = agent;
+  return peer;
 }
 
 function launchToolStatus(): Record<"claude" | "pi" | "letta", WebLaunchToolStatus> {

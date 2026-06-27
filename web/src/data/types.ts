@@ -37,6 +37,33 @@ export interface AgentRuntimeDetails {
   lastSeenAt?: string;
 }
 
+export interface AgentWorkState {
+  phase: "research" | "analysis" | "planning" | "implementation" | "testing" | "review" | "coordination" | "blocked" | "other";
+  summary: string;
+  scope?: { kind: string; value: string; label?: string };
+  task?: string;
+  triggerEventId?: number;
+  startedAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  source: "mcp" | "hook" | "api";
+}
+
+export interface AgentWorkStateStatus {
+  state: "absent" | "active" | "near_expiry" | "stale";
+  expiresAt?: string;
+  secondsRemaining?: number;
+}
+
+export interface AgentWorkStateHistoryEntry extends AgentWorkState {
+  historyId: number;
+  peerId: string;
+  correlationMethod: "explicit" | "none" | "timestamp_inferred";
+  createdAt: string;
+  clearedAt?: string;
+  inferredEventId?: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -49,6 +76,8 @@ export interface Agent {
   archivedReason?: string;
   archiveSource?: string;
   statusNote?: string;
+  workState?: AgentWorkState;
+  workStateStatus?: AgentWorkStateStatus;
   launchLifecycle?: {
     launchId: string;
     state: string;
@@ -406,6 +435,8 @@ export interface DataSource {
   /** Count of items awaiting the local user (server-authoritative). */
   activityAwaitingCount(): Snapshot<number>;
   archivedSessions(): Snapshot<ArchivedSession[]>;
+  /** Lazy profile drill-down for recent semantic work-state changes. */
+  agentWorkStateHistory(agentId: string): Promise<AgentWorkStateHistoryEntry[]>;
 
   // commands
   stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment>;

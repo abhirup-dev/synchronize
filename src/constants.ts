@@ -69,6 +69,19 @@ function positiveEnvMs(name: string, fallback: number): number {
 // activity_state if set, else generic "online".
 export const ACTIVITY_STATES = ["initializing", "working", "idle"] as const;
 export type ActivityState = (typeof ACTIVITY_STATES)[number];
+
+export const WORK_PHASES = [
+  "research",
+  "analysis",
+  "planning",
+  "implementation",
+  "testing",
+  "review",
+  "coordination",
+  "blocked",
+  "other",
+] as const;
+export type WorkPhase = (typeof WORK_PHASES)[number];
 export const MAX_MESSAGE_CHARS = 16_000;
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 200;

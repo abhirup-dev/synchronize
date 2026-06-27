@@ -3,6 +3,9 @@ import type {
   Agent,
   AgentLaunchProfile,
   AgentStatus,
+  AgentWorkState,
+  AgentWorkStateHistoryEntry,
+  AgentWorkStateStatus,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
@@ -56,6 +59,33 @@ export interface DaemonDataSourceOptions {
 
 type DaemonPresence = "offline" | "online" | "initializing" | "working" | "idle";
 
+interface DaemonWorkState {
+  phase: AgentWorkState["phase"];
+  summary: string;
+  scope?: { kind: string; value: string; label?: string };
+  task?: string;
+  trigger_event_id?: number;
+  started_at: string;
+  updated_at: string;
+  expires_at: string;
+  source: AgentWorkState["source"];
+}
+
+interface DaemonWorkStateStatus {
+  state: AgentWorkStateStatus["state"];
+  expires_at?: string;
+  seconds_remaining?: number;
+}
+
+interface DaemonWorkStateHistoryEntry extends DaemonWorkState {
+  history_id: number;
+  peer_id: string;
+  correlation_method: AgentWorkStateHistoryEntry["correlationMethod"];
+  created_at: string;
+  cleared_at?: string | null;
+  inferred_event_id?: number;
+}
+
 interface DaemonPeer {
   peer_id: string;
   tool: string;
@@ -68,11 +98,18 @@ interface DaemonPeer {
   archive_source?: string | null;
   online?: boolean;
   presence?: DaemonPresence;
+  work_state?: DaemonWorkState | null;
+  work_state_status?: DaemonWorkStateStatus;
   aoe_session?: {
     profile: string;
     title: string;
     attach_command: string;
   };
+}
+
+interface DaemonAgentProjection extends DaemonPeer {
+  runtime_details: DaemonAgentRuntimeDetails | null;
+  launch_lifecycle: DaemonLaunchLifecycle | null;
 }
 
 interface DaemonGroup {
@@ -231,6 +268,7 @@ interface WebStateResponse {
   launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
   launch_profiles?: DaemonLaunchProfile[];
   launch_lifecycle?: DaemonLaunchLifecycle[];
+  agents?: DaemonAgentProjection[];
   agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
   groups: DaemonGroup[];
@@ -275,6 +313,7 @@ interface WebStateChange {
   event_id?: number;
   group_id?: number | null;
   peer_id?: string | null;
+  agent?: DaemonAgentProjection;
 }
 
 interface DaemonLaunchResponse {
@@ -443,6 +482,13 @@ export class DaemonDataSource implements DataSource {
       if (this.connected) void this.refreshArchivedSessions();
     }
     return this._archivedSessions;
+  }
+
+  async agentWorkStateHistory(agentId: string): Promise<AgentWorkStateHistoryEntry[]> {
+    const response = await this.request<{ history: DaemonWorkStateHistoryEntry[] }>(
+      `/peers/${encodeURIComponent(agentId)}/work-state-history?limit=8`,
+    );
+    return response.history.map(mapWorkStateHistoryEntry);
   }
 
   messages(roomId: string): Snapshot<Message[]> {
@@ -1343,6 +1389,14 @@ export class DaemonDataSource implements DataSource {
       if (change.event_id !== undefined) void this.refreshEvent(change.event_id);
       return;
     }
+    if (isPurePeerDelta(change)) {
+      if (change.agent) {
+        this.patchAgentProjection(change.agent);
+      } else {
+        void this.refreshAgents(change.peer_id ?? undefined);
+      }
+      return;
+    }
     if (change.group_id) this.pendingRooms.add(groupRoomId(change.group_id));
     if (change.peer_id) {
       const dmId = dmRoomId(change.peer_id);
@@ -1364,6 +1418,22 @@ export class DaemonDataSource implements DataSource {
       }
       this.pendingRooms.clear();
     }, 50);
+  }
+
+  private patchAgentProjection(agent: DaemonAgentProjection): void {
+    const mapped = mapAgent(agent, this.peerId, agent.launch_lifecycle ?? undefined, agent.runtime_details ?? undefined);
+    const currentAgents = this._agents.get();
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, [mapped])));
+  }
+
+  private async refreshAgents(peerId?: string): Promise<void> {
+    const path = peerId ? `/web/agents/${encodeURIComponent(peerId)}` : "/web/agents";
+    const response = await this.request<{ agents: DaemonAgentProjection[] }>(path);
+    const mapped = response.agents.map((agent) =>
+      mapAgent(agent, this.peerId, agent.launch_lifecycle ?? undefined, agent.runtime_details ?? undefined),
+    );
+    const currentAgents = this._agents.get();
+    this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, mapped)));
   }
 
   private async refreshEvent(eventId: number): Promise<void> {
@@ -1391,6 +1461,11 @@ export class DaemonDataSource implements DataSource {
 }
 
 function agentsFromState(state: WebStateResponse, mePeerId: string): Agent[] {
+  if (state.agents && state.agents.length > 0) {
+    return state.agents.map((agent) =>
+      mapAgent(agent, mePeerId, agent.launch_lifecycle ?? undefined, agent.runtime_details ?? undefined),
+    );
+  }
   const peers = new Map<string, DaemonPeer>();
   for (const peer of state.peers) peers.set(peer.peer_id, peer);
   for (const member of state.memberships) {
@@ -1463,6 +1538,8 @@ function mapAgent(
     ...(peer.archived_reason ? { archivedReason: peer.archived_reason } : {}),
     ...(peer.archive_source ? { archiveSource: peer.archive_source } : {}),
     ...(launchNote ? { statusNote: launchNote } : peer.purpose ? { statusNote: peer.purpose } : {}),
+    ...(peer.work_state ? { workState: mapWorkState(peer.work_state) } : {}),
+    ...(peer.work_state_status ? { workStateStatus: mapWorkStateStatus(peer.work_state_status) } : {}),
     ...(launch
       ? {
           launchLifecycle: {
@@ -1517,6 +1594,44 @@ function mapAgent(
       : {}),
     avatar: (name.trim()[0] ?? "?").toUpperCase(),
   };
+}
+
+function mapWorkState(state: DaemonWorkState): AgentWorkState {
+  return {
+    phase: state.phase,
+    summary: state.summary,
+    ...(state.scope ? { scope: state.scope } : {}),
+    ...(state.task ? { task: state.task } : {}),
+    ...(state.trigger_event_id !== undefined ? { triggerEventId: state.trigger_event_id } : {}),
+    startedAt: state.started_at,
+    updatedAt: state.updated_at,
+    expiresAt: state.expires_at,
+    source: state.source,
+  };
+}
+
+function mapWorkStateStatus(status: DaemonWorkStateStatus): AgentWorkStateStatus {
+  return {
+    state: status.state,
+    ...(status.expires_at ? { expiresAt: status.expires_at } : {}),
+    ...(status.seconds_remaining !== undefined ? { secondsRemaining: status.seconds_remaining } : {}),
+  };
+}
+
+function mapWorkStateHistoryEntry(entry: DaemonWorkStateHistoryEntry): AgentWorkStateHistoryEntry {
+  return {
+    ...mapWorkState(entry),
+    historyId: entry.history_id,
+    peerId: entry.peer_id,
+    correlationMethod: entry.correlation_method,
+    createdAt: entry.created_at,
+    ...(entry.cleared_at ? { clearedAt: entry.cleared_at } : {}),
+    ...(entry.inferred_event_id !== undefined ? { inferredEventId: entry.inferred_event_id } : {}),
+  };
+}
+
+function isPurePeerDelta(change: WebStateChange): boolean {
+  return change.domains.length > 0 && change.domains.every((domain) => domain === "work_state" || domain === "peer_presence");
 }
 
 function launchStatusNote(launch: DaemonLaunchLifecycle): string | undefined {

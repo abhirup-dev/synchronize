@@ -1,9 +1,11 @@
 import { Dialog } from "@base-ui-components/react/dialog";
-import { Brain, Check, Copy, FolderGit2, Monitor, X } from "lucide-react";
+import { Brain, Check, ClipboardList, Copy, FolderGit2, Monitor, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
-import type { Agent, AgentRuntimeDetails } from "../data/types.ts";
+import { useAgentWorkStateHistory } from "../data/context.tsx";
+import type { Agent, AgentRuntimeDetails, AgentWorkStateHistoryEntry } from "../data/types.ts";
 import { Avatar } from "./primitives.tsx";
+import { formatRelativeTime, historyLabel, phaseLabel } from "../workState.ts";
 
 export interface AgentPreviewDetails extends Partial<AgentRuntimeDetails> {
   tool?: string;
@@ -41,6 +43,23 @@ export function AgentPreview({ agent, details, density = "default" }: AgentPrevi
   const machine = details?.machine ?? runtimeDetails?.machineId;
   const state = runtimeDetails?.launchState ?? agent.launchLifecycle?.state ?? agent.lifecycleState ?? "active";
   const compact = density === "compact";
+  const loadHistory = useAgentWorkStateHistory();
+  const [history, setHistory] = useState<AgentWorkStateHistoryEntry[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistory(null);
+    setHistoryError(null);
+    void loadHistory(agent.id)
+      .then((rows) => {
+        if (!cancelled) setHistory(rows);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setHistoryError(error instanceof Error ? error.message : "Could not load recent work");
+      });
+    return () => { cancelled = true; };
+  }, [agent.id, loadHistory]);
 
   return (
     <article className={cn(cardBase, compact ? "w-[320px]" : "w-[min(660px,100%)]")}>
@@ -77,10 +96,27 @@ export function AgentPreview({ agent, details, density = "default" }: AgentPrevi
           <Detail compact={compact} label="state" value={state} />
         </Section>
 
+        <Section {...(compact ? {} : { className: "col-span-2" })} title="Current Work" icon={<ClipboardList size={15} />}>
+          {agent.workState ? (
+            <>
+              <Detail compact={compact} label="phase" value={phaseLabel(agent.workState.phase)} />
+              <Detail compact={compact} label="summary" value={agent.workState.summary} />
+              <Detail compact={compact} label="task" value={agent.workState.task ?? "none"} />
+              <Detail compact={compact} label="scope" value={agent.workState.scope ? `${agent.workState.scope.kind}:${agent.workState.scope.value}` : "none"} />
+            </>
+          ) : (
+            <Detail compact={compact} label="state" value={agent.workStateStatus?.state === "stale" ? "expired" : "none"} />
+          )}
+        </Section>
+
         <Section {...(compact ? {} : { className: "col-span-2" })} title="Workspace" icon={<FolderGit2 size={15} />}>
           <Detail compact={compact} label="cwd" value={runtimeDetails?.cwd ?? "unknown"} />
           <Detail compact={compact} label="branch" value={runtimeDetails?.gitBranch ?? "unknown"} />
           <Detail compact={compact} label="git" value={runtimeDetails?.gitDirty === undefined ? "unknown" : runtimeDetails.gitDirty ? "dirty" : "clean"} />
+        </Section>
+
+        <Section {...(compact ? {} : { className: "col-span-2" })} title="Recent Work" icon={<ClipboardList size={15} />}>
+          <RecentWorkList history={history} error={historyError} compact={compact} />
         </Section>
       </div>
     </article>
@@ -116,7 +152,7 @@ export function AgentProfileDialog({ agent, onClose }: { agent: Agent | null; on
 
 export function canShowAgentPreview(agent: Agent): boolean {
   if (agent.name === "You" || agent.role === "web") return false;
-  return Boolean(agent.runtimeDetails);
+  return Boolean(agent.runtimeDetails || agent.workState || agent.workStateStatus);
 }
 
 function Section({ title, icon, children, className }: { title: string; icon: ReactNode; children: ReactNode; className?: string }) {
@@ -195,6 +231,25 @@ function Detail({ label, value, compact }: { label: string; value: string | numb
       >
         {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
       </button>
+    </div>
+  );
+}
+
+function RecentWorkList({ history, error, compact }: { history: AgentWorkStateHistoryEntry[] | null; error: string | null; compact: boolean }) {
+  if (error) return <div className={cn(valueBaseClass, "text-danger")}>{error}</div>;
+  if (history === null) return <div className={cn(valueBaseClass, "text-ink-soft")}>loading</div>;
+  if (history.length === 0) return <div className={cn(valueBaseClass, "text-ink-soft")}>none</div>;
+  return (
+    <div className="grid gap-[6px]">
+      {history.slice(0, compact ? 3 : 5).map((entry) => (
+        <div key={entry.historyId} className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] gap-[var(--space-8)]">
+          <span className={labelClass}>{historyLabel(entry)}</span>
+          <span className={cn(valueBaseClass, "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap")} title={entry.summary}>
+            {entry.task ?? entry.summary}
+            <span className="text-ink-faint"> · {formatRelativeTime(entry.updatedAt)}</span>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

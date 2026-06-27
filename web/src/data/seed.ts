@@ -4,6 +4,7 @@
 
 import type {
   Agent,
+  AgentWorkStateHistoryEntry,
   Artifact,
   Message,
   Room,
@@ -12,13 +13,25 @@ import type {
   TimelineEvent,
 } from "./types.ts";
 
+const ISO = (offsetMinutes: number) =>
+  new Date(Date.now() - offsetMinutes * 60_000).toISOString();
+
 export const AGENTS: Agent[] = [
   { id: "you",    name: "You",    handle: "you",    color: "#111111", role: "Human",                status: "online",  avatar: "Y" },
-  { id: "cortex", name: "Cortex", handle: "cortex", color: "#FFD23F", role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C" },
-  { id: "atlas",  name: "Atlas",  handle: "atlas",  color: "#FF5DA2", role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A" },
-  { id: "vega",   name: "Vega",   handle: "vega",   color: "#4D7CFE", role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V" },
-  { id: "nova",   name: "Nova",   handle: "nova",   color: "#7BE389", role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N" },
-  { id: "echo",   name: "Echo",   handle: "echo",   color: "#FF8A3D", role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E" },
+  { id: "cortex", name: "Cortex", handle: "cortex", color: "#FFD23F", role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C",
+    workState: { phase: "implementation", summary: "Wire work-state history endpoint", scope: { kind: "issue", value: "sync-08gl.6.2" }, task: "sync-08gl.6.2", startedAt: ISO(34), updatedAt: ISO(4), expiresAt: ISO(-11), source: "mcp" },
+    workStateStatus: { state: "active", expiresAt: ISO(-11), secondsRemaining: 660 } },
+  { id: "atlas",  name: "Atlas",  handle: "atlas",  color: "#FF5DA2", role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A",
+    workState: { phase: "review", summary: "Check compact roster spacing", scope: { kind: "file", value: "web/src/components/AgentRoster.tsx" }, startedAt: ISO(22), updatedAt: ISO(3), expiresAt: ISO(-8), source: "mcp" },
+    workStateStatus: { state: "active", expiresAt: ISO(-8), secondsRemaining: 480 } },
+  { id: "vega",   name: "Vega",   handle: "vega",   color: "#4D7CFE", role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V",
+    workStateStatus: { state: "stale", expiresAt: ISO(12), secondsRemaining: 0 } },
+  { id: "nova",   name: "Nova",   handle: "nova",   color: "#7BE389", role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N",
+    workState: { phase: "testing", summary: "Run work-state AOE proof", scope: { kind: "custom", value: "aoe-proof" }, task: "sync-08gl.5.2", startedAt: ISO(18), updatedAt: ISO(2), expiresAt: ISO(-13), source: "api" },
+    workStateStatus: { state: "active", expiresAt: ISO(-13), secondsRemaining: 780 } },
+  { id: "echo",   name: "Echo",   handle: "echo",   color: "#FF8A3D", role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E",
+    workState: { phase: "blocked", summary: "Waiting on Plannotator review", scope: { kind: "custom", value: "plan-feedback" }, task: "sync-08gl", startedAt: ISO(55), updatedAt: ISO(21), expiresAt: ISO(-4), source: "mcp" },
+    workStateStatus: { state: "near_expiry", expiresAt: ISO(-4), secondsRemaining: 95 } },
   { id: "pulse",  name: "Pulse",  handle: "pulse",  color: "#B49BFF", role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P" },
   { id: "mira",   name: "Mira",   handle: "mira",   color: "#F45B69", role: "Teammate",             status: "online",  avatar: "M" },
   { id: "jay",    name: "Jay",    handle: "jay",    color: "#2EC4B6", role: "Teammate",             status: "idle",    avatar: "J" },
@@ -53,10 +66,28 @@ export const DMS: Room[] = [
     lastPreview: "tf plan looks clean, want me to apply…", unread: 0 },
 ];
 
-// ─── Messages keyed by room id ─────────────────────────────────────────────
+export const WORK_STATE_HISTORY: Record<string, AgentWorkStateHistoryEntry[]> = {
+  cortex: [
+    { historyId: 4, peerId: "cortex", phase: "implementation", summary: "Wire work-state history endpoint", scope: { kind: "issue", value: "sync-08gl.6.2" }, task: "sync-08gl.6.2", startedAt: ISO(34), updatedAt: ISO(4), expiresAt: ISO(-11), source: "mcp", correlationMethod: "timestamp_inferred", inferredEventId: 4128, createdAt: ISO(4) },
+    { historyId: 3, peerId: "cortex", phase: "planning", summary: "Plan profile history contract", scope: { kind: "issue", value: "sync-08gl.6.2" }, task: "sync-08gl.6.2", triggerEventId: 4122, startedAt: ISO(58), updatedAt: ISO(36), expiresAt: ISO(21), source: "mcp", correlationMethod: "explicit", createdAt: ISO(36) },
+    { historyId: 2, peerId: "cortex", phase: "analysis", summary: "Read daemon projection code", scope: { kind: "file", value: "src/daemon/routes/web.ts" }, task: "projection review", startedAt: ISO(82), updatedAt: ISO(60), expiresAt: ISO(45), source: "mcp", correlationMethod: "none", createdAt: ISO(60), clearedAt: ISO(60) },
+  ],
+  atlas: [
+    { historyId: 8, peerId: "atlas", phase: "review", summary: "Check compact roster spacing", scope: { kind: "file", value: "web/src/components/AgentRoster.tsx" }, startedAt: ISO(22), updatedAt: ISO(3), expiresAt: ISO(-8), source: "mcp", correlationMethod: "none", createdAt: ISO(3) },
+    { historyId: 7, peerId: "atlas", phase: "implementation", summary: "Add phase chips to roster", scope: { kind: "issue", value: "sync-08gl.6.2" }, task: "sync-08gl.6.2", startedAt: ISO(50), updatedAt: ISO(23), expiresAt: ISO(8), source: "mcp", correlationMethod: "none", createdAt: ISO(23), clearedAt: ISO(23) },
+  ],
+  vega: [
+    { historyId: 11, peerId: "vega", phase: "analysis", summary: "Inspect daemon launch logs", scope: { kind: "custom", value: "stale-session" }, task: "generic daemon triage", startedAt: ISO(44), updatedAt: ISO(20), expiresAt: ISO(12), source: "hook", correlationMethod: "none", createdAt: ISO(20) },
+  ],
+  nova: [
+    { historyId: 14, peerId: "nova", phase: "testing", summary: "Run work-state AOE proof", scope: { kind: "custom", value: "aoe-proof" }, task: "sync-08gl.5.2", startedAt: ISO(18), updatedAt: ISO(2), expiresAt: ISO(-13), source: "api", correlationMethod: "timestamp_inferred", inferredEventId: 5019, createdAt: ISO(2) },
+  ],
+  echo: [
+    { historyId: 21, peerId: "echo", phase: "blocked", summary: "Waiting on Plannotator review", scope: { kind: "custom", value: "plan-feedback" }, task: "sync-08gl", startedAt: ISO(55), updatedAt: ISO(21), expiresAt: ISO(-4), source: "mcp", correlationMethod: "none", createdAt: ISO(21) },
+  ],
+};
 
-const ISO = (offsetMinutes: number) =>
-  new Date(Date.now() - offsetMinutes * 60_000).toISOString();
+// ─── Messages keyed by room id ─────────────────────────────────────────────
 
 export const MESSAGES: Record<string, Message[]> = {
   "checkout-revamp": [

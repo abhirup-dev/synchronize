@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { startTestDaemon } from "./helpers/daemon.ts";
 import { registerAgentSession } from "../src/api/agent-sessions.ts";
+import { archiveSession, listArchived } from "../src/api/archive.ts";
 import { createGroup, joinGroup } from "../src/api/groups.ts";
 import { deletePeer, heartbeatPeer, listPeers, registerPeer, setPeerActivity } from "../src/api/peers.ts";
 import type { GroupMember } from "../src/api/types.ts";
@@ -44,6 +45,15 @@ async function rosterPeer(client: ClientConfig, peerId: string): Promise<Peer | 
 async function activeMemberIds(client: ClientConfig, group: string): Promise<string[]> {
   const response = (await listPeers(client, { group })) as { peers: GroupMember[] };
   return response.peers.map((member) => member.peer_id);
+}
+
+async function errorCode(fn: () => Promise<unknown>): Promise<string> {
+  try {
+    await fn();
+  } catch (error) {
+    return (error as { code?: string }).code ?? "no_code";
+  }
+  return "no_throw";
 }
 
 test("instrumented agent: join → working → idle transitions drive presence", async () => {
@@ -136,6 +146,28 @@ test("heartbeat and activity pushes both refresh the lease (proof-of-life)", asy
     const stillBusy = await rosterPeer(daemon.client, peer.peer_id);
     expect(stillBusy?.online).toBe(true);
     expect(stillBusy?.presence).toBe("working");
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("activity from an archived peer does not resurrect lifecycle or release aliases", async () => {
+  const daemon = await startDaemon({ leaseMs: 60_000 });
+  try {
+    const { peer } = await registerPeer(daemon.client, { sessionName: "archived-worker", tool: "claude" });
+    await createGroup(daemon.client, { name: "archive-presence-room", creatorPeerId: peer.peer_id });
+    await joinGroup(daemon.client, { name: "archive-presence-room", peerId: peer.peer_id, alias: "archived" });
+    await archiveSession(daemon.client, { peerId: peer.peer_id, reason: "presence regression" });
+
+    await setPeerActivity(daemon.client, { peerId: peer.peer_id, state: "working" });
+
+    const archived = await listArchived(daemon.client);
+    expect(archived.sessions).toContainEqual(expect.objectContaining({ peer_id: peer.peer_id }));
+
+    const { peer: other } = await registerPeer(daemon.client, { sessionName: "other-worker", tool: "claude" });
+    expect(
+      await errorCode(() => joinGroup(daemon.client, { name: "archive-presence-room", peerId: other.peer_id, alias: "archived" })),
+    ).toBe("alias_reserved_by_archived");
   } finally {
     await daemon.stop();
   }

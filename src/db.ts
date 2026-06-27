@@ -818,6 +818,73 @@ function migrate(db: Database): void {
     `);
     if (!hasPeerThreadInteractionsV15) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (15)`);
   }
+
+  // v16: semantic agent work state. Current state is stored on peers for fast
+  // roster/profile reads; peer_work_state_history is append-only so clients and
+  // agents can audit phase/task sequences without loading history on every UI
+  // refresh. Work-state TTL is interpreted at read time by peer formatters.
+  const hasPeerWorkStateV16 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 16")
+    .get();
+  const peerWorkStateCols = db.query<{ name: string }, []>("PRAGMA table_info(peers)").all().map((col) => col.name);
+  const hasPeerWorkStateHistory = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'peer_work_state_history'")
+    .get();
+  if (!hasPeerWorkStateV16 || !peerWorkStateCols.includes("work_phase") || !hasPeerWorkStateHistory) {
+    if (!peerWorkStateCols.includes("work_phase")) db.exec(`ALTER TABLE peers ADD COLUMN work_phase TEXT`);
+    if (!peerWorkStateCols.includes("work_summary")) db.exec(`ALTER TABLE peers ADD COLUMN work_summary TEXT`);
+    if (!peerWorkStateCols.includes("work_scope_json")) db.exec(`ALTER TABLE peers ADD COLUMN work_scope_json TEXT`);
+    if (!peerWorkStateCols.includes("work_task")) db.exec(`ALTER TABLE peers ADD COLUMN work_task TEXT`);
+    if (!peerWorkStateCols.includes("work_trigger_event_id"))
+      db.exec(`ALTER TABLE peers ADD COLUMN work_trigger_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL`);
+    if (!peerWorkStateCols.includes("work_started_at")) db.exec(`ALTER TABLE peers ADD COLUMN work_started_at TEXT`);
+    if (!peerWorkStateCols.includes("work_updated_at")) db.exec(`ALTER TABLE peers ADD COLUMN work_updated_at TEXT`);
+    if (!peerWorkStateCols.includes("work_expires_at")) db.exec(`ALTER TABLE peers ADD COLUMN work_expires_at TEXT`);
+    if (!peerWorkStateCols.includes("work_source")) db.exec(`ALTER TABLE peers ADD COLUMN work_source TEXT`);
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_peers_work_expires_at
+        ON peers (work_expires_at)
+        WHERE work_expires_at IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_peers_work_trigger_event
+        ON peers (work_trigger_event_id)
+        WHERE work_trigger_event_id IS NOT NULL;
+
+      CREATE TABLE IF NOT EXISTS peer_work_state_history (
+        history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+        phase TEXT,
+        summary TEXT,
+        scope_json TEXT,
+        task TEXT,
+        trigger_event_id INTEGER REFERENCES events(event_id) ON DELETE SET NULL,
+        correlation_method TEXT NOT NULL DEFAULT 'none',
+        source TEXT NOT NULL,
+        started_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        expires_at TEXT,
+        cleared_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_peer_work_state_history_peer_time
+        ON peer_work_state_history (peer_id, updated_at DESC, history_id DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_peer_work_state_history_event
+        ON peer_work_state_history (trigger_event_id)
+        WHERE trigger_event_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_peer_work_state_history_phase_time
+        ON peer_work_state_history (phase, updated_at DESC)
+        WHERE phase IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_peer_work_state_history_task_time
+        ON peer_work_state_history (task, updated_at DESC)
+        WHERE task IS NOT NULL;
+    `);
+    if (!hasPeerWorkStateV16) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (16)`);
+  }
 }
 
 /**

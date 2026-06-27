@@ -30,6 +30,7 @@ import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { useActivityPreferences, type ActivityViewMode } from "../hooks/useActivityPreferences.ts";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { phaseLabel } from "../workState.ts";
 
 type Filter = "all" | "awaits" | "mentions";
 type SortDirection = "desc" | "asc";
@@ -69,6 +70,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
   const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a] as const)), [agents]);
   const roomsById = useMemo(() => new Map(rooms.map((r) => [r.id, r] as const)), [rooms]);
   const busyCount = useMemo(() => agents.filter((a) => a.status === "busy").length, [agents]);
+  const phaseCounts = useMemo(() => workPhaseCounts(agents), [agents]);
   const compact = useIsCompact();
 
 
@@ -220,6 +222,12 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
                     </>
                   )}
                   {counts.awaits > 0 ? <span className="act-await-inline">{counts.awaits} awaiting you</span> : <span>all caught up ✓</span>}
+                  {!compact && phaseCounts.length > 0 ? (
+                    <>
+                      <span className="dot-sep">·</span>
+                      <span>{phaseCounts.map(({ phase, count }) => `${count} ${phaseLabel(phase).toLowerCase()}`).join(", ")}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -346,6 +354,18 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
       <AgentProfileDialog agent={profileAgent} onClose={() => setProfileAgent(null)} />
     </div>
   );
+}
+
+function workPhaseCounts(agents: Agent[]): Array<{ phase: NonNullable<Agent["workState"]>["phase"]; count: number }> {
+  const counts = new Map<NonNullable<Agent["workState"]>["phase"], number>();
+  for (const agent of agents) {
+    if (!agent.workState) continue;
+    counts.set(agent.workState.phase, (counts.get(agent.workState.phase) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([phase, count]) => ({ phase, count }));
 }
 
 function LoadMore({ onLoad }: { onLoad(): Promise<void> }) {

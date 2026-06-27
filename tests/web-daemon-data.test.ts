@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { DaemonDataSource } from "../web/src/data/daemon.ts";
-import type { Message, MessageAttachment, ThreadSummary } from "../web/src/data/types.ts";
+import type { Agent, Message, MessageAttachment, ThreadSummary } from "../web/src/data/types.ts";
 import type { MutableSnapshot } from "../web/src/data/store.ts";
 
 const originalFetch = globalThis.fetch;
@@ -16,6 +16,98 @@ function stubFetch(handler: (input: Parameters<typeof fetch>[0], init?: Paramete
   fn.preconnect = originalFetch.preconnect.bind(originalFetch);
   return fn;
 }
+
+function daemonAgent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    peer_id: "agent:one",
+    tool: "claude",
+    session_name: "agent-one",
+    purpose: null,
+    machine_id: "mac",
+    lease_expires_at: "2026-06-27T01:00:00.000Z",
+    online: true,
+    presence: "working",
+    lifecycle_state: "active",
+    work_state: {
+      phase: "implementation",
+      summary: "Patch delta",
+      started_at: "2026-06-27T00:00:00.000Z",
+      updated_at: "2026-06-27T00:00:00.000Z",
+      expires_at: "2026-06-27T00:15:00.000Z",
+      source: "mcp",
+    },
+    work_state_status: { state: "active", expires_at: "2026-06-27T00:15:00.000Z", seconds_remaining: 900 },
+    runtime_details: null,
+    launch_lifecycle: null,
+    ...overrides,
+  };
+}
+
+test("daemon data source patches work-state SSE payload without broad refresh", () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+  const agents = ds.agents() as MutableSnapshot<Agent[]>;
+  agents.set([
+    {
+      id: "agent:one",
+      name: "agent-one",
+      handle: "agent-one",
+      color: "#000",
+      role: "claude",
+      status: "online",
+      avatar: "A",
+    },
+  ]);
+
+  const calls: string[] = [];
+  globalThis.fetch = stubFetch(async (input) => {
+    calls.push(new URL(String(input)).pathname);
+    throw new Error("work-state payload should not fetch");
+  });
+
+  (ds as unknown as { scheduleInvalidation(change: unknown): void }).scheduleInvalidation({
+    type: "state_changed",
+    domains: ["work_state"],
+    peer_id: "agent:one",
+    agent: daemonAgent({ work_state: { ...(daemonAgent().work_state as object), phase: "testing", summary: "Run tests" } }),
+  });
+
+  expect(calls).toEqual([]);
+  expect(agents.get().find((agent) => agent.id === "agent:one")).toMatchObject({
+    status: "busy",
+    workState: { phase: "testing", summary: "Run tests" },
+    workStateStatus: { state: "active" },
+  });
+});
+
+test("daemon data source fetches /web/agents for peer deltas without payload", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+  const calls: string[] = [];
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    calls.push(url.pathname);
+    if (url.pathname === "/web/agents/agent%3Aone") {
+      return new Response(JSON.stringify({ agents: [daemonAgent({ presence: "idle", work_state: null, work_state_status: { state: "stale" } })] }));
+    }
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  (ds as unknown as { scheduleInvalidation(change: unknown): void }).scheduleInvalidation({
+    type: "state_changed",
+    domains: ["peer_presence"],
+    peer_id: "agent:one",
+  });
+  await Bun.sleep(0);
+
+  expect(calls).toEqual(["/web/agents/agent%3Aone"]);
+  expect(ds.agents().get().find((agent) => agent.id === "agent:one")).toMatchObject({
+    status: "idle",
+    workStateStatus: { state: "stale" },
+  });
+});
 
 test("web reactions update message snapshots without resetting room state", async () => {
   const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });

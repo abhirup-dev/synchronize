@@ -49,6 +49,18 @@ export const AllStatuses: Story = {
   args: { room: heartbeat },
 };
 
+export const WorkStateChips: Story = {
+  args: { room: heartbeat },
+  play: async ({ canvasElement, step }) => {
+    await step("Roster shows active, blocked, stale, task-labeled, and no-task work states", async () => {
+      await waitFor(() => expect(canvasElement.textContent).toContain("sync-08gl.6.2"));
+      expect(canvasElement.textContent).toContain("Reviewing");
+      expect(canvasElement.textContent).toContain("Stale");
+      expect(canvasElement.textContent).toContain("sync-08gl");
+    });
+  },
+};
+
 export const Header: Story = {
   args: { room: checkoutRevamp },
   globals: { theme: "kanagawa-wave", skin: "brutal" },

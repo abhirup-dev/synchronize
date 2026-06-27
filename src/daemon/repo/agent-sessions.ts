@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 
 import { HttpError } from "../../http.ts";
-import { derivePresence, type PeerRow, type Presence } from "./peers.ts";
+import { formatPeer, type FormattedPeer, type PeerRow } from "./peers.ts";
 
 interface AgentSessionRow {
   binding_id: string;
@@ -33,6 +33,16 @@ interface AgentSessionJoinedRow extends AgentSessionRow {
   peer_archived_at: string | null;
   peer_archived_reason: string | null;
   peer_archive_source: string | null;
+  peer_deleted_at: string | null;
+  peer_work_phase: string | null;
+  peer_work_summary: string | null;
+  peer_work_scope_json: string | null;
+  peer_work_task: string | null;
+  peer_work_trigger_event_id: number | null;
+  peer_work_started_at: string | null;
+  peer_work_updated_at: string | null;
+  peer_work_expires_at: string | null;
+  peer_work_source: string | null;
   peer_online: number;
 }
 
@@ -113,6 +123,16 @@ function agentSessionSelectSql(): string {
       p.archived_at AS peer_archived_at,
       p.archived_reason AS peer_archived_reason,
       p.archive_source AS peer_archive_source,
+      p.deleted_at AS peer_deleted_at,
+      p.work_phase AS peer_work_phase,
+      p.work_summary AS peer_work_summary,
+      p.work_scope_json AS peer_work_scope_json,
+      p.work_task AS peer_work_task,
+      p.work_trigger_event_id AS peer_work_trigger_event_id,
+      p.work_started_at AS peer_work_started_at,
+      p.work_updated_at AS peer_work_updated_at,
+      p.work_expires_at AS peer_work_expires_at,
+      p.work_source AS peer_work_source,
       p.lease_expires_at > ? AS peer_online
     FROM agent_sessions s
     JOIN peers p ON p.peer_id = s.peer_id`;
@@ -120,7 +140,7 @@ function agentSessionSelectSql(): string {
 
 function formatAgentSession(
   row: AgentSessionJoinedRow,
-): AgentSessionRow & { peer: PeerRow & { online: boolean; presence: Presence } } {
+): AgentSessionRow & { peer: FormattedPeer<PeerRow & { online: number | boolean }> } {
   return {
     binding_id: row.binding_id,
     peer_id: row.peer_id,
@@ -139,7 +159,7 @@ function formatAgentSession(
     created_at: row.created_at,
     updated_at: row.updated_at,
     last_seen_at: row.last_seen_at,
-    peer: {
+    peer: formatPeer({
       peer_id: row.peer_id,
       tool: row.peer_tool,
       session_name: row.peer_session_name,
@@ -153,10 +173,19 @@ function formatAgentSession(
       archived_at: row.peer_archived_at,
       archived_reason: row.peer_archived_reason,
       archive_source: row.peer_archive_source,
+      deleted_at: row.peer_deleted_at,
+      work_phase: row.peer_work_phase,
+      work_summary: row.peer_work_summary,
+      work_scope_json: row.peer_work_scope_json,
+      work_task: row.peer_work_task,
+      work_trigger_event_id: row.peer_work_trigger_event_id,
+      work_started_at: row.peer_work_started_at,
+      work_updated_at: row.peer_work_updated_at,
+      work_expires_at: row.peer_work_expires_at,
+      work_source: row.peer_work_source,
       created_at: "",
       updated_at: "",
-      online: Boolean(row.peer_online),
-      presence: derivePresence(Boolean(row.peer_online), row.peer_activity_state),
-    },
+      online: row.peer_online,
+    }),
   };
 }

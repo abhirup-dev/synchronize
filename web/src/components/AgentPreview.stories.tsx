@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, waitFor } from "storybook/test";
 import { AgentPreview, type AgentPreviewDetails } from "./AgentPreview.tsx";
 import type { Agent } from "../data/types.ts";
 import { AGENTS } from "../data/seed.ts";
@@ -109,6 +110,22 @@ export const LettaPersistentAgent: Story = {
 
 export const MissingMetadata: Story = {
   args: { agent: { ...claudeAgent, status: "offline", statusNote: "last seen earlier" }, details: missingDetails },
+};
+
+export const WorkStateHistory: Story = {
+  args: { agent: cortex, details: claudeDetails },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.textContent).toContain("Current Work"));
+    await waitFor(() => expect(canvasElement.textContent).toContain("sync-08gl.6.2"));
+  },
+};
+
+export const BlockedNoTask: Story = {
+  args: { agent: AGENTS.find((agent) => agent.id === "echo")!, details: missingDetails },
+};
+
+export const ExpiredState: Story = {
+  args: { agent: AGENTS.find((agent) => agent.id === "vega")!, details: missingDetails },
 };
 
 export const HiddenSensitiveFields: Story = {

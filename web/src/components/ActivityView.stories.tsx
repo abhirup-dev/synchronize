@@ -34,6 +34,7 @@ export const Grouped: Story = {
       const title = canvasElement.querySelector<HTMLElement>(".act-title");
       expect(title).toBeTruthy();
       expect(Number.parseFloat(getComputedStyle(title!).fontSize)).toBeLessThanOrEqual(18);
+      await waitFor(() => expect(canvasElement.textContent).toMatch(/implementing|reviewing|testing/i));
 
       const roomTrigger = canvasElement.querySelector<HTMLElement>(".act-room-filter-trigger");
       expect(roomTrigger).toBeTruthy();

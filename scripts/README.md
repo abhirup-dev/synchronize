@@ -14,6 +14,8 @@ This directory contains local integration harnesses that exercise
   workflows through AoE/tmux.
 - `integration_group_policy_pi.py` runs a real Pi MCP group-policy workflow
   through AoE/tmux.
+- `integration_work_state_tmux.py` runs deterministic fake-shell work-state
+  relay, history, correlation, TTL, and clear workflows through AoE/tmux.
 
 Both harnesses treat AoE as the cockpit and tmux as the automation substrate.
 The executable files are stable wrappers; shared support code lives under
@@ -95,6 +97,18 @@ uv run scripts/integration_group_policy_tmux.py \
 
 Remote mode still creates an isolated local `SYNCHRONIZE_HOME` for CLI/Pi
 identity files, but it does not start or stop a daemon on the session machine.
+
+For current semantic work-state changes, use the deterministic AoE/tmux workflow:
+
+```bash
+uv run scripts/integration_work_state_tmux.py --agents 2 --command-timeout 45 --start-timeout 90
+```
+
+It launches shell panes through AoE, registers two test peers, drives work-state
+changes through the daemon, validates `/peers`, `/web/agents`, CLI peer-list
+observation, ordered history, event correlation, TTL expiry, and clear rows, and
+writes JSON evidence such as `work-state-relay-validation.json` under the run log
+directory.
 
 Use the real Pi MCP workflow for production-like agent behavior:
 

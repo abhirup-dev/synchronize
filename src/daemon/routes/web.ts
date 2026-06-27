@@ -15,6 +15,7 @@ import { resolveWebDeepLink } from "../repo/events.ts";
 import { ensureLocalWebPeer } from "../repo/peers.ts";
 import { emitWebStateChanged, openWebEvents } from "../services/web-events.ts";
 import {
+  buildWebAgents,
   buildWebState,
   log,
   serveWebAsset,
@@ -23,6 +24,12 @@ import {
 import { optionalFormString, readBody, requireString } from "../validation.ts";
 
 export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {
+  const agentsMatch = url.pathname.match(/^\/web\/agents(?:\/([^/]+))?$/);
+  if (request.method === "GET" && agentsMatch) {
+    requireAuth(request, ctx);
+    return jsonResponse(buildWebAgents(ctx, url), { headers: { "cache-control": "no-cache" } });
+  }
+
   if (request.method === "GET" && url.pathname === "/web/state") {
     requireAuth(request, ctx);
     const state = buildWebState(ctx, url);
@@ -50,12 +57,18 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
             details.git_dirty ?? ""
           }:${details.launch_state ?? ""}:${details.updated_at ?? ""}`,
       ),
+      ...state.agents.map(
+        (agent) =>
+          `${agent.peer_id}:${agent.work_state?.phase ?? ""}:${agent.work_state?.summary ?? ""}:${agent.work_state?.task ?? ""}:${
+            agent.work_state?.expires_at ?? ""
+          }:${agent.work_state_status.state}:${agent.runtime_details?.updated_at ?? ""}:${agent.launch_lifecycle?.state ?? ""}`,
+      ),
       ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
           `${p.peer_id}:${presenceOf(p)}:${p.lifecycle_state}:${p.archived_at ?? ""}:${p.archived_reason ?? ""}:${p.archive_source ?? ""}:${p.aoe_session?.profile ?? ""}:${p.aoe_session?.title ?? ""}:${
             p.aoe_session?.attach_command ?? ""
-          }`,
+          }:${p.work_state?.phase ?? ""}:${p.work_state_status.state}`,
       ),
       ...state.memberships.map((m) => `${m.peer_id}@${m.group_id}:${m.member_state}:${presenceOf(m)}`),
       ...state.events.map((e) =>

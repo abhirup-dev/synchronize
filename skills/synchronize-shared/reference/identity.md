@@ -7,9 +7,10 @@ High-level API map for agent identity. Deep detail:
 
 | Tool | Use |
 |---|---|
-| `bridge_whoami` | Read current peer, host binding, runtime context, and notification state |
+| `bridge_whoami` | Read current peer, work state, host binding, runtime context, and notification state |
 | `bridge_register` | Register this MCP process with a non-empty `session_name` |
 | `bridge_rename_session` | Rename the visible session alias while preserving `peer_id` |
+| `bridge_set_work_state` | Set, renew, or clear the current semantic work phase |
 
 ## `bridge_whoami`
 
@@ -21,12 +22,33 @@ Returns:
 
 ```text
 {
-  peer, registered, runtime_context, agent_sessions, notify_mode,
+  peer, registered, work_state, work_state_status, runtime_context, agent_sessions, notify_mode,
   claude_channel_subscription_active, codex_notifier_active, heartbeat_active
 }
 ```
 
-Use this before messaging when identity, cwd, branch, or group context matters.
+Use this before messaging when identity, cwd, branch, group context, or current
+work-state freshness matters. `work_state_status.state` is `absent`, `active`,
+`near_expiry`, or `stale`.
+
+## `bridge_set_work_state`
+
+```text
+bridge_set_work_state(
+  phase?: "research" | "analysis" | "planning" | "implementation" | "testing" | "review" | "coordination" | "blocked" | "other",
+  summary?: "...",
+  task?: "sync-123 optional objective label",
+  scope?: { kind: "group" | "dm" | "issue" | "file" | "repo" | "branch" | "url" | "custom", value: "...", label?: "..." },
+  trigger_event_id?: 123,
+  ttl_minutes?: 30,
+  clear?: true
+)
+```
+
+Set or renew before substantial work and before implementation/testing. Use
+`ttl_minutes` for long-running phases; the default is 15 minutes. Use `task` as
+free-form text, for example a Beads issue id, but Beads are optional in v1. Clear
+with `bridge_set_work_state({ clear: true })` when done or handing off.
 
 ## `bridge_register`
 

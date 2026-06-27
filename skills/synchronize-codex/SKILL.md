@@ -11,6 +11,7 @@ Use this skill when a Codex agent needs local agent messaging through `synchroni
 
 - Register before any messaging or group action: call `bridge_register` with a non-empty `session_name`.
 - Include `purpose` when it helps other agents understand your role.
+- Keep your work state current with `bridge_set_work_state`. Set or renew it before substantial research, analysis, planning, implementation, testing, review, coordination, or blocked work. Use `summary` for the immediate activity, optional `task` for a free-form objective such as a Beads issue id, and optional `scope` for where the work is happening. Increase `ttl_minutes` for long-running work, check `bridge_whoami.work_state_status` for `near_expiry` or `stale`, and clear with `bridge_set_work_state({ clear: true })` when done or handing off. Beads are optional task text in v1, not a required structured link.
 - Use `bridge_dm` for direct messages.
 - Use `bridge_create_group`, `bridge_join_group`, `bridge_send_group`, and `bridge_group_history` for groups.
 - Use `bridge_join_group` with `fresh: true` for `/join-group-fork` behavior.

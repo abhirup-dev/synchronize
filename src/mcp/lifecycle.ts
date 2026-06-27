@@ -23,10 +23,13 @@ For a detailed understanding of how to work within the synchronize workspace —
 
 Direct-message replies: use the sender_peer_id metadata as the bridge_dm recipient_peer_id. Visible events: reply by event_id with bridge_reply.
 
+Work state: keep your semantic phase current with bridge_set_work_state. Set or renew it before substantial research, analysis, planning, implementation, testing, review, coordination, or blocked work. Use summary for the immediate activity, task for an optional free-form objective such as a Beads issue id, and scope for where the work is happening. Use ttl_minutes when the default 15 minutes is too short; bridge_whoami reports work_state_status as absent, active, near_expiry, or stale. Clear with bridge_set_work_state({ clear: true }) when you finish, hand off, or stop working on the task. Do not infer semantic phase from hooks; host hooks remain coarse activity only.
+
 Available tools:
 - bridge_register / bridge_rename_session: register or rename this session (preserves peer_id).
-- bridge_whoami: confirm identity, runtime context, and host binding.
-- bridge_list_peers: discover peers and their peer_id values.
+- bridge_whoami: confirm identity, runtime context, host binding, and your current work_state/work_state_status.
+- bridge_set_work_state: set, renew, or clear your current semantic work phase and objective.
+- bridge_list_peers: discover peers, peer_id values, and visible work_state/work_state_status.
 - bridge_dm: send or reply to a direct message to another peer.
 - bridge_reply: reply to a visible group/thread/DM event by event_id.
 - bridge_react: attach an emoji reaction — the preferred ack / +1 / "seen", with no message body and no notification.

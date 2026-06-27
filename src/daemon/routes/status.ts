@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 
 import { jsonResponse } from "../../http.ts";
-import { derivePresence } from "../repo/peers.ts";
+import { formatPeer } from "../repo/peers.ts";
 import type { DaemonContext, SummaryGroupRow, SummaryPeerRow } from "../server.ts";
 
 export function tryHandleStatusRoute(request: Request, ctx: DaemonContext, url: URL): Response | null {
@@ -77,6 +77,17 @@ export function tryHandleStatusRoute(request: Request, ctx: DaemonContext, url: 
            p.purpose,
            p.lease_expires_at > ? AS online,
            p.activity_state,
+           p.lifecycle_state,
+           p.deleted_at,
+           p.work_phase,
+           p.work_summary,
+           p.work_scope_json,
+           p.work_task,
+           p.work_trigger_event_id,
+           p.work_started_at,
+           p.work_updated_at,
+           p.work_expires_at,
+           p.work_source,
            COUNT(DISTINCT CASE WHEN i.acked_at IS NULL THEN i.event_id END) AS pending_inbox,
            COUNT(DISTINCT CASE WHEN gm.active = 1 THEN gm.group_id END) AS groups,
            p.updated_at,
@@ -146,11 +157,7 @@ export function tryHandleStatusRoute(request: Request, ctx: DaemonContext, url: 
         },
         media: mediaTotals,
       },
-      peers: peers.map((peer) => ({
-        ...peer,
-        online: Boolean(peer.online),
-        presence: derivePresence(Boolean(peer.online), peer.activity_state),
-      })),
+      peers: peers.map((peer) => formatPeer(peer, now)),
       groups: groups.map((group) => ({ ...group, durable: Boolean(group.durable) })),
       generated_at: now,
     });
