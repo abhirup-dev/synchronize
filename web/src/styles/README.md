@@ -37,6 +37,9 @@ concerns from cross-cutting each other.
   `bun run check:theme-contract:strict` is the cleanup target; it fails on raw
   color leaks, undefined legacy vars, scoped variable definitions outside
   `tokens.css`, and theme selectors that are not explicitly skin-scoped.
+  The local pre-commit hook runs strict mode automatically when staged changes
+  touch `web/src`, Storybook, or theme tooling files. Use
+  `scripts/precommit-theme-contract.sh --force` to run the same guard manually.
 - **A class kept only as a hook** (skin override target or `classList`/vim target)
   gets a one-line comment saying so, so it isn't mistaken for dead.
 - **Mode is a capability, not a selector.** Prefer the `shellLayout()` contract
