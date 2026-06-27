@@ -86,6 +86,7 @@
 | `docs/plans/cli-completion-carapace-v0.md` | 555 | CLI completion Carapace V0 plan for schema-first command metadata, generated Carapace specs, daemon-safe dynamic candidates, and raw zsh forward compatibility (sync-x7q1). |
 | `docs/plans/daemon-modularization-v2.md` | 1322 | Current master daemon modularization plan for a strictly structural, phase-wise refactor with pre-refactor route precedence, validation, and response-shape snapshot tests first (sync-mkj, sync-mkj.12, sync-mkj.13). |
 | `docs/plans/web-url-deep-links.md` | 407 | Web URL deep-link plan for derivable instance-local `/web/e/:eventId` links, bounded target hydration, app-shell focus routing, Storybook flow coverage, and live `/web` verification (sync-vbd6). |
+| `docs/plans/agent-work-state-v1.md` | 1160 | Agent Work State v1 plan for additive semantic phase/task/TTL state, append-only history, unified `/web/agents` projection, backend-first AOE acceptance, and deferred Beads nudges (sync-08gl). |
 | `docs/agentmemory-scope-repair.md` | 101 | Local AgentMemory project-scope repair and repeatable restore process for preserving sessions, observations, memories, lessons, crystals, and summaries while clearing polluted derived scopes (sync-815x). |
 
 ### Per-extension READMEs
@@ -113,6 +114,7 @@ document to load (or whether the answer is in current code instead):
 | Topic | First check (current code) | Historical reference (load only if code is unclear) |
 |---|---|---|
 | Peer lifecycle and ownership | `src/daemon/routes/peers.ts`, `src/daemon/repo/peers.ts`, `src/mcp/lifecycle.ts`, `extensions/pi-synchronize/src/index.ts`, plus `peer-lifecycle.md` | `session-tracker/plan-group-policy-v0.md` (soft-delete section) |
+| Agent work state, phase history, and role-like task telemetry | `src/daemon/routes/peers.ts`, `src/daemon/repo/peers.ts`, `src/db.ts`, `src/mcp/tools/*`, `src/daemon/routes/web.ts`, `web/src/data/daemon.ts` | `docs/plans/agent-work-state-v1.md` |
 | Group + alias semantics | `src/daemon/routes/groups.ts`, `src/daemon/repo/groups.ts`, `src/db.ts`, plus `delivery-forensics.md` | `docs/group-sync-integrity.md` |
 | Mention resolution | `src/daemon/server.ts` (`MENTION_TOKEN_RE`) plus `src/daemon/routes/{groups,messaging}.ts` | `session-tracker/plan-group-policy-v0.md` (mentions section) |
 | Thread normalization | `src/daemon/server.ts`, `src/daemon/routes/{groups,messaging,threads}.ts`, `src/daemon/repo/threads.ts` | `session-tracker/plan-group-policy-v0.md` (threads section) |
