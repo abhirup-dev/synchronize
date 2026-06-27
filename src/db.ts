@@ -165,6 +165,22 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_message_reactions_peer
       ON message_reactions (peer_id, created_at);
 
+    CREATE INDEX IF NOT EXISTS idx_message_reactions_peer_event
+      ON message_reactions (peer_id, event_id);
+
+    CREATE TABLE IF NOT EXISTS peer_thread_interactions (
+      peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+      thread_root_event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+      last_interaction_event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+      last_interaction_kind TEXT NOT NULL CHECK (last_interaction_kind IN ('message','reaction','handled')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      PRIMARY KEY (peer_id, group_id, thread_root_event_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_peer_thread_interactions_peer_group_thread
+      ON peer_thread_interactions (peer_id, group_id, thread_root_event_id, last_interaction_event_id);
+
     CREATE TABLE IF NOT EXISTS inbox (
       recipient_peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
       event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -690,6 +706,117 @@ function migrate(db: Database): void {
   if (!hasAgentProfileV14 || !launchColsV14.includes("profile_name")) {
     if (!launchColsV14.includes("profile_name")) db.exec(`ALTER TABLE launch_intents ADD COLUMN profile_name TEXT`);
     if (!hasAgentProfileV14) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (14)`);
+  }
+
+  // v15: materialized thread-interaction projection for Activity awaiting.
+  // SQLite views are always recomputed, so the "agent messages after my last
+  // reply/reaction/handled marker in this thread" signal is stored as a small
+  // derived table and maintained by message/reaction/ack write paths.
+  const hasPeerThreadInteractionsV15 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 15")
+    .get();
+  const hasPeerThreadInteractions = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'peer_thread_interactions'")
+    .get();
+  if (!hasPeerThreadInteractionsV15 || !hasPeerThreadInteractions) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_message_reactions_peer_event
+        ON message_reactions (peer_id, event_id);
+
+      CREATE TABLE IF NOT EXISTS peer_thread_interactions (
+        peer_id TEXT NOT NULL REFERENCES peers(peer_id) ON DELETE CASCADE,
+        group_id INTEGER NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+        thread_root_event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        last_interaction_event_id INTEGER NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        last_interaction_kind TEXT NOT NULL CHECK (last_interaction_kind IN ('message','reaction','handled')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        PRIMARY KEY (peer_id, group_id, thread_root_event_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_peer_thread_interactions_peer_group_thread
+        ON peer_thread_interactions (peer_id, group_id, thread_root_event_id, last_interaction_event_id);
+
+      INSERT INTO peer_thread_interactions (
+        peer_id,
+        group_id,
+        thread_root_event_id,
+        last_interaction_event_id,
+        last_interaction_kind,
+        updated_at
+      )
+      SELECT
+        sender_peer_id,
+        group_id,
+        COALESCE(parent_event_id, event_id) AS thread_root_event_id,
+        MAX(event_id) AS last_interaction_event_id,
+        'message' AS last_interaction_kind,
+        COALESCE(MAX(created_at), strftime('%Y-%m-%dT%H:%M:%fZ','now')) AS updated_at
+      FROM events
+      WHERE type = 'group_message'
+        AND sender_peer_id IS NOT NULL
+        AND group_id IS NOT NULL
+      GROUP BY sender_peer_id, group_id, COALESCE(parent_event_id, event_id)
+      ON CONFLICT(peer_id, group_id, thread_root_event_id) DO UPDATE SET
+        last_interaction_event_id =
+          CASE
+            WHEN excluded.last_interaction_event_id > peer_thread_interactions.last_interaction_event_id
+            THEN excluded.last_interaction_event_id
+            ELSE peer_thread_interactions.last_interaction_event_id
+          END,
+        last_interaction_kind =
+          CASE
+            WHEN excluded.last_interaction_event_id >= peer_thread_interactions.last_interaction_event_id
+            THEN excluded.last_interaction_kind
+            ELSE peer_thread_interactions.last_interaction_kind
+          END,
+        updated_at =
+          CASE
+            WHEN excluded.last_interaction_event_id >= peer_thread_interactions.last_interaction_event_id
+            THEN excluded.updated_at
+            ELSE peer_thread_interactions.updated_at
+          END;
+
+      INSERT INTO peer_thread_interactions (
+        peer_id,
+        group_id,
+        thread_root_event_id,
+        last_interaction_event_id,
+        last_interaction_kind,
+        updated_at
+      )
+      SELECT
+        mr.peer_id,
+        e.group_id,
+        COALESCE(e.parent_event_id, e.event_id) AS thread_root_event_id,
+        MAX(e.event_id) AS last_interaction_event_id,
+        'reaction' AS last_interaction_kind,
+        COALESCE(MAX(mr.created_at), strftime('%Y-%m-%dT%H:%M:%fZ','now')) AS updated_at
+      FROM message_reactions mr
+      JOIN events e ON e.event_id = mr.event_id
+      WHERE e.type = 'group_message'
+        AND e.group_id IS NOT NULL
+      GROUP BY mr.peer_id, e.group_id, COALESCE(e.parent_event_id, e.event_id)
+      ON CONFLICT(peer_id, group_id, thread_root_event_id) DO UPDATE SET
+        last_interaction_event_id =
+          CASE
+            WHEN excluded.last_interaction_event_id > peer_thread_interactions.last_interaction_event_id
+            THEN excluded.last_interaction_event_id
+            ELSE peer_thread_interactions.last_interaction_event_id
+          END,
+        last_interaction_kind =
+          CASE
+            WHEN excluded.last_interaction_event_id >= peer_thread_interactions.last_interaction_event_id
+            THEN excluded.last_interaction_kind
+            ELSE peer_thread_interactions.last_interaction_kind
+          END,
+        updated_at =
+          CASE
+            WHEN excluded.last_interaction_event_id >= peer_thread_interactions.last_interaction_event_id
+            THEN excluded.updated_at
+            ELSE peer_thread_interactions.updated_at
+          END;
+    `);
+    if (!hasPeerThreadInteractionsV15) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (15)`);
   }
 }
 

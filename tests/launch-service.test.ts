@@ -166,7 +166,7 @@ test("validateLaunchRequest rejects bad tool/name/repo/args", () => {
   expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", args: [1] })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "claude", name: "a", repo: "/r", model: "haiku" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", model: "gpt-4o" })).toThrow(LaunchValidationError);
-  expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", thinking: "xhigh" })).toThrow(LaunchValidationError);
+  expect(() => validateLaunchRequest({ tool: "pi", name: "a", repo: "/r", thinking: "max" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "letta", name: "a", repo: "/r", model: "glm-4.7-flash" })).toThrow(LaunchValidationError);
   expect(() => validateLaunchRequest({ tool: "letta", name: "a", repo: "/r", thinking: "low" })).toThrow(LaunchValidationError);
 });
@@ -216,7 +216,7 @@ test("resolveLaunchSpec wires title, command, env, cwd, group", () => {
   expect(spec.tool).toBe("claude");
   expect(spec.command[0]).toBe("claude");
   expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-opus-4-8");
-  expect(spec.command).not.toContain("--effort");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("medium");
   expect(spec.command).not.toContain("claude-haiku-4-5-20251001");
   expect(spec.cwd).toBe("/repo");
   expect(spec.group).toBe("alpha");
@@ -233,7 +233,7 @@ test("resolveLaunchSpec defaults claude to Haiku high when no model given", asyn
   const i = spec.command.indexOf("--model");
   expect(i).toBeGreaterThan(-1);
   expect(spec.command[i + 1]).toBe("claude-haiku-4-5-20251001");
-  expect(spec.command).not.toContain("--effort");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("high");
 });
 
 test("resolveLaunchSpec leaves profile-owned claude model selection to profile env", async () => {
@@ -293,7 +293,7 @@ test("resolveLaunchSpec strips caller-provided claude --model before applying se
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
-  expect(spec.command).not.toContain("--effort");
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("medium");
   expect(spec.command).not.toContain("claude-opus-4-8");
 });
 
@@ -304,7 +304,8 @@ test("resolveLaunchSpec strips caller-provided claude --model=value and --effort
   );
   expect(spec.command.filter((a) => a === "--model")).toHaveLength(1);
   expect(spec.command[spec.command.indexOf("--model") + 1]).toBe("claude-haiku-4-5-20251001");
-  expect(spec.command).not.toContain("--effort");
+  expect(spec.command.filter((a) => a === "--effort")).toHaveLength(1);
+  expect(spec.command[spec.command.indexOf("--effort") + 1]).toBe("high");
   expect(spec.command).not.toContain("--model=claude-opus-4-8");
   expect(spec.command).not.toContain("--effort=medium");
 });

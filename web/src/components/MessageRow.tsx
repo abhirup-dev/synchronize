@@ -1,29 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import type { Agent, Message } from "../data/types.ts";
-
-// Per-theme dark overrides for `.reaction` live in styles.css (data-theme blocks
-// out-specify these single-class utilities), so only the base brutal values move
-// here. `.is-mine` / `.add` legacy state classes stay on the element as the
-// dark-theme selectors still target them.
-const reactionBtn = cva(
-  "reaction inline-flex cursor-pointer items-center gap-[var(--space-4)] rounded-pill bg-paper px-[9px] py-[2px] text-[length:var(--text-12)] leading-tight text-ink shadow-sm [border:var(--line-sm)]",
-  {
-    variants: {
-      mine: {
-        true: "is-mine bg-paper-2 [border-color:color-mix(in_srgb,var(--yellow)_45%,var(--rule))]",
-        false: null,
-      },
-      add: {
-        true: "add min-w-[25px] justify-center font-display text-[length:var(--text-11)]",
-        false: null,
-      },
-    },
-    defaultVariants: { mine: false, add: false },
-  },
-);
 import { Avatar, IdentityBadge, MentionChip } from "./primitives.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
@@ -205,8 +183,8 @@ export const MessageRow = memo(function MessageRow({
             </IdentityBadge>
           </div>
         )}
-        <div className="message-stack flex min-w-0 max-w-[min(880px,calc(100%_-_var(--bubble-shadow-gutter,6px)))] w-fit flex-col gap-[var(--space-2)]">
-          <div className="bubble min-w-0 max-w-full rounded-xl bg-bubble p-[var(--space-bubble-pad)] [border:var(--message-card-border,var(--line-2))] [border-color:var(--message-card-border-color,var(--rule))] [box-shadow:var(--bubble-shadow-offset,4px)_var(--bubble-shadow-offset,4px)_0_var(--message-card-shadow-color,var(--rule))]">
+        <div className="message-stack">
+          <div className="bubble">
             {message.body.trim() && <BodyWithMentions body={message.body} agents={agents} />}
             {message.attachments?.length ? (
               <AttachmentPreviewList attachments={message.attachments} mode="message" />
@@ -262,7 +240,7 @@ export const MessageRow = memo(function MessageRow({
                     const names = reaction.by.map((id) => agentById.get(id)?.name ?? id);
                     return (
                       <span
-                        className="reaction-wrap relative inline-flex"
+                        className="reaction-wrap relative inline-flex shrink-0"
                         key={reaction.emoji}
                         onMouseEnter={(event) => {
                           window.dispatchEvent(new CustomEvent(OVERLAY_CLOSE_EVENT));
@@ -275,7 +253,7 @@ export const MessageRow = memo(function MessageRow({
                         }}
                       >
                         <button
-                          className={reactionBtn({ mine })}
+                          className={cn("reaction", mine && "is-mine")}
                           title={names.join(", ")}
                           aria-pressed={mine}
                           aria-label={`${reaction.emoji} reaction from ${names.join(", ")}`}
@@ -318,9 +296,9 @@ export const MessageRow = memo(function MessageRow({
                     );
                   })}
                   {onReact && !hideReactionAdd && (
-                    <span className="reaction-wrap relative inline-flex">
+                    <span className="reaction-wrap relative inline-flex shrink-0">
                       <button
-                        className={reactionBtn({ add: true })}
+                        className="reaction add"
                         aria-label="add reaction"
                         onClick={(event) => {
                           if (pickerOpen) {

@@ -12,6 +12,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useAckActivity,
   useAckAllActivity,
+  useAckActivityEvents,
   useActivity,
   useActivityAwaitingCount,
   useAgents,
@@ -33,7 +34,7 @@ import { IconButton } from "./IconButton.tsx";
 type Filter = "all" | "awaits" | "mentions";
 type SortDirection = "desc" | "asc";
 type TimelineEntry =
-  | { kind: "bucket"; id: string; label: string; count: number }
+  | { kind: "bucket"; id: string; label: string; count: number; awaitingEventIds: number[] }
   | { kind: "item"; id: string; item: ActivityItemModel };
 
 interface ActivityViewProps {
@@ -52,6 +53,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
   const reactToMessage = useReactToMessage();
   const ackActivity = useAckActivity();
   const ackAll = useAckAllActivity();
+  const ackActivityEvents = useAckActivityEvents();
   const loadMore = useLoadMoreActivity();
 
   const { viewMode, setViewMode, aliveOnly, setAliveOnly } = useActivityPreferences();
@@ -134,28 +136,39 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
   );
 
   const allRoomIds = useMemo(() => {
-    const seen: string[] = [];
-    for (const it of baseItems) if (!seen.includes(it.roomId)) seen.push(it.roomId);
-    return seen;
+    return [...new Set(baseItems.map((it) => it.roomId))];
   }, [baseItems]);
 
   const grouped = useMemo(() => {
-    const byRoom = new Map<string, ActivityItemModel[]>();
+    const byRoom = new Map<
+      string,
+      {
+        roomId: string;
+        room: Room;
+        items: ActivityItemModel[];
+        maxEventId: number;
+        minEventId: number;
+        awaiting: number;
+      }
+    >();
     for (const it of sortedVisible) {
-      const list = byRoom.get(it.roomId) ?? [];
-      list.push(it);
-      byRoom.set(it.roomId, list);
+      const room = roomsById.get(it.roomId);
+      if (!room) continue;
+      const group = byRoom.get(it.roomId) ?? {
+        roomId: it.roomId,
+        room,
+        items: [],
+        maxEventId: it.eventId,
+        minEventId: it.eventId,
+        awaiting: 0,
+      };
+      group.items.push(it);
+      group.maxEventId = Math.max(group.maxEventId, it.eventId);
+      group.minEventId = Math.min(group.minEventId, it.eventId);
+      if (it.awaiting) group.awaiting += 1;
+      byRoom.set(it.roomId, group);
     }
-    return [...byRoom.entries()]
-      .map(([roomId, list]) => ({
-        roomId,
-        room: roomsById.get(roomId),
-        items: list,
-        maxEventId: Math.max(...list.map((i) => i.eventId)),
-        minEventId: Math.min(...list.map((i) => i.eventId)),
-        awaiting: list.filter((i) => i.awaiting).length,
-      }))
-      .filter((g): g is typeof g & { room: Room } => Boolean(g.room))
+    return [...byRoom.values()]
       .sort((a, b) => sortDir === "desc" ? b.maxEventId - a.maxEventId : a.minEventId - b.minEventId);
   }, [sortedVisible, roomsById, sortDir]);
 
@@ -300,6 +313,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
                   collapsed={collapsed.has(g.roomId)}
                   onToggle={() => toggleCollapse(g.roomId)}
                   itemProps={itemProps}
+                  onAckItems={(items) => void ackActivityEvents(awaitingEventIds(items))}
                   onJumpToRoom={onJumpToRoom}
                   agentsById={agentsById}
                   compact={compact}
@@ -309,7 +323,17 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
             </div>
           </div>
         ) : (
-          <TimelineFlat items={sortedVisible} sortDir={sortDir} itemProps={itemProps} agentsById={agentsById} roomsById={roomsById} onJumpToRoom={onJumpToRoom} onLoad={loadMore} compact={compact} />
+          <TimelineFlat
+            items={sortedVisible}
+            sortDir={sortDir}
+            itemProps={itemProps}
+            agentsById={agentsById}
+            roomsById={roomsById}
+            onJumpToRoom={onJumpToRoom}
+            onAckEvents={(eventIds) => void ackActivityEvents(eventIds)}
+            onLoad={loadMore}
+            compact={compact}
+          />
         )}
       </div>
 
@@ -330,6 +354,10 @@ function LoadMore({ onLoad }: { onLoad(): Promise<void> }) {
       load older ↓
     </button>
   );
+}
+
+function awaitingEventIds(items: ActivityItemModel[]): number[] {
+  return items.filter((item) => item.awaiting).map((item) => item.eventId);
 }
 
 function ActivityViewControls({
@@ -420,6 +448,7 @@ function RoomDigest({
   collapsed,
   onToggle,
   itemProps,
+  onAckItems,
   onJumpToRoom,
   agentsById,
   compact,
@@ -428,6 +457,7 @@ function RoomDigest({
   collapsed: boolean;
   onToggle(): void;
   itemProps: ItemPropsFn;
+  onAckItems(items: ActivityItemModel[]): void;
   onJumpToRoom(roomId: string, msgId?: string): void;
   agentsById: Map<string, Agent>;
   compact: boolean;
@@ -438,6 +468,7 @@ function RoomDigest({
   const expanded = !collapsed;
   const last = items[0];
   const showFooterOpen = !compact && items.length >= 15;
+  const canAck = awaiting > 0;
   return (
     <div className={`act-digest-room${expanded ? " open" : ""}`}>
       <div className="act-digest-head">
@@ -458,9 +489,22 @@ function RoomDigest({
           )}
         </button>
         {!compact && (
-          <button className="act-digest-headgo" onClick={() => onJumpToRoom(roomId)} type="button" title={`Open ${label}`}>
-            open →
-          </button>
+          <>
+            {canAck && (
+              <button
+                className="act-scope-ack"
+                onClick={() => onAckItems(items)}
+                type="button"
+                title={`Mark ${label} handled`}
+                aria-label={`Mark ${label} handled`}
+              >
+                ✓
+              </button>
+            )}
+            <button className="act-digest-headgo" onClick={() => onJumpToRoom(roomId)} type="button" title={`Open ${label}`}>
+              open →
+            </button>
+          </>
         )}
       </div>
       {expanded && (
@@ -486,6 +530,7 @@ function TimelineFlat({
   agentsById,
   roomsById,
   onJumpToRoom,
+  onAckEvents,
   onLoad,
   compact,
 }: {
@@ -495,6 +540,7 @@ function TimelineFlat({
   agentsById: Map<string, Agent>;
   roomsById: Map<string, Room>;
   onJumpToRoom(roomId: string, msgId?: string): void;
+  onAckEvents(eventIds: number[]): void;
   onLoad(): Promise<void>;
   compact: boolean;
 }) {
@@ -530,8 +576,19 @@ function TimelineFlat({
               >
                 {entry.kind === "bucket" ? (
                   <div className="act-timeline-bucket">
-                    <span>{entry.label}</span>
+                    <span className="act-timeline-bucket-label">{entry.label}</span>
                     <span>{entry.count}</span>
+                    {entry.awaitingEventIds.length > 0 && (
+                      <button
+                        className="act-scope-ack"
+                        onClick={() => onAckEvents(entry.awaitingEventIds)}
+                        type="button"
+                        title={`Mark ${entry.label} handled`}
+                        aria-label={`Mark ${entry.label} handled`}
+                      >
+                        ✓
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <ActivityItem {...itemProps(entry.item, true)} />
@@ -599,7 +656,13 @@ function bucketTimeline(items: ActivityItemModel[], sortDir: SortDirection): Tim
   const orderedBuckets = sortDir === "desc" ? byBucket : [...byBucket].reverse();
   for (const bucket of orderedBuckets) {
     if (bucket.items.length === 0) continue;
-    entries.push({ kind: "bucket", id: `bucket:${bucket.id}`, label: bucket.label, count: bucket.items.length });
+    entries.push({
+      kind: "bucket",
+      id: `bucket:${bucket.id}`,
+      label: bucket.label,
+      count: bucket.items.length,
+      awaitingEventIds: awaitingEventIds(bucket.items),
+    });
     entries.push(...bucket.items.map((item) => ({ kind: "item" as const, id: item.id, item })));
   }
   return entries;

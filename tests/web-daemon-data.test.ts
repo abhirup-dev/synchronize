@@ -36,6 +36,13 @@ test("web reactions update message snapshots without resetting room state", asyn
   ]);
 
   const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  const activityResponse = () =>
+    new Response(JSON.stringify({
+      awaiting_count: 0,
+      next_cursor: null,
+      events: [],
+      peers: [],
+    }));
   const responseFor = (reactions: Array<{ emoji: string; by: string[] }>) =>
     new Response(JSON.stringify({
       event: {
@@ -68,6 +75,7 @@ test("web reactions update message snapshots without resetting room state", asyn
   globalThis.fetch = stubFetch(async (input, init) => {
     const url = new URL(String(input));
     calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname.startsWith("/activity/")) return activityResponse();
     if (url.pathname !== "/events/42/reactions") throw new Error(`unexpected fetch: ${url.pathname}`);
     return responseFor([{ emoji: "👍", by: ["web:local-human"] }]);
   });
@@ -80,6 +88,7 @@ test("web reactions update message snapshots without resetting room state", asyn
   globalThis.fetch = stubFetch(async (input, init) => {
     const url = new URL(String(input));
     calls.push({ path: url.pathname, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (url.pathname.startsWith("/activity/")) return activityResponse();
     if (url.pathname !== "/events/42/reactions") throw new Error(`unexpected fetch: ${url.pathname}`);
     return responseFor([]);
   });
@@ -88,8 +97,12 @@ test("web reactions update message snapshots without resetting room state", asyn
   expect(messages.get()[0]?.reactions).toEqual([]);
   await remove;
   expect(messages.get()[0]?.reactions).toEqual([]);
-  expect(calls.map((call) => call.path)).toEqual(["/events/42/reactions", "/events/42/reactions"]);
-  expect(calls.every((call) => call.method === "POST")).toBe(true);
+  const reactionCalls = calls.filter((call) => call.path === "/events/42/reactions");
+  const activityCalls = calls.filter((call) => call.path.startsWith("/activity/"));
+  expect(reactionCalls).toHaveLength(2);
+  expect(activityCalls).toHaveLength(2);
+  expect(reactionCalls.every((call) => call.method === "POST")).toBe(true);
+  expect(activityCalls.every((call) => call.method === "GET")).toBe(true);
   expect(calls.some((call) => call.path === "/web/state")).toBe(false);
 });
 
@@ -572,19 +585,23 @@ test("ackActivity clears awaiting optimistically and posts to inbox/ack", async 
   const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
   (ds as unknown as { peerId: string }).peerId = "web:local-human";
 
+  let acked = false;
   globalThis.fetch = stubFetch(async (input) => {
     const url = new URL(String(input));
     if (url.pathname.startsWith("/activity/")) {
       return new Response(JSON.stringify({
-        awaiting_count: 1, next_cursor: null,
+        awaiting_count: acked ? 0 : 1, next_cursor: null,
         events: [{
           event_id: 5, type: "group_message", sender_peer_id: "agent:one", recipient_peer_id: null,
           group_id: 1, body: "needs you", media_id: null, parent_event_id: null, mentions_json: null,
-          skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, awaiting: 1,
+          skill_directives_json: null, created_at: "2026-06-05T00:00:00.000Z", reply_count: 0, awaiting: acked ? 0 : 1,
         }],
       }));
     }
-    if (url.pathname.endsWith("/inbox/ack")) return new Response(JSON.stringify({ ok: true, acked: 1 }));
+    if (url.pathname.endsWith("/inbox/ack")) {
+      acked = true;
+      return new Response(JSON.stringify({ ok: true, acked: 1 }));
+    }
     throw new Error(`unexpected fetch: ${url.pathname}`);
   });
 
@@ -593,4 +610,50 @@ test("ackActivity clears awaiting optimistically and posts to inbox/ack", async 
   await ds.ackActivity(5);
   expect(ds.activity().get()[0]!.awaiting).toBe(false);
   expect(ds.activityAwaitingCount().get()).toBe(0);
+});
+
+test("ackActivityEvents clears a scoped set and posts explicit event ids", async () => {
+  globalThis.localStorage = { getItem: () => null } as unknown as Storage;
+  const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
+  (ds as unknown as { peerId: string }).peerId = "web:local-human";
+
+  const acked = new Set<number>();
+  let postedIds: number[] = [];
+  globalThis.fetch = stubFetch(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.startsWith("/activity/")) {
+      return new Response(JSON.stringify({
+        awaiting_count: [5, 6, 7].filter((id) => !acked.has(id)).length,
+        next_cursor: null,
+        events: [7, 6, 5].map((id) => ({
+          event_id: id,
+          type: "group_message",
+          sender_peer_id: "agent:one",
+          recipient_peer_id: null,
+          group_id: 1,
+          body: `needs you ${id}`,
+          media_id: null,
+          parent_event_id: null,
+          mentions_json: null,
+          skill_directives_json: null,
+          created_at: "2026-06-05T00:00:00.000Z",
+          reply_count: 0,
+          awaiting: acked.has(id) ? 0 : 1,
+        })),
+      }));
+    }
+    if (url.pathname.endsWith("/inbox/ack")) {
+      postedIds = JSON.parse(String(init?.body)).event_ids;
+      for (const id of postedIds) acked.add(id);
+      return new Response(JSON.stringify({ ok: true, acked: postedIds.length }));
+    }
+    throw new Error(`unexpected fetch: ${url.pathname}`);
+  });
+
+  await (ds as unknown as { refreshActivity(o: object): Promise<void> }).refreshActivity({ reset: true });
+  await ds.ackActivityEvents([5, 7, 7]);
+
+  expect(postedIds).toEqual([5, 7]);
+  expect(ds.activity().get().filter((item) => item.awaiting).map((item) => item.eventId)).toEqual([6]);
+  expect(ds.activityAwaitingCount().get()).toBe(1);
 });

@@ -1,4 +1,5 @@
 import { jsonResponse } from "../../http.ts";
+import { markActivityEventsHandled, markAllAwaitingActivityHandled } from "../repo/activity-interactions.ts";
 import { attachReactions, eventForRecipient } from "../repo/events.ts";
 import { ensurePeer } from "../repo/peers.ts";
 import { emitWebStateChanged } from "../services/web-events.ts";
@@ -50,6 +51,7 @@ export async function tryHandleInboxRoute(request: Request, ctx: DaemonContext, 
     const ids = optionalIntegerArray(body, "event_ids");
     const now = new Date().toISOString();
     let changed = 0;
+    let handled = 0;
     if (ids && ids.length > 0) {
       changed = ctx.db
         .query(
@@ -58,6 +60,7 @@ export async function tryHandleInboxRoute(request: Request, ctx: DaemonContext, 
            WHERE recipient_peer_id = ? AND event_id IN (${ids.map(() => "?").join(",")})`,
         )
         .run(now, peerId, ...ids).changes;
+      handled = markActivityEventsHandled(ctx.db, peerId, ids);
     } else {
       changed = ctx.db
         .query(
@@ -66,9 +69,10 @@ export async function tryHandleInboxRoute(request: Request, ctx: DaemonContext, 
            WHERE recipient_peer_id = ? AND acked_at IS NULL`,
         )
         .run(now, peerId).changes;
+      handled = markAllAwaitingActivityHandled(ctx.db, peerId);
     }
-    if (changed > 0) emitWebStateChanged(ctx, { domains: ["inbox"], peerId });
-    return jsonResponse({ ok: true, acked: changed });
+    if (changed > 0 || handled > 0) emitWebStateChanged(ctx, { domains: ["inbox", "events"], peerId });
+    return jsonResponse({ ok: true, acked: changed, handled });
   }
 
   return null;

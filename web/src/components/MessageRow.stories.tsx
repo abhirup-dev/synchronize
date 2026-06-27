@@ -8,6 +8,8 @@ const msgs = MESSAGES["checkout-revamp"]!;
 const msg = (id: string) => msgs.find((m) => m.id === id)!;
 const authorOf = (authorId: string) => AGENTS.find((a) => a.id === authorId)!;
 const runtimeAuthorOf = (authorId: string) => agentsWithRuntimeDetails.find((a) => a.id === authorId)!;
+const avatarMenuMsg = msg("m3");
+const avatarMenuAuthor = runtimeAuthorOf(avatarMenuMsg.authorId);
 const longAutolink =
   "https://sharechat.slack.com/archives/C08Q1HBQ2BF/p1752123456789012?thread_ts=1752123456.789012&cid=C08Q1HBQ2BF&workspace=synchronize-long-link-wrap-regression";
 const longPlainToken =
@@ -74,6 +76,65 @@ export const RichWithLongAutolink: Story = {
     expect(bubble).toBeTruthy();
     expect(bubble!.textContent).toContain(longPlainToken);
     expect(bubble!.scrollWidth).toBeLessThanOrEqual(bubble!.clientWidth + 1);
+  },
+};
+
+export const ThreadPaneTextReaction: Story = {
+  render: (args) => (
+    <div className="thread-pane-body" style={{ width: 280 }}>
+      <MessageRow {...args} />
+    </div>
+  ),
+  args: {
+    message: {
+      id: "thread-text-reaction-edge",
+      roomId: "checkout-revamp",
+      authorId: "atlas",
+      createdAt: new Date().toISOString(),
+      body: "Text-like reactions should stay horizontal inside the narrower thread pane footer.",
+      mentions: [],
+      reactions: [{ emoji: "ok", by: ["you"] }],
+      parentId: "m2",
+    },
+    author: authorOf("atlas"),
+    onReact: fn(),
+    hideAvatar: true,
+  },
+  play: async ({ canvasElement }) => {
+    const reaction = canvasElement.querySelector<HTMLElement>(".reaction");
+    expect(reaction).toBeTruthy();
+    expect(reaction!.textContent?.replace(/\s+/g, "")).toBe("ok1");
+    const rect = reaction!.getBoundingClientRect();
+    expect(rect.width).toBeGreaterThan(rect.height);
+  },
+};
+
+export const ThreadPaneShortSelfReply: Story = {
+  render: (args) => (
+    <div className="thread-pane-body" style={{ width: 280 }}>
+      <MessageRow {...args} />
+    </div>
+  ),
+  args: {
+    message: {
+      id: "thread-short-self-edge",
+      roomId: "checkout-revamp",
+      authorId: "you",
+      createdAt: new Date().toISOString(),
+      body: "cool",
+      mentions: [],
+      reactions: [],
+      parentId: "m2",
+    },
+    author: authorOf("you"),
+    hideAvatar: true,
+  },
+  play: async ({ canvasElement }) => {
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    expect(bubble).toBeTruthy();
+    expect(bubble!.textContent?.trim()).toBe("cool");
+    const rect = bubble!.getBoundingClientRect();
+    expect(rect.width).toBeGreaterThan(rect.height);
   },
 };
 
@@ -205,8 +266,8 @@ export const ReactWithPicker: Story = {
 export const AgentAvatarMenu: Story = {
   args: {
     agents: agentsWithRuntimeDetails,
-    message: msg("m3"),
-    author: runtimeAuthorOf(msg("m3").authorId),
+    message: avatarMenuMsg,
+    author: avatarMenuAuthor,
     onOpenDm: fn(),
   },
   play: async ({ canvasElement }) => {
@@ -222,7 +283,7 @@ export const AgentAvatarMenu: Story = {
     expect(screen.queryByText(/Focus on/i)).toBeNull();
 
     await userEvent.click(screen.getByText("View profile"));
-    await waitFor(() => expect(screen.getByText("Atlas profile")).toBeTruthy());
-    await waitFor(() => expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(`${avatarMenuAuthor.name} profile`)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(avatarMenuAuthor.runtimeDetails!.model!)).toBeTruthy());
   },
 };
