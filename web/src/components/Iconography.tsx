@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Activity } from "lucide-react";
 import { MessageKindIcon } from "./MessageKindIcon.tsx";
 import { IdentityLogoTile } from "./primitives.tsx";
+import { identityRefForId } from "../theme/identity.ts";
 
 // The icon gallery — identity tiles + activity message-kind markers. A showcase
 // component (no props): it documents the icon vocabulary for the design agent,
@@ -66,7 +67,7 @@ export function Iconography() {
           <IdentityLogoTile
             as="div"
             className="room-id-icon room-glyph-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm"
-            color="#7AA89F"
+            colorRef={identityRefForId("iconography-group")}
           >
             #
           </IdentityLogoTile>

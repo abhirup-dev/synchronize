@@ -16,7 +16,7 @@ const meta = {
   ...baseMeta,
   title: "Surfaces/BoardView Dark",
   globals: { ...((baseMeta as { globals?: Record<string, unknown> }).globals ?? {}), theme: "kanagawa-wave" },
-  decorators: [dark, ...(baseMeta.decorators ?? [])],
+  decorators: [dark, ...((baseMeta as { decorators?: Decorator[] }).decorators ?? [])],
 };
 export default meta;
 

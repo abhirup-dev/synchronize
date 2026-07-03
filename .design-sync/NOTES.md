@@ -226,3 +226,14 @@ post-open) are NOT reproduced by the compiled preview — previews compose the s
   expectation and wire `cfg.extraFonts`.
 - Solo calibration verified Markdown, ChatView, AttachmentPreview against storybook (all match).
   The remaining components were graded in the fan-out — see their `.grade.json` basis markers.
+
+## Glass skin revamp — scope decisions (2026-07-03)
+
+- The glass-skin revamp templates in the remote project (`templates/glass-skin-revamp*/`)
+  explore SIX variants (`data-glass-v`: mono/lumen/canopy/ledger/pulse/sediment) and five
+  ambients (`data-bg`). **User decision: only `mono` ships as THE glass skin, only `mesh`
+  ambient ships. No variant/ambient fixtures in app code** — the other variants were ideation.
+- Port plan: `docs/plans/glass-skin-revamp-port.md` (epic sync-oiqr). After Phase 5 lands,
+  re-run /design-sync so the project reflects the shipped skin.
+- `ds-bundle/` local pull state is tracked in `glass-skin-revamp-sync-pull-handoff.md`
+  (repo root); remote-only files are readable via DesignSync(get_file) on demand.
