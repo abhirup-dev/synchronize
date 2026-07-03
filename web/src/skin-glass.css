@@ -489,7 +489,7 @@
   padding: 4px 9px; border-radius: 8px; white-space: nowrap; pointer-events: none; z-index: 60;
   background: var(--ink); color: var(--paper);
   font-size: 11.5px; font-weight: 600; letter-spacing: 0;
-  box-shadow: 0 4px 14px color-mix(in srgb, #000 36%, transparent);
+  box-shadow: var(--shadow-md);
   transition: opacity .14s ease .28s;
 }
 
@@ -536,4 +536,50 @@
    hidden here (glass only) rather than removed from markup so brutal keeps them */
 :root[data-skin="glass"] .room-working-meta,
 :root[data-skin="glass"] .member-pile { display: none; }
+
+/* ============================================================================
+   GLASS REVAMP — floating chat/board header + hard-cut mask (glass revamp §2.3)
+   ----------------------------------------------------------------------------
+   The room header lifts out of flow and overlays the scroll surface (which owns
+   the full column height — ShellMainColumn is position:relative, .main-body is
+   flex:1). It collapses to a SINGLE bar: room identity (left) · tab rail centred
+   · AGENTS (right); the old second row is gone. The header is fully transparent
+   and pointer-transparent except its actual controls, so the surface shows
+   straight through. Content clears the bar with top padding and cuts off at a
+   HARD line — no fade, no scrim. Desktop + medium only (compact = Phase 4).
+   ========================================================================= */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; flex-direction: row; align-items: center; flex-wrap: nowrap;
+  gap: 10px 14px; padding: 13px 18px;
+  background: transparent; border: 0; box-shadow: none;
+  pointer-events: none;
+}
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header-top { display: contents; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-id { order: 0; flex: 0 0 auto; min-width: 0; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header-actions { order: 4; flex: 0 0 auto; margin-left: auto; }
+/* the tab rail is truly centred on the bar, independent of the side clusters */
+:root[data-skin="glass"] .app-shell[data-shell-mode="desktop"] .room-tabs {
+  order: 1; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+/* medium: the absolutely-centred rail collides with the room title — let it flow
+   statically between the (truncating) identity and AGENTS instead (§2.6 fix) */
+:root[data-skin="glass"] .app-shell[data-shell-mode="medium"] .room-tabs {
+  order: 1; position: static; transform: none; margin: 0 auto;
+}
+/* only actual controls capture clicks; the gaps pass through to the surface */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header :is(button, a, input, [role="button"], .room-tabs) {
+  pointer-events: auto;
+}
+
+/* surface content clears the floating header and disappears behind it at a clean
+   HARD line — no opacity ramp, no fade. The mask #000 is an alpha stop, not a
+   theme colour (raw value legitimate in this allowlisted skin file). */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .chat-list {
+  padding-top: var(--float-clear);
+  -webkit-mask-image: linear-gradient(to bottom,
+      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
+          mask-image: linear-gradient(to bottom,
+      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
+}
 :root[data-skin="glass"] .placeholder-stamp { border-radius: var(--radius-xl); }
