@@ -475,7 +475,7 @@ function RoomDigest({
         <button className="act-digest-toggle" onClick={onToggle} type="button">
           <span className="act-digest-chevron">{expanded ? "▾" : "▸"}</span>
           {isDm ? (
-            <IdentityBadge className="act-room-icon sm" color={room.color}>
+            <IdentityBadge className="act-room-icon sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
               {room.emoji ?? label[0]}
             </IdentityBadge>
           ) : null}
@@ -619,7 +619,7 @@ function LatestStrip({
     <div className="act-latest">
       <span className="act-latest-tag">▸ MOST RECENT</span>
       <Avatar agent={actor} size={26} />
-      <IdentityBadge className="act-latest-actor" color={actor.color}>{actor.name}</IdentityBadge>
+      <IdentityBadge className="act-latest-actor" color={actor.color} {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}>{actor.name}</IdentityBadge>
       <span className="act-latest-text">{stripMd(item.text).slice(0, 90)}</span>
       {room && <RoomNameInline kind={room.kind} name={room.name} className="act-latest-room" />}
       <span className="act-spacer" />
@@ -717,9 +717,9 @@ function RoomFilterBar({
             <button key={id} className={`act-roomlist-row${on ? " on" : ""}`} onClick={() => onToggle(id)} type="button">
               <span className={`act-roomlist-check${on ? " on" : ""}`}>{on ? "✓" : ""}</span>
               {room.kind === "group" ? (
-                <IdentityLogoTile className="act-room-icon sm room-glyph-icon" color={room.color}>{room.emoji ?? "#"}</IdentityLogoTile>
+                <IdentityLogoTile className="act-room-icon sm room-glyph-icon" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>{room.emoji ?? "#"}</IdentityLogoTile>
               ) : (
-                <IdentityBadge className="act-room-icon sm" color={room.color}>{room.emoji ?? room.name[0]}</IdentityBadge>
+                <IdentityBadge className="act-room-icon sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>{room.emoji ?? room.name[0]}</IdentityBadge>
               )}
               <RoomNameInline kind={room.kind} name={room.name} className="act-roomlist-name" />
               {room.unread > 0 && <span className="act-roomlist-unread">{room.unread}</span>}

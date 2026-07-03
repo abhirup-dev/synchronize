@@ -6,6 +6,21 @@ import type { Agent, ArchivePreview, ArchivedSession, ResumePreview, Room } from
 import { useToast } from "./Toast.tsx";
 import { copyText } from "../utils/clipboard.ts";
 import { roomNameText } from "./primitives.tsx";
+import { identityColorCss, type IdentityColorRef } from "../theme/identity.ts";
+
+const ARCHIVE_FALLBACK_COLOR_REF = { kind: "token", token: "--ink" } satisfies IdentityColorRef;
+
+function archivedFallbackRoom(group: string): Room {
+  return {
+    id: group,
+    kind: "group",
+    name: group,
+    color: identityColorCss(ARCHIVE_FALLBACK_COLOR_REF),
+    colorRef: ARCHIVE_FALLBACK_COLOR_REF,
+    members: [],
+    unread: 0,
+  };
+}
 
 interface ArchiveWorkflow {
   openConsole(): void;
@@ -145,8 +160,16 @@ export function ArchiveRecoveryProvider({ children }: { children: ReactNode }) {
           }}
           onForce={(force) => {
             if (preview.kind !== "resume") return;
-            if (preview.target === "group") loadResumeGroup({ id: preview.group, kind: "group", name: preview.group, color: "#111111", members: [], unread: 0 }, force);
-            else loadResumeSession({ id: preview.peerId, name: preview.title.replace(/^Resume /, ""), handle: preview.peerId, color: "#111111", role: "", status: "offline", avatar: "?" }, force);
+            if (preview.target === "group") loadResumeGroup(archivedFallbackRoom(preview.group), force);
+            else loadResumeSession(sessionToAgent({
+              peerId: preview.peerId,
+              sessionName: preview.title.replace(/^Resume /, ""),
+              tool: "",
+              archivedAt: "",
+              archivedReason: "",
+              archiveSource: "preview",
+              aliases: [],
+            }), force);
           }}
         />
       )}
@@ -213,7 +236,7 @@ function ArchiveConsole({
                   <strong>#{group}</strong>
                   <span>{sessions.length} archived</span>
                   <span />
-                  <button type="button" className={archiveBtn} onClick={() => onResumeGroup(room ?? { id: group, kind: "group", name: group, color: "#111111", members: [], unread: 0 })}>Resume group</button>
+                  <button type="button" className={archiveBtn} onClick={() => onResumeGroup(room ?? archivedFallbackRoom(group))}>Resume group</button>
                 </div>
                 {sessions.map((session) => (
                   <div key={session.peerId} className={archiveRow}>
@@ -349,7 +372,8 @@ function sessionToAgent(session: ArchivedSession): Agent {
     id: session.peerId,
     name: session.sessionName,
     handle: session.sessionName.toLowerCase(),
-    color: "#111111",
+    color: identityColorCss(ARCHIVE_FALLBACK_COLOR_REF),
+    colorRef: ARCHIVE_FALLBACK_COLOR_REF,
     role: session.tool,
     status: "offline",
     lifecycleState: "archived",

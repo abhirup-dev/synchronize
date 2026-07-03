@@ -3,7 +3,8 @@
 // own list. Keeping one list is the whole point: when these drifted, Storybook
 // silently lost tokens.css and every design token (--paper/--line/...) went
 // undefined, unstyling the whole catalog while play tests stayed green. Order
-// matters: tokens before the rules that consume them; skin overrides last.
+// matters: tokens before rules that consume them; skin files only add selector
+// behavior that cannot be expressed as reusable role tokens.
 import "../tw.css";
 import "./tokens.css";
 import "../styles.css";

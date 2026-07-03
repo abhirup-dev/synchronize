@@ -11,45 +11,56 @@ import type {
   ThreadSummary,
   TimelineEvent,
 } from "./types.ts";
+import { identityColorCss, type IdentityColorRef, type IdentitySlot } from "../theme/identity.ts";
+
+const slot = (slotId: IdentitySlot): { color: string; colorRef: IdentityColorRef } => {
+  const colorRef = { kind: "slot", slot: slotId } satisfies IdentityColorRef;
+  return { colorRef, color: identityColorCss(colorRef) };
+};
+
+const neutralIdentity = (): { color: string; colorRef: IdentityColorRef } => {
+  const colorRef = { kind: "token", token: "--ink" } satisfies IdentityColorRef;
+  return { colorRef, color: identityColorCss(colorRef) };
+};
 
 export const AGENTS: Agent[] = [
-  { id: "you",    name: "You",    handle: "you",    color: "#111111", role: "Human",                status: "online",  avatar: "Y" },
-  { id: "cortex", name: "Cortex", handle: "cortex", color: "#FFD23F", role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C" },
-  { id: "atlas",  name: "Atlas",  handle: "atlas",  color: "#FF5DA2", role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A" },
-  { id: "vega",   name: "Vega",   handle: "vega",   color: "#4D7CFE", role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V" },
-  { id: "nova",   name: "Nova",   handle: "nova",   color: "#7BE389", role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N" },
-  { id: "echo",   name: "Echo",   handle: "echo",   color: "#FF8A3D", role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E" },
-  { id: "pulse",  name: "Pulse",  handle: "pulse",  color: "#B49BFF", role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P" },
-  { id: "mira",   name: "Mira",   handle: "mira",   color: "#F45B69", role: "Teammate",             status: "online",  avatar: "M" },
-  { id: "jay",    name: "Jay",    handle: "jay",    color: "#2EC4B6", role: "Teammate",             status: "idle",    avatar: "J" },
+  { id: "you",    name: "You",    handle: "you",    ...neutralIdentity(), role: "Human",                status: "online",  avatar: "Y" },
+  { id: "cortex", name: "Cortex", handle: "cortex", ...slot(0), role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C" },
+  { id: "atlas",  name: "Atlas",  handle: "atlas",  ...slot(1), role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A" },
+  { id: "vega",   name: "Vega",   handle: "vega",   ...slot(2), role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V" },
+  { id: "nova",   name: "Nova",   handle: "nova",   ...slot(3), role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N" },
+  { id: "echo",   name: "Echo",   handle: "echo",   ...slot(4), role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E" },
+  { id: "pulse",  name: "Pulse",  handle: "pulse",  ...slot(5), role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P" },
+  { id: "mira",   name: "Mira",   handle: "mira",   ...slot(6), role: "Teammate",             status: "online",  avatar: "M" },
+  { id: "jay",    name: "Jay",    handle: "jay",    ...slot(7), role: "Teammate",             status: "idle",    avatar: "J" },
 ];
 
 export const GROUPS: Room[] = [
-  { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", color: "#FFD23F",
+  { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", ...slot(0),
     members: ["you", "cortex", "atlas", "vega", "nova"],
     lastPreview: "Cortex: pushed schema migration #4128", unread: 3, pinned: true },
-  { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", color: "#B49BFF",
+  { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", ...slot(5),
     members: ["you", "pulse", "vega", "echo"],
     lastPreview: "Pulse: AUC bumped to 0.871", unread: 0 },
-  { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", color: "#F45B69",
+  { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", ...slot(6),
     members: ["you", "vega", "nova", "cortex"],
     lastPreview: "Vega: rotated KMS keys", unread: 2 },
-  { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", color: "#FF5DA2",
+  { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", ...slot(1),
     members: ["you", "atlas", "echo"],
     lastPreview: "Atlas: shipped <Button v2>", unread: 0 },
-  { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", color: "#7BE389",
+  { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", ...slot(3),
     members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"],
     lastPreview: "Vega: are you alive? 4/6 ✓", unread: 2 },
 ];
 
 export const DMS: Room[] = [
-  { id: "dm-cortex", kind: "dm", name: "Cortex", color: "#FFD23F", members: ["you", "cortex"], peerId: "cortex",
+  { id: "dm-cortex", kind: "dm", name: "Cortex", ...slot(0), members: ["you", "cortex"], peerId: "cortex",
     lastPreview: "tests are green on the rebase", unread: 3 },
-  { id: "dm-atlas",  kind: "dm", name: "Atlas",  color: "#FF5DA2", members: ["you", "atlas"],  peerId: "atlas",
+  { id: "dm-atlas",  kind: "dm", name: "Atlas",  ...slot(1), members: ["you", "atlas"],  peerId: "atlas",
     lastPreview: "want me to try a darker variant?", unread: 0 },
-  { id: "dm-mira",   kind: "dm", name: "Mira",   color: "#F45B69", members: ["you", "mira"],   peerId: "mira",
+  { id: "dm-mira",   kind: "dm", name: "Mira",   ...slot(6), members: ["you", "mira"],   peerId: "mira",
     lastPreview: "lol Cortex roasted the codebase…", unread: 2 },
-  { id: "dm-vega",   kind: "dm", name: "Vega",   color: "#4D7CFE", members: ["you", "vega"],   peerId: "vega",
+  { id: "dm-vega",   kind: "dm", name: "Vega",   ...slot(2), members: ["you", "vega"],   peerId: "vega",
     lastPreview: "tf plan looks clean, want me to apply…", unread: 0 },
 ];
 

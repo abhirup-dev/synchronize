@@ -1,43 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { inkFor } from "./primitives.tsx";
 import { cn } from "../lib/cn.ts";
+import {
+  IDENTITY_SLOTS,
+  identityRefEquals,
+  identityStyleVars,
+  type IdentityColorRef,
+} from "../theme/identity.ts";
+import type { HexColor } from "../theme/contrast.ts";
 
 interface AgentColorPickerProps {
   /** Screen coordinates to anchor the popover to (e.g. the right-click point). */
   x: number;
   y: number;
-  /** Current color of the agent (for the "selected" outline). */
-  currentHex: string;
-  /** Default/seeded color — used by the "Default" swatch to restore the
-   *  original identity. */
-  defaultHex: string;
+  /** Current identity color reference (for the selected outline). */
+  currentRef: IdentityColorRef;
+  /** Default deterministic color reference. */
+  defaultRef: IdentityColorRef;
   /** Display name shown in the popover header. */
   agentName: string;
-  onPick(hex: string): void;
+  onPick(ref: IdentityColorRef): void;
   onReset(): void;
   onClose(): void;
 }
 
-// Brutalist palette — matches DESIGN.md accent tokens. Black is intentionally
-// available too (it's a valid identity for the user / system messages).
-const SWATCHES: Array<{ label: string; hex: string }> = [
-  { label: "yellow",    hex: "#FFD23F" },
-  { label: "pink",      hex: "#FF5DA2" },
-  { label: "blue",      hex: "#4D7CFE" },
-  { label: "lime",      hex: "#7BE389" },
-  { label: "tangerine", hex: "#FF8A3D" },
-  { label: "lilac",     hex: "#B49BFF" },
-  { label: "teal",      hex: "#2EC4B6" },
-  { label: "red",       hex: "#F45B69" },
-  { label: "forest",    hex: "#1F7A3A" },
-  { label: "navy",      hex: "#1E2A78" },
-  { label: "rust",      hex: "#A14A1A" },
-  { label: "slate",     hex: "#555E6E" },
-];
-
-export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPick, onReset, onClose }: AgentColorPickerProps) {
+export function AgentColorPicker({ x, y, currentRef, defaultRef, agentName, onPick, onReset, onClose }: AgentColorPickerProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [custom, setCustom] = useState(currentHex);
+  const [custom, setCustom] = useState<HexColor>(currentRef.kind === "custom" ? currentRef.hex : "#3B0A45");
 
   // Close on outside click, scroll, or Escape.
   useEffect(() => {
@@ -58,8 +46,6 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
     };
   }, [onClose]);
 
-  const norm = currentHex.toLowerCase();
-
   return (
     <div
       ref={ref}
@@ -70,21 +56,26 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
       <div className="flex items-center justify-between">
         <span className="font-display text-[length:var(--text-11)] tracking-[var(--tracking-sm)] text-ink">color · {agentName}</span>
       </div>
-      <div className="grid grid-cols-6 gap-1.5">
-        {SWATCHES.map(({ label, hex }) => {
-          const isCurrent = hex.toLowerCase() === norm;
+      <div className="grid grid-cols-8 gap-1.5">
+        {IDENTITY_SLOTS.map((slot) => {
+          const slotRef = { kind: "slot", slot } satisfies IdentityColorRef;
+          const isCurrent = identityRefEquals(slotRef, currentRef);
           return (
             <button
-              key={hex}
+              key={slot}
               type="button"
               className={cn(
                 "w-full aspect-square [border:var(--line-sm)] rounded-md shadow-sm cursor-pointer font-display text-[length:var(--text-12)] grid place-items-center [transition:transform_80ms_ease,box-shadow_80ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:[box-shadow:var(--shadow-hover)]",
                 isCurrent && "outline-2 outline-dashed outline-ink outline-offset-2",
               )}
-              title={label}
-              aria-label={label}
-              style={{ background: hex, color: inkFor(hex) }}
-              onClick={() => onPick(hex)}
+              title={`slot ${slot}`}
+              aria-label={`slot ${slot}`}
+              style={{
+                ...identityStyleVars(slotRef),
+                background: "var(--identity-color)",
+                color: "var(--identity-ink)",
+              }}
+              onClick={() => onPick(slotRef)}
             >
               {isCurrent ? "✓" : ""}
             </button>
@@ -98,8 +89,8 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
             type="color"
             className="w-[30px] h-[22px] p-0 [border:var(--line-sm)] rounded-sm bg-transparent cursor-pointer"
             value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            onBlur={() => { if (custom.toLowerCase() !== norm) onPick(custom); }}
+            onChange={(e) => setCustom(e.target.value as HexColor)}
+            onBlur={() => { if (currentRef.kind !== "custom" || custom.toLowerCase() !== currentRef.hex.toLowerCase()) onPick({ kind: "custom", hex: custom }); }}
           />
           <span className="ml-auto font-semibold text-ink">{custom.toUpperCase()}</span>
         </label>
@@ -114,9 +105,13 @@ export function AgentColorPicker({ x, y, currentHex, defaultHex, agentName, onPi
         </button>
         <span
           className="font-mono text-[length:var(--text-10)] px-1.5 py-0.5 [border:var(--line-xs)] rounded-sm"
-          style={{ background: defaultHex, color: inkFor(defaultHex) }}
+          style={{
+            ...identityStyleVars(defaultRef),
+            background: "var(--identity-color)",
+            color: "var(--identity-ink)",
+          }}
         >
-          {defaultHex.toUpperCase()}
+          {defaultRef.kind === "slot" ? `slot ${defaultRef.slot}` : defaultRef.kind === "custom" ? defaultRef.hex.toUpperCase() : defaultRef.token}
         </span>
       </div>
     </div>

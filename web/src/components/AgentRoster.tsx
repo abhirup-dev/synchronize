@@ -12,6 +12,7 @@ import { useToast } from "./Toast.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
+import { normalizeIdentityColorRef } from "../theme/identity.ts";
 
 interface AgentRosterProps {
   room: Room;
@@ -53,6 +54,11 @@ const GROUPS: Array<{ title: string; status: Agent["status"] }> = [
   { title: "IDLE", status: "idle" },
   { title: "OFF", status: "offline" },
 ];
+
+function defaultAgentColorRef(agent: Agent) {
+  const seeded = SEED_AGENTS.find((candidate) => candidate.id === agent.id);
+  return seeded?.colorRef ?? normalizeIdentityColorRef(seeded?.color ?? agent.color, agent.id);
+}
 
 export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterProps) {
   const agents = useAgents();
@@ -120,10 +126,10 @@ export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterP
         <AgentColorPicker
           x={picker.x}
           y={picker.y}
-          currentHex={picker.agent.color}
-          defaultHex={SEED_AGENTS.find((a) => a.id === picker.agent.id)?.color ?? picker.agent.color}
+          currentRef={picker.agent.colorRef ?? normalizeIdentityColorRef(picker.agent.color, picker.agent.id)}
+          defaultRef={defaultAgentColorRef(picker.agent)}
           agentName={picker.agent.name}
-          onPick={(hex) => { setAgentColor(picker.agent.id, hex); setPicker(null); }}
+          onPick={(ref) => { setAgentColor(picker.agent.id, ref); setPicker(null); }}
           onReset={() => { setAgentColor(picker.agent.id, null); setPicker(null); }}
           onClose={() => setPicker(null)}
         />

@@ -25,7 +25,7 @@ export interface AgentPreviewProps {
 }
 
 const cardBase =
-  "agent-preview min-w-0 bg-surface text-fg [border:var(--card-border)] rounded-card overflow-hidden [box-shadow:var(--message-card-shadow-offset,4px)_var(--message-card-shadow-offset,4px)_0_var(--message-card-shadow-color,var(--rule))]";
+  "agent-preview min-w-0 bg-surface text-fg [border:var(--card-border)] rounded-card overflow-hidden shadow-card";
 
 const sectionTitle =
   "font-display text-[length:var(--text-10)] tracking-[var(--tracking-lg)] uppercase text-ink-soft";
@@ -121,7 +121,7 @@ export function canShowAgentPreview(agent: Agent): boolean {
 
 function Section({ title, icon, children, className }: { title: string; icon: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("min-w-0 rounded-control bg-surface-raised p-[9px] [border:var(--control-border)] [box-shadow:2px_2px_0_var(--message-card-shadow-color,var(--rule))]", className)}>
+    <section className={cn("min-w-0 rounded-control bg-surface-raised p-[9px] [border:var(--control-border)] shadow-control", className)}>
       <div className="mb-[7px] flex items-center gap-[var(--space-6)]">
         {icon}
         <span className={sectionTitle}>{title}</span>

@@ -22,3 +22,9 @@ if command -v bd >/dev/null 2>&1; then
   if [ $_bd_exit -ne 0 ]; then exit $_bd_exit; fi
 fi
 # --- END BEADS INTEGRATION v1.0.2 ---
+
+# --- BEGIN SYNCHRONIZE THEME CONTRACT GUARD v1 ---
+if [ -x "scripts/precommit-theme-contract.sh" ]; then
+  scripts/precommit-theme-contract.sh
+fi
+# --- END SYNCHRONIZE THEME CONTRACT GUARD v1 ---

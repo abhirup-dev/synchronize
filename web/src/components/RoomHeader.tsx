@@ -75,11 +75,11 @@ export function RoomHeader({
       <div className="room-header-top flex items-center gap-[var(--space-16)] pt-[16px] px-[22px] pb-[12px]">
         <div className="room-id flex items-center gap-[14px] flex-[1_1_520px] min-w-0">
           {room.kind === "group" ? (
-            <IdentityLogoTile as="div" className="room-id-icon room-glyph-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color}>
+            <IdentityLogoTile as="div" className="room-id-icon room-glyph-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
               {room.emoji ?? "#"}
             </IdentityLogoTile>
           ) : (
-            <IdentityBadge as="div" className="room-id-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] rounded-lg grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color}>
+            <IdentityBadge as="div" className="room-id-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] rounded-lg grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
               {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
             </IdentityBadge>
           )}
@@ -173,7 +173,7 @@ export function RoomHeader({
               <strong>Thread</strong>
               <span className="thread-pane-sep">·</span>
               <span className="thread-pane-sub">replying to</span>
-              <IdentityBadge className="author-name min-w-0 max-w-[min(220px,34vw)] p-[var(--space-thread-author-chip-pad)] [border:var(--line-sm)] rounded-sm shadow-chip font-display text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap" color={threadBanner.author.color}>
+              <IdentityBadge className="author-name min-w-0 max-w-[min(220px,34vw)] p-[var(--space-thread-author-chip-pad)] [border:var(--line-sm)] rounded-sm shadow-chip font-display text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap" color={threadBanner.author.color} {...(threadBanner.author.colorRef ? { colorRef: threadBanner.author.colorRef } : null)}>
                 {threadBanner.author.name}
               </IdentityBadge>
             </div>
