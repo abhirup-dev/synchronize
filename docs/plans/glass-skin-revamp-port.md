@@ -117,8 +117,8 @@ A single control language for every top-of-surface single-select cluster:
 1. **Agent roster panel** — upstream the e2e's `RosterPanel` additions into `AgentRoster` (preferred over a clone): status-grouped rows (online/busy/idle/offline with status dots), **model chip** per agent (`modelShort()` of `runtimeDetails.model`), Spawn chip in the header. Desktop/medium: right column (292px/264px) toggled by the header AGENTS rail button; compact: the Agents bottom-nav surface (roster full-screen, ✕ returns to Chats, badge = member count − you).
 2. **Agent profile + model picker** — extend `AgentProfileDialog`: real `AgentPreview` card + MODEL section (radiogroup of models for the agent's tool); picking updates the agent and toasts. **Needs a real daemon command** (`setAgentModel` — daemon route + client + MCP/CLI surfaces as appropriate); the e2e mock-store write defines the UX contract. Model registry must stay single-source with `SpawnAgentDialog`'s `MODEL_OPTIONS`.
 3. **Artifacts view** — replace the placeholder tab: grid/list rail toggle, artifact cards (kind glyph doc/code/data/image, name + pinned dot, summary, author + age + size). Contract: `{id, roomId, name, kind, authorId, updatedAt, summary, size, pinned?}`. v1 may ship against seeded/mock data behind `DataSource`; daemon-backed artifacts feed is a separate backend ticket.
-4. **`data-you` self-message axis** — subtle token-driven self-bubble treatments: `tint` (default, 11% accent wash + hairline ring) · `edge` (inset accent bar) · `halo` (ring + soft shadow) · `fill` (legacy accent fill). Rings are box-shadows (no layout shift). Applied as an `<html>` data attribute; persisted with the theme settings; exposed in settings UI.
-5. **Compact settings sheet** — map `CompactSettingsSheet` onto the real settings store with the axes that survive the scope cut: appearance (light/dark theme), agent labels (pill / bold name = `data-agentlabel`), your messages (`data-you`). **No variant / accent / ambient rows** (mono-only, mesh-only decisions).
+4. **Self-message treatment — `tint` only (SCOPE CUT 2026-07-03: not configurable).** The design's `data-you` axis (tint/edge/halo/fill) is dropped; ship the `tint` default directly as glass CSS on self bubbles: 11% accent wash + hairline accent ring (box-shadows, no layout shift). No `<html>` attribute, no persistence, no settings row.
+5. **Agent labels — `pill` default only (SCOPE CUT 2026-07-03: not configurable).** No `data-agentlabel` axis; the existing author-pill rendering stays as-is. Compact settings sheet keeps only what already exists (theme appearance etc.) — **no variant / accent / ambient / agent-label / your-messages rows**.
 6. **Connection overlay** — full-screen scrim (`blur(9px)`) wrapping the real `ConnectionError` + Reconnect chip, shown on daemon connection failure.
 7. **Seed/mock data** (`web/src/data/seed.ts` / `MockDataSource`): `agent.runtimeDetails {tool, model, thinking?, source, machineId, hostSessionId, launchState, cwd, gitBranch, gitDirty}` on several agents; `room.paths` on group rooms (SpawnAgentDialog requires them); a live poll message + a two-attachment message; artifacts array. These power the stories.
 
@@ -168,7 +168,7 @@ Rewrite the glass skin's values to mono, in place.
 2. Compact surface rail (Chat/Board/Artifacts) + board compact Filters chip/sheet.
 3. BottomNav Agents surface (full-screen roster; badge count; ✕ semantics), app-bar title logic (Agents/Activity/Thread/#room).
 4. Medium fixes: header rail static centring, composer keyboard-hint hidden, compact composer max-height 30vh, compact scroll paddings.
-5. Settings sheet (§2.7.5) with surviving axes; `data-you` + `data-agentlabel` persistence (extend `usePersistentTheme`/storage with normalizers; contract requires constants from the registry pattern where applicable).
+5. ~~Settings sheet axes~~ (SCOPE CUT: `data-you`/`data-agentlabel` are not configurable — tint + pill defaults ship as plain glass CSS; no settings work in this phase beyond what exists).
 
 **Phase-4 checks:** compact stories (390/412) for: filters sheet open/close via play test; surface rail switching; roster surface open/return-to-chats; settings sheet axes actually flip `<html>` attributes (assert in play). `test:storybook` matrix green; no horizontal overflow at 390 (wiring-conventions rule).
 
@@ -195,7 +195,7 @@ Rewrite the glass skin's values to mono, in place.
 ## 5. Open questions for the user (non-blocking, defaults chosen)
 
 1. **Do the room-header removals (sparkline, working meter, member pile) apply under brutal too?** Plan assumes yes (universal removal). If no, they gate on a skin trait.
-2. **Should `data-you` default `tint` apply to brutal as well?** Plan assumes glass-only styling; the attribute exists globally but brutal keeps its current self-bubble look.
+2. ~~`data-you` default~~ RESOLVED (2026-07-03): not configurable — tint ships as glass-only CSS, brutal untouched, no attribute.
 3. **Accent axis** (slate/blue/violet/teal/amber remaps) — cut with the variants, or wanted as a user setting later? Plan: cut.
 
 ## 6. Gotcha ledger (inherited from the design rounds — do not re-litigate)
