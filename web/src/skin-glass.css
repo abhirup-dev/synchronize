@@ -626,4 +626,28 @@
           mask-image: linear-gradient(to bottom,
       transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
 }
+
+/* ============================================================================
+   GLASS REVAMP — self-message tint treatment (glass revamp §2.7.4)
+   ----------------------------------------------------------------------------
+   Ships as the default (not a configurable axis): self bubbles get a faint
+   accent wash + a hairline accent ring instead of the loud accent fill, so a
+   self row reads as "mine" without a heavy colour block. The ring is a
+   box-shadow — no layout shift. Brutal keeps its fill.
+   ========================================================================= */
+:root[data-skin="glass"] .message-row.is-self .bubble {
+  background: color-mix(in srgb, var(--you-bg) 11%, var(--bubble));
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you-bg) 26%, transparent);
+}
+
+/* ============================================================================
+   GLASS REVAMP — compact composer + scroll clearances (glass revamp §2.6)
+   ----------------------------------------------------------------------------
+   The floating composer is smaller in compact, so the message list needs less
+   bottom clearance; cap the input height so a long draft can't eat the screen.
+   ========================================================================= */
+:root[data-skin="glass"] .shell-compact .composer .composer-input { max-height: 30vh; }
+:root[data-skin="glass"] .shell-compact .chat-list { padding-bottom: 132px; }
+:root[data-skin="glass"] .shell-compact .thread-pane-body { padding-bottom: 120px; }
 :root[data-skin="glass"] .placeholder-stamp { border-radius: var(--radius-xl); }
