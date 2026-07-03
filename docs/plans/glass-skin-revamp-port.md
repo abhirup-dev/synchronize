@@ -116,7 +116,7 @@ A single control language for every top-of-surface single-select cluster:
 
 1. **Agent roster panel** — upstream the e2e's `RosterPanel` additions into `AgentRoster` (preferred over a clone): status-grouped rows (online/busy/idle/offline with status dots), **model chip** per agent (`modelShort()` of `runtimeDetails.model`), Spawn chip in the header. Desktop/medium: right column (292px/264px) toggled by the header AGENTS rail button; compact: the Agents bottom-nav surface (roster full-screen, ✕ returns to Chats, badge = member count − you).
 2. **Agent profile + model picker** — extend `AgentProfileDialog`: real `AgentPreview` card + MODEL section (radiogroup of models for the agent's tool); picking updates the agent and toasts. **Needs a real daemon command** (`setAgentModel` — daemon route + client + MCP/CLI surfaces as appropriate); the e2e mock-store write defines the UX contract. Model registry must stay single-source with `SpawnAgentDialog`'s `MODEL_OPTIONS`.
-3. **Artifacts view** — replace the placeholder tab: grid/list rail toggle, artifact cards (kind glyph doc/code/data/image, name + pinned dot, summary, author + age + size). Contract: `{id, roomId, name, kind, authorId, updatedAt, summary, size, pinned?}`. v1 may ship against seeded/mock data behind `DataSource`; daemon-backed artifacts feed is a separate backend ticket.
+3. **Artifacts view — OUT OF SCOPE (user decision 2026-07-03).** The Artifacts tab stays a placeholder; do not build ArtifactsView, do not extend the Artifact type, no daemon artifacts feed. The design e2e's grid/list spec remains in the remote bundle if this is ever revived.
 4. **Self-message treatment — `tint` only (SCOPE CUT 2026-07-03: not configurable).** The design's `data-you` axis (tint/edge/halo/fill) is dropped; ship the `tint` default directly as glass CSS on self bubbles: 11% accent wash + hairline accent ring (box-shadows, no layout shift). No `<html>` attribute, no persistence, no settings row.
 5. **Agent labels — `pill` default only (SCOPE CUT 2026-07-03: not configurable).** No `data-agentlabel` axis; the existing author-pill rendering stays as-is. Compact settings sheet keeps only what already exists (theme appearance etc.) — **no variant / accent / ambient / agent-label / your-messages rows**.
 6. **Connection overlay** — full-screen scrim (`blur(9px)`) wrapping the real `ConnectionError` + Reconnect chip, shown on daemon connection failure.
@@ -176,7 +176,7 @@ Rewrite the glass skin's values to mono, in place.
 
 1. AgentRoster upstream: status groups, model chips, Spawn chip (+ stories).
 2. AgentProfileDialog: MODEL picker section; **daemon `setAgentModel`** (route in `src/api/peers.ts` or agents equivalent, client method in `src/client.ts`, optimistic UI + toast; `bun test` coverage at the daemon level); single-source model registry with `SpawnAgentDialog`.
-3. ArtifactsView (grid/list, cards, empty state) against `DataSource`-shaped mock; seed artifacts; daemon feed = follow-up ticket.
+3. ~~ArtifactsView~~ (OUT OF SCOPE — see §2.7.3; tab remains a placeholder).
 4. ConnectionOverlay wiring to real connection state.
 5. `data-you` bubble treatments (§2.7.4) + seed updates (runtimeDetails, room.paths, poll, attachments).
 6. Full Storybook staleness audit over everything touched; update `.design-sync/conventions.md` if the class/token vocabulary changed; **re-run `/design-sync`** so the design project reflects the shipped skin (this also clears the stale `--tw-*` token-extraction flags noted in `uploads/design-sync-handoff.md` if that config fix lands).
