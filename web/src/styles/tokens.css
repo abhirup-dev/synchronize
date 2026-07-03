@@ -928,6 +928,10 @@
   /* Floating-chrome scroll clearance (base = chat; per-surface overrides in
      later phases). */
   --float-clear: 76px;
+
+  /* Floating composer: kill both the chat and thread dock separators (glass
+     revamp §2.4). The composer floats over the stream instead. */
+  --composer-separator-line: 0 solid transparent;
 }
 
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {

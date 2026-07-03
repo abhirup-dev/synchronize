@@ -236,16 +236,25 @@
   box-shadow: var(--shadow-hover-sm);
 }
 
-/* -- activity: digest room-group container --------------------------------- */
+/* -- activity: digest room-group container (REVAMP: flattened) --------------
+   The group is a bare container, not a card: no panel fill, border, shadow or
+   radius. The only contrasting surfaces in the feed are the row cards
+   (.act-row/.act-card). The group HEADER is a quiet heading — no shade, no rule
+   under it. Between-group gap (30px) reads clearly larger than the within-group
+   row gap (5px) so the grouping is legible. (glass revamp §2.5) */
+:root[data-skin="glass"] .act-digest { gap: 30px; }
 :root[data-skin="glass"] .act-digest-room {
-  background: var(--paper-2);
-  border: var(--line-2);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
 }
+:root[data-skin="glass"] .act-digest-head { background: transparent; }
 :root[data-skin="glass"] .act-digest-room.open .act-digest-head {
-  border-bottom: 1px solid var(--rule);
+  border-bottom: none;
 }
+:root[data-skin="glass"] .act-digest-items { gap: 5px; }
 
 /* -- activity: day / timeline bucket headers -------------------------------- */
 :root[data-skin="glass"] .act-timeline-bucket { border-bottom: 1px solid var(--rule); }
@@ -357,4 +366,43 @@
   box-shadow: var(--shadow-hover-sm);
 }
 :root[data-skin="glass"] .placeholder { background: none; }
+
+/* ============================================================================
+   GLASS REVAMP — one-continuous-surface sidebar (glass revamp §2.5)
+   ----------------------------------------------------------------------------
+   The sidebar reads as a single unbroken surface: drop the hairline under the
+   brand row and the one above the bottom dock, plus the dock's distinct shade
+   (bg-paper-2). Both lines are Tailwind arbitrary utilities baked into the
+   markup ([border-bottom]/[border-top] + bg-paper-2); these override them.
+   ========================================================================= */
+:root[data-skin="glass"] .sidebar-brand { border-bottom: 0; }
+:root[data-skin="glass"] .sidebar-bottom { border-top: 0; background: transparent; }
+
+/* ============================================================================
+   GLASS REVAMP — floating composer (glass revamp §2.4)
+   ----------------------------------------------------------------------------
+   The compose box floats over the message stream instead of sitting in a docked
+   section behind a separator bar. Both the chat and thread separators are one
+   variable — zero it. The composer is already a rounded glass card, so it is
+   lifted out of flow and pinned flush to the bottom (square bottom corners,
+   rounded top + side lift retained so it still reads as floating). It is opaque
+   glass, so messages scroll cleanly behind it — no bottom fade, only enough
+   scroll padding for the last message to clear the card.
+   ========================================================================= */
+/* --composer-separator-line is zeroed for glass in styles/tokens.css (global
+   tokens may only be defined in the token files). */
+:root[data-skin="glass"] .chat-col { position: relative; }
+:root[data-skin="glass"] .chat-col > .composer,
+:root[data-skin="glass"] .thread-pane > .composer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 22;
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+:root[data-skin="glass"] .chat-list { padding-bottom: 168px; }
+:root[data-skin="glass"] .thread-pane-body { padding-bottom: 150px; }
 :root[data-skin="glass"] .placeholder-stamp { border-radius: var(--radius-xl); }
