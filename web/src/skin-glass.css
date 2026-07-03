@@ -423,20 +423,20 @@
    place (glass only) — brutal keeps its pills.
    ========================================================================= */
 
-/* $RAIL — the recessed well (room tabs, activity filters, layout segment) */
-:root[data-skin="glass"] :is(.room-tabs, .act-filters, .act-view-segment) {
+/* $RAIL — the recessed well (activity filters, layout segment). NOTE: the room
+   tabs are deliberately NOT on the rail: the thread "replying to" banner lives
+   inside .room-tabs and needs the row to be full-width for its absolute
+   positioning, which the content-width rail well breaks. Room tabs keep their
+   glass pill styling; revisit once the banner is lifted out of .room-tabs. */
+:root[data-skin="glass"] :is(.act-filters, .act-view-segment) {
   display: inline-flex; align-items: center; gap: var(--rail-gap);
   width: auto; height: var(--rail-well-h); padding: 0 var(--rail-well-pad);
   border-radius: var(--rail-well-radius);
   background: var(--rail-fill); border: var(--line); box-shadow: none;
 }
-/* the room-tabs row also carries an absolute thread banner + the (now hidden)
-   sparkline; keep the well itself content-width so those don't stretch it */
-:root[data-skin="glass"] .room-tabs { border-top: var(--line); }
-:root[data-skin="glass"] .room-activity { display: none; }
 
 /* $SEG — a segment: collapsed square icon → expanding labelled pane */
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon) {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon) {
   position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0;
   box-sizing: border-box;
   height: var(--rail-seg-h); min-height: 0;
@@ -448,19 +448,19 @@
   transition: background .2s ease, color .2s ease, box-shadow .24s ease, padding var(--rail-pane);
 }
 /* masked icon (tabs + filters); the layout segment uses the bundle's own <svg> */
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter)::before {
+:root[data-skin="glass"] :is(.act-filters .act-filter)::before {
   content: ""; order: 0; flex: 0 0 auto; width: var(--rail-icon); height: var(--rail-icon);
   background: currentColor;
   -webkit-mask: var(--ico) center / contain no-repeat; mask: var(--ico) center / contain no-repeat;
   transition: margin var(--rail-pane);
 }
 :root[data-skin="glass"] .act-view-segment .act-view-icon svg { order: 0; flex: 0 0 auto; transition: margin var(--rail-pane); }
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon):hover {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):hover {
   background: var(--rail-hover); color: var(--ink);
 }
 
 /* label — present on every segment, collapsed to 0 until active, then slides in */
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon)::after {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon)::after {
   content: var(--lbl, ""); order: 1; display: inline-block;
   max-width: 0; min-width: 0; opacity: 0; transform: translateX(-10px); margin-left: 0;
   overflow: hidden; white-space: nowrap;
@@ -469,21 +469,21 @@
 }
 
 /* ACTIVE — the raised pane (flat, not a 3D bevel) */
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon).active {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon).active {
   background: var(--rail-active); color: var(--ink);
   padding: var(--rail-seg-pad-active); box-shadow: var(--rail-active-shadow);
 }
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter).active::before { margin-right: 8px; }
+:root[data-skin="glass"] :is(.act-filters .act-filter).active::before { margin-right: 8px; }
 :root[data-skin="glass"] .act-view-segment .act-view-icon.active svg { margin-right: 8px; }
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon).active::after {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon).active::after {
   max-width: var(--rail-label-max); opacity: 1; transform: none; margin-left: 9px;
   transition-delay: var(--rail-label-delay);
 }
 
 /* HOVER TOOLTIP — a collapsed (inactive) segment reveals its label as a small
    floating tip so you learn what each icon does without selecting it. */
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover { overflow: visible; }
-:root[data-skin="glass"] :is(.room-tabs .room-tab, .act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover::after {
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover { overflow: visible; }
+:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover::after {
   content: var(--lbl, ""); position: absolute; top: calc(100% + 8px); left: 50%;
   transform: translateX(-50%); margin: 0; max-width: none; opacity: 1;
   padding: 4px 9px; border-radius: 8px; white-space: nowrap; pointer-events: none; z-index: 60;
@@ -537,95 +537,13 @@
 :root[data-skin="glass"] .room-working-meta,
 :root[data-skin="glass"] .member-pile { display: none; }
 
-/* ============================================================================
-   GLASS REVAMP — floating chat/board header + hard-cut mask (glass revamp §2.3)
-   ----------------------------------------------------------------------------
-   The room header lifts out of flow and overlays the scroll surface (which owns
-   the full column height — ShellMainColumn is position:relative, .main-body is
-   flex:1). It collapses to a SINGLE bar: room identity (left) · tab rail centred
-   · AGENTS (right); the old second row is gone. The header is fully transparent
-   and pointer-transparent except its actual controls, so the surface shows
-   straight through. Content clears the bar with top padding and cuts off at a
-   HARD line — no fade, no scrim. Desktop + medium only (compact = Phase 4).
-   ========================================================================= */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
-  display: flex; flex-direction: row; align-items: center; flex-wrap: nowrap;
-  gap: 10px 14px; padding: 13px 18px;
-  background: transparent; border: 0; box-shadow: none;
-  pointer-events: none;
-}
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header-top { display: contents; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-id { order: 0; flex: 0 0 auto; min-width: 0; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header-actions { order: 4; flex: 0 0 auto; margin-left: auto; }
-/* the tab rail is truly centred on the bar, independent of the side clusters */
-:root[data-skin="glass"] .app-shell[data-shell-mode="desktop"] .room-tabs {
-  order: 1; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-}
-/* medium: the absolutely-centred rail collides with the room title — let it flow
-   statically between the (truncating) identity and AGENTS instead (§2.6 fix) */
-:root[data-skin="glass"] .app-shell[data-shell-mode="medium"] .room-tabs {
-  order: 1; position: static; transform: none; margin: 0 auto;
-}
-/* only actual controls capture clicks; the gaps pass through to the surface */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .room-header :is(button, a, input, [role="button"], .room-tabs) {
-  pointer-events: auto;
-}
-
-/* surface content clears the floating header and disappears behind it at a clean
-   HARD line — no opacity ramp, no fade. The mask #000 is an alpha stop, not a
-   theme colour (raw value legitimate in this allowlisted skin file). */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .chat-list {
-  padding-top: var(--float-clear);
-  -webkit-mask-image: linear-gradient(to bottom,
-      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
-          mask-image: linear-gradient(to bottom,
-      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
-}
-
-/* board surface clears the floating room header too (its own opaque header sits
-   below the cleared zone; no mask needed — cards never reach the header band) */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .board-view { padding-top: var(--float-clear); }
-
-/* ============================================================================
-   GLASS REVAMP — floating activity header, flattened to one axis (§2.3)
-   ----------------------------------------------------------------------------
-   The activity header lifts out of flow and overlays the feed (.activity-main is
-   flex-col, .act-scroll is flex:1). Its two stacked rows collapse onto ONE axis:
-   title (left) · filters rail · sort+layout+working (pushed right) · room menu.
-   display:contents promotes the real clusters into the single flex row without
-   touching the markup. The "· N awaiting you" subtitle is dropped (redundant
-   with the All/Awaiting counts). Content clears + hard-cuts like the chat list.
-   Desktop + medium only (compact activity Filters sheet = Phase 4).
-   ========================================================================= */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .activity-main { position: relative; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
-  display: flex; flex-direction: row; align-items: center; flex-wrap: wrap;
-  gap: 10px 12px; padding: 16px 18px 0;
-  background: transparent; border: 0; box-shadow: none;
-  pointer-events: none;
-}
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header-top,
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-filterbar { display: contents; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-title-block { order: 0; flex: 0 0 auto; margin-right: 2px; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header .act-title-sub { display: none; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-filters { order: 1; flex: 0 0 auto; }
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header-actions {
-  order: 2; margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px;
-}
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-roombar { order: 3; flex: 0 0 auto; border-top: 0; }
-/* only actual controls capture clicks; gaps pass through to the feed */
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header :is(button, a, input, [role="button"], .act-filters, .act-view-controls, .act-live, .act-roombar) {
-  pointer-events: auto;
-}
-:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-scroll {
-  padding-top: var(--float-clear);
-  -webkit-mask-image: linear-gradient(to bottom,
-      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
-          mask-image: linear-gradient(to bottom,
-      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
-}
+/* NOTE: the room/activity headers stay IN FLOW (visible bars), not absolute
+   overlays. An earlier revamp floated them over the scroll surface, but the real
+   shell header spans the whole main column (chat + roster), so an absolute
+   overlay covered the roster, hid the first message behind an invisible bar, and
+   collided with the thread "replying to" banner (which lives inside .room-tabs).
+   The glass look here is token styling on the in-flow header; the floating
+   treatment would need the header moved into the chat column first. */
 
 /* ============================================================================
    GLASS REVAMP — self-message tint treatment (glass revamp §2.7.4)
