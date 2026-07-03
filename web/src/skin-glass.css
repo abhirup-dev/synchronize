@@ -1,49 +1,54 @@
 /* ============================================================================
-   GLASS SKIN — data-skin="glass"
-   Liquid-glass aesthetic: translucent layered surfaces over a luminous
-   gradient backdrop, backdrop-blur on fixed chrome, soft layered depth,
-   1px luminous borders, generous radii. Loaded after styles.css; every
+   GLASS SKIN — data-skin="glass" · the MONO revamp
+   X 2025 unified minimal: flat neutral surfaces, hairline rules, one accent
+   (#1d9bf0), an always-on accent mesh backdrop. Loaded after styles.css; every
    selector is gated on [data-skin="glass"] so the brutal skin is untouched.
 
+   Token VALUES live in styles/tokens.css. This file owns only glass selector
+   behaviour that cannot be expressed as reusable role tokens (backdrop-filter,
+   the mesh backdrop, sidebar/active-room tinting, cross-cutting weight/radius).
+
    Performance rule: backdrop-filter ONLY on fixed chrome (sidebar, header,
-   composer, roster, overlays) — never on per-message cards; those use
-   translucent fills + the sheen baked into the shadow tokens.
+   composer, roster, overlays) — never on per-message cards.
    ========================================================================= */
 
-/* Glass token values live in styles/tokens.css. This file owns only glass
-   selector behavior that cannot be expressed as reusable role tokens. */
-
-/* -- luminous backdrop ----------------------------------------------------
-   The translucency needs something behind it. Fixed so scroll feels like
-   moving glass over a still scene. */
-/* Light = Rosé Pine Dawn: a soft warm-dawn wash (rose / gold-foam / iris) over
-   warm cream. Glows kept low-alpha so it reads calm, not bright. */
+/* -- base backdrop: mono body wash + always-on accent mesh -----------------
+   The translucent chrome needs something behind it. The body carries a plain
+   vertical wash; a fixed ::before paints three accent-tinted radial gradients
+   (the "mesh"), multiply-blended in light / screen-blended in dark, always on
+   (no ambient toggle — mesh is the single glass backdrop treatment). */
 :root[data-skin="glass"] body {
-  background:
-    radial-gradient(1100px 760px at 82% -8%, rgba(215, 130, 126, 0.20), transparent 60%),
-    radial-gradient(950px 680px at -8% 28%, rgba(86, 148, 159, 0.16), transparent 55%),
-    radial-gradient(880px 660px at 52% 112%, rgba(144, 122, 169, 0.16), transparent 60%),
-    linear-gradient(160deg, #faf4ed 0%, #f4ebe0 48%, #f2e9e6 100%);
-  background-attachment: fixed;
+  background: linear-gradient(180deg, #ffffff 0%, #eef1f4 100%) fixed;
 }
-:root[data-skin="glass"][data-theme="kanagawa-wave"] body{
-  background:
-    radial-gradient(1100px 760px at 82% -8%, rgba(113, 139, 196, 0.20), transparent 60%),
-    radial-gradient(950px 680px at -8% 28%, rgba(106, 149, 137, 0.15), transparent 55%),
-    radial-gradient(880px 660px at 52% 112%, rgba(133, 112, 164, 0.14), transparent 60%),
-    linear-gradient(160deg, #16161d 0%, #1a1a24 48%, #1e1b29 100%);
-  background-attachment: fixed;
+:root[data-skin="glass"][data-theme="kanagawa-wave"] body {
+  background: linear-gradient(180deg, #000000 0%, #06080a 100%) fixed;
+}
+:root[data-skin="glass"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(62% 52% at 16% 10%, color-mix(in srgb, var(--you-bg) 55%, transparent), transparent 70%),
+    radial-gradient(58% 48% at 90% 26%, color-mix(in srgb, var(--lilac) 45%, transparent), transparent 70%),
+    radial-gradient(62% 58% at 58% 104%, color-mix(in srgb, var(--teal) 40%, transparent), transparent 70%);
+  opacity: 0.16;
+  mix-blend-mode: multiply;
+}
+:root[data-skin="glass"][data-theme="kanagawa-wave"] body::before {
+  opacity: 0.26;
+  mix-blend-mode: screen;
 }
 
-/* -- frosted chrome --------------------------------------------------------
-   Fixed structural surfaces get real backdrop blur. */
+/* -- frosted chrome: fixed structural surfaces only ------------------------ */
 [data-skin="glass"] :is(.sidebar, .room-header, .roster, .composer, .composer-collapsed) {
-  backdrop-filter: blur(22px) saturate(1.45);
-  -webkit-backdrop-filter: blur(22px) saturate(1.45);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
 }
 [data-skin="glass"] :is(.ctx-menu, .toast, .spawn-agent-dialog, .shell-overlay, .timeline-tooltip, .mention-pop, .act-roomlist) {
-  backdrop-filter: blur(26px) saturate(1.6);
-  -webkit-backdrop-filter: blur(26px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
 }
 [data-skin="glass"] .modal-backdrop {
   background: rgba(15, 19, 36, 0.28);
@@ -51,38 +56,62 @@
   -webkit-backdrop-filter: blur(6px);
 }
 
-/* -- glass-specific component tuning -------------------------------------- */
-/* Active room: dark glass pill instead of the brutal solid-ink block. */
-:root[data-skin="glass"] .room-item.active {
-  background: rgba(87, 82, 121, 0.82); /* iris (Rosé Pine Dawn) */
-  backdrop-filter: blur(12px) saturate(1.3);
-  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+/* -- sidebar: one continuous accent-tinted surface ------------------------- */
+:root[data-skin="glass"] .sidebar {
+  background: color-mix(in srgb, var(--you-bg) 7%, #ffffff);
 }
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .room-item.active{
-  background: rgba(212, 206, 176, 0.12); /* fujiWhite veil (Kanagawa) */
+:root[data-skin="glass"][data-theme="kanagawa-wave"] .sidebar {
+  background: color-mix(in srgb, var(--you-bg) 13%, #0a0a0c);
 }
 
-/* Message bubbles from OTHER agents need a more opaque fill than other glass
-   surfaces: they sit directly over the (optionally busy) chat background, and
-   at the base --bubble (~0.55) the artwork bleeds through and hurts readability.
-   Raise the base `.bubble` fill so text stays legible while keeping a hint of
-   translucency. The more-specific `.is-self .bubble` (accent --you-bg) rule
-   out-specifies this, so only other-agent bubbles are affected. Deliberately
-   NO per-bubble backdrop-filter — blurring
-   dozens of bubbles during scroll would reintroduce the jank we just removed;
-   opacity is the cheap, scroll-safe lever. */
-:root[data-skin="glass"] .bubble {
-  background: rgba(253, 247, 240, 0.88); /* warm cream (Rosé Pine Dawn) */
+/* -- active room: faint accent fill + inset accent left bar. No blur — the
+   item sits over the masked-out header zone, where blur bought nothing. ---- */
+:root[data-skin="glass"] .room-item.active {
+  background: #1d9bf012;
+  color: var(--ink);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 3px 0 0 #1d9bf0;
 }
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .bubble{
-  background: rgba(31, 31, 40, 0.86); /* sumiInk2 (Kanagawa Wave) */
+:root[data-skin="glass"][data-theme="kanagawa-wave"] .room-item.active {
+  background: #1d9bf01f;
+  box-shadow: inset 3px 0 0 #1d9bf0;
+}
+
+/* -- message bubbles: flat mono fill (--bubble is opaque enough on its own;
+   the accent --you-bg self-bubble is applied by the component and wins). ---- */
+:root[data-skin="glass"] .bubble {
+  background: var(--bubble);
+}
+
+/* -- cross-cutting mono rules --------------------------------------------- */
+/* base text colour must track --ink (the shipped skin leaves a stale body
+   colour that wrecks light-mode contrast) */
+:root[data-skin="glass"] body,
+:root[data-skin="glass"] #root {
+  color: var(--ink);
+}
+/* agent identity reads consistently bold; avatar radius matches the bubble */
+:root[data-skin="glass"] :is(.author-chip, .author-name, .identity-icon, .act-latest-actor) {
+  font-weight: 700;
+}
+:root[data-skin="glass"] .identity-icon {
+  border-radius: var(--radius-xl);
+}
+/* the "open communities" chip is a quiet surface chip, not an accent bubble */
+:root[data-skin="glass"] .community-icon,
+:root[data-skin="glass"] .community-icon::before {
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  box-shadow: none;
+  transform: none;
+}
+:root[data-skin="glass"] .community-icon {
+  border: var(--line);
 }
 
 /* -- brutal flourishes, retired under glass ------------------------------- */
 [data-skin="glass"] :is(.brand-mark, .section-head, .placeholder-stamp, .room-tab, .roster-head, .act-nav-icon, .act-title-mark) {
-  transform: none;
-}
-[data-skin="glass"] .community-icon::before {
   transform: none;
 }
 
@@ -114,13 +143,15 @@
   font-family: var(--font-display);
 }
 :root[data-skin="glass"] .act-nav.active {
-  background: rgba(87, 82, 121, 0.82); /* iris (Rosé Pine Dawn) */
+  background: #1d9bf012;
+  color: var(--ink);
   transform: none;
-  box-shadow: var(--shadow-sm);
+  box-shadow: inset 3px 0 0 #1d9bf0;
 }
 :root[data-skin="glass"][data-theme="kanagawa-wave"] .act-nav.active{
-  background: rgba(212, 206, 176, 0.12); /* fujiWhite veil (Kanagawa) */
+  background: #1d9bf01f;
   color: var(--ink);
+  box-shadow: inset 3px 0 0 #1d9bf0;
 }
 
 /* -- activity: header ------------------------------------------------------ */

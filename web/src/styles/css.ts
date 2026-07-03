@@ -11,6 +11,7 @@ import "../styles.css";
 import "../components/extra.css";
 import "../components/activity.css";
 import "../chat-bg.css";
+import "../components/rail.css";
 import "../skin-glass.css";
 import "highlight.js/styles/github-dark.css";
 import "./code-light.css";

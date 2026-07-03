@@ -707,31 +707,35 @@
    such as backdrop-filter and glass-only component tuning lives in
    ../skin-glass.css. */
 :root[data-skin="glass"] {
-  --background: rgba(253, 247, 240, 0.52);
-  --card: rgba(253, 247, 240, 0.64);
-  --popover: rgba(247, 239, 230, 0.74);
-  --bubble: rgba(253, 247, 240, 0.58);
-  --foreground: #575279;
-  --muted-foreground: #797593;
-  --ink-faint: #9893a5;
-  --border: rgba(87, 82, 121, 0.18);
-  --muted: rgba(87, 82, 121, 0.30);
-  --on-ink: #faf4ed;
-  --primary-foreground: #575279;
-  --you-bg: rgba(87, 82, 121, 0.86);
-  --you-fg: #faf4ed;
+  /* Glass skin = the mono revamp (X 2025 unified minimal): flat neutral
+     surfaces, hairline rules, one accent (#1d9bf0). Light values here; the
+     kanagawa-wave block below carries the dark overrides. */
+  --background: #ffffffee;
+  --card: #ffffff;
+  --popover: #f4f6f8;
+  --bubble: #f2f5f7;
+  --foreground: #0f1419;
+  --muted-foreground: #475662;
+  --ink-faint: #7c8893;
+  --border: #0f14191f;
+  --muted: #0f141926;
+  --on-ink: #ffffff;
+  --primary-foreground: #ffffff;
+  --you-bg: #1d9bf0;
+  --you-fg: #ffffff;
   --grain-alpha: 0;
   --grain-dot: rgba(0, 0, 0, 0);
-  --placeholder-stripe: rgba(87, 82, 121, 0.08);
+  --placeholder-stripe: rgba(15, 20, 25, 0.06);
 
-  --yellow: #ea9d34;
-  --pink: #d7827e;
-  --blue: #286983;
-  --lime: #56949f;
-  --tangerine: #d7827e;
-  --lilac: #907aa9;
-  --teal: #56949f;
-  --destructive: #b4637a;
+  /* hue tokens collapse to the single accent; --lime and --red stay semantic */
+  --yellow: #1d9bf0;
+  --pink: #1d9bf0;
+  --blue: #1d9bf0;
+  --lime: #00ba7c;
+  --tangerine: #1d9bf0;
+  --lilac: #1d9bf0;
+  --teal: #1d9bf0;
+  --destructive: #f4212e;
   --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
@@ -801,65 +805,65 @@
   --identity-15-fg: #575279;
   --identity-15-border: #A66B20;
   --identity-15-text: #8A5A1F;
-  --surface-selected-bg: rgba(253, 247, 240, 0.78);
+  --surface-selected-bg: color-mix(in srgb, var(--ink) 6%, var(--paper));
   --surface-selected-fg: var(--ink);
   --surface-selected-muted: var(--ink-soft);
-  --surface-selected-border: rgba(87, 82, 121, 0.24);
+  --surface-selected-border: var(--rule);
   --count-chip-bg: var(--ink);
   --count-chip-fg: var(--paper);
   --count-chip-border: var(--ink);
 
   --line: 1px solid var(--rule);
   --line-2: 1px solid var(--rule);
-  --line-bold: 1px solid rgba(87, 82, 121, 0.26);
+  --line-bold: 1px solid #0f141930;
   --line-md: 1px solid var(--rule);
   --line-sm: 1px solid var(--rule);
   --line-xs: 1px solid var(--rule);
   --line-xxs: 1px solid var(--rule);
   --line-hair: 1px solid var(--rule);
-  --line-xs-ink: 1px solid rgba(87, 82, 121, 0.32);
-  --line-xs-faint: 1px solid rgba(87, 82, 121, 0.14);
-  --line-hair-faint: 1px solid rgba(87, 82, 121, 0.12);
+  --line-xs-ink: 1px solid #0f141938;
+  --line-xs-faint: 1px solid #0f141912;
+  --line-hair-faint: 1px solid #0f14190a;
   --line-transparent: 1px solid transparent;
   --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed rgba(87, 82, 121, 0.30);
-  --line-dashed-sm: 1px dashed rgba(87, 82, 121, 0.30);
-  --line-dashed-xs: 1px dashed rgba(87, 82, 121, 0.26);
-  --line-dashed-faint: 1px dashed rgba(87, 82, 121, 0.18);
+  --line-dashed-md: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
+  --line-dashed-sm: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
+  --line-dashed-xs: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
+  --line-dashed-faint: 1px dashed color-mix(in srgb, var(--ink) 12%, transparent);
   --line-rule-dashed-sm: 1px dashed var(--rule);
   --line-rule-dashed-xs: 1px dashed var(--rule);
 
-  --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --glass-sheen: none;
   --shadow-none: none;
-  --shadow-xxs: 0 1px 3px rgba(87, 82, 121, 0.08), var(--glass-sheen);
-  --shadow-xs: 0 1px 4px rgba(87, 82, 121, 0.08), var(--glass-sheen);
-  --shadow-chip: 0 2px 6px rgba(87, 82, 121, 0.08), var(--glass-sheen);
-  --shadow-sm: 0 2px 10px rgba(87, 82, 121, 0.10), var(--glass-sheen);
-  --shadow: 0 6px 24px rgba(87, 82, 121, 0.12), var(--glass-sheen);
-  --shadow-md: 0 6px 24px rgba(87, 82, 121, 0.12), var(--glass-sheen);
-  --shadow-lg: 0 14px 44px rgba(87, 82, 121, 0.18), var(--glass-sheen);
-  --shadow-hover: 0 8px 28px rgba(87, 82, 121, 0.16), var(--glass-sheen);
-  --shadow-hover-sm: 0 5px 18px rgba(87, 82, 121, 0.14), var(--glass-sheen);
-  --shadow-accent-pink: 0 4px 18px rgba(215, 130, 126, 0.35);
-  --shadow-accent-pink-strong: 0 6px 24px rgba(215, 130, 126, 0.45);
+  --shadow-xxs: 0 1px 2px #0f14190f;
+  --shadow-xs: 0 1px 2px #0f141914;
+  --shadow-chip: 0 1px 2px #0f141914;
+  --shadow-sm: 0 1px 3px #0f141917;
+  --shadow: 0 2px 8px #0f14191a;
+  --shadow-md: 0 2px 8px #0f14191a;
+  --shadow-lg: 0 8px 24px #0f141921;
+  --shadow-hover: 0 2px 8px #0f14191f;
+  --shadow-hover-sm: 0 1px 4px #0f141917;
+  --shadow-accent-pink: 0 2px 10px #1d9bf040;
+  --shadow-accent-pink-strong: 0 4px 14px #1d9bf059;
   --shadow-accent-inset: inset 0 -2px 0 var(--accent);
   --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px rgba(215, 130, 126, 0.35);
+  --shadow-focus-pink: 0 0 0 3px #1d9bf040;
   --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
   --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-busy-pulse-start: 0 0 0 4px rgba(215, 130, 126, 0.45), var(--shadow-sm);
   --shadow-busy-pulse-peak: 0 0 0 7px rgba(215, 130, 126, 0.25), var(--shadow-sm);
 
-  --radius-hair: 4px;
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --radius-2xl: 22px;
-  --radius-panel-top: 16px 16px 0 0;
-  --radius-panel-bottom: 0 0 16px 16px;
+  --radius-hair: 5px;
+  --radius-xs: 7px;
+  --radius-sm: 9px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 16px;
+  --radius-panel-top: 14px 14px 0 0;
+  --radius-panel-bottom: 0 0 14px 14px;
 
   --font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
   --tracking-pixel-tight: 0.01em;
@@ -871,7 +875,7 @@
   --code-inline-border: rgba(87, 82, 121, 0.16);
 
   --card-border-color: var(--rule);
-  --card-shadow-color: rgba(87, 82, 121, 0.10);
+  --card-shadow-color: #0f141914;
   --card-border: var(--line-2);
   --card-shadow: var(--shadow-sm);
   --card-shadow-hover: var(--shadow-hover-sm);
@@ -882,43 +886,76 @@
   --bubble-shadow-offset: 0px;
   --bubble-shadow: none;
   --control-border-color: var(--rule);
-  --control-shadow-color: rgba(87, 82, 121, 0.10);
+  --control-shadow-color: #0f141914;
   --control-border: var(--line-sm);
   --control-shadow: var(--shadow-chip);
   --control-shadow-hover: var(--shadow-hover-sm);
   --control-radius: var(--radius-md);
   --overlay-border-color: var(--rule);
-  --overlay-shadow-color: rgba(87, 82, 121, 0.18);
+  --overlay-shadow-color: #0f141921;
   --overlay-border: var(--line);
   --overlay-shadow: var(--shadow-lg);
   --overlay-radius: var(--radius-xl);
-  --focus-ring: 0 0 0 3px rgba(144, 122, 169, 0.48);
+  --focus-ring: 0 0 0 3px #1d9bf040;
   --status-dot-border: var(--rule);
+
+  /* ── Expanding-rail control standard (Phase 2 consumes these) ──────────────
+     Geometry/motion/colour for every top-of-surface single-select cluster.
+     Colour tokens use color-mix over --ink/--you-bg/--paper so they re-resolve
+     per theme; no separate dark block needed. */
+  --rail-well-h: 40px;
+  --rail-seg-h: 32px;
+  --rail-gap: 3px;
+  --rail-well-pad: 4px;
+  --rail-seg-pad: 7px;
+  --rail-seg-pad-active: 0 12px 0 9px;
+  --rail-icon: 18px;
+  --rail-well-radius: 13px;
+  --rail-seg-radius: 9px;
+  --rail-label-max: 220px;
+  --rail-pane: 0.46s cubic-bezier(0.34, 1.26, 0.46, 1);
+  --rail-label: 0.44s cubic-bezier(0.22, 0.61, 0.36, 1);
+  --rail-pop: 0.5s cubic-bezier(0.34, 1.4, 0.5, 1);
+  --rail-label-delay: 0.08s;
+  --rail-count-delay: 0.13s;
+  --rail-fill: color-mix(in srgb, var(--ink) 5%, transparent);
+  --rail-hover: color-mix(in srgb, var(--ink) 8%, transparent);
+  --rail-chip-hover: color-mix(in srgb, var(--ink) 10%, transparent);
+  --rail-active: color-mix(in srgb, var(--you-bg) 20%, color-mix(in srgb, var(--ink) 8%, var(--paper)));
+  --rail-active-shadow: 0 1px 2px color-mix(in srgb, #000 20%, transparent);
+  --rail-badge-fill: color-mix(in srgb, #fff 16%, transparent);
+
+  /* Floating-chrome scroll clearance (base = chat; per-surface overrides in
+     later phases). */
+  --float-clear: 76px;
 }
 
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {
-  --background: rgba(22, 22, 29, 0.50);
-  --card: rgba(31, 31, 40, 0.58);
-  --popover: rgba(42, 42, 55, 0.64);
-  --bubble: rgba(31, 31, 40, 0.58);
-  --foreground: #d4ceb0;
-  --muted-foreground: #b6ad86;
-  --ink-faint: #727169;
-  --border: rgba(212, 206, 176, 0.14);
-  --muted: rgba(212, 206, 176, 0.22);
+  /* Mono · dark ("lights out"). --on-ink stays dark: it is the fg over the
+     near-white --ink surface (count chips), so mono's literal #ffffff would be
+     invisible; --primary-foreground goes white (fg over the blue accent). */
+  --background: #000000d9;
+  --card: #0b0b0cf7;
+  --popover: #16181c;
+  --bubble: #16181c;
+  --foreground: #e7e9ea;
+  --muted-foreground: #8b98a5;
+  --ink-faint: #5b6671;
+  --border: #ffffff1f;
+  --muted: #ffffff26;
   --on-ink: #16161d;
-  --primary-foreground: #16161d;
-  --you-bg: rgba(73, 93, 138, 0.80);
-  --you-fg: #d4ceb0;
+  --primary-foreground: #ffffff;
+  --you-bg: #1d9bf0;
+  --you-fg: #ffffff;
 
-  --yellow: #d4b16f;
-  --pink: #c06f8a;
-  --blue: #718bc4;
-  --lime: #849f63;
-  --tangerine: #d98b5f;
-  --lilac: #8570a4;
-  --teal: #5e857b;
-  --destructive: #cf5f6c;
+  --yellow: #1d9bf0;
+  --pink: #1d9bf0;
+  --blue: #1d9bf0;
+  --lime: #00ba7c;
+  --tangerine: #1d9bf0;
+  --lilac: #1d9bf0;
+  --teal: #1d9bf0;
+  --destructive: #f4212e;
   --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
@@ -996,37 +1033,37 @@
   --identity-15-border: #B99A72;
   --identity-15-text: #B99A72;
 
-  --line-bold: 1px solid rgba(212, 206, 176, 0.22);
-  --line-xs-ink: 1px solid rgba(212, 206, 176, 0.28);
-  --line-xs-faint: 1px solid rgba(212, 206, 176, 0.10);
-  --line-hair-faint: 1px solid rgba(212, 206, 176, 0.08);
-  --line-dashed-md: 1px dashed rgba(212, 206, 176, 0.26);
-  --line-dashed-sm: 1px dashed rgba(212, 206, 176, 0.26);
-  --line-dashed-xs: 1px dashed rgba(212, 206, 176, 0.22);
-  --line-dashed-faint: 1px dashed rgba(212, 206, 176, 0.14);
+  --line-bold: 1px solid #ffffff30;
+  --line-xs-ink: 1px solid #ffffff38;
+  --line-xs-faint: 1px solid #ffffff12;
+  --line-hair-faint: 1px solid #ffffff0a;
+  --line-dashed-md: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
+  --line-dashed-sm: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
+  --line-dashed-xs: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
+  --line-dashed-faint: 1px dashed color-mix(in srgb, var(--ink) 12%, transparent);
 
-  --glass-sheen: inset 0 1px 0 rgba(220, 215, 186, 0.07);
-  --shadow-xxs: 0 1px 3px rgba(0, 0, 0, 0.34), var(--glass-sheen);
-  --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.34), var(--glass-sheen);
-  --shadow-chip: 0 2px 8px rgba(0, 0, 0, 0.34), var(--glass-sheen);
-  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.36), var(--glass-sheen);
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.42), var(--glass-sheen);
-  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.42), var(--glass-sheen);
-  --shadow-lg: 0 18px 52px rgba(0, 0, 0, 0.52), var(--glass-sheen);
-  --shadow-hover: 0 10px 32px rgba(0, 0, 0, 0.46), var(--glass-sheen);
-  --shadow-hover-sm: 0 6px 20px rgba(0, 0, 0, 0.40), var(--glass-sheen);
-  --shadow-accent-pink: 0 4px 18px rgba(192, 111, 138, 0.32);
-  --shadow-accent-pink-strong: 0 6px 24px rgba(192, 111, 138, 0.42);
+  --glass-sheen: none;
+  --shadow-xxs: 0 1px 2px #00000080;
+  --shadow-xs: 0 1px 2px #0000008c;
+  --shadow-chip: 0 1px 2px #0000008c;
+  --shadow-sm: 0 1px 3px #000000a6;
+  --shadow: 0 2px 8px #000000b3;
+  --shadow-md: 0 2px 8px #000000b3;
+  --shadow-lg: 0 8px 24px #000000cc;
+  --shadow-hover: 0 2px 8px #000000b3;
+  --shadow-hover-sm: 0 1px 4px #000000a6;
+  --shadow-accent-pink: 0 2px 10px #1d9bf04d;
+  --shadow-accent-pink-strong: 0 4px 14px #1d9bf066;
   --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px rgba(192, 111, 138, 0.34);
-  --card-shadow-color: rgba(0, 0, 0, 0.36);
-  --control-shadow-color: rgba(0, 0, 0, 0.36);
-  --overlay-shadow-color: rgba(0, 0, 0, 0.52);
+  --shadow-focus-pink: 0 0 0 3px #1d9bf04d;
+  --card-shadow-color: #00000080;
+  --control-shadow-color: #00000080;
+  --overlay-shadow-color: #000000cc;
 
   --code-bg: rgba(16, 16, 22, 0.88);
   --code-inline-bg: rgba(212, 206, 176, 0.09);
   --code-inline-fg: #d4ceb0;
   --code-inline-border: rgba(212, 206, 176, 0.13);
 
-  --focus-ring: 0 0 0 3px rgba(113, 139, 196, 0.42);
+  --focus-ring: 0 0 0 3px #1d9bf04d;
 }

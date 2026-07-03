@@ -1,0 +1,265 @@
+/* Expanding-rail control standard — geometry/motion/colour for the Rail,
+   RailSegment and RailChip primitives (see rail.tsx and
+   docs/plans/glass-skin-revamp-port.md §2.2).
+
+   Everything is driven by the --rail-* tokens, defined per-skin in
+   tokens.css under glass so the whole standard is tuned in ONE place. This
+   file references those tokens with inline fallbacks that mirror the mono
+   spec values, so the primitives render correctly before the token block
+   lands and stay sane under skins that do not define --rail-*. This file
+   NEVER hardcodes a [data-skin]/[data-theme] selector or a raw colour — that
+   would violate the theme-contract policy (rail.css consumes tokens only). */
+
+/* ── $RAIL — the recessed well. No backdrop-filter: wells sit over the
+   masked-out zone under the floating chrome, so blur bought nothing. ── */
+.rail {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  gap: var(--rail-gap, 3px);
+  width: auto;
+  height: var(--rail-well-h, 40px);
+  padding: 0 var(--rail-well-pad, 4px);
+  border-radius: var(--rail-well-radius, 13px);
+  background: var(--rail-fill, color-mix(in srgb, var(--ink) 5%, transparent));
+  border: var(--line);
+  box-shadow: none;
+}
+
+/* ── $SEG — a segment: collapsed icon → expanding pane. ── */
+.rail-seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  gap: 0;
+  height: var(--rail-seg-h, 32px);
+  min-height: 0;
+  width: auto;
+  min-width: 0;
+  padding: 0 var(--rail-seg-pad, 7px);
+  border-radius: var(--rail-seg-radius, 9px);
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  transform: none;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.24s ease,
+    padding var(--rail-pane, 0.46s cubic-bezier(0.34, 1.26, 0.46, 1));
+}
+.rail-seg:hover {
+  background: var(--rail-hover, color-mix(in srgb, var(--ink) 8%, transparent));
+  color: var(--ink);
+}
+
+/* icon — a lucide glyph sized to --rail-icon via CSS */
+.rail-seg-icon {
+  order: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--rail-icon, 18px);
+  height: var(--rail-icon, 18px);
+  transition: margin var(--rail-pane, 0.46s cubic-bezier(0.34, 1.26, 0.46, 1));
+}
+.rail-seg-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* label — a REAL span, present on every segment, collapsed to 0 until active
+   then slid in. min-width:0 defeats the flex min-width:auto collapse gotcha. */
+.rail-seg-label {
+  order: 1;
+  display: inline-block;
+  max-width: 0;
+  min-width: 0;
+  opacity: 0;
+  transform: translateX(-10px);
+  margin-left: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  transition:
+    max-width var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1)),
+    opacity 0.3s ease,
+    transform var(--rail-pop, 0.5s cubic-bezier(0.34, 1.4, 0.5, 1)),
+    margin var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1));
+}
+
+/* optional count badge (filters) — ordered last, trails in on a cascade.
+   min-width:0 is essential: a flex item defaults to min-width:auto, which would
+   pin the badge at its content width and break the collapse. */
+.rail-seg-count {
+  order: 2;
+  max-width: 0;
+  min-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.7;
+  border-radius: 999px;
+  background: var(--rail-badge-fill, color-mix(in srgb, var(--paper) 16%, transparent));
+  color: var(--ink);
+  white-space: nowrap;
+  transition:
+    max-width var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1)),
+    opacity 0.3s ease,
+    margin var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1)),
+    padding var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1));
+}
+
+/* ── ACTIVE — the raised pane (flat/material, not a 3D bevel) ── */
+.rail-seg.active {
+  background: var(
+    --rail-active,
+    color-mix(in srgb, var(--accent) 20%, color-mix(in srgb, var(--ink) 8%, var(--paper)))
+  );
+  color: var(--ink);
+  padding: var(--rail-seg-pad-active, 0 12px 0 9px);
+  box-shadow: var(--rail-active-shadow, 0 1px 2px color-mix(in srgb, var(--ink) 20%, transparent));
+}
+.rail-seg.active .rail-seg-icon {
+  margin-right: 8px;
+}
+.rail-seg.active .rail-seg-label {
+  max-width: var(--rail-label-max, 220px);
+  opacity: 1;
+  transform: none;
+  margin-left: 9px;
+  transition-delay: var(--rail-label-delay, 0.08s);
+}
+.rail-seg.active .rail-seg-count {
+  max-width: 44px;
+  opacity: 1;
+  margin-left: 7px;
+  padding: 1px 6px;
+  transition-delay: var(--rail-count-delay, 0.13s);
+}
+
+/* focus ring — visible keyboard affordance; wins over the active pane shadow */
+.rail-seg:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px var(--accent));
+}
+
+/* ── HOVER TOOLTIP — a collapsed (inactive) segment reveals its label as a
+   floating pill below, so you learn each icon without selecting it. Active
+   segments show their label inline and are excluded. overflow flips to visible
+   only while hovering so the pill isn't clipped by the reveal-clip. ── */
+.rail-seg:not(.active):hover {
+  overflow: visible;
+}
+.rail-seg:not(.active)::after {
+  content: attr(data-label);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
+  transition: opacity 0.14s ease;
+}
+.rail-seg:not(.active):hover::after {
+  opacity: 1;
+  transition-delay: 0.28s;
+}
+
+/* ── $CHIP — standalone companion pins (sort, mark-all, working, room menu):
+   same height + surface as a well. NEVER accent-filled — the only accent state
+   is a genuine .active toggle. ── */
+.rail-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  gap: 7px;
+  height: var(--rail-well-h, 40px);
+  min-height: 0;
+  padding: 0 11px;
+  border-radius: var(--rail-well-radius, 13px);
+  background: var(--rail-fill, color-mix(in srgb, var(--ink) 5%, transparent));
+  color: var(--ink-soft);
+  border: var(--line);
+  cursor: pointer;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.rail-chip:hover {
+  background: var(--rail-chip-hover, color-mix(in srgb, var(--ink) 10%, transparent));
+  color: var(--ink);
+}
+.rail-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px var(--accent));
+}
+.rail-chip.active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--ink);
+}
+.rail-chip-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--rail-icon, 18px);
+  height: var(--rail-icon, 18px);
+}
+.rail-chip-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rail-chip[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
+}
