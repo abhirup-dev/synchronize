@@ -957,6 +957,12 @@
 :root[data-skin="glass"] .act-view-segment .act-view-icon:nth-child(1) { --lbl: "Timeline"; }
 :root[data-skin="glass"] .act-view-segment .act-view-icon:nth-child(2) { --lbl: "Grouped"; }
 
+/* Per-surface floating-header clearance (glass revamp §2.3). Activity's single
+   axis is shorter than chat's; medium wraps the rails to a second row so it
+   needs more. Defined here because --float-clear is a global token. */
+:root[data-skin="glass"] .activity-main { --float-clear: 74px; }
+:root[data-skin="glass"] .app-shell[data-shell-mode="medium"] .activity-main { --float-clear: 116px; }
+
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {
   /* Mono · dark ("lights out"). --on-ink stays dark: it is the fg over the
      near-white --ink surface (count chips), so mono's literal #ffffff would be

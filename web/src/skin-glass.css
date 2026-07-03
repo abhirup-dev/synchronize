@@ -582,4 +582,48 @@
           mask-image: linear-gradient(to bottom,
       transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
 }
+
+/* board surface clears the floating room header too (its own opaque header sits
+   below the cleared zone; no mask needed — cards never reach the header band) */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .board-view { padding-top: var(--float-clear); }
+
+/* ============================================================================
+   GLASS REVAMP — floating activity header, flattened to one axis (§2.3)
+   ----------------------------------------------------------------------------
+   The activity header lifts out of flow and overlays the feed (.activity-main is
+   flex-col, .act-scroll is flex:1). Its two stacked rows collapse onto ONE axis:
+   title (left) · filters rail · sort+layout+working (pushed right) · room menu.
+   display:contents promotes the real clusters into the single flex row without
+   touching the markup. The "· N awaiting you" subtitle is dropped (redundant
+   with the All/Awaiting counts). Content clears + hard-cuts like the chat list.
+   Desktop + medium only (compact activity Filters sheet = Phase 4).
+   ========================================================================= */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .activity-main { position: relative; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; flex-direction: row; align-items: center; flex-wrap: wrap;
+  gap: 10px 12px; padding: 16px 18px 0;
+  background: transparent; border: 0; box-shadow: none;
+  pointer-events: none;
+}
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header-top,
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-filterbar { display: contents; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-title-block { order: 0; flex: 0 0 auto; margin-right: 2px; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header .act-title-sub { display: none; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-filters { order: 1; flex: 0 0 auto; }
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header-actions {
+  order: 2; margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px;
+}
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-roombar { order: 3; flex: 0 0 auto; border-top: 0; }
+/* only actual controls capture clicks; gaps pass through to the feed */
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-header :is(button, a, input, [role="button"], .act-filters, .act-view-controls, .act-live, .act-roombar) {
+  pointer-events: auto;
+}
+:root[data-skin="glass"] .app-shell:not(.shell-compact) .act-scroll {
+  padding-top: var(--float-clear);
+  -webkit-mask-image: linear-gradient(to bottom,
+      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
+          mask-image: linear-gradient(to bottom,
+      transparent 0, transparent var(--float-clear), #000 var(--float-clear), #000 100%);
+}
 :root[data-skin="glass"] .placeholder-stamp { border-radius: var(--radius-xl); }
