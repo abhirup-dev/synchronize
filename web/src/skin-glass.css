@@ -560,6 +560,16 @@
 }
 
 /* ============================================================================
+   GLASS REVAMP — more breathing room between author groups (glass revamp §2.5)
+   ----------------------------------------------------------------------------
+   The default 16px gap after an author's last message reads cramped in glass
+   (each group + its reply chip needs to sit clearly apart from the next). Bump
+   the end-of-group gap; grouped/followup rows stay tight. The row is measured by
+   the virtualizer (measureElement), so the taller row is accounted for.
+   ========================================================================= */
+:root[data-skin="glass"] .message-virtual-row:not(.has-followup) { padding-bottom: 26px; }
+
+/* ============================================================================
    GLASS REVAMP — compact composer + scroll clearances (glass revamp §2.6)
    ----------------------------------------------------------------------------
    The floating composer is smaller in compact, so the message list needs less
