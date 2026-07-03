@@ -3,6 +3,7 @@ import { requireAuth } from "./auth.ts";
 import type { DaemonContext } from "./server.ts";
 import { tryHandleActivityRoute } from "./routes/activity.ts";
 import { tryHandleAgentSessionsRoute } from "./routes/agent-sessions.ts";
+import { tryHandleAnnotateRoute } from "./routes/annotate.ts";
 import { tryHandleArchiveRoute } from "./routes/archive.ts";
 import { tryHandleEventLookupRoute, tryHandleEventPullRoute } from "./routes/events.ts";
 import { tryHandleGroupsRoute } from "./routes/groups.ts";
@@ -45,6 +46,9 @@ export async function route(request: Request, ctx: DaemonContext): Promise<Respo
 
   const queryResponse = await tryHandleQueryRoute(request, ctx, url);
   if (queryResponse) return queryResponse;
+
+  const annotateResponse = await tryHandleAnnotateRoute(request, ctx, url);
+  if (annotateResponse) return annotateResponse;
 
   const messagingResponse = await tryHandleMessagingRoute(request, ctx, url);
   if (messagingResponse) return messagingResponse;

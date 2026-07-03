@@ -20,6 +20,7 @@ describe("CLI schema", () => {
       "media",
       "threads",
       "query",
+      "annotate",
       "hook",
       "launch",
       "spawn",
@@ -121,6 +122,7 @@ Commands:
   media      Share, list, and inspect group media
   threads    Discover, summarize, and render deeper group conversations
   query      Run guarded read-only SQL against daemon event state
+  annotate   Parse session transcripts into the annotation lake and query them
   hook       Internal host-agent hook ingestion commands
   launch     Start an agent in the foreground with synchronize daemon/env setup
   spawn      Launch a persistent agent session via the backend (AOE), optionally into a group

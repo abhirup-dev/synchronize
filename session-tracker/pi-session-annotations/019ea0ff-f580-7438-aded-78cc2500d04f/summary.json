@@ -1,0 +1,56 @@
+{
+  "annotation_count": 1464,
+  "by_category": {
+    "assistant": 185,
+    "mcp": 90,
+    "message": 512,
+    "runtime": 4,
+    "session": 1,
+    "synchronize": 42,
+    "tool": 585,
+    "user": 45
+  },
+  "by_kind": {
+    "assistant_message": 242,
+    "assistant_text": 28,
+    "assistant_thinking": 157,
+    "compaction": 1,
+    "filesystem_tool_call": 66,
+    "mcp_tool_call": 45,
+    "mcp_tool_result": 45,
+    "model_change": 2,
+    "session_metadata": 1,
+    "shell_tool_call": 114,
+    "synchronize_event": 42,
+    "synchronize_injection": 42,
+    "thinking_level_change": 1,
+    "toolResult_message": 225,
+    "tool_result": 180,
+    "tool_result_text": 225,
+    "user_message": 45,
+    "user_text": 3
+  },
+  "by_record_type": {
+    "compaction": 1,
+    "message": 1459,
+    "model_change": 2,
+    "session": 1,
+    "thinking_level_change": 1
+  },
+  "by_tool": {
+    "bash": 228,
+    "bridge_get_thread": 4,
+    "bridge_group_history": 2,
+    "bridge_inbox": 2,
+    "bridge_join_group": 2,
+    "bridge_list_groups": 2,
+    "bridge_register": 2,
+    "bridge_reply": 72,
+    "bridge_whoami": 4,
+    "edit": 38,
+    "read": 94
+  },
+  "diagnostic_count": 0,
+  "parsed_lines": 517,
+  "path": "/Users/abhirupdas/.pi/agent/sessions/--Users-abhirupdas-Codes-Personal-synchronize--/2026-06-07T07-33-09-632Z_019ea0ff-f580-7438-aded-78cc2500d04f.jsonl"
+}

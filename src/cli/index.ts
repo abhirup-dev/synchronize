@@ -1,3 +1,4 @@
+import * as annotate from "./commands/annotate.ts";
 import * as archive from "./commands/archive.ts";
 import * as dm from "./commands/dm.ts";
 import * as group from "./commands/group.ts";
@@ -85,6 +86,9 @@ export async function main(argv: string[]): Promise<void> {
       return;
     case "query":
       await query.run(rest);
+      return;
+    case "annotate":
+      await annotate.run(rest);
       return;
     case "threads":
       await threads.run(rest);

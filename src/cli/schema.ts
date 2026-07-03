@@ -406,6 +406,26 @@ export const cliSchema: CliSchema = {
       positionals: [{ name: "SQL", description: "Read-only SQL query", required: true, variadic: true }],
     },
     {
+      name: "annotate",
+      description: "Parse session transcripts into the annotation lake and query them",
+      positionals: [
+        { name: "SESSION", description: "Session to ingest (id, alias, or binding)", value: { kind: "dynamic", provider: "session-ids" } },
+      ],
+      subcommands: [
+        {
+          name: "query",
+          description: "Query the annotation lake (predicates: field=value exact, field~value LIKE)",
+          flags: [
+            { name: "session", description: "Scope to one session", value: { kind: "dynamic", provider: "session-ids" } },
+            { name: "window", description: "Include ±N rows around each match" },
+            { name: "limit", description: "Maximum row count" },
+            { name: "format", description: "Output format", value: { kind: "enum", values: ["json", "table"] } },
+          ],
+          positionals: [{ name: "PREDICATE", description: "field=value (exact) or field~value (LIKE)", variadic: true }],
+        },
+      ],
+    },
+    {
       name: "hook",
       description: "Internal host-agent hook ingestion commands",
       subcommands: [{ name: "claude-session", description: "Ingest a Claude session hook payload" }],

@@ -818,6 +818,81 @@ function migrate(db: Database): void {
     `);
     if (!hasPeerThreadInteractionsV15) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (15)`);
   }
+
+  // v16 — session annotation lake (sync-nxqo).
+  // The parser decodes a host session transcript into one row per annotation
+  // (an assistant message explodes into thinking/text/tool_use rows, etc.).
+  // session_annotations is the immutable, append-only, per-session corpus
+  // ("the lake"); session_annotation_state is the one-row-per-session catalog
+  // (the promoted summary.json: locator-join + provenance + rollups + ingest
+  // offset). SQLite B-tree indexes on the facet columns ARE the v0 reverse
+  // indexes; FTS5/Tantivy/vector are later rungs rebuilt from the lake. `text`
+  // is stored inline so LIKE body search needs no join (sync-214a).
+  // See session-tracker/plan-unified-session-annotation-v0.md.
+  const hasAnnotationsV16 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 16")
+    .get();
+  const hasSessionAnnotations = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_annotations'")
+    .get();
+  if (!hasAnnotationsV16 || !hasSessionAnnotations) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_annotations (
+        binding_id      TEXT NOT NULL REFERENCES agent_sessions(binding_id) ON DELETE CASCADE,
+        seq             INTEGER NOT NULL,
+        turn_index      INTEGER NOT NULL,
+        ts_ms           INTEGER,
+        line_number     INTEGER NOT NULL,
+        category        TEXT NOT NULL,
+        kind            TEXT NOT NULL,
+        record_type     TEXT,
+        role            TEXT,
+        uuid            TEXT,
+        parent_uuid     TEXT,
+        content_index   INTEGER,
+        tool            TEXT,
+        normalized_tool TEXT,
+        tool_call_id    TEXT,
+        tool_server     TEXT,
+        source          TEXT,
+        is_error        INTEGER,
+        summary         TEXT,
+        text            TEXT,
+        est_tokens      INTEGER,
+        data_json       TEXT,
+        PRIMARY KEY (binding_id, seq)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sa_ts    ON session_annotations (binding_id, ts_ms);
+      CREATE INDEX IF NOT EXISTS idx_sa_turn  ON session_annotations (binding_id, turn_index);
+      CREATE INDEX IF NOT EXISTS idx_sa_kind  ON session_annotations (binding_id, kind);
+      CREATE INDEX IF NOT EXISTS idx_sa_tool  ON session_annotations (tool);
+      CREATE INDEX IF NOT EXISTS idx_sa_ntool ON session_annotations (normalized_tool);
+      CREATE INDEX IF NOT EXISTS idx_sa_cat   ON session_annotations (category);
+      CREATE INDEX IF NOT EXISTS idx_sa_role  ON session_annotations (role);
+
+      CREATE TABLE IF NOT EXISTS session_annotation_state (
+        binding_id        TEXT PRIMARY KEY REFERENCES agent_sessions(binding_id) ON DELETE CASCADE,
+        project           TEXT,
+        schema_version    INTEGER NOT NULL,
+        parser_version    TEXT NOT NULL,
+        content_hash      TEXT,
+        annotated_offset  INTEGER NOT NULL DEFAULT 0,
+        annotated_lines   INTEGER NOT NULL DEFAULT 0,
+        annotation_count  INTEGER NOT NULL DEFAULT 0,
+        ts_min            INTEGER,
+        ts_max            INTEGER,
+        by_category_json  TEXT,
+        by_kind_json      TEXT,
+        by_tool_json      TEXT,
+        diagnostics_count INTEGER NOT NULL DEFAULT 0,
+        annotated_at      TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sas_project ON session_annotation_state (project);
+    `);
+    if (!hasAnnotationsV16) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (16)`);
+  }
 }
 
 /**
