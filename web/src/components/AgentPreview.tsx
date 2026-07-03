@@ -1,9 +1,12 @@
 import { Dialog } from "@base-ui-components/react/dialog";
-import { Brain, Check, Copy, FolderGit2, Monitor, X } from "lucide-react";
+import { Brain, Check, Copy, Cpu, FolderGit2, Monitor, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../lib/cn.ts";
-import type { Agent, AgentRuntimeDetails } from "../data/types.ts";
+import type { Agent, AgentLaunchTool, AgentRuntimeDetails } from "../data/types.ts";
 import { Avatar } from "./primitives.tsx";
+import { MODEL_OPTIONS } from "../data/models.ts";
+import { useSetAgentModel } from "../data/context.tsx";
+import { useToast } from "./Toast.tsx";
 
 export interface AgentPreviewDetails extends Partial<AgentRuntimeDetails> {
   tool?: string;
@@ -105,6 +108,7 @@ export function AgentProfileDialog({ agent, onClose }: { agent: Agent | null; on
                 </button>
                 <Dialog.Title className="sr-only">{agent.name} profile</Dialog.Title>
                 <AgentPreview agent={agent} />
+                <AgentModelPicker agent={agent} />
               </div>
             ) : null}
           </Dialog.Popup>
@@ -117,6 +121,53 @@ export function AgentProfileDialog({ agent, onClose }: { agent: Agent | null; on
 export function canShowAgentPreview(agent: Agent): boolean {
   if (agent.name === "You" || agent.role === "web") return false;
   return Boolean(agent.runtimeDetails);
+}
+
+// Model picker (glass revamp Phase 5). Lists the models available for the
+// agent's tool (single-source MODEL_OPTIONS, shared with SpawnAgentDialog) and
+// switches on click via the DataSource (mock store or daemon /agent-sessions/
+// set-model). Renders nothing when the agent's tool has no model options.
+function AgentModelPicker({ agent }: { agent: Agent }) {
+  const setAgentModel = useSetAgentModel();
+  const toast = useToast();
+  const tool = agent.runtimeDetails?.tool as AgentLaunchTool | undefined;
+  const options = tool ? MODEL_OPTIONS[tool] : undefined;
+  const current = agent.runtimeDetails?.model;
+  if (!options || options.length === 0) return null;
+
+  return (
+    <div className="mt-[8px]">
+      <Section title="MODEL" icon={<Cpu size={13} aria-hidden="true" />}>
+        <div role="radiogroup" aria-label="agent model" className="flex flex-wrap gap-[6px]">
+          {options.map((opt) => {
+            const active = opt.model === current;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                className={cn(
+                  "rounded-control px-[10px] py-[5px] text-[length:var(--text-12)] [border:var(--control-border)] [transition:background-color_140ms_ease]",
+                  active
+                    ? "bg-[color-mix(in_srgb,var(--you-bg)_20%,var(--surface-raised))] text-ink"
+                    : "bg-surface-raised text-ink-soft hover:text-ink",
+                )}
+                onClick={() => {
+                  if (opt.model && opt.model !== current) {
+                    setAgentModel(agent.id, opt.model);
+                    toast.show(`${agent.name} switched to ${opt.label} (${opt.model})`, { kind: "success" });
+                  }
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+    </div>
+  );
 }
 
 function Section({ title, icon, children, className }: { title: string; icon: ReactNode; children: ReactNode; className?: string }) {

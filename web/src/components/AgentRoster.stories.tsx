@@ -102,6 +102,23 @@ export const ViewProfileFlow: Story = {
       await openProfileFor("cortex", "Cortex", "gpt-5.5");
     });
 
+    await step("Switch Atlas's model from the profile picker", async () => {
+      const card = canvasElement.querySelector<HTMLElement>('[data-vim-item="agent-atlas"]');
+      await fireEvent.contextMenu(card!);
+      await userEvent.click(await screen.findByText("View profile"));
+      const dialog = await waitFor(() => {
+        const d = document.querySelector(".modal-backdrop");
+        if (!d) throw new Error("profile dialog not open");
+        return d as HTMLElement;
+      });
+      // The MODEL picker lists claude options; Atlas is on Sonnet — pick Opus.
+      const opus = within(dialog).getByRole("radio", { name: "Opus" });
+      await userEvent.click(opus);
+      // Switching toasts confirmation (the daemon/mock mutation ran).
+      await waitFor(() => expect(screen.getByText(/switched to Opus/i)).toBeTruthy());
+      await userEvent.keyboard("{Escape}");
+    });
+
     await step("Do not expose View profile for You", async () => {
       const canvas = within(canvasElement);
       expect(await canvas.findByText("AGENTS")).toBeTruthy();
