@@ -177,5 +177,24 @@ export async function tryHandleAgentSessionsRoute(request: Request, ctx: DaemonC
     return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
   }
 
+  if (request.method === "POST" && url.pathname === "/agent-sessions/set-model") {
+    const body = await readBody(request);
+    const model = requireString(body, "model");
+    const peerId =
+      optionalString(body, "peer_id") ??
+      findPeerByRequiredHostSession(ctx.db, requireString(body, "host_tool"), requireString(body, "host_session_id"));
+    // The model rides on the agent-session binding; a peer with no binding has
+    // no model to set. 404 rather than silently creating an empty binding.
+    if (!getAgentSessionByPeer(ctx.db, peerId)) {
+      throw new HttpError(404, "unknown_agent_session", `no agent session for peer ${peerId}`);
+    }
+    ctx.db
+      .query("UPDATE agent_sessions SET model = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE peer_id = ?")
+      .run(model, peerId);
+    log(`agent session model set peer_id=${peerId} model=${model}`);
+    emitWebStateChanged(ctx, { domains: ["peers", "agent_sessions"], peerId });
+    return jsonResponse({ binding: getAgentSessionByPeer(ctx.db, peerId) });
+  }
+
   return null;
 }
