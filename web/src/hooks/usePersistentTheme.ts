@@ -64,6 +64,23 @@ export function themeTraits(theme: ThemeName): ThemeTraits {
   };
 }
 
+// Self-message bubble treatment (glass revamp §2.7.4) — carried on
+// <html data-you>. "fill" is the legacy loud accent fill; "tint" is the default
+// subtle wash. Styling is skin-owned CSS; this axis only plumbs the attribute.
+export const YOU_STYLES = ["tint", "edge", "halo", "fill"] as const;
+export type YouStyle = (typeof YOU_STYLES)[number];
+export function normalizeStoredYouStyle(value: string | null): YouStyle | null {
+  return (YOU_STYLES as readonly string[]).includes(value ?? "") ? (value as YouStyle) : null;
+}
+
+// Agent author labelling — "pill" (author chip) or "name" (bold name only).
+// Carried on <html data-agentlabel>.
+export const AGENT_LABELS = ["pill", "name"] as const;
+export type AgentLabel = (typeof AGENT_LABELS)[number];
+export function normalizeStoredAgentLabel(value: string | null): AgentLabel | null {
+  return (AGENT_LABELS as readonly string[]).includes(value ?? "") ? (value as AgentLabel) : null;
+}
+
 export interface PersistentTheme {
   theme: ThemeName;
   setTheme: React.Dispatch<React.SetStateAction<ThemeName>>;
@@ -71,6 +88,10 @@ export interface PersistentTheme {
   setSkin: React.Dispatch<React.SetStateAction<SkinName>>;
   chatBg: string;
   setChatBg: React.Dispatch<React.SetStateAction<string>>;
+  youStyle: YouStyle;
+  setYouStyle: React.Dispatch<React.SetStateAction<YouStyle>>;
+  agentLabel: AgentLabel;
+  setAgentLabel: React.Dispatch<React.SetStateAction<AgentLabel>>;
 }
 
 /**
@@ -110,5 +131,17 @@ export function usePersistentTheme(): PersistentTheme {
     localStorage.setItem("synchronize.chatbg", preset.id);
   }, [chatBg]);
 
-  return { theme, setTheme, skin, setSkin, chatBg, setChatBg };
+  const [youStyle, setYouStyle] = useState<YouStyle>(() => normalizeStoredYouStyle(localStorage.getItem("synchronize.you")) ?? "tint");
+  useEffect(() => {
+    document.documentElement.dataset["you"] = youStyle;
+    localStorage.setItem("synchronize.you", youStyle);
+  }, [youStyle]);
+
+  const [agentLabel, setAgentLabel] = useState<AgentLabel>(() => normalizeStoredAgentLabel(localStorage.getItem("synchronize.agentlabel")) ?? "pill");
+  useEffect(() => {
+    document.documentElement.dataset["agentlabel"] = agentLabel;
+    localStorage.setItem("synchronize.agentlabel", agentLabel);
+  }, [agentLabel]);
+
+  return { theme, setTheme, skin, setSkin, chatBg, setChatBg, youStyle, setYouStyle, agentLabel, setAgentLabel };
 }
