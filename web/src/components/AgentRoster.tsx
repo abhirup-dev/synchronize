@@ -13,6 +13,7 @@ import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
 import { normalizeIdentityColorRef } from "../theme/identity.ts";
+import { modelShort } from "../data/models.ts";
 
 interface AgentRosterProps {
   room: Room;
@@ -116,6 +117,9 @@ export function AgentRoster({ room, onAgentDoubleClick, onOpenDm }: AgentRosterP
                     {agent.role}
                     {agent.statusNote && agent.statusNote !== agent.name ? ` (${agent.statusNote})` : ""}
                   </div>
+                  {agent.runtimeDetails?.model ? (
+                    <div className="roster-model-chip">{modelShort(agent.runtimeDetails.model)}</div>
+                  ) : null}
                 </div>
               </button>
             ))}

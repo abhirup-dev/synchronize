@@ -83,7 +83,13 @@ export const ViewProfileFlow: Story = {
       await expectSharedAgentMenu();
       await userEvent.click(screen.getByText("View profile"));
       await waitFor(() => expect(screen.getByText(`${expectedName} profile`)).toBeTruthy());
-      await waitFor(() => expect(screen.getByText(expectedModel)).toBeTruthy());
+      // The model text also appears on the roster card's model chip now, so scope
+      // this assertion to the profile dialog (rendered in a portal backdrop).
+      await waitFor(() => {
+        const dialog = document.querySelector(".modal-backdrop");
+        expect(dialog).toBeTruthy();
+        expect(within(dialog as HTMLElement).getByText(expectedModel)).toBeTruthy();
+      });
       await userEvent.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByText(`${expectedName} profile`)).toBeNull());
     };
