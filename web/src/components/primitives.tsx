@@ -3,27 +3,22 @@
 import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
 import type { Agent, AgentStatus } from "../data/types.ts";
 import { isSelfAgent } from "../data/identity.ts";
+import {
+  identityStyleVars,
+  normalizeIdentityColorRef,
+  type IdentityColorRef,
+} from "../theme/identity.ts";
+import { inkForHex, isHexColor } from "../theme/contrast.ts";
 
 // WCAG-style relative luminance; used to pick black-or-white text on a tinted
 // background so colored chips stay readable across every agent color.
-function relLum(hex: string): number {
-  const m = hex.replace("#", "");
-  const r = parseInt(m.slice(0, 2), 16) / 255;
-  const g = parseInt(m.slice(2, 4), 16) / 255;
-  const b = parseInt(m.slice(4, 6), 16) / 255;
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
 export function inkFor(bgHex: string): string {
-  return relLum(bgHex) > 0.55 ? "#111111" : "#FFFFFF";
-}
-
-function identityInkFor(color: string): string {
-  return /^#[0-9a-f]{6}$/i.test(color) ? inkFor(color) : "var(--ink)";
+  return isHexColor(bgHex) ? inkForHex(bgHex) : "var(--ink)";
 }
 
 export function IdentityBadge({
   color,
+  colorRef,
   ink,
   children,
   className = "",
@@ -36,7 +31,8 @@ export function IdentityBadge({
   onContextMenu,
   ariaHidden,
 }: {
-  color: string;
+  color?: string;
+  colorRef?: IdentityColorRef;
   ink?: string;
   children?: ReactNode;
   className?: string;
@@ -50,12 +46,20 @@ export function IdentityBadge({
   ariaHidden?: boolean;
 }) {
   const Element = as;
+  const ref = colorRef ?? normalizeIdentityColorRef(color ?? "var(--paper-3)");
   const identityStyle = {
     ...style,
     ...(size !== undefined ? { "--identity-size": `${size}px` } : null),
     ...(fontSize !== undefined ? { "--identity-font-size": typeof fontSize === "number" ? `${fontSize}px` : fontSize } : null),
-    "--identity-color": self ? "var(--paper-3)" : color,
-    "--identity-ink": self ? "var(--ink)" : ink ?? identityInkFor(color),
+    ...(self
+      ? {
+          "--identity-color": "var(--paper-3)",
+          "--identity-ink": "var(--ink)",
+          "--identity-border": "var(--rule)",
+          "--identity-text": "var(--ink)",
+        }
+      : identityStyleVars(ref)),
+    ...(ink !== undefined ? { "--identity-ink": ink } : null),
   } as CSSProperties;
   return (
     <Element
@@ -72,6 +76,7 @@ export function IdentityBadge({
 
 export function IdentityLogoTile({
   color,
+  colorRef,
   ink,
   children,
   className = "",
@@ -85,6 +90,7 @@ export function IdentityLogoTile({
   ariaHidden,
 }: {
   color?: string;
+  colorRef?: IdentityColorRef;
   ink?: string;
   children?: ReactNode;
   className?: string;
@@ -99,12 +105,13 @@ export function IdentityLogoTile({
 }) {
   const logoClassName = `${className ? `${className} ` : ""}identity-logo-tile`;
 
-  if (color) {
+  if (color || colorRef) {
     return (
       <IdentityBadge
         as={as}
         className={logoClassName}
-        color={color}
+        {...(color !== undefined ? { color } : null)}
+        {...(colorRef !== undefined ? { colorRef } : null)}
         {...(ink !== undefined ? { ink } : null)}
         {...(self ? { self } : null)}
         {...(size !== undefined ? { size } : null)}
@@ -165,15 +172,18 @@ export function PanelSectionHeader({
 
 export function IdentityText({
   color,
+  colorRef,
   className = "",
   children,
 }: {
-  color: string;
+  color?: string;
+  colorRef?: IdentityColorRef;
   className?: string;
   children: ReactNode;
 }) {
+  const ref = colorRef ?? normalizeIdentityColorRef(color ?? "var(--ink)");
   return (
-    <span className={`${className ? `${className} ` : ""}identity-text-tint`} style={{ "--identity-color": color } as CSSProperties}>
+    <span className={`${className ? `${className} ` : ""}identity-text-tint`} style={identityStyleVars(ref) as CSSProperties}>
       {children}
     </span>
   );
@@ -225,7 +235,7 @@ export function Avatar({
       // `.avatar-ring` classes carried no CSS in any sheet, so they are dropped.
       className="identity-icon"
       color={agent.color}
-      ink={inkFor(agent.color)}
+      {...(agent.colorRef ? { colorRef: agent.colorRef } : null)}
       self={isYou}
       size={size}
       fontSize={Math.round(size * 0.45)}
@@ -250,10 +260,10 @@ export function StatusDot({
 }) {
   const fill = (
     {
-      online: "var(--lime)",
-      busy: "var(--pink)",
-      idle: "var(--yellow)",
-      offline: "var(--muted)",
+      online: "var(--status-online)",
+      busy: "var(--status-busy)",
+      idle: "var(--status-idle)",
+      offline: "var(--status-offline)",
     } as const
   )[status];
   // Only active presence throbs: online (ready, green) and busy (working, pink).
@@ -306,7 +316,7 @@ export function MentionChip({ agent }: { agent: Agent }) {
     <IdentityBadge
       className={`mention-chip${isSelfAgent(agent) ? " mention-chip-self" : ""}`}
       color={agent.color}
-      ink={inkFor(agent.color)}
+      {...(agent.colorRef ? { colorRef: agent.colorRef } : null)}
     >
       @{agent.handle}
     </IdentityBadge>

@@ -1,5 +1,13 @@
 import type { Preview } from "@storybook/react-vite";
 import { StorybookProviders } from "../src/storybook/StorybookProviders.tsx";
+import {
+  DEFAULT_LIGHT_THEME,
+  INITIAL_SKIN,
+  SKIN_OPTIONS,
+  THEME_OPTIONS,
+  normalizeStoredSkin,
+  normalizeStoredTheme,
+} from "../src/theme/registry.generated.ts";
 
 // Exact same CSS stack as the app — both import the one shared list so they can
 // never drift (a previous hand-kept copy here silently lost tokens.css).
@@ -16,13 +24,7 @@ export const globalTypes = {
       title: "Theme",
       icon: "paintbrush",
       dynamicTitle: true,
-      // Canonical pair: Light + Kanagawa Wave. Kanagawa is the only supported
-      // dark palette.
-      items: [
-        { value: "light", title: "Light" },
-        { value: "kanagawa-wave", title: "Kanagawa Wave" },
-        { value: "rose-pine-dawn", title: "Rosé Pine Dawn" },
-      ],
+      items: [...THEME_OPTIONS],
     },
   },
   skin: {
@@ -31,15 +33,12 @@ export const globalTypes = {
       title: "Skin",
       icon: "contrast",
       dynamicTitle: true,
-      items: [
-        { value: "brutal", title: "Brutal" },
-        { value: "glass", title: "Glass" },
-      ],
+      items: [...SKIN_OPTIONS],
     },
   },
 };
 
-export const initialGlobals = { theme: "light", skin: "brutal" };
+export const initialGlobals = { theme: DEFAULT_LIGHT_THEME, skin: INITIAL_SKIN };
 
 const preview: Preview = {
   // Every component gets an auto-generated Docs page (args/argTypes table) so the
@@ -66,11 +65,9 @@ const preview: Preview = {
     (Story, context) => {
       const root = document.documentElement;
       const requestedTheme = context.globals["theme"];
-      root.dataset["theme"] =
-        requestedTheme === "kanagawa-wave" || requestedTheme === "rose-pine-dawn" || requestedTheme === "light"
-          ? requestedTheme
-          : "kanagawa-wave";
-      root.dataset["skin"] = context.globals["skin"] ?? "brutal";
+      root.dataset["theme"] = normalizeStoredTheme(typeof requestedTheme === "string" ? requestedTheme : null);
+      const requestedSkin = context.globals["skin"];
+      root.dataset["skin"] = normalizeStoredSkin(typeof requestedSkin === "string" ? requestedSkin : null);
       document.body.style.background = "var(--paper)";
       return <Story />;
     },

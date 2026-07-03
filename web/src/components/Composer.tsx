@@ -549,7 +549,13 @@ export function Composer({
               onClick={() => commitMention(a)}
               onMouseEnter={() => setMentionIdx(i)}
             >
-              <IdentityBadge className="w-[28px] h-[28px] [border:var(--line-sm)] rounded-[var(--radius-md)] grid place-items-center font-display text-[length:var(--text-13)] shadow-xs" color={a.color}>{a.avatar}</IdentityBadge>
+              <IdentityBadge
+                className="w-[28px] h-[28px] [border:var(--line-sm)] rounded-[var(--radius-md)] grid place-items-center font-display text-[length:var(--text-13)] shadow-xs"
+                color={a.color}
+                {...(a.colorRef ? { colorRef: a.colorRef } : null)}
+              >
+                {a.avatar}
+              </IdentityBadge>
               <span className="flex flex-col min-w-0">
                 <span className="font-semibold text-[length:var(--text-13)] text-ink">{a.name}</span>
                 <span className="font-mono text-[length:var(--text-11)] text-ink-soft">@{a.handle}</span>

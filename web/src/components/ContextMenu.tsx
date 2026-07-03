@@ -122,8 +122,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
               className={cn(
                 "ctx-menu",
                 "flex min-w-[220px] flex-col gap-[var(--space-1)] p-[var(--space-4)]",
-                "bg-paper [border:var(--line-md)] rounded-lg font-mono",
-                "shadow-[4px_4px_0_var(--message-card-shadow-color,rgba(0,0,0,0.72))]",
+                "bg-paper [border:var(--line-md)] rounded-lg font-mono shadow-overlay",
               )}
             >
               {state && state.stack.length > 0 ? (

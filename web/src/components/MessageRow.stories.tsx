@@ -5,10 +5,10 @@ import { AGENTS, MESSAGES } from "../data/seed.ts";
 import { agentsWithRuntimeDetails } from "../storybook/runtimeDetailsProvider.tsx";
 
 const msgs = MESSAGES["checkout-revamp"]!;
-const selfMsg = msgs.find((message) => message.authorId === "you")!;
-const avatarMenuMsg = msgs.find((message) => message.authorId === "atlas")!;
+const msg = (id: string) => msgs.find((m) => m.id === id)!;
 const authorOf = (authorId: string) => AGENTS.find((a) => a.id === authorId)!;
 const runtimeAuthorOf = (authorId: string) => agentsWithRuntimeDetails.find((a) => a.id === authorId)!;
+const avatarMenuMsg = msg("m3");
 const avatarMenuAuthor = runtimeAuthorOf(avatarMenuMsg.authorId);
 const longAutolink =
   "https://sharechat.slack.com/archives/C08Q1HBQ2BF/p1752123456789012?thread_ts=1752123456.789012&cid=C08Q1HBQ2BF&workspace=synchronize-long-link-wrap-regression";
@@ -25,7 +25,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Plain: Story = {
-  args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId) },
+  args: { message: msg("m1"), author: authorOf(msg("m1").authorId) },
 };
 
 // m2 carries markdown, a fenced SQL block, reactions, and a thread reply count —
@@ -33,7 +33,7 @@ export const Plain: Story = {
 // mount (ChatView/ThreadPane) always passes them: that surfaces the add-reaction
 // affordance and the clickable reply badge, not just the reactions themselves.
 export const RichWithReactions: Story = {
-  args: { message: msgs[1]!, author: authorOf(msgs[1]!.authorId), onReact: fn(), onOpenThread: fn() },
+  args: { message: msg("m2"), author: authorOf(msg("m2").authorId), onReact: fn(), onOpenThread: fn() },
 };
 
 export const RichWithLongAutolink: Story = {
@@ -222,7 +222,7 @@ export const RichWithHeadingLevels: Story = {
 };
 
 export const MessagePermalinkMenu: Story = {
-  args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId), onReact: fn(), onOpenThread: fn() },
+  args: { message: msg("m1"), author: authorOf(msg("m1").authorId), onReact: fn(), onOpenThread: fn() },
   play: async ({ canvasElement }) => {
     const row = canvasElement.querySelector<HTMLElement>(".message-row");
     expect(row).toBeTruthy();
@@ -235,14 +235,14 @@ export const MessagePermalinkMenu: Story = {
 };
 
 export const GroupedWithPrev: Story = {
-  args: { message: msgs[2]!, author: authorOf(msgs[2]!.authorId), groupedWithPrev: true },
+  args: { message: msg("m3"), author: authorOf(msg("m3").authorId), groupedWithPrev: true },
 };
 
 // Self message: NO avatar gutter — the .is-self row is single-column. Regression
 // guard for the stray centered avatar bug (gutter was rendered into the 1-col grid
 // and floated mid-pane). The refactor unified is-you/is-web-author into is-self.
 export const SelfMessage: Story = {
-  args: { message: selfMsg, author: authorOf(selfMsg.authorId) },
+  args: { message: msg("m4"), author: authorOf(msg("m4").authorId) },
   play: async ({ canvasElement }) => {
     const row = canvasElement.querySelector(".message-row.is-self");
     await expect(row).toBeTruthy();
@@ -251,15 +251,15 @@ export const SelfMessage: Story = {
 };
 
 // Interaction test: open the quick-reaction picker and pick an emoji, asserting
-// the onReact callback fires with (messageId, emoji). msgs[0] has no existing
+// the onReact callback fires with (messageId, emoji). m1 has no existing
 // reactions, so the picker's 👍 is the only one in the DOM.
 export const ReactWithPicker: Story = {
-  args: { message: msgs[0]!, author: authorOf(msgs[0]!.authorId), onReact: fn() },
+  args: { message: msg("m1"), author: authorOf(msg("m1").authorId), onReact: fn() },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "add reaction" }));
     await userEvent.click(await screen.findByRole("button", { name: "👍" }));
-    await expect(args.onReact).toHaveBeenCalledWith(msgs[0]!.id, "👍");
+    await expect(args.onReact).toHaveBeenCalledWith("m1", "👍");
   },
 };
 

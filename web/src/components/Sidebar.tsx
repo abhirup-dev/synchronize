@@ -282,6 +282,7 @@ function RoomItem({
   const archive = useArchiveWorkflow();
   const toast = useToast();
   const iconColor = otherColor ?? room.color;
+  const iconColorRef = profileAgent?.colorRef ?? room.colorRef;
   const isArchivedGroup = room.kind === "group" && room.archiveState === "archived";
   const roomLabel = roomNameText(room.kind, room.name);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -335,16 +336,16 @@ function RoomItem({
       }}
     >
       {room.kind === "dm" ? (
-        <IdentityBadge as="div" className="room-icon identity-icon" color={iconColor}>
+        <IdentityBadge as="div" className="room-icon identity-icon" color={iconColor} {...(iconColorRef ? { colorRef: iconColorRef } : null)}>
         <span>{room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}</span>
         {otherStatus && (
           <span
             className="room-status-dot"
             style={{
               background:
-                otherStatus === "online" ? "var(--lime)" :
-                otherStatus === "busy"   ? "var(--pink)" :
-                otherStatus === "idle"   ? "var(--yellow)" : "var(--muted)",
+                otherStatus === "online" ? "var(--status-online)" :
+                otherStatus === "busy"   ? "var(--status-busy)" :
+                otherStatus === "idle"   ? "var(--status-idle)" : "var(--status-offline)",
             }}
           />
         )}

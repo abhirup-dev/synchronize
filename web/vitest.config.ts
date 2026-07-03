@@ -23,6 +23,10 @@ export default defineConfig({
         ],
         test: {
           name: 'storybook',
+          // Full-suite Storybook runs execute several shell flows in one Chromium
+          // session; keep the per-story budget above the default 15s so a valid
+          // flow does not fail solely from browser-runner load.
+          testTimeout: 30_000,
           browser: {
             enabled: true,
             headless: true,

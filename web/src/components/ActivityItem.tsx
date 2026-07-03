@@ -39,11 +39,11 @@ function RoomChip({ room, onJump }: { room: Room; onJump(): void }) {
       type="button"
     >
       {room.kind === "group" ? (
-        <IdentityLogoTile className="act-roomchip-icon room-glyph-icon" color={room.color}>
+        <IdentityLogoTile className="act-roomchip-icon room-glyph-icon" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
           {room.emoji ?? "#"}
         </IdentityLogoTile>
       ) : (
-        <IdentityBadge className="act-roomchip-icon" color={room.color}>
+        <IdentityBadge className="act-roomchip-icon" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
           {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
         </IdentityBadge>
       )}
@@ -119,6 +119,7 @@ function ActivityItemImpl({
         <IdentityBadge
           className="author-chip xs"
           color={actor.color}
+          {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}
           onContextMenu={(e) =>
             openMenu(e, agentActionMenuItems(e, {
               agent: actor,

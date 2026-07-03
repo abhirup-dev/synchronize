@@ -129,6 +129,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
             <IdentityBadge
               className="author-name"
               color={parentAuthor.color}
+              {...(parentAuthor.colorRef ? { colorRef: parentAuthor.colorRef } : null)}
               style={{
                 padding: "var(--space-thread-author-chip-pad)",
                 border: "var(--line-sm)",
