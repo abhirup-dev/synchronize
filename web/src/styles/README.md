@@ -61,3 +61,16 @@ whose selectors compound a dead class with a **live** one (e.g.
 element target, or a descendant; removing those needs manual judgement, not a
 blind sweep. Verify any removal with `make verify-web` + a pixel check in both
 skins before committing.
+
+## Class extraction audit
+
+Run before writing class-string codemods:
+
+```bash
+cd web && bun run audit:class-strings
+```
+
+This reports exact repeated utility bundles and frequent utility tokens in TS/TSX
+files. Treat the output as an extraction queue for CVA helpers, component props,
+or Base UI wrappers; do not blindly rewrite hook classes that are still consumed
+by `skin-glass.css`, Storybook flows, keyboard navigation, or descendant CSS.

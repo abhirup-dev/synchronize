@@ -9,6 +9,7 @@ export const rawColorAllowed = [
   /^src\/data\/seed\.ts$/,
   /^src\/theme\/identity\.ts$/,
   /^src\/theme\/contrast\.ts$/,
+  /^src\/theme\/ThemeTokenEditor\.tsx$/,
   /^src\/components\/AgentColorPicker\.tsx$/,
   /^src\/.*\.stories\.tsx$/,
 ];

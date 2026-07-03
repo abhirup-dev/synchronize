@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { Settings, X } from "lucide-react";
 import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
 import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
@@ -26,6 +26,14 @@ import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
 import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
+// Dev-only live token editor — EXCLUDED from production builds. web/build.ts
+// replaces process.env.NODE_ENV at build time ("production" unless --watch), so in
+// a prod build this ternary folds to null and the dynamic import() is dead-code
+// eliminated — the editor never ships, rather than being merely hidden behind a flag.
+const ThemeTokenEditor =
+  process.env.NODE_ENV !== "production"
+    ? lazy(() => import("./theme/ThemeTokenEditor.tsx").then((m) => ({ default: m.ThemeTokenEditor })))
+    : null;
 
 function titleCase(value: string): string {
   return value
@@ -69,6 +77,11 @@ export function App() {
         <ToastProvider>
           <ArchiveRecoveryProvider>
             <Shell />
+            {ThemeTokenEditor && (
+              <Suspense fallback={null}>
+                <ThemeTokenEditor />
+              </Suspense>
+            )}
           </ArchiveRecoveryProvider>
         </ToastProvider>
       </ContextMenuProvider>

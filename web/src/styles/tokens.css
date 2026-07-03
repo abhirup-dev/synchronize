@@ -11,17 +11,41 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Light theme (default) — warm cream paper, ink black */
-  --paper: #F4EFE3;
-  --paper-2: #ECE6D2;
-  --paper-3: #E0D9C0;
-  --ink: #111111;
-  --ink-soft: #4A4636;
+  /* shadcn-compatible primitives — the authoritative palette source (inverted
+     ownership). A tweakcn export of these names drives the UI directly; the
+     synchronize role tokens below reference them. The role→primitive mapping lives
+     here ONCE; every theme/skin block (rose-pine-dawn, kanagawa-wave, glass,
+     glass+kanagawa) overrides the PRIMITIVES, not the role tokens, so all themes
+     are tweakcn-drivable. Collisions: shadcn's --accent (hover surface) and --muted
+     (subtle bg) are intentionally NOT introduced — synchronize already owns those
+     names — so the brand accent maps to --primary instead. */
+  --background: #F4EFE3;
+  --card: #ECE6D2;
+  --popover: #E0D9C0;
+  --secondary: #ECE6D2;
+  --foreground: #111111;
+  --muted-foreground: #4A4636;
+  --primary: #FFD23F;
+  --primary-foreground: #111111;
+  --secondary-foreground: #111111;
+  --destructive: #F45B69;
+  --border: #111111;
+  --input: #111111;
+  --ring: #FF5DA2;
+  --radius: 5px;
+
+  /* Light theme (default) — role names reference the shadcn primitives above. */
+  --paper: var(--background);
+  --paper-2: var(--card);
+  --paper-3: var(--popover);
+  --ink: var(--foreground);
+  --ink-soft: var(--muted-foreground);
   --ink-faint: #8A8268;
   /* `--rule` is the color used for borders and offset shadows. In light mode
-     it's the same as --ink (full brutalist contrast). In dark mode it gets
-     softened so the heavy black outlines/shadows don't fight the text — see the Kanagawa block below. */
-  --rule: var(--ink);
+     it's the same as --ink (full brutalist contrast, now via --border). In dark
+     mode it gets softened so the heavy black outlines/shadows don't fight the
+     text — see the Kanagawa block below. */
+  --rule: var(--border);
   --line: 3px solid var(--rule);
   --line-2: 2px solid var(--rule);
   --shadow: 4px 4px 0 var(--rule);
@@ -176,9 +200,9 @@
   --tangerine: #FF8A3D;
   --lilac: #B49BFF;
   --teal: #2EC4B6;
-  --red: #F45B69;
+  --red: var(--destructive);
   --muted: #BFB9A8;
-  --accent: var(--yellow);
+  --accent: var(--primary);
   --status-online: #7BE389;
   --status-busy: #FF5DA2;
   --status-idle: #FFD23F;
@@ -251,7 +275,7 @@
   --grain-dot: rgba(0, 0, 0, var(--grain-alpha));
   --placeholder-stripe: rgba(0, 0, 0, 0.03);
   --on-ink: var(--paper);
-  --on-accent: #111111;
+  --on-accent: var(--primary-foreground);
   --surface-selected-bg: color-mix(in srgb, var(--paper-3) 82%, var(--ink) 10%);
   --surface-selected-fg: var(--ink);
   --surface-selected-muted: color-mix(in srgb, var(--ink-soft) 76%, var(--ink) 24%);
@@ -381,13 +405,13 @@
 
 :root[data-theme="rose-pine-dawn"]:not([data-skin]),
 :root[data-skin="brutal"][data-theme="rose-pine-dawn"] {
-  --paper: #FAF4ED;
-  --paper-2: #FFF8F0;
-  --paper-3: #F2E9DE;
-  --ink: #575279;
-  --ink-soft: #797593;
+  --background: #FAF4ED;
+  --card: #FFF8F0;
+  --popover: #F2E9DE;
+  --foreground: #575279;
+  --muted-foreground: #797593;
   --ink-faint: #9893A5;
-  --rule: #575279;
+  --border: #575279;
   --yellow: #EA9D34;
   --pink: #D7827E;
   --blue: #286983;
@@ -395,9 +419,9 @@
   --tangerine: #D7827E;
   --lilac: #907AA9;
   --teal: #56949F;
-  --red: #B4637A;
+  --destructive: #B4637A;
   --muted: #DFD8D1;
-  --accent: var(--yellow);
+  --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
   --status-idle: var(--yellow);
@@ -468,7 +492,7 @@
   --identity-15-text: #8A5A1F;
   --grain-alpha: 0.03;
   --on-ink: #FAF4ED;
-  --on-accent: #575279;
+  --primary-foreground: #575279;
   --you-bg: #575279;
   --you-fg: #FAF4ED;
   --bubble: #FFF8F0;
@@ -478,14 +502,14 @@
 
 :root[data-theme="kanagawa-wave"]:not([data-skin]),
 :root[data-skin="brutal"][data-theme="kanagawa-wave"] {
-  --paper: #16161D;
-  --paper-2: #1F1F28;
-  --paper-3: #2A2A37;
-  --ink: #D4CEB0;
-  --ink-soft: #B6AD86;
+  --background: #16161D;
+  --card: #1F1F28;
+  --popover: #2A2A37;
+  --foreground: #D4CEB0;
+  --muted-foreground: #B6AD86;
   --ink-faint: #727169;
   --on-ink: #16161D;
-  --rule: rgba(212, 206, 176, 0.36);
+  --border: rgba(212, 206, 176, 0.36);
   --surface-selected-bg: var(--paper-3);
   --surface-selected-fg: var(--ink);
   --surface-selected-muted: var(--ink-soft);
@@ -536,9 +560,9 @@
   --tangerine: #D98B5F;
   --lilac: #8570A4;
   --teal: #5E857B;
-  --red: #CF5F6C;
+  --destructive: #CF5F6C;
   --muted: #363646;
-  --accent: var(--yellow);
+  --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
   --status-idle: var(--yellow);
@@ -610,7 +634,7 @@
   --grain-alpha: 0.045;
   --grain-dot: rgba(255, 255, 255, 0.025);
   --placeholder-stripe: rgba(255, 255, 255, 0.025);
-  --on-accent: #16161D;
+  --primary-foreground: #16161D;
   --you-bg: #3A3A46;
   --you-fg: #D4CEB0;
   --bubble: #2A2A37;
@@ -683,17 +707,17 @@
    such as backdrop-filter and glass-only component tuning lives in
    ../skin-glass.css. */
 :root[data-skin="glass"] {
-  --paper: rgba(253, 247, 240, 0.52);
-  --paper-2: rgba(253, 247, 240, 0.64);
-  --paper-3: rgba(247, 239, 230, 0.74);
+  --background: rgba(253, 247, 240, 0.52);
+  --card: rgba(253, 247, 240, 0.64);
+  --popover: rgba(247, 239, 230, 0.74);
   --bubble: rgba(253, 247, 240, 0.58);
-  --ink: #575279;
-  --ink-soft: #797593;
+  --foreground: #575279;
+  --muted-foreground: #797593;
   --ink-faint: #9893a5;
-  --rule: rgba(87, 82, 121, 0.18);
+  --border: rgba(87, 82, 121, 0.18);
   --muted: rgba(87, 82, 121, 0.30);
   --on-ink: #faf4ed;
-  --on-accent: #575279;
+  --primary-foreground: #575279;
   --you-bg: rgba(87, 82, 121, 0.86);
   --you-fg: #faf4ed;
   --grain-alpha: 0;
@@ -707,8 +731,8 @@
   --tangerine: #d7827e;
   --lilac: #907aa9;
   --teal: #56949f;
-  --red: #b4637a;
-  --accent: var(--yellow);
+  --destructive: #b4637a;
+  --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
   --status-idle: var(--yellow);
@@ -873,17 +897,17 @@
 }
 
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {
-  --paper: rgba(22, 22, 29, 0.50);
-  --paper-2: rgba(31, 31, 40, 0.58);
-  --paper-3: rgba(42, 42, 55, 0.64);
+  --background: rgba(22, 22, 29, 0.50);
+  --card: rgba(31, 31, 40, 0.58);
+  --popover: rgba(42, 42, 55, 0.64);
   --bubble: rgba(31, 31, 40, 0.58);
-  --ink: #d4ceb0;
-  --ink-soft: #b6ad86;
+  --foreground: #d4ceb0;
+  --muted-foreground: #b6ad86;
   --ink-faint: #727169;
-  --rule: rgba(212, 206, 176, 0.14);
+  --border: rgba(212, 206, 176, 0.14);
   --muted: rgba(212, 206, 176, 0.22);
   --on-ink: #16161d;
-  --on-accent: #16161d;
+  --primary-foreground: #16161d;
   --you-bg: rgba(73, 93, 138, 0.80);
   --you-fg: #d4ceb0;
 
@@ -894,8 +918,8 @@
   --tangerine: #d98b5f;
   --lilac: #8570a4;
   --teal: #5e857b;
-  --red: #cf5f6c;
-  --accent: var(--yellow);
+  --destructive: #cf5f6c;
+  --primary: var(--yellow);
   --status-online: var(--lime);
   --status-busy: var(--pink);
   --status-idle: var(--yellow);
