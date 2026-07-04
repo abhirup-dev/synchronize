@@ -61,7 +61,12 @@
   background: color-mix(in srgb, var(--you-bg) 7%, #ffffff);
 }
 :root[data-skin="glass"][data-theme="kanagawa-wave"] .sidebar {
-  background: color-mix(in srgb, var(--you-bg) 13%, #0a0a0c);
+  /* Match the reference: the ambient mesh reads through the sidebar as a subtle
+     top-glow gradient (lighter/bluer at the top, fading to the base tint by
+     mid-panel), with a faint rightward lean. Measured ref endpoints: top
+     ~rgb(27,43,60) → base rgb(19,28,39). */
+  background:
+    linear-gradient(184deg, color-mix(in srgb, var(--you-bg) 23%, #0a0a0c) 0%, color-mix(in srgb, var(--you-bg) 13%, #0a0a0c) 52%);
 }
 
 /* -- active room: faint accent fill + inset accent left bar. No blur — the
@@ -97,6 +102,27 @@
 }
 :root[data-skin="glass"] .identity-icon {
   border-radius: var(--radius-xl);
+  /* Match the frozen reference: glass avatars keep the hard offset double-shadow
+     (dark + light echo) and a 1px identity-tinted rim, rather than a soft blur. */
+  border: 1px solid color-mix(in srgb, var(--identity-text) 55%, transparent);
+  box-shadow: var(--identity-icon-shadow, var(--shadow-chip));
+}
+/* Composer — the reference keeps the kanagawa OPAQUE elevated surface in glass
+   (the impl had softened it to a translucent --paper panel) and a gold SEND. */
+:root[data-skin="glass"] .composer {
+  background: var(--composer-bg);
+}
+:root[data-skin="glass"] :is(.composer-send, .thread-scan-btn) {
+  background: var(--composer-bg);
+  color: var(--composer-send-fg);
+  border-color: var(--composer-send-border, var(--composer-send-fg));
+}
+/* Brand mark + logo/glyph tiles — the reference neutralizes them to the paper
+   surface (dark, no accent fill) in kanagawa; the impl had them accent-tinted.
+   [data-theme] qualifier out-specifies the .act-title-mark accent rule below. */
+:root[data-skin="glass"][data-theme="kanagawa-wave"] :is(.brand-mark, .identity-logo-tile, .room-glyph-icon) {
+  background: var(--paper);
+  color: var(--ink);
 }
 /* the "open communities" chip is a quiet surface chip, not an accent bubble */
 :root[data-skin="glass"] .community-icon,
@@ -416,134 +442,147 @@
    count) with a staggered slide. Companion CHIPS (sort / mark-all / working /
    room menu) share the well's height + surface but are never accent-filled.
 
-   Geometry/motion/colour come from the --rail-* tokens (tokens.css). The label
-   text (--lbl) and rest-state icon (--ico / --ico-* SVG set) are assigned per
-   control in tokens.css (custom-property definitions must live in the token
-   files per the theme contract). This file only styles the shipped markup in
-   place (glass only) — brutal keeps its pills.
+   Geometry/motion/colour come from the --rail-* tokens (tokens.css). Icons and
+   labels are real lucide elements + <span>s in the shared Rail/RailSegment/
+   RailChip components (rail.tsx) — no CSS mask/content mimicry. This file styles
+   only the remaining glass hooks (room-agents chip, room-filter trigger, banner
+   layout) in place — brutal keeps its pills.
    ========================================================================= */
 
-/* $RAIL — the recessed well (activity filters, layout segment). NOTE: the room
-   tabs are deliberately NOT on the rail: the thread "replying to" banner lives
-   inside .room-tabs and needs the row to be full-width for its absolute
-   positioning, which the content-width rail well breaks. Room tabs keep their
-   glass pill styling; revisit once the banner is lifted out of .room-tabs. */
-:root[data-skin="glass"] :is(.act-filters, .act-view-segment) {
-  display: inline-flex; align-items: center; gap: var(--rail-gap);
-  width: auto; height: var(--rail-well-h); padding: 0 var(--rail-well-pad);
-  border-radius: var(--rail-well-radius);
-  background: var(--rail-fill); border: var(--line); box-shadow: none;
-}
-
-/* $SEG — a segment: collapsed square icon → expanding labelled pane */
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon) {
-  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 0;
-  box-sizing: border-box;
-  height: var(--rail-seg-h); min-height: 0;
-  width: auto; min-width: 0;
-  padding: 0 var(--rail-seg-pad); border-radius: var(--rail-seg-radius);
-  font-size: 0; color: var(--ink-soft);
-  background: transparent; border: 1px solid transparent; box-shadow: none; transform: none;
-  overflow: hidden; white-space: nowrap;
-  transition: background .2s ease, color .2s ease, box-shadow .24s ease, padding var(--rail-pane);
-}
-/* masked icon (tabs + filters); the layout segment uses the bundle's own <svg> */
-:root[data-skin="glass"] :is(.act-filters .act-filter)::before {
-  content: ""; order: 0; flex: 0 0 auto; width: var(--rail-icon); height: var(--rail-icon);
-  background: currentColor;
-  -webkit-mask: var(--ico) center / contain no-repeat; mask: var(--ico) center / contain no-repeat;
-  transition: margin var(--rail-pane);
-}
-:root[data-skin="glass"] .act-view-segment .act-view-icon svg { order: 0; flex: 0 0 auto; transition: margin var(--rail-pane); }
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):hover {
-  background: var(--rail-hover); color: var(--ink);
-}
-
-/* label — present on every segment, collapsed to 0 until active, then slides in */
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon)::after {
-  content: var(--lbl, ""); order: 1; display: inline-block;
-  max-width: 0; min-width: 0; opacity: 0; transform: translateX(-10px); margin-left: 0;
-  overflow: hidden; white-space: nowrap;
-  font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink);
-  transition: max-width var(--rail-label), opacity .3s ease, transform var(--rail-pop), margin var(--rail-label);
-}
-
-/* ACTIVE — the raised pane (flat, not a 3D bevel) */
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon).active {
-  background: var(--rail-active); color: var(--ink);
-  padding: var(--rail-seg-pad-active); box-shadow: var(--rail-active-shadow);
-}
-:root[data-skin="glass"] :is(.act-filters .act-filter).active::before { margin-right: 8px; }
-:root[data-skin="glass"] .act-view-segment .act-view-icon.active svg { margin-right: 8px; }
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon).active::after {
-  max-width: var(--rail-label-max); opacity: 1; transform: none; margin-left: 9px;
-  transition-delay: var(--rail-label-delay);
-}
-
-/* HOVER TOOLTIP — a collapsed (inactive) segment reveals its label as a small
-   floating tip so you learn what each icon does without selecting it. */
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover { overflow: visible; }
-:root[data-skin="glass"] :is(.act-filters .act-filter, .act-view-segment .act-view-icon):not(.active):hover::after {
-  content: var(--lbl, ""); position: absolute; top: calc(100% + 8px); left: 50%;
-  transform: translateX(-50%); margin: 0; max-width: none; opacity: 1;
-  padding: 4px 9px; border-radius: 8px; white-space: nowrap; pointer-events: none; z-index: 60;
-  background: var(--ink); color: var(--paper);
-  font-size: 11.5px; font-weight: 600; letter-spacing: 0;
-  box-shadow: var(--shadow-md);
-  transition: opacity .14s ease .28s;
-}
-
-/* optional count badge (filters) — trails in last. min-width:0 is essential:
-   a flex item defaults to min-width:auto, which would break the collapse. */
-:root[data-skin="glass"] .act-filters .act-filter .act-filter-n {
-  order: 2; max-width: 0; min-width: 0; opacity: 0; overflow: hidden; padding: 0; margin: 0;
-  font-size: 10px; font-weight: 700; line-height: 1.7; border-radius: 999px;
-  background: var(--rail-badge-fill); color: var(--ink); white-space: nowrap;
-  border: 0;
-  transition: max-width var(--rail-label), opacity .3s ease, margin var(--rail-label), padding var(--rail-label);
-}
-:root[data-skin="glass"] .act-filters .act-filter.active .act-filter-n {
-  max-width: 44px; opacity: 1; margin-left: 7px; padding: 1px 6px; transition-delay: var(--rail-count-delay);
-}
-
-/* per-control icon + label (--ico / --lbl) are assigned in tokens.css */
-
-/* the sort toggle is its own pin; .act-view-controls is just a thin wrapper
-   holding the [sort pin] + [layout well] as two separate clusters */
+/* DEDUP (Phase 3): the activity filters, the Timeline/Grouped layout toggle, and
+   the sort / mark-all / working chips are the shared Rail / RailSegment / RailChip
+   components now (rail.tsx + rail.css) — real lucide icons + label spans, no
+   :nth-child/::after CSS mimicry. Two things the surrounding layout still needs:
+   the thin wrapper holding [sort chip] + [layout rail], and chip styling for the
+   room-filter trigger (a dropdown, not a rail component). */
 :root[data-skin="glass"] .act-view-controls {
   display: inline-flex; align-items: center; gap: 8px;
-  height: auto; padding: 0;
-  background: transparent; border: 0; box-shadow: none;
 }
-
-/* $CHIP — standalone companion pins: same height + surface as a well, never
-   accent-filled (the only accent pane in a cluster is its active segment). */
-:root[data-skin="glass"] :is(.act-sort-toggle, .act-markall, .act-live, .act-room-filter-trigger) {
+:root[data-skin="glass"] .act-room-filter-trigger {
   height: var(--rail-well-h); min-height: 0; padding: 0 11px;
   background: var(--rail-fill); color: var(--ink-soft);
-  border: var(--line); border-radius: var(--rail-well-radius);
-  box-shadow: none;
+  border: var(--line); border-radius: var(--rail-well-radius); box-shadow: none;
   transition: background .18s ease, color .18s ease, box-shadow .18s ease;
 }
-:root[data-skin="glass"] :is(.act-sort-toggle, .act-markall, .act-live, .act-room-filter-trigger):hover {
+:root[data-skin="glass"] .act-room-filter-trigger:hover {
   background: var(--rail-chip-hover); color: var(--ink);
 }
+/* the working toggle keeps its green accent when active (semantic: "live only") */
 :root[data-skin="glass"] .act-live.active {
   background: color-mix(in srgb, var(--you-bg) 20%, transparent); color: var(--ink);
 }
+
+/* Single-axis activity header (glass revamp §2.3): flatten the two stacked rows
+   (title + controls / filters + room menu) onto ONE line — title left, the
+   filters rail, then the sort+layout controls and the room menu pushed right —
+   mirroring the chat header's single-axis treatment and reclaiming a row.
+   display:contents promotes the real clusters into one flex row without touching
+   markup. Desktop only (compact keeps its own filter sheet). */
+:root[data-skin="glass"] .activity-view .activity-main > .act-header {
+  display: flex; flex-direction: row; align-items: center;
+  flex-wrap: wrap; gap: 10px 12px;
+}
+:root[data-skin="glass"] .activity-view .act-header-top,
+:root[data-skin="glass"] .activity-view .act-filterbar { display: contents; }
+:root[data-skin="glass"] .activity-view .act-title-block { order: 0; flex: 0 0 auto; margin-right: 2px; }
+/* the running "· N awaiting you" subtitle is redundant with the All/Awaiting
+   counts and is what crowds the single axis — drop it so the rails breathe */
+:root[data-skin="glass"] .activity-view .act-header .act-title-sub { display: none; }
+:root[data-skin="glass"] .activity-view .act-filters { order: 1; flex: 0 0 auto; }
+:root[data-skin="glass"] .activity-view .act-header-actions { order: 2; margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; }
+:root[data-skin="glass"] .activity-view .act-roombar { order: 3; flex: 0 0 auto; border-top: 0; }
+
+/* Phase 2: float the activity banner transparently over the scroll surface (same
+   treatment as the chat banner) and drop the ACTIVITY wordmark — the brand glyph
+   (.act-title-mark) anchors it. The activity-main is the positioning context. */
+:root[data-skin="glass"] .activity-view .activity-main { position: relative; }
+:root[data-skin="glass"] .activity-view .activity-main > .act-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  padding: 13px 18px;
+  background: transparent; border: 0; box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  pointer-events: none; /* transparent gaps pass clicks to the feed behind */
+}
+:root[data-skin="glass"] .activity-view .act-header :is(button, a, [role="button"], .act-filters, .act-view-controls, .act-roombar, .act-title-block) { pointer-events: auto; }
+/* drop the ACTIVITY wordmark; keep the brand glyph */
+:root[data-skin="glass"] .activity-view .act-title { display: none; }
+/* feed flows behind the transparent floating banner (no mask). The banner wraps
+   to two rows at narrower widths (many controls), so pad enough that the top group
+   clears it at rest; mid-scroll the feed passes freely behind. */
+:root[data-skin="glass"] .activity-view .act-scroll { padding-top: 104px !important; }
 
 /* clutter the revamp drops from the chat/board header (glass revamp §2.3) —
    hidden here (glass only) rather than removed from markup so brutal keeps them */
 :root[data-skin="glass"] .room-working-meta,
 :root[data-skin="glass"] .member-pile { display: none; }
 
-/* NOTE: the room/activity headers stay IN FLOW (visible bars), not absolute
-   overlays. An earlier revamp floated them over the scroll surface, but the real
-   shell header spans the whole main column (chat + roster), so an absolute
-   overlay covered the roster, hid the first message behind an invisible bar, and
-   collided with the thread "replying to" banner (which lives inside .room-tabs).
-   The glass look here is token styling on the in-flow header; the floating
-   treatment would need the header moved into the chat column first. */
+/* Unified floating chat/board banner (glass revamp §2.3): the header collapses
+   the two-row layout onto ONE transparent axis floating OVER the chat surface —
+   tab rail + AGENTS chip — so messages flow behind it and reclaim the full column
+   height. The room glyph + NAME are dropped (the selected sidebar row identifies
+   the room). Viable now that the roster is an overlay (shell-mode): the main
+   column is chat-only, so an absolute header no longer covers a roster column
+   (the reason an earlier float was reverted). Applies in BOTH the normal and
+   thread-open states, so opening a thread never reverts the banner — only the
+   .room-tabs positioning differs (see below). ShellMainColumn is position:relative. */
+:root[data-skin="glass"] .room-header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; flex-direction: row; align-items: center; flex-wrap: nowrap;
+  gap: 10px 14px; padding: 13px 18px;
+  background: transparent; border-bottom: 0; box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  pointer-events: none; /* transparent gaps pass clicks to the messages behind */
+}
+/* only the real controls capture pointer events (incl. the thread banner's ×) */
+:root[data-skin="glass"] .room-header :is(.room-id, .room-tabs, button, a, [role="button"]) { pointer-events: auto; }
+/* drop the room glyph + name — the sidebar selection identifies the room */
+:root[data-skin="glass"] .room-header .room-title-block,
+:root[data-skin="glass"] .room-header .room-id { display: none; }
+/* promote .room-header-top's children (actions) into the single row */
+:root[data-skin="glass"] .room-header .room-header-top { display: contents; }
+:root[data-skin="glass"] .room-header .room-header-actions { order: 4; flex: 0 0 auto; margin-left: auto; }
+:root[data-skin="glass"] .room-header .room-activity { display: none; }
+/* .room-tabs always sheds its strip chrome (border-top + row padding) + goes flat */
+:root[data-skin="glass"] .room-header .room-tabs {
+  order: 1; border-top: 0; padding: 0; margin: 0; background: transparent; box-shadow: none;
+}
+/* no thread: the tab rail is a centred well, independent of the side clusters */
+:root[data-skin="glass"] .room-header:has(.room-activity) .room-tabs {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: auto;
+}
+/* thread open (the "replying to" banner replaces .room-activity): keep .room-tabs
+   a full-width relative strip so the thread banner (absolute, right-0 inside it)
+   rides over the thread pane; the tab rail sits at its left edge. */
+:root[data-skin="glass"] .room-header:not(:has(.room-activity)) .room-tabs {
+  position: relative; flex: 1 1 auto; width: auto; min-width: 0; align-self: stretch;
+}
+
+/* Phase 4: on the Board tab the filters live in the unified banner (a rail left
+   of the centred tab rail); the in-board .board-header bar is dropped and the
+   columns flow behind the transparent banner like the chat/activity surfaces. */
+:root[data-skin="glass"] .room-header .room-board-filters { order: 1; flex: 0 0 auto; }
+:root[data-skin="glass"] .board-header { display: none; }
+:root[data-skin="glass"] .board-cols { padding-top: 60px; }
+/* brutal keeps BoardView's own header — the banner rail is a glass-only concept */
+:root:not([data-skin="glass"]) .room-board-filters { display: none; }
+
+/* AGENTS becomes a rail chip (same well surface as the activity chips), the sole
+   right-hand control; clicking it toggles the roster overlay (closed by default). */
+:root[data-skin="glass"] .room-agents-btn {
+  height: var(--rail-well-h); min-height: 0; padding: 0 12px; gap: var(--space-6);
+  background: var(--rail-fill); color: var(--ink);
+  border: var(--line); border-radius: var(--rail-well-radius); box-shadow: none;
+}
+:root[data-skin="glass"] .room-agents-btn:hover { background: var(--rail-chip-hover); color: var(--ink); }
+
+/* messages flow BEHIND the transparent floating banner — no mask, so the text
+   stays visible and scrolls under the rails (the requested "flows behind" look).
+   A modest top pad keeps the newest/oldest ends from jamming under the rail at
+   the scroll extremes; mid-scroll, messages pass freely behind it. */
+:root[data-skin="glass"] .chat-list { padding-top: 60px !important; }
+/* the timeline rail sits inside the chat column too — drop it below the floating
+   banner so its own "TIMELINE" header doesn't collide with the AGENTS chip. */
+:root[data-skin="glass"] .timeline-rail { padding-top: 60px; }
 
 /* ============================================================================
    GLASS REVAMP — self-message tint treatment (glass revamp §2.7.4)

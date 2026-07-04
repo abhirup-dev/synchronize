@@ -929,24 +929,7 @@
      revamp §2.4). The composer floats over the stream instead. */
   --composer-separator-line: 0 solid transparent;
 
-  /* Expanding-rail line-icon set (glass revamp §2.2) — masked SVGs painted in
-     the segment's currentColor. Consumed by skin-glass.css's rail rules; the
-     raw stroke='black' is the mask source, not a visible colour. (Room-tab
-     icons removed — the tabs are not on the rail; see skin-glass.css.) */
-  --ico-all: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-5l-2 3h-6l-2-3H2'/><path d='M5.4 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.4-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.8 1.1Z'/></svg>");
-  --ico-awaiting: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='9'/><circle cx='12' cy='12' r='3.5'/></svg>");
-  --ico-mentions: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='3.5'/><path d='M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.4 7'/></svg>");
 }
-
-/* Expanding-rail per-control icon + label assignments (glass revamp §2.2). The
-   only legitimately per-item values; they live here because the theme contract
-   requires all custom-property definitions in the token files. Consumed by the
-   rail ::before (icon) / ::after (label) rules in skin-glass.css. */
-:root[data-skin="glass"] .act-filters .act-filter:nth-child(1) { --ico: var(--ico-all); --lbl: "All"; }
-:root[data-skin="glass"] .act-filters .act-filter:nth-child(2) { --ico: var(--ico-awaiting); --lbl: "Awaiting"; }
-:root[data-skin="glass"] .act-filters .act-filter:nth-child(3) { --ico: var(--ico-mentions); --lbl: "Mentions"; }
-:root[data-skin="glass"] .act-view-segment .act-view-icon:nth-child(1) { --lbl: "Timeline"; }
-:root[data-skin="glass"] .act-view-segment .act-view-icon:nth-child(2) { --lbl: "Grouped"; }
 
 :root[data-skin="glass"][data-theme="kanagawa-wave"] {
   /* Mono · dark ("lights out"). --on-ink stays dark: it is the fg over the
@@ -963,16 +946,16 @@
   --muted: #ffffff26;
   --on-ink: #16161d;
   --primary-foreground: #ffffff;
-  --you-bg: #1d9bf0;
+  --you-bg: #4f95dd;
   --you-fg: #ffffff;
 
-  --yellow: #1d9bf0;
-  --pink: #1d9bf0;
-  --blue: #1d9bf0;
+  --yellow: #4f95dd;
+  --pink: #4f95dd;
+  --blue: #4f95dd;
   --lime: #00ba7c;
-  --tangerine: #1d9bf0;
-  --lilac: #1d9bf0;
-  --teal: #1d9bf0;
+  --tangerine: #4f95dd;
+  --lilac: #4f95dd;
+  --teal: #4f95dd;
   --destructive: #f4212e;
   --primary: var(--yellow);
   --status-online: var(--lime);
@@ -986,75 +969,77 @@
   --count-chip-bg: var(--ink);
   --count-chip-fg: var(--on-ink);
   --count-chip-border: var(--ink);
-  /* Vivid identity palette for glass · dark. The generated kanagawa tones are
-     too muted for the glass aesthetic (avatars/pills read grey); these saturated
-     values make identity pop on the near-black backdrop, matching the reference.
-     -fg stays dark (#16161D) — dark text on a bright chip reads cleanly; -text
-     is a lighter tint for identity-coloured text on the dark surface. */
-  --identity-0-bg: #FFCC33;
-  --identity-0-fg: #16161D;
-  --identity-0-border: #E0B02A;
-  --identity-0-text: #FFD866;
-  --identity-1-bg: #FF5DA2;
-  --identity-1-fg: #16161D;
-  --identity-1-border: #E64F8F;
-  --identity-1-text: #FF89BE;
-  --identity-2-bg: #4D8DFF;
-  --identity-2-fg: #16161D;
-  --identity-2-border: #3F76E0;
-  --identity-2-text: #86B4FF;
-  --identity-3-bg: #57C97A;
-  --identity-3-fg: #16161D;
-  --identity-3-border: #46AD66;
-  --identity-3-text: #86DCA0;
-  --identity-4-bg: #FF9147;
-  --identity-4-fg: #16161D;
-  --identity-4-border: #E67C36;
-  --identity-4-text: #FFB07A;
-  --identity-5-bg: #A084FF;
-  --identity-5-fg: #16161D;
-  --identity-5-border: #8A6FE6;
-  --identity-5-text: #C0ACFF;
-  --identity-6-bg: #FF6470;
-  --identity-6-fg: #16161D;
-  --identity-6-border: #E6525E;
-  --identity-6-text: #FF9099;
-  --identity-7-bg: #35D0C0;
-  --identity-7-fg: #16161D;
-  --identity-7-border: #27B3A5;
-  --identity-7-text: #6FE0D4;
-  --identity-8-bg: #9BD84F;
-  --identity-8-fg: #16161D;
-  --identity-8-border: #83BE3E;
-  --identity-8-text: #BCE686;
-  --identity-9-bg: #7C8BFF;
-  --identity-9-fg: #16161D;
-  --identity-9-border: #6674E6;
-  --identity-9-text: #A6AFFF;
-  --identity-10-bg: #E89A4D;
-  --identity-10-fg: #16161D;
-  --identity-10-border: #CE8339;
-  --identity-10-text: #F0B67D;
-  --identity-11-bg: #99A2B8;
-  --identity-11-fg: #16161D;
-  --identity-11-border: #838BA0;
-  --identity-11-text: #B7BECB;
-  --identity-12-bg: #E8C84A;
-  --identity-12-fg: #16161D;
-  --identity-12-border: #CEAF39;
-  --identity-12-text: #F0D77D;
-  --identity-13-bg: #DA7ED0;
-  --identity-13-fg: #16161D;
-  --identity-13-border: #C169B8;
-  --identity-13-text: #E8A6E0;
-  --identity-14-bg: #4FC7DB;
-  --identity-14-fg: #16161D;
-  --identity-14-border: #3BAAC0;
-  --identity-14-text: #82D9E6;
-  --identity-15-bg: #C99A5E;
-  --identity-15-fg: #16161D;
-  --identity-15-border: #B0834A;
-  --identity-15-text: #D9B486;
+  /* Muted identity palette for glass · dark — matches the frozen reference.
+     Derived by an HSL normalization of the base :root palette: hue preserved,
+     saturation ×0.46, lightness pinned to ~41% so every identity reads at a
+     consistent mid-dark weight on the near-black glass backdrop, carrying LIGHT
+     ink (#E7E9EA). (The prior values were vivified "to pop"; the shipped glass
+     reference is muted, so parity wins.) -border is a darker shade, -text a
+     lighter tint of the same muted hue for identity-coloured text on dark. */
+  --identity-0-bg: #998238;
+  --identity-0-fg: #E7E9EA;
+  --identity-0-border: #7F6C2F;
+  --identity-0-text: #DECC92;
+  --identity-1-bg: #993861;
+  --identity-1-fg: #E7E9EA;
+  --identity-1-border: #7F2F51;
+  --identity-1-text: #DE92B2;
+  --identity-2-bg: #395298;
+  --identity-2-fg: #E7E9EA;
+  --identity-2-border: #2F447E;
+  --identity-2-text: #92A6DD;
+  --identity-3-bg: #498852;
+  --identity-3-fg: #E7E9EA;
+  --identity-3-border: #3D7144;
+  --identity-3-text: #9FD0A6;
+  --identity-4-bg: #995F38;
+  --identity-4-fg: #E7E9EA;
+  --identity-4-border: #7F4E2F;
+  --identity-4-text: #DEB092;
+  --identity-5-bg: #503899;
+  --identity-5-fg: #E7E9EA;
+  --identity-5-border: #432F7F;
+  --identity-5-text: #A592DE;
+  --identity-6-bg: #933E46;
+  --identity-6-fg: #E7E9EA;
+  --identity-6-border: #7A343A;
+  --identity-6-text: #D9969D;
+  --identity-7-bg: #4B8681;
+  --identity-7-fg: #E7E9EA;
+  --identity-7-border: #3E706B;
+  --identity-7-text: #A0CFCB;
+  --identity-8-bg: #4C855D;
+  --identity-8-fg: #E7E9EA;
+  --identity-8-border: #3F6F4D;
+  --identity-8-text: #A1CEAE;
+  --identity-9-bg: #4C5386;
+  --identity-9-fg: #E7E9EA;
+  --identity-9-border: #3F456F;
+  --identity-9-text: #A1A7CE;
+  --identity-10-bg: #8B5E46;
+  --identity-10-fg: #E7E9EA;
+  --identity-10-border: #744E3A;
+  --identity-10-text: #D3B09C;
+  --identity-11-bg: #62676F;
+  --identity-11-fg: #E7E9EA;
+  --identity-11-border: #52555C;
+  --identity-11-text: #B3B6BC;
+  --identity-12-bg: #897948;
+  --identity-12-fg: #E7E9EA;
+  --identity-12-border: #72653C;
+  --identity-12-text: #D1C59E;
+  --identity-13-bg: #7B5674;
+  --identity-13-fg: #E7E9EA;
+  --identity-13-border: #664761;
+  --identity-13-text: #C6A9C1;
+  --identity-14-bg: #52757F;
+  --identity-14-fg: #E7E9EA;
+  --identity-14-border: #44616A;
+  --identity-14-text: #A6C2CA;
+  --identity-15-bg: #786B59;
+  --identity-15-fg: #E7E9EA;
+  --identity-15-border: #64594A;
+  --identity-15-text: #C4BAAB;
 
   --line-bold: 1px solid #ffffff30;
   --line-xs-ink: 1px solid #ffffff38;
@@ -1075,6 +1060,16 @@
   --shadow-lg: 0 8px 24px #000000cc;
   --shadow-hover: 0 2px 8px #000000b3;
   --shadow-hover-sm: 0 1px 4px #000000a6;
+  /* Avatar chrome — the reference glass keeps the brutalist hard offset shadow
+     (near-black drop + a light --ink echo), not a soft blur. Consumed by the
+     glass .identity-icon rule in skin-glass.css. */
+  --identity-icon-shadow: 1px 1px 0 0 rgba(5, 6, 12, 0.72), 3px 3px 0 0 color-mix(in srgb, var(--ink) 30%, transparent);
+  /* Composer — the reference glass keeps the kanagawa elevated OPAQUE surface
+     (--paper-3 tone) rather than a translucent black panel, and a gold-accented
+     SEND. Consumed by the glass .composer / .composer-send rules in skin-glass.css. */
+  --composer-bg: #2A2A37;
+  --composer-send-fg: #A89562;
+  --composer-send-border: #A89562;
   --shadow-accent-pink: 0 2px 10px #1d9bf04d;
   --shadow-accent-pink-strong: 0 4px 14px #1d9bf066;
   --shadow-tab-active: inset 0 -2px 0 var(--blue);

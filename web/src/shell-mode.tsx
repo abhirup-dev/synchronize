@@ -64,8 +64,11 @@ export function shellLayout(mode: ShellMode): ShellLayout {
     mode,
     persistentSidebar: mode !== "compact",
     threadAsSplit: mode === "desktop",
-    rosterColumn: mode === "desktop",
-    rosterAsOverlay: mode !== "desktop",
+    // Unified top-banner model: the roster is never a persistent column — it is
+    // an overlay toggled by the AGENTS chip in the banner (desktop + medium),
+    // closed by default. Compact reaches the same overlay via the bottom nav.
+    rosterColumn: false,
+    rosterAsOverlay: true,
     communityOverlay: mode === "compact",
     bottomNav: mode === "compact",
     timeline: mode !== "compact",

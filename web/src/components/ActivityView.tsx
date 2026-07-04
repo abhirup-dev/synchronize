@@ -7,7 +7,8 @@
 // Grouped/Timeline toggle).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, CheckCheck, LayoutList, Rows3, Settings } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, AtSign, CheckCheck, Inbox, LayoutList, Rows3, Settings, Target, type LucideIcon } from "lucide-react";
+import { Rail, RailSegment, RailChip } from "./rail.tsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useAckActivity,
@@ -185,10 +186,10 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
     ...(onOpenDm ? { onOpenDm } : {}),
   });
 
-  const FILTERS: Array<{ id: Filter; label: string; n: number; hot?: boolean }> = [
-    { id: "all", label: "ALL", n: counts.all },
-    { id: "awaits", label: "AWAITING YOU", n: counts.awaits, hot: true },
-    { id: "mentions", label: "MENTIONS", n: counts.mentions },
+  const FILTERS: Array<{ id: Filter; label: string; n: number; hot?: boolean; Icon: LucideIcon }> = [
+    { id: "all", label: "All", n: counts.all, Icon: Inbox },
+    { id: "awaits", label: "Awaiting", n: counts.awaits, hot: true, Icon: Target },
+    { id: "mentions", label: "Mentions", n: counts.mentions, Icon: AtSign },
   ];
 
   const openRoom = open ? roomsById.get(open.roomId) : undefined;
@@ -251,16 +252,13 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
                 <>
                   <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
                   <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
-                  <button
-                    className="act-markall topbar-control"
-                    onClick={() => void ackAll()}
+                  <RailChip
+                    className="act-markall"
+                    icon={<CheckCheck size={17} strokeWidth={2.1} aria-hidden />}
+                    tooltip="Mark all handled"
                     disabled={counts.awaits === 0}
-                    type="button"
-                    title="Mark all handled"
-                    aria-label="Mark all handled"
-                  >
-                    ✓
-                  </button>
+                    onClick={() => void ackAll()}
+                  />
                 </>
               )}
             </div>
@@ -268,17 +266,18 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
 
           <div className="act-filterbar">
             <div className="act-filters">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  className={`act-filter topbar-control${filter === f.id ? " active" : ""}${f.hot && f.n > 0 ? " hot" : ""}`}
-                  onClick={() => setFilter(f.id)}
-                  type="button"
-                >
-                  {f.label}
-                  <span className="act-filter-n">{f.n}</span>
-                </button>
-              ))}
+              <Rail role="tablist" aria-label="activity filter">
+                {FILTERS.map((f) => (
+                  <RailSegment
+                    key={f.id}
+                    icon={<f.Icon size={17} strokeWidth={2.1} aria-hidden />}
+                    label={f.label}
+                    count={f.n}
+                    active={filter === f.id}
+                    onSelect={() => setFilter(f.id)}
+                  />
+                ))}
+              </Rail>
               {compact && (
                 <>
                   <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
@@ -375,38 +374,27 @@ function ActivityViewControls({
   const groupedActive = viewMode === "grouped";
   return (
     <div className="act-view-controls" aria-label="Activity view controls">
-      <button
+      <RailChip
         className="act-sort-toggle"
+        icon={sortDir === "desc" ? <ArrowDownWideNarrow size={17} strokeWidth={2.1} aria-hidden /> : <ArrowUpNarrowWide size={17} strokeWidth={2.1} aria-hidden />}
+        tooltip={sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"}
+        pressed={sortDir === "desc"}
         onClick={() => onSortDir((value) => value === "desc" ? "asc" : "desc")}
-        type="button"
-        title={sortDir === "desc" ? "Newest first" : "Oldest first"}
-        aria-label={sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"}
-        aria-pressed={sortDir === "desc"}
-      >
-        {sortDir === "desc" ? <ArrowDownWideNarrow size={17} strokeWidth={2.1} aria-hidden /> : <ArrowUpNarrowWide size={17} strokeWidth={2.1} aria-hidden />}
-      </button>
-      <div className="act-view-segment" role="group" aria-label="Activity layout">
-        <button
-          className={`act-view-icon${timelineActive ? " active" : ""}`}
-          onClick={() => onViewMode("timeline")}
-          type="button"
-          title="Timeline view"
-          aria-label="Timeline view"
-          aria-pressed={timelineActive}
-        >
-          <Rows3 size={18} strokeWidth={2.1} aria-hidden />
-        </button>
-        <button
-          className={`act-view-icon${groupedActive ? " active" : ""}`}
-          onClick={() => onViewMode("grouped")}
-          type="button"
-          title="Grouped view"
-          aria-label="Grouped view"
-          aria-pressed={groupedActive}
-        >
-          <LayoutList size={18} strokeWidth={2.1} aria-hidden />
-        </button>
-      </div>
+      />
+      <Rail role="radiogroup" aria-label="Activity layout" className="act-view-segment">
+        <RailSegment
+          icon={<Rows3 size={18} strokeWidth={2.1} aria-hidden />}
+          label="Timeline"
+          active={timelineActive}
+          onSelect={() => onViewMode("timeline")}
+        />
+        <RailSegment
+          icon={<LayoutList size={18} strokeWidth={2.1} aria-hidden />}
+          label="Grouped"
+          active={groupedActive}
+          onSelect={() => onViewMode("grouped")}
+        />
+      </Rail>
     </div>
   );
 }
@@ -421,16 +409,15 @@ function ActivityLiveToggle({
   onToggle(): void;
 }) {
   return (
-    <button
-      className={`act-live${aliveOnly ? " active" : ""}`}
+    <RailChip
+      className="act-live"
+      icon={<span className="act-live-dot" />}
+      label={`${busyCount} working`}
+      active={aliveOnly}
+      pressed={aliveOnly}
+      tooltip="Show only activity from working agents"
       onClick={onToggle}
-      type="button"
-      title="Show only activity from working agents"
-      aria-pressed={aliveOnly}
-    >
-      <span className="act-live-dot" />
-      <span className="act-live-working">{busyCount} working</span>
-    </button>
+    />
   );
 }
 

@@ -1,4 +1,3 @@
-import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
 import { useAgents } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
@@ -9,10 +8,29 @@ import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Settings } from "lucide-react";
+import { Rail, RailSegment } from "./rail.tsx";
+import { Settings, MessageCircle, Columns3, File, Users, Flame, Ban, type LucideIcon } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
+
+// The room surface tabs adopt the shared expanding-rail standard (Rail +
+// RailSegment): a square icon at rest, the active one expands to reveal its
+// label — real lucide icons + label spans, not emoji/CSS-content hacks.
+const ROOM_TABS: { id: RoomTab; label: string; Icon: LucideIcon }[] = [
+  { id: "chat", label: "Chat", Icon: MessageCircle },
+  { id: "board", label: "Board", Icon: Columns3 },
+  { id: "artifacts", label: "Artifacts", Icon: File },
+];
+
+// Board-tab filters live in the unified banner (glass) rather than a second bar
+// inside BoardView. Visual-demo controls (no wired state yet) — the first is the
+// resting selection; adopting the same expanding-rail standard as the tabs.
+const BOARD_FILTERS: { id: string; label: string; Icon: LucideIcon }[] = [
+  { id: "all", label: "All agents", Icon: Users },
+  { id: "high", label: "High priority", Icon: Flame },
+  { id: "blocked", label: "Blocked", Icon: Ban },
+];
 
 /**
  * Tokens flow from the styles.css contract via the tw.css `@theme inline`
@@ -21,13 +39,6 @@ export type RoomTab = "chat" | "board" | "artifacts";
  * `room-tab`) are retained alongside utilities — their base declarations moved
  * here, while `.room-tab.active` + `[data-theme]` overrides stay in extra.css.
  * Shared classes (`icon-btn`, `author-name`, `thread-pane-*`) are untouched. */
-
-// Tab pill. Keeps the `room-tab` hook so skin-glass.css + the .active /
-// [data-theme] rules in extra.css still bind; the active state is a plain class
-// appended at the call site so those CSS rules own the active styling.
-const roomTab = cva([
-  "room-tab topbar-control",
-]);
 
 interface RoomHeaderProps {
   room: Room;
@@ -83,7 +94,7 @@ export function RoomHeader({
               {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
             </IdentityBadge>
           )}
-          <div className="flex flex-col justify-center min-w-0 flex-[1_1_auto]">
+          <div className="room-title-block flex flex-col justify-center min-w-0 flex-[1_1_auto]">
             <div className="room-title font-display text-[length:var(--text-22)] flex items-center leading-[1.1] min-w-0">
               <RoomNameInline
                 kind={room.kind}
@@ -157,16 +168,29 @@ export function RoomHeader({
         )}
       </div>
 
+      {tab === "board" && (
+        // Rendered for both skins; only the glass banner surfaces it (CSS gates
+        // on data-skin, which the parity harness can force — the `skin` prop
+        // can't). Brutal hides it and keeps BoardView's own header.
+        <Rail role="toolbar" aria-label="board filter" className="room-board-filters">
+          {BOARD_FILTERS.map((f, i) => (
+            <RailSegment key={f.id} icon={<f.Icon />} label={f.label} active={i === 0} onSelect={() => {}} />
+          ))}
+        </Rail>
+      )}
+
       <div className="room-tabs topbar-strip relative flex items-center gap-[var(--space-8)] pt-[10px] px-[22px] pb-[10px] [border-top:var(--line-2)]">
-        {(["chat", "board", "artifacts"] as RoomTab[]).map((t) => (
-          <button
-            key={t}
-            className={cn(roomTab(), tab === t && "active")}
-            onClick={() => onTab(t)}
-          >
-            {t === "chat" ? "💬 CHAT" : t === "board" ? "▦ BOARD" : "▤ ARTIFACTS"}
-          </button>
-        ))}
+        <Rail role="tablist" aria-label="room surface">
+          {ROOM_TABS.map((t) => (
+            <RailSegment
+              key={t.id}
+              icon={<t.Icon />}
+              label={t.label}
+              active={tab === t.id}
+              onSelect={() => onTab(t.id)}
+            />
+          ))}
+        </Rail>
         {threadBanner ? (
           <div className="absolute top-0 right-0 bottom-0 w-[min(var(--thread-pane-width,420px),46vw)] min-w-0 flex items-center justify-between gap-[var(--space-12)] px-[22px] font-mono text-ink-soft" aria-label={`thread replying to ${threadBanner.author.name}`}>
             <div className="min-w-0 flex items-center gap-[var(--space-8)] [&_strong]:font-display [&_strong]:text-[length:var(--text-13)] [&_strong]:text-ink">

@@ -4,7 +4,7 @@
     "$type": "synchronize.defaults",
     "$value": {
       "initialTheme": "kanagawa-wave",
-      "initialSkin": "brutal",
+      "initialSkin": "glass",
       "lightTheme": "light",
       "darkTheme": "kanagawa-wave"
     }

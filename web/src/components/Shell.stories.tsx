@@ -29,6 +29,12 @@ const expectShellMode = async (canvasElement: HTMLElement, mode: string) => {
   });
 };
 
+// Parity harness: no pinned viewport, so the shell adapts to whatever width
+// the harness iframe gives it (it reads window.innerWidth to pick its mode) —
+// the impl-side analogue of the reference app.html, which is likewise
+// width-responsive. Drive theme/skin via the toolbar globals in the URL.
+export const Responsive: Story = {};
+
 // compact: <780px (mobileNarrow = 390)
 export const Compact: Story = {
   globals: { viewport: { value: "mobileNarrow", isRotated: false } },

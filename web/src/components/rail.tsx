@@ -146,15 +146,17 @@ interface RailChipProps {
   pressed?: boolean;
   /** Hover tooltip pill + accessible name when there is no visible label. */
   tooltip?: string;
+  disabled?: boolean;
   onClick?: () => void;
   className?: string;
 }
 
-export function RailChip({ icon, label, active = false, pressed, tooltip, onClick, className }: RailChipProps) {
+export function RailChip({ icon, label, active = false, pressed, tooltip, disabled, onClick, className }: RailChipProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={pressed}
       aria-label={label ? undefined : tooltip}
       data-tooltip={tooltip}
