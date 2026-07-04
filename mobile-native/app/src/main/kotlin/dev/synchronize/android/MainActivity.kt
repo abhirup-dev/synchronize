@@ -126,6 +126,7 @@ fun SynchronizeApp() {
         MeshBackdrop()
         Scaffold(
             containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onBackground,
             bottomBar = {
                 if (!inConversation) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     NavigationBarItem(tab == Tab.Chat, { tab = Tab.Chat; openRoom = null },
@@ -160,17 +161,21 @@ fun SynchronizeApp() {
     }
 }
 
-/** Fixed ambient mesh: self/accent + lilac + teal radials, screen-blended feel. */
+/** Body wash + fixed ambient mesh (accent/lilac/teal radials): light 0.16, dark 0.26 per skin-glass. */
 @Composable
 private fun MeshBackdrop() {
     val glass = LocalGlassTokens.current
+    // Source wash: light #ffffff→#eef1f4, dark #000000→#06080a (chat-bg.css / skin-glass.css)
+    val wash = if (glass.isDark) listOf(Color(0xFF000000), Color(0xFF06080A))
+    else listOf(Color(0xFFFFFFFF), Color(0xFFEEF1F4))
+    val mesh = if (glass.isDark) 0.26f else 0.16f
     Box(
         Modifier
             .fillMaxSize()
-            .background(glass.bg)
-            .background(Brush.radialGradient(listOf(glass.accent.copy(alpha = 0.14f), Color.Transparent), center = Offset(150f, 300f), radius = 1200f))
-            .background(Brush.radialGradient(listOf(Color(0xFF9D7CD8).copy(alpha = 0.10f), Color.Transparent), center = Offset(950f, 900f), radius = 1100f))
-            .background(Brush.radialGradient(listOf(Color(0xFF4B8681).copy(alpha = 0.10f), Color.Transparent), center = Offset(400f, 2100f), radius = 1300f))
+            .background(Brush.verticalGradient(wash))
+            .background(Brush.radialGradient(listOf(glass.accent.copy(alpha = mesh * 0.6f), Color.Transparent), center = Offset(150f, 300f), radius = 1200f))
+            .background(Brush.radialGradient(listOf(Color(0xFF9D7CD8).copy(alpha = mesh * 0.45f), Color.Transparent), center = Offset(950f, 900f), radius = 1100f))
+            .background(Brush.radialGradient(listOf(Color(0xFF4B8681).copy(alpha = mesh * 0.45f), Color.Transparent), center = Offset(400f, 2100f), radius = 1300f))
     )
 }
 
@@ -183,7 +188,7 @@ private fun IdentityAvatar(index: Int, label: String, size: Int = 40) {
     ) {
         Text(
             label.take(2).uppercase(),
-            color = Color(0xFFE7E9EA),
+            color = slot.fg,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
         )

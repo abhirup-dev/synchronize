@@ -37,21 +37,34 @@ data class GlassTokens(
     val accent: Color,
     val success: Color,
     val danger: Color,
-    // Muted identity slots (dark values are source-backed; reused for both themes)
     val identity: List<IdentitySlot>,
+    val isDark: Boolean,
 )
 
-data class IdentitySlot(val bg: Color, val border: Color, val text: Color)
+data class IdentitySlot(val bg: Color, val fg: Color, val border: Color, val text: Color)
 
-private val identitySlots = listOf(
-    IdentitySlot(Color(0xFF998238), Color(0xFF7F6C2F), Color(0xFFDECC92)), // yellow
-    IdentitySlot(Color(0xFF993861), Color(0xFF7F2F51), Color(0xFFDE92B2)), // pink
-    IdentitySlot(Color(0xFF395298), Color(0xFF2F447E), Color(0xFF92A6DD)), // blue
-    IdentitySlot(Color(0xFF498852), Color(0xFF3D7144), Color(0xFF9FD0A6)), // green
-    IdentitySlot(Color(0xFF995F38), Color(0xFF7F4E2F), Color(0xFFDEB092)), // orange
-    IdentitySlot(Color(0xFF503899), Color(0xFF432F7F), Color(0xFFA592DE)), // purple
-    IdentitySlot(Color(0xFF933E46), Color(0xFF7A343A), Color(0xFFD9969D)), // red
-    IdentitySlot(Color(0xFF4B8681), Color(0xFF3E706B), Color(0xFFA0CFCB)), // teal
+// tokens.css :root[data-skin="glass"][data-theme="kanagawa-wave"] --identity-0..7 (muted, HSL-normalized)
+private val darkIdentitySlots = listOf(
+    IdentitySlot(Color(0xFF998238), Color(0xFFE7E9EA), Color(0xFF7F6C2F), Color(0xFFDECC92)), // yellow
+    IdentitySlot(Color(0xFF993861), Color(0xFFE7E9EA), Color(0xFF7F2F51), Color(0xFFDE92B2)), // pink
+    IdentitySlot(Color(0xFF395298), Color(0xFFE7E9EA), Color(0xFF2F447E), Color(0xFF92A6DD)), // blue
+    IdentitySlot(Color(0xFF498852), Color(0xFFE7E9EA), Color(0xFF3D7144), Color(0xFF9FD0A6)), // green
+    IdentitySlot(Color(0xFF995F38), Color(0xFFE7E9EA), Color(0xFF7F4E2F), Color(0xFFDEB092)), // orange
+    IdentitySlot(Color(0xFF503899), Color(0xFFE7E9EA), Color(0xFF432F7F), Color(0xFFA592DE)), // purple
+    IdentitySlot(Color(0xFF933E46), Color(0xFFE7E9EA), Color(0xFF7A343A), Color(0xFFD9969D)), // red
+    IdentitySlot(Color(0xFF4B8681), Color(0xFFE7E9EA), Color(0xFF3E706B), Color(0xFFA0CFCB)), // teal
+)
+
+// tokens.css :root[data-skin="glass"] --identity-0..7 (light glass, rose-pine hues)
+private val lightIdentitySlots = listOf(
+    IdentitySlot(Color(0xFFEA9D34), Color(0xFF575279), Color(0xFFB4637A), Color(0xFFA66B20)),
+    IdentitySlot(Color(0xFFD7827E), Color(0xFFFAF4ED), Color(0xFFB4637A), Color(0xFFB4637A)),
+    IdentitySlot(Color(0xFF286983), Color(0xFFFAF4ED), Color(0xFF56949F), Color(0xFF286983)),
+    IdentitySlot(Color(0xFF56949F), Color(0xFFFAF4ED), Color(0xFF286983), Color(0xFF3D7F8A)),
+    IdentitySlot(Color(0xFFD7827E), Color(0xFFFAF4ED), Color(0xFFB4637A), Color(0xFFB4637A)),
+    IdentitySlot(Color(0xFF907AA9), Color(0xFFFAF4ED), Color(0xFF797593), Color(0xFF745C8D)),
+    IdentitySlot(Color(0xFFB4637A), Color(0xFFFAF4ED), Color(0xFFD7827E), Color(0xFFB4637A)),
+    IdentitySlot(Color(0xFF56949F), Color(0xFFFAF4ED), Color(0xFF286983), Color(0xFF3D7F8A)),
 )
 
 val DarkGlassTokens = GlassTokens(
@@ -67,7 +80,8 @@ val DarkGlassTokens = GlassTokens(
     accent = Color(0xFF4F95DD),
     success = Color(0xFF00BA7C),
     danger = Color(0xFFF4212E),
-    identity = identitySlots,
+    identity = darkIdentitySlots,
+    isDark = true,
 )
 
 val LightGlassTokens = GlassTokens(
@@ -83,7 +97,8 @@ val LightGlassTokens = GlassTokens(
     accent = Color(0xFF1D9BF0),
     success = Color(0xFF00BA7C),
     danger = Color(0xFFF4212E),
-    identity = identitySlots,
+    identity = lightIdentitySlots,
+    isDark = false,
 )
 
 val LocalGlassTokens = staticCompositionLocalOf { DarkGlassTokens }
