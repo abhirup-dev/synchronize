@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { Composer } from "./Composer.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
+import { useDataSource } from "../data/context.tsx";
+import type { DataSource } from "../data/types.ts";
 
 // Provider-backed: Composer reads agents/rooms/skills and dispatches sendMessage
 // through the MockDataSource supplied by the global StorybookProviders decorator.
@@ -46,6 +48,55 @@ export const DirectMessage: Story = {
 // width — the Android composer state (incl. safe-area padding).
 export const Compact: Story = {
   globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+};
+
+// Exposes the story's per-mount MockDataSource so play() can write drafts the
+// way ANOTHER TAB would (through the DataSource, not the textarea). Rendered
+// beside the real Composer — it adds no DOM and changes no mounting.
+declare global {
+  interface Window {
+    __composerStoryDs?: DataSource;
+  }
+}
+function CaptureDataSource() {
+  window.__composerStoryDs = useDataSource();
+  return null;
+}
+const withDataSourceCapture: NonNullable<Story["decorators"]> = (StoryFn) => (
+  <>
+    <CaptureDataSource />
+    <StoryFn />
+  </>
+);
+const composerTextarea = (canvasElement: HTMLElement) =>
+  within(canvasElement).getByPlaceholderText("message the room… use @ to tag an agent") as HTMLTextAreaElement;
+
+// A draft saved elsewhere (another tab / earlier session) hydrates into a
+// pristine composer via the draft snapshot.
+export const HydratedDraft: Story = {
+  decorators: [withDataSourceCapture],
+  play: async ({ canvasElement }) => {
+    const textarea = composerTextarea(canvasElement);
+    await expect(textarea).toHaveValue("");
+    await window.__composerStoryDs!.saveDraft({ roomId: group.id, body: "picked up from the other tab" });
+    await waitFor(() => expect(textarea).toHaveValue("picked up from the other tab"));
+  },
+};
+
+// Echo suppression: a remote draft update must NOT clobber a composer that is
+// focused with in-progress typing — the local text wins until it is sent or
+// the composer goes idle.
+export const RemoteUpdateWhileTyping: Story = {
+  decorators: [withDataSourceCapture],
+  play: async ({ canvasElement }) => {
+    const textarea = composerTextarea(canvasElement);
+    await userEvent.type(textarea, "local in-progress text");
+    await window.__composerStoryDs!.saveDraft({ roomId: group.id, body: "remote overwrite attempt" });
+    // Give the (suppressed) remote-apply effect a beat, then confirm the local
+    // text survived.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(textarea).toHaveValue("local in-progress text");
+  },
 };
 
 // Type into the textarea and hit send; submit() clears the draft on success,

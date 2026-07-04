@@ -818,6 +818,33 @@ function migrate(db: Database): void {
     `);
     if (!hasPeerThreadInteractionsV15) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (15)`);
   }
+
+  // v16: per-peer web composer drafts so a draft typed in one tab appears in
+  // every other tab (and later, per-user) — docs/plans/web-multi-tab-popout-v0.md.
+  // room_id is the WEB room id string ("group:1" / "dm:<peer>"); thread_parent_id
+  // is '' for the main-room composer and the parent web message id for a thread
+  // composer, so the two never clobber each other. Drafts are metadata, not
+  // messages: no events rows, no inbox fan-out — changes ride the `drafts` SSE
+  // domain only. Empty-body saves delete the row.
+  const hasWebDraftsV16 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 16")
+    .get();
+  const hasWebDraftsTable = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'web_drafts'")
+    .get();
+  if (!hasWebDraftsV16 || !hasWebDraftsTable) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS web_drafts (
+        peer_id TEXT NOT NULL REFERENCES peers(peer_id),
+        room_id TEXT NOT NULL,
+        thread_parent_id TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        PRIMARY KEY (peer_id, room_id, thread_parent_id)
+      )
+    `);
+    if (!hasWebDraftsV16) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (16)`);
+  }
 }
 
 /**

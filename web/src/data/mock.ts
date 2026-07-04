@@ -105,6 +105,7 @@ export class MockDataSource implements DataSource {
   private readonly _rooms = createSnapshot<Room[]>([...GROUPS, ...DMS]);
   private readonly _messages = new Map<string, MutableSnapshot<Message[]>>();
   private readonly _threadReplies = new Map<string, MutableSnapshot<Message[]>>();
+  private readonly _drafts = new Map<string, MutableSnapshot<string>>();
   private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
@@ -201,6 +202,20 @@ export class MockDataSource implements DataSource {
       this._messages.set(roomId, snap);
     }
     return snap;
+  }
+
+  draft(roomId: string, threadParentId = ""): Snapshot<string> {
+    const key = `${roomId} ${threadParentId}`;
+    let snap = this._drafts.get(key);
+    if (!snap) {
+      snap = createSnapshot<string>("");
+      this._drafts.set(key, snap);
+    }
+    return snap;
+  }
+
+  async saveDraft(input: { roomId: string; threadParentId?: string; body: string }): Promise<void> {
+    (this.draft(input.roomId, input.threadParentId ?? "") as MutableSnapshot<string>).set(input.body);
   }
 
   threadReplies(parentId: string): Snapshot<Message[]> {

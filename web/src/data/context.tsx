@@ -56,6 +56,15 @@ export function useLoadMoreActivity() {
   return ds.loadMoreActivity.bind(ds);
 }
 
+export function useDraft(roomId: string, threadParentId?: string) {
+  return useSnapshot(useDataSource().draft(roomId, threadParentId));
+}
+
+export function useSaveDraft() {
+  const ds = useDataSource();
+  return ds.saveDraft.bind(ds);
+}
+
 export function useSendMessage() {
   const ds = useDataSource();
   return ds.sendMessage.bind(ds);

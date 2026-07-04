@@ -414,8 +414,15 @@ export interface DataSource {
   /** Count of items awaiting the local user (server-authoritative). */
   activityAwaitingCount(): Snapshot<number>;
   archivedSessions(): Snapshot<ArchivedSession[]>;
+  /** Server-synced composer draft for a room (or a thread composer when
+   *  threadParentId is set). "" = no draft. Kept fresh across tabs via the
+   *  `drafts` SSE domain — docs/plans/web-multi-tab-popout-v0.md. */
+  draft(roomId: string, threadParentId?: string): Snapshot<string>;
 
   // commands
+  /** Persist a composer draft server-side (empty body deletes it). Callers
+   *  debounce; this writes immediately. */
+  saveDraft(input: { roomId: string; threadParentId?: string; body: string }): Promise<void>;
   stageAttachment(input: StageAttachmentInput): Promise<MessageAttachment>;
   removeDraftAttachment(attachment: MessageAttachment): Promise<void>;
   sendMessage(input: SendMessageInput): Promise<Message>;

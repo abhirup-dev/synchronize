@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useMemo } from "react";
 import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn.ts";
-import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
+import { useAgents, useDataSource, useDraft, useMe, useRemoveDraftAttachment, useRooms, useSaveDraft, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
 import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
@@ -139,6 +139,14 @@ export function Composer({
   const slashRestorePosRef = useRef<number | null>(null);
   const attachmentsRef = useRef<MessageAttachment[]>([]);
   const [value, setValue] = useState("");
+  const draft = useDraft(roomId, parentMessageId);
+  const saveDraft = useSaveDraft();
+  const ds = useDataSource();
+  const valueRef = useRef("");
+  const draftTimerRef = useRef<number | undefined>(undefined);
+  // Local edits made since the last hydrate/remote-apply. Guards remote draft
+  // updates from clobbering in-progress typing (echo suppression).
+  const draftDirtyRef = useRef(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
@@ -158,6 +166,71 @@ export function Composer({
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const draftTarget = useMemo(
+    () => ({ roomId, ...(parentMessageId !== undefined && { threadParentId: parentMessageId }) }),
+    [roomId, parentMessageId],
+  );
+
+  // Debounced server persist of local edits (~500ms; drafts sync across tabs).
+  const scheduleDraftSave = (body: string) => {
+    draftDirtyRef.current = true;
+    if (draftTimerRef.current !== undefined) window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = window.setTimeout(() => {
+      draftTimerRef.current = undefined;
+      draftDirtyRef.current = false;
+      void saveDraft({ ...draftTarget, body });
+    }, 500);
+  };
+
+  // Flush a pending debounced save immediately (blur / room switch / unmount).
+  const flushDraft = (target = draftTarget) => {
+    if (draftTimerRef.current === undefined) return;
+    window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = undefined;
+    draftDirtyRef.current = false;
+    void saveDraft({ ...target, body: valueRef.current });
+  };
+
+  // Cancel any pending save without persisting (send already cleared the draft).
+  const cancelDraftSave = () => {
+    if (draftTimerRef.current !== undefined) {
+      window.clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = undefined;
+    }
+    draftDirtyRef.current = false;
+  };
+
+  // Hydrate on mount and on room/thread switch; flush the room being left.
+  // The cleanup closes over the PREVIOUS room's target, so a mid-debounce
+  // switch persists the old room's text before the new room hydrates.
+  useEffect(() => {
+    draftDirtyRef.current = false;
+    setValue(ds.draft(roomId, parentMessageId).get());
+    const target = draftTarget;
+    return () => flushDraft(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, parentMessageId]);
+
+  // Remote draft updates from other tabs: apply unless this composer is being
+  // actively edited (focused with text or unsaved local changes) — last writer
+  // wins, but never clobber in-progress typing. A pristine or unfocused
+  // composer follows the remote value, including remote clears.
+  useEffect(() => {
+    if (draft === valueRef.current) return;
+    if (draftTimerRef.current !== undefined) return;
+    // activeElement is sticky in a BACKGROUND tab (nothing blurs it on tab
+    // switch), so "actively editing" additionally requires document focus —
+    // a backgrounded tab always follows the remote draft.
+    const focused = document.hasFocus() && document.activeElement === taRef.current;
+    if (focused && (draftDirtyRef.current || valueRef.current !== "")) return;
+    setValue(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
 
   useEffect(() => {
     return () => {
@@ -266,6 +339,7 @@ export function Composer({
       return;
     }
     setValue(v);
+    scheduleDraftSave(v);
     const m = /@([a-zA-Z0-9._-]*)$/.exec(upTo);
     if (m) {
       setMentionQuery(m[1] ?? "");
@@ -413,6 +487,8 @@ export function Composer({
       .map((h) => mentionAgents.find((a) => a.handle === h)?.id)
       .filter((id): id is string => Boolean(id));
     setValue("");
+    cancelDraftSave();
+    void saveDraft({ ...draftTarget, body: "" });
     setMentionQuery(null);
     closeSkillPicker();
     const pickedSkills = selectedSkills;
@@ -511,6 +587,7 @@ export function Composer({
           onChange={handleChange}
           onKeyDown={handleKey}
           onPaste={handlePaste}
+          onBlur={() => flushDraft()}
           rows={compact ? 1 : 3}
           aria-autocomplete="list"
           aria-haspopup="listbox"

@@ -12,6 +12,7 @@ import {
   webAttachmentRoot,
 } from "../repo/media.ts";
 import { resolveWebDeepLink } from "../repo/events.ts";
+import { listWebDrafts, putWebDraft } from "../repo/drafts.ts";
 import { ensureLocalWebPeer } from "../repo/peers.ts";
 import { emitWebStateChanged, openWebEvents } from "../services/web-events.ts";
 import {
@@ -20,7 +21,7 @@ import {
   serveWebAsset,
   type DaemonContext,
 } from "../server.ts";
-import { optionalFormString, readBody, requireString } from "../validation.ts";
+import { optionalFormString, optionalString, readBody, requireString } from "../validation.ts";
 
 export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, url: URL): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/web/state") {
@@ -124,6 +125,34 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
   if (request.method === "GET" && url.pathname === "/web/events") {
     requireAuth(request, ctx);
     return openWebEvents(ctx);
+  }
+
+  // Per-peer composer drafts (web_drafts, schema v16). The peer comes from the
+  // request (explicit peer_id, as sent by every web client) with the local web
+  // session as fallback — never hardcoded, so multi-user later is just distinct
+  // peer ids. Draft writes broadcast the `drafts` SSE domain; clients refetch
+  // drafts only (no room/state invalidation).
+  if (url.pathname === "/web/drafts") {
+    requireAuth(request, ctx);
+    if (request.method === "GET") {
+      const peerId = url.searchParams.get("peer_id") ?? ensureLocalWebPeer(ctx).peer_id;
+      return jsonResponse({ drafts: listWebDrafts(ctx.db, peerId) });
+    }
+    if (request.method === "PUT") {
+      const body = await readBody(request);
+      const peerId = optionalString(body, "peer_id") ?? ensureLocalWebPeer(ctx).peer_id;
+      const roomId = requireString(body, "room_id");
+      const threadParentId = optionalString(body, "thread_parent_id") ?? "";
+      const draftBody = body["body"];
+      // Deliberately untrimmed — drafts are mid-composition text where trailing
+      // whitespace/newlines matter. Empty string = delete the draft.
+      if (typeof draftBody !== "string") {
+        throw new HttpError(400, "invalid_request", "body must be a string");
+      }
+      putWebDraft(ctx.db, { peerId, roomId, threadParentId, body: draftBody });
+      emitWebStateChanged(ctx, { domains: ["drafts"], peerId });
+      return jsonResponse({ ok: true });
+    }
   }
 
   if (request.method === "GET" && url.pathname === "/web/resolve") {

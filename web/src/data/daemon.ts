@@ -401,6 +401,10 @@ export class DaemonDataSource implements DataSource {
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>([]);
+  // Composer drafts keyed `${roomId} ${threadParentId}` (empty parent =
+  // main-room composer). Self-echo from the drafts SSE domain is naturally
+  // suppressed: refetching the value we just PUT is a string-equal set → no-op.
+  private readonly _drafts = new Map<string, MutableSnapshot<string>>();
   private activityRequested = false;
   private archivedRequested = false;
   private activityRefresh: Promise<void> | null = null;
@@ -461,6 +465,52 @@ export class DaemonDataSource implements DataSource {
       if (this.connected) void this.refreshRoom(roomId, { reset: true });
     }
     return snap;
+  }
+
+  draft(roomId: string, threadParentId = ""): Snapshot<string> {
+    const key = `${roomId} ${threadParentId}`;
+    let snap = this._drafts.get(key);
+    if (!snap) {
+      snap = createSnapshot<string>("");
+      this._drafts.set(key, snap);
+    }
+    return snap;
+  }
+
+  async saveDraft(input: { roomId: string; threadParentId?: string; body: string }): Promise<void> {
+    const threadParentId = input.threadParentId ?? "";
+    (this.draft(input.roomId, threadParentId) as MutableSnapshot<string>).set(input.body);
+    await this.request("/web/drafts", {
+      method: "PUT",
+      body: JSON.stringify({
+        peer_id: this.peerId,
+        room_id: input.roomId,
+        thread_parent_id: threadParentId || undefined,
+        body: input.body,
+      }),
+    });
+  }
+
+  private async refreshDrafts(): Promise<void> {
+    const response = await this.request<{ drafts: Array<{ room_id: string; thread_parent_id: string; body: string }> }>(
+      `/web/drafts?peer_id=${encodeURIComponent(this.peerId)}`,
+    );
+    const seen = new Set<string>();
+    for (const row of response.drafts) {
+      const key = `${row.room_id} ${row.thread_parent_id}`;
+      seen.add(key);
+      let snap = this._drafts.get(key);
+      if (!snap) {
+        snap = createSnapshot<string>("");
+        this._drafts.set(key, snap);
+      }
+      snap.set(row.body);
+    }
+    // Drafts deleted elsewhere (sent or cleared in another tab) come back
+    // absent — reset their local snapshots to empty.
+    for (const [key, snap] of this._drafts) {
+      if (!seen.has(key)) snap.set("");
+    }
   }
 
   threadReplies(parentId: string): Snapshot<Message[]> {
@@ -567,6 +617,7 @@ export class DaemonDataSource implements DataSource {
     this.connected = true;
     await this.registerWebPeer();
     await this.refresh();
+    void this.refreshDrafts();
     void this.refreshActivity({ reset: true });
     if (this.archivedRequested) void this.refreshArchivedSessions();
     this.openStream();
@@ -1353,6 +1404,11 @@ export class DaemonDataSource implements DataSource {
   private scheduleInvalidation(change: WebStateChange): void {
     if (change.domains.includes("reactions")) {
       if (change.event_id !== undefined) void this.refreshEvent(change.event_id);
+      return;
+    }
+    // Draft writes are metadata-only: refetch drafts, never invalidate rooms.
+    if (change.domains.length === 1 && change.domains[0] === "drafts") {
+      void this.refreshDrafts();
       return;
     }
     if (change.group_id) this.pendingRooms.add(groupRoomId(change.group_id));
