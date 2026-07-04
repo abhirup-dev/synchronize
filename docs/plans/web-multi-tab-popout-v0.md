@@ -1,6 +1,6 @@
 # Web Multi-Tab Popout And Cross-Tab Sync v0
 
-Status: planned (2026-07-04). Beads: epic `sync-ah0u`; phases `sync-5r0s` (popout surface), `sync-qvkn` (server drafts), `sync-ul74` (session peer_id).
+Status: shipped (2026-07-04, `feat/web-multi-tab-popout`). Beads: epic `sync-ah0u` closed; phases `sync-5r0s` (popout surface), `sync-qvkn` (server drafts), `sync-ul74` (session peer_id) all closed. Implementation deviations recorded on the issues: room links resolve client-side (no daemon resolver change), draft key gained a `thread_parent_id` dimension, and draft echo suppression requires `document.hasFocus()`.
 
 ## Goal
 
