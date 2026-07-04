@@ -85,6 +85,16 @@ button { font-family: inherit; cursor: pointer; }
   grid-template-columns: 280px minmax(0, 1fr);
 }
 
+/* Popout pane (?view=pane): single-surface window — App renders no sidebar or
+   roster cells, so drop their grid tracks in every shell mode. */
+.app-shell[data-shell-pane] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell[data-shell-pane] .main-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .app-shell.shell-compact {
   /* Height of the bottom-nav interactive bar (excludes the device safe-area
      inset, which the nav adds as padding). Overlays inset their bottom by this

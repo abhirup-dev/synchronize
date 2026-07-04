@@ -5,6 +5,7 @@ import { useMe, useRooms, useAgents, useActivityAwaitingCount } from "../data/co
 import { IdentityBadge, IdentityLogoTile, PanelSectionHeader, RoomNameInline, StatusDot, roomNameText } from "./primitives.tsx";
 import type { Agent, Room } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
+import { roomDeepLinkPath } from "../deeplinks.ts";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { SpawnAgentDialog } from "./SpawnAgentDialog.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
@@ -303,17 +304,27 @@ function RoomItem({
       onClick={() => onSelect(room.id)}
       onKeyDown={handleKeyDown}
       onContextMenu={(e) => {
+        const openInNewTab = {
+          label: "Open in new tab",
+          onSelect: () => void window.open(roomDeepLinkPath(room.id, "pane"), "_blank", "noopener"),
+        };
         if (room.kind === "dm" && profileAgent) {
-          openMenu(e, agentActionMenuItems(e, {
-            agent: profileAgent,
-            toast,
-            archive,
-            onOpenDm: () => onSelect(room.id),
-            ...(onViewProfile ? { onViewProfile: () => onViewProfile(profileAgent) } : {}),
-          }));
+          openMenu(e, [
+            openInNewTab,
+            { divider: true },
+            ...agentActionMenuItems(e, {
+              agent: profileAgent,
+              toast,
+              archive,
+              onOpenDm: () => onSelect(room.id),
+              ...(onViewProfile ? { onViewProfile: () => onViewProfile(profileAgent) } : {}),
+            }),
+          ]);
           return;
         }
         openMenu(e, [
+          openInNewTab,
+          { divider: true },
           ...(room.kind === "group" && onSpawnAgent
             ? [{ label: "Spawn agent...", onSelect: () => onSpawnAgent(room) }]
             : []),

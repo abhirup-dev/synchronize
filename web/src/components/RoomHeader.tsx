@@ -9,7 +9,7 @@ import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Settings } from "lucide-react";
+import { ExternalLink, Settings } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
@@ -45,6 +45,7 @@ interface RoomHeaderProps {
   threadBanner?: {
     author: Agent;
     onClose(): void;
+    onPopout?(): void;
   };
 }
 
@@ -177,7 +178,14 @@ export function RoomHeader({
                 {threadBanner.author.name}
               </IdentityBadge>
             </div>
-            <button className="thread-pane-close flex-none" onClick={threadBanner.onClose} aria-label="close thread">×</button>
+            <div className="flex flex-none items-center gap-[var(--space-6)]">
+              {threadBanner.onPopout && (
+                <button className="thread-pane-close flex-none" onClick={threadBanner.onPopout} aria-label="open thread in new tab" title="Open thread in new tab">
+                  <ExternalLink size={14} strokeWidth={2.2} aria-hidden />
+                </button>
+              )}
+              <button className="thread-pane-close flex-none" onClick={threadBanner.onClose} aria-label="close thread">×</button>
+            </div>
           </div>
         ) : (
           <div className="room-activity ml-auto font-mono text-[length:var(--text-10)] text-ink-soft flex items-center gap-[var(--space-8)]">

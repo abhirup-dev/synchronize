@@ -121,6 +121,54 @@ export const BackForwardRestoresTarget: Story = {
   },
 };
 
+// A /web/t/ link to a thread ROOT opens the thread ON the root (the Shell's
+// surface override — the resolver alone would return group-main).
+export const ThreadRootLink: Story = {
+  beforeEach: () => openAt("/web/t/ml-deepdive"),
+  play: async ({ step }: PlayCtx) => {
+    await step("Root /t/ link opens the thread pane on the root", async () => {
+      await waitFor(() => {
+        if (!document.querySelector(".thread-pane")) throw new Error("thread pane did not open");
+      });
+      await expectFocused("ml-deepdive");
+    });
+  },
+};
+
+// ?view=pane popout: the same Shell mounts only the room surface — no sidebar,
+// no roster, single-column grid (data-shell-pane).
+export const RoomPaneLink: Story = {
+  beforeEach: () => openAt("/web/r/ml-ranking?view=pane"),
+  play: async ({ step }: PlayCtx) => {
+    await step("Room pane link mounts chat without shell chrome", async () => {
+      await waitFor(() => {
+        const shell = document.querySelector(".app-shell");
+        expect(shell?.hasAttribute("data-shell-pane")).toBe(true);
+        expect(document.querySelector(".chat-view")).toBeTruthy();
+      });
+      expect(document.querySelector(".sidebar")).toBeNull();
+      expect(document.querySelector(".agent-roster, [data-vim-panel='roster']")).toBeNull();
+    });
+  },
+};
+
+// Thread popout: /web/t/<root>?view=pane renders the thread as the whole window
+// (paneShellLayout forces threadAsSplit=false → full-panel ThreadPane).
+export const ThreadPaneLink: Story = {
+  beforeEach: () => openAt("/web/t/ml-deepdive?view=pane"),
+  play: async ({ step }: PlayCtx) => {
+    await step("Thread pane link is a single-surface thread window", async () => {
+      await waitFor(() => {
+        if (!document.querySelector(".thread-pane")) throw new Error("thread pane did not open");
+      });
+      expect(document.querySelector(".app-shell")?.hasAttribute("data-shell-pane")).toBe(true);
+      expect(document.querySelector(".sidebar")).toBeNull();
+      // Full-panel thread: the chat column is not mounted beside it.
+      expect(document.querySelector(".chat-view")).toBeNull();
+    });
+  },
+};
+
 // Demo: same reply flow, paced so it is watchable in the Interactions panel.
 // Tagged `!test` so it is excluded from the CI test run (no slowdown, no flake).
 export const GroupReplyLinkDemo: Story = {

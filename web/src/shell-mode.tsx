@@ -73,6 +73,23 @@ export function shellLayout(mode: ShellMode): ShellLayout {
   };
 }
 
+// A popout pane (?view=pane) is the shell minus its navigation chrome: the
+// window shows exactly one room (or thread) and the browser tab IS the nav.
+// This is a VIEW axis on top of the width axis — the pane stays responsive
+// (timeline, settings sheet, compact composer) but never grows nav surfaces.
+// Threads render as the full panel: a pane is a single-surface window.
+export function paneShellLayout(mode: ShellMode): ShellLayout {
+  return {
+    ...shellLayout(mode),
+    persistentSidebar: false,
+    threadAsSplit: false,
+    rosterColumn: false,
+    rosterAsOverlay: false,
+    communityOverlay: false,
+    bottomNav: false,
+  };
+}
+
 export function useShellLayout(): ShellLayout {
   return shellLayout(useContext(ShellModeContext));
 }

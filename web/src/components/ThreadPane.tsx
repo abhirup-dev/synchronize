@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ExternalLink } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAgents, useMe, useMessages, useReactToMessage, useThreadReplies } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
@@ -11,6 +11,7 @@ import { roomAgents } from "../data/roomAgents.ts";
 import { IdentityBadge } from "./primitives.tsx";
 import { cn } from "../lib/cn.ts";
 import { useIsCompact } from "../shell-mode.tsx";
+import { threadDeepLinkPath } from "../deeplinks.ts";
 
 interface ThreadPaneProps {
   room: Room;
@@ -142,7 +143,19 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               {parentAuthor.name}
             </IdentityBadge>
           </div>
-          {!compact && <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>}
+          {!compact && (
+            <div className="flex items-center gap-[var(--space-6)]">
+              <button
+                className="thread-pane-close"
+                onClick={() => window.open(threadDeepLinkPath(parentId, "pane"), "_blank", "noopener")}
+                aria-label="open thread in new tab"
+                title="Open thread in new tab"
+              >
+                <ExternalLink size={14} strokeWidth={2.2} aria-hidden />
+              </button>
+              <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>
+            </div>
+          )}
         </header>
       )}
 

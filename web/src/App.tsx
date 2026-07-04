@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Settings, X } from "lucide-react";
 import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
 import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
-import { deepLinkPath, parseDeepLinkId } from "./deeplinks.ts";
+import { deepLinkPath, parseDeepLink, roomDeepLinkPath, threadDeepLinkPath, type DeepLinkView } from "./deeplinks.ts";
 import { MockDataSource } from "./data/mock.ts";
 import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
@@ -20,7 +20,7 @@ import { ArchiveRecoveryProvider } from "./components/ArchiveRecovery.tsx";
 import { useVimNav, type VimPanel } from "./hooks/useVimNav.ts";
 import { ToastProvider, useToast } from "./components/Toast.tsx";
 import { roomAgent } from "./data/roomAgents.ts";
-import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx";
+import { paneShellLayout, shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx";
 import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
@@ -125,6 +125,14 @@ export function Shell() {
   // the message id the chat/thread surface should scroll to and flash.
   const [pendingDeepLink, setPendingDeepLink] = useState<WebDeepLinkTarget | null>(null);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
+  // ?view=pane popout: mount only the room/thread surface — no sidebar/nav
+  // chrome. The URL is the whole contract (docs/plans/web-multi-tab-popout-v0.md).
+  const [deepLinkView, setDeepLinkView] = useState<DeepLinkView>(() => parseDeepLink()?.view ?? "shell");
+  // /web/r/:roomId link waiting for the room list to contain its target.
+  const [pendingRoomLink, setPendingRoomLink] = useState<string | null>(null);
+  // Which path form the pending event link used, so URL normalization keeps
+  // /web/t/ links on /web/t/ (a /t/ root link must reopen its thread on refresh).
+  const lastLinkFormRef = useRef<"e" | "t">("e");
   const [shellMode, setShellMode] = useState<ShellMode>(() => shellModeForWidth(window.innerWidth));
   // Last real room visited, so the compact "Chats" tab can restore a
   // conversation when leaving the (virtual) Activity destination.
@@ -167,8 +175,26 @@ export function Shell() {
     }
   }, [activeId, rooms]);
 
+  // Apply a pending /web/r/:roomId link once the room list contains it. Unknown
+  // ids never apply — the guard effect above keeps the default room, matching
+  // the unknown-event-link fallback. Declared after that guard so its
+  // setActiveId lands last when both fire on the same rooms update.
+  useEffect(() => {
+    if (!pendingRoomLink) return;
+    if (!rooms.some((candidate) => candidate.id === pendingRoomLink)) return;
+    setActiveId(pendingRoomLink);
+    setPendingRoomLink(null);
+    window.history.replaceState(null, "", roomDeepLinkPath(pendingRoomLink, deepLinkView));
+  }, [pendingRoomLink, rooms, deepLinkView]);
+
   // Jump from the Activity feed into a room, optionally scrolling to a message.
   const jumpToRoom = (roomId: string, msgId?: string) => {
+    // A pane window shows exactly one room; cross-room jumps navigate this tab
+    // to the target's full-shell URL instead of growing the pane into a shell.
+    if (deepLinkView === "pane" && roomId !== activeId) {
+      window.location.assign(roomDeepLinkPath(roomId));
+      return;
+    }
     setActiveId(roomId);
     setTab("chat");
     if (!msgId) return;
@@ -191,10 +217,21 @@ export function Shell() {
   // focus/thread-open is deferred to the apply effect below, which waits for the
   // hydrated messages to land. Runs on mount and on browser back/forward.
   const loadDeepLinkFromUrl = useCallback(async () => {
-    const id = parseDeepLinkId();
-    if (!id) return;
+    const link = parseDeepLink();
+    if (!link) return;
+    setDeepLinkView(link.view);
+    if (link.kind === "room") {
+      setPendingRoomLink(link.roomId);
+      return;
+    }
     try {
-      const target = await ds.resolveDeepLink(id);
+      let target = await ds.resolveDeepLink(link.id);
+      // /web/t/<rootId>: a thread link to a root message resolves as group-main;
+      // open the thread ON the root instead of just focusing it in the chat list.
+      if (link.form === "t" && target.surface === "group-main") {
+        target = { ...target, surface: "group-thread", threadParentId: target.focusMessageId };
+      }
+      lastLinkFormRef.current = link.form;
       await ds.hydrateDeepLinkTarget(target);
       setActiveId(target.roomId);
       setPendingDeepLink(target);
@@ -255,16 +292,22 @@ export function Shell() {
     }
     setFocusMessageId(target.focusMessageId);
     setPendingDeepLink(null);
-    // Normalize the address bar to the canonical /web/e/:id form without adding a
-    // history entry, so a refresh re-lands on the same target.
-    window.history.replaceState(null, "", deepLinkPath(target));
-  }, [pendingDeepLink, activeId, roomMessages]);
+    // Normalize the address bar without adding a history entry, so a refresh
+    // re-lands on the same target. Thread-form links stay on /web/t/ (an /e/
+    // URL for a root would reopen as plain chat) and ?view=pane is preserved.
+    window.history.replaceState(
+      null,
+      "",
+      lastLinkFormRef.current === "t" ? threadDeepLinkPath(target.linkId, deepLinkView) : deepLinkPath(target, deepLinkView),
+    );
+  }, [pendingDeepLink, activeId, roomMessages, deepLinkView]);
   const threadParent = threadParentId ? roomMessages.find((message) => message.id === threadParentId) : undefined;
   const threadAuthor = threadParent && room
     ? agents.find((agent) => agent.id === threadParent.authorId)
     : undefined;
   const displayThreadAuthor = threadAuthor && room ? roomAgent(threadAuthor, room) : undefined;
-  const layout = shellLayout(shellMode);
+  const pane = deepLinkView === "pane";
+  const layout = pane ? paneShellLayout(shellMode) : shellLayout(shellMode);
   const rosterPersistent = layout.rosterColumn && !threadParentId;
   const rosterPanelAvailable = layout.rosterAsOverlay && !threadParentId;
   const communityPanelAvailable = layout.communityOverlay;
@@ -358,8 +401,15 @@ export function Shell() {
     };
   }, [vim]);
 
+  // Name the popout's browser tab after its room; the full shell keeps the
+  // document's default title.
+  useEffect(() => {
+    if (!pane || !room) return;
+    document.title = `${room.kind === "group" ? "#" : ""}${room.name} — Synchronize`;
+  }, [pane, room]);
+
   return (
-    <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode}>
+    <AppShellGrid mode={shellMode} threadOpen={!!threadParentId} data-vim-mode={vim.mode} {...(pane ? { "data-shell-pane": "" } : {})}>
       {layout.persistentSidebar && (
         <Sidebar
           activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")}
@@ -396,8 +446,14 @@ export function Shell() {
                 showAgentsButton={rosterPanelAvailable && layout.persistentSidebar}
                 onOpenAgents={openAgents}
                 onOpenSettings={openCompactSettings}
-                {...(displayThreadAuthor && layout.threadAsSplit
-                  ? { threadBanner: { author: displayThreadAuthor, onClose: () => setThreadParentId(null) } }
+                {...(displayThreadAuthor && layout.threadAsSplit && threadParentId
+                  ? {
+                      threadBanner: {
+                        author: displayThreadAuthor,
+                        onClose: () => setThreadParentId(null),
+                        onPopout: () => window.open(threadDeepLinkPath(threadParentId, "pane"), "_blank", "noopener"),
+                      },
+                    }
                   : {})}
               />
             )}
