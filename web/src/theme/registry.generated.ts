@@ -11,7 +11,7 @@ export type SkinName = (typeof ALL_SKINS)[number];
 export const DEFAULT_LIGHT_THEME: ThemeName = "light";
 export const DEFAULT_DARK_THEME: ThemeName = "kanagawa-wave";
 export const INITIAL_THEME: ThemeName = "kanagawa-wave";
-export const INITIAL_SKIN: SkinName = "brutal";
+export const INITIAL_SKIN: SkinName = "glass";
 
 export const THEME_OPTIONS = [
   {

@@ -99,3 +99,8 @@ export function useSetAgentColor() {
   const ds = useDataSource();
   return ds.setAgentColor.bind(ds);
 }
+
+export function useSetAgentModel() {
+  const ds = useDataSource();
+  return ds.setAgentModel.bind(ds);
+}

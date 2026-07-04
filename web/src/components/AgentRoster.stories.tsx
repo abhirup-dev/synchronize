@@ -83,7 +83,13 @@ export const ViewProfileFlow: Story = {
       await expectSharedAgentMenu();
       await userEvent.click(screen.getByText("View profile"));
       await waitFor(() => expect(screen.getByText(`${expectedName} profile`)).toBeTruthy());
-      await waitFor(() => expect(screen.getByText(expectedModel)).toBeTruthy());
+      // The model text also appears on the roster card's model chip now, so scope
+      // this assertion to the profile dialog (rendered in a portal backdrop).
+      await waitFor(() => {
+        const dialog = document.querySelector(".modal-backdrop");
+        expect(dialog).toBeTruthy();
+        expect(within(dialog as HTMLElement).getByText(expectedModel)).toBeTruthy();
+      });
       await userEvent.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByText(`${expectedName} profile`)).toBeNull());
     };
@@ -94,6 +100,23 @@ export const ViewProfileFlow: Story = {
 
     await step("Open the roster profile for Cortex", async () => {
       await openProfileFor("cortex", "Cortex", "gpt-5.5");
+    });
+
+    await step("Switch Atlas's model from the profile picker", async () => {
+      const card = canvasElement.querySelector<HTMLElement>('[data-vim-item="agent-atlas"]');
+      await fireEvent.contextMenu(card!);
+      await userEvent.click(await screen.findByText("View profile"));
+      const dialog = await waitFor(() => {
+        const d = document.querySelector(".modal-backdrop");
+        if (!d) throw new Error("profile dialog not open");
+        return d as HTMLElement;
+      });
+      // The MODEL picker lists claude options; Atlas is on Sonnet — pick Opus.
+      const opus = within(dialog).getByRole("radio", { name: "Opus" });
+      await userEvent.click(opus);
+      // Switching toasts confirmation (the daemon/mock mutation ran).
+      await waitFor(() => expect(screen.getByText(/switched to Opus/i)).toBeTruthy());
+      await userEvent.keyboard("{Escape}");
     });
 
     await step("Do not expose View profile for You", async () => {

@@ -494,6 +494,17 @@ export class MockDataSource implements DataSource {
     }
   }
 
+  setAgentModel(agentId: string, model: string): void {
+    if (!model) return;
+    this._agents.update((prev) =>
+      prev.map((a) =>
+        a.id === agentId && a.runtimeDetails
+          ? { ...a, runtimeDetails: { ...a.runtimeDetails, model } }
+          : a,
+      ),
+    );
+  }
+
   // Resolve a seed message id into a deep-link target. A main-list message (in
   // MESSAGES) focuses in the chat; a thread reply (in THREAD_REPLIES) opens the
   // thread pane on its parent. This mocks the web projection, not daemon truth.

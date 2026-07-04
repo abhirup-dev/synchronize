@@ -608,6 +608,25 @@
     var(--shadow-sm);
 }
 
+/* Model chip on a roster card — the agent's runtime model (data/models.ts
+   modelShort). Token-styled so it reads in both skins. */
+.roster-model-chip {
+  display: inline-block;
+  max-width: 140px;
+  margin-top: 3px;
+  overflow: hidden;
+  padding: 1px 6px;
+  border: var(--line-xs);
+  border-radius: var(--radius-hair);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* ─── Vim mode chip (rides above the user bubble) ─────────────────────────
    Migrated to the vimModeChip() CVA in Sidebar.tsx (navigate/typing variants). */
 

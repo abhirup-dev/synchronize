@@ -4,6 +4,7 @@ import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn";
 import { useLaunchProfiles, useSpawnAgent } from "../data/context.tsx";
 import type { AgentLaunchProfile, AgentLaunchTool, Room } from "../data/types.ts";
+import { DEFAULT_MODEL_ID, MODEL_OPTIONS, type ModelOption } from "../data/models.ts";
 import { useToast } from "./Toast.tsx";
 import { roomNameText } from "./primitives.tsx";
 
@@ -70,13 +71,6 @@ interface RuntimeTarget {
   available: boolean;
 }
 
-interface ModelOption {
-  id: string;
-  tool: AgentLaunchTool;
-  label: string;
-  model?: string;
-  thinking?: string;
-}
 
 interface DaemonLaunchProfile {
   name: string;
@@ -96,28 +90,6 @@ const TOOL_OPTIONS: ToolOption[] = [
   { value: "letta", label: "Letta" },
 ];
 
-const MODEL_OPTIONS: Record<AgentLaunchTool, ModelOption[]> = {
-  claude: [
-    { id: "claude-sonnet", tool: "claude", label: "Sonnet", model: "claude-sonnet-4-6", thinking: "medium" },
-    { id: "claude-haiku", tool: "claude", label: "Haiku", model: "claude-haiku-4-5-20251001", thinking: "high" },
-    { id: "claude-opus", tool: "claude", label: "Opus", model: "claude-opus-4-8", thinking: "medium" },
-  ],
-  pi: [
-    { id: "pi-gpt-55-high", tool: "pi", label: "5.5 high", model: "gpt-5.5", thinking: "high" },
-    { id: "pi-gpt-55-medium", tool: "pi", label: "5.5 medium", model: "gpt-5.5", thinking: "medium" },
-    { id: "pi-gpt-55-low", tool: "pi", label: "5.5 low", model: "gpt-5.5", thinking: "low" },
-    { id: "pi-gpt-54-mini", tool: "pi", label: "5.4 mini", model: "gpt-5.4-mini", thinking: "high" },
-  ],
-  letta: [
-    { id: "letta-glm-47", tool: "letta", label: "GLM 4.7", model: "zai/glm-4.7" },
-  ],
-};
-
-const DEFAULT_MODEL_ID: Record<AgentLaunchTool, string> = {
-  claude: "claude-sonnet",
-  pi: "pi-gpt-55-medium",
-  letta: "letta-glm-47",
-};
 
 interface SpawnAgentDialogProps {
   room: Room;

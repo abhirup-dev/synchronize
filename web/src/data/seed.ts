@@ -4,7 +4,9 @@
 
 import type {
   Agent,
+  AgentRuntimeDetails,
   Artifact,
+  GroupPath,
   Message,
   Room,
   Task,
@@ -23,33 +25,66 @@ const neutralIdentity = (): { color: string; colorRef: IdentityColorRef } => {
   return { colorRef, color: identityColorCss(colorRef) };
 };
 
+// Runtime metadata for seeded agents — powers the roster model chips and the
+// agent-profile model picker (glass revamp Phase 5). Shapes mirror what the
+// daemon reports for launched sessions.
+const runtime = (id: string, tool: string, model: string, thinking: string | undefined, launchState: string, cwd: string, gitBranch: string, gitDirty: boolean): { runtimeDetails: AgentRuntimeDetails } => ({
+  runtimeDetails: {
+    peerId: `peer-${id}`,
+    tool,
+    model,
+    ...(thinking ? { thinking } : null),
+    source: "profile:backend",
+    machineId: "mac-studio-01",
+    hostSessionId: `tmux:sync-${id}`,
+    launchState,
+    cwd,
+    gitBranch,
+    gitDirty,
+  },
+});
+
 export const AGENTS: Agent[] = [
   { id: "you",    name: "You",    handle: "you",    ...neutralIdentity(), role: "Human",                status: "online",  avatar: "Y" },
-  { id: "cortex", name: "Cortex", handle: "cortex", ...slot(0), role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C" },
-  { id: "atlas",  name: "Atlas",  handle: "atlas",  ...slot(1), role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A" },
-  { id: "vega",   name: "Vega",   handle: "vega",   ...slot(2), role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V" },
-  { id: "nova",   name: "Nova",   handle: "nova",   ...slot(3), role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N" },
-  { id: "echo",   name: "Echo",   handle: "echo",   ...slot(4), role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E" },
-  { id: "pulse",  name: "Pulse",  handle: "pulse",  ...slot(5), role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P" },
+  { id: "cortex", name: "Cortex", handle: "cortex", ...slot(0), role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C",
+    ...runtime("cortex", "claude", "claude-opus-4-8", "medium", "running", "~/code/checkout", "feat/checkout-v2", true) },
+  { id: "atlas",  name: "Atlas",  handle: "atlas",  ...slot(1), role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A",
+    ...runtime("atlas", "claude", "claude-sonnet-4-6", "medium", "running", "~/code/checkout/web", "feat/checkout-v2", false) },
+  { id: "vega",   name: "Vega",   handle: "vega",   ...slot(2), role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V",
+    ...runtime("vega", "pi", "gpt-5.5", "high", "idle", "~/code/infra", "main", false) },
+  { id: "nova",   name: "Nova",   handle: "nova",   ...slot(3), role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N",
+    ...runtime("nova", "claude", "claude-haiku-4-5-20251001", "high", "running", "~/code/checkout", "feat/checkout-v2", false) },
+  { id: "echo",   name: "Echo",   handle: "echo",   ...slot(4), role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E",
+    ...runtime("echo", "letta", "zai/glm-4.7", undefined, "idle", "~/code/docs", "main", false) },
+  { id: "pulse",  name: "Pulse",  handle: "pulse",  ...slot(5), role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P",
+    ...runtime("pulse", "pi", "gpt-5.4-mini", "high", "stopped", "~/code/analytics", "main", false) },
   { id: "mira",   name: "Mira",   handle: "mira",   ...slot(6), role: "Teammate",             status: "online",  avatar: "M" },
   { id: "jay",    name: "Jay",    handle: "jay",    ...slot(7), role: "Teammate",             status: "idle",    avatar: "J" },
 ];
 
+// SpawnAgentDialog requires group rooms to carry launch paths.
+const groupPaths = (name: string): { paths: GroupPath[] } => ({
+  paths: [
+    { id: `${name}-root`, path: `~/code/${name}` },
+    { id: `${name}-web`, path: `~/code/${name}/web`, label: "web" },
+  ],
+});
+
 export const GROUPS: Room[] = [
   { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", ...slot(0),
-    members: ["you", "cortex", "atlas", "vega", "nova"],
+    members: ["you", "cortex", "atlas", "vega", "nova"], ...groupPaths("checkout-revamp"),
     lastPreview: "Cortex: pushed schema migration #4128", unread: 3, pinned: true },
   { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", ...slot(5),
-    members: ["you", "pulse", "vega", "echo"],
+    members: ["you", "pulse", "vega", "echo"], ...groupPaths("ml-ranking"),
     lastPreview: "Pulse: AUC bumped to 0.871", unread: 0 },
   { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", ...slot(6),
-    members: ["you", "vega", "nova", "cortex"],
+    members: ["you", "vega", "nova", "cortex"], ...groupPaths("infra-oncall"),
     lastPreview: "Vega: rotated KMS keys", unread: 2 },
   { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", ...slot(1),
-    members: ["you", "atlas", "echo"],
+    members: ["you", "atlas", "echo"], ...groupPaths("design-system"),
     lastPreview: "Atlas: shipped <Button v2>", unread: 0 },
   { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", ...slot(3),
-    members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"],
+    members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"], ...groupPaths("heartbeat-checks"),
     lastPreview: "Vega: are you alive? 4/6 ✓", unread: 2 },
 ];
 
@@ -77,6 +112,15 @@ export const MESSAGES: Record<string, Message[]> = {
     { id: "m-mention-top", roomId: "checkout-revamp", authorId: "atlas", createdAt: ISO(57),
       body: "quick heads up @you — the checkout copy pass is ready for review before the canary widens.",
       mentions: ["you"], reactions: [] },
+    { id: "m-attachments", roomId: "checkout-revamp", authorId: "nova", createdAt: ISO(56),
+      body: "fuzz results attached — 2 flaky paths in `/api/auth`, repro script included.",
+      mentions: [], reactions: [{ emoji: "🙏", by: ["vega"] }],
+      attachments: [
+        { id: "att-fuzz-report", kind: "file", source: "staged", name: "auth-fuzz-report.md",
+          mimeType: "text/markdown", size: 18_432, extension: "md", path: "reports/auth-fuzz-report.md" },
+        { id: "att-fuzz-repro", kind: "file", source: "staged", name: "repro-flaky-auth.ts",
+          mimeType: "text/typescript", size: 3_281, extension: "ts", path: "reports/repro-flaky-auth.ts" },
+      ] },
     { id: "m2", roomId: "checkout-revamp", authorId: "cortex", createdAt: ISO(55),
       body: [
         "## plan",

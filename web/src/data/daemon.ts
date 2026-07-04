@@ -972,6 +972,25 @@ export class DaemonDataSource implements DataSource {
     this._agents.update((prev) => prev.map((agent) => agent.id === agentId ? { ...agent, colorRef, color: identityColorCss(colorRef) } : agent));
   }
 
+  setAgentModel(agentId: string, model: string): void {
+    if (!model) return;
+    const peerId = this._agents.get().find((a) => a.id === agentId)?.runtimeDetails?.peerId;
+    if (!peerId) return; // no runtime binding → nothing to switch
+    // Optimistic: reflect the new model immediately; the daemon's
+    // web-state-changed (peers, agent_sessions) will re-sync the authoritative row.
+    this._agents.update((prev) =>
+      prev.map((a) =>
+        a.id === agentId && a.runtimeDetails
+          ? { ...a, runtimeDetails: { ...a.runtimeDetails, model } }
+          : a,
+      ),
+    );
+    void this.request("/agent-sessions/set-model", {
+      method: "POST",
+      body: JSON.stringify({ peer_id: peerId, model }),
+    }).catch(() => { /* optimistic; SSE reconciles or a later fetch corrects */ });
+  }
+
   async resolveDeepLink(eventId: string): Promise<WebDeepLinkTarget> {
     if (this.peerId === PENDING_WEB_PEER_ID) await this.registerWebPeer();
     const res = await this.request<DaemonResolveResponse>(

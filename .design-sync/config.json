@@ -1,0 +1,154 @@
+{
+  "pkg": "@synchronize/web",
+  "globalName": "SynchronizeWeb",
+  "projectId": "41739566-4de3-4dda-90bc-a7777d50b42d",
+  "shape": "storybook",
+  "storybookConfigDir": "web/.storybook",
+  "storybookStatic": ".design-sync/sb-reference",
+  "entry": "./web/.ds-entry.tsx",
+  "extraEntries": [
+    "./.ds-entry.tsx",
+    "./.ds-providers.tsx"
+  ],
+  "provider": {
+    "component": "DataSourceProvider",
+    "props": {
+      "value": {
+        "$ref": "mockDataSource"
+      }
+    },
+    "inner": {
+      "component": "ContextMenuProvider",
+      "inner": {
+        "component": "ToastProvider",
+        "inner": {
+          "component": "ArchiveRecoveryProvider"
+        }
+      }
+    }
+  },
+  "storyImports": {
+    "shim": [
+      "/components/Toast.tsx",
+      "/components/ContextMenu.tsx",
+      "/components/ArchiveRecovery.tsx"
+    ]
+  },
+  "overrides": {
+    "ActivityView": {
+      "cardMode": "column",
+      "skip": [
+        "activity-activityview--wide-thread-pane",
+        "activity-activityview--view-profile-flow"
+      ]
+    },
+    "RoomHeader": {
+      "cardMode": "column"
+    },
+    "ResizeHandle": {
+      "cardMode": "column"
+    },
+    "ChatView": {
+      "cardMode": "column"
+    },
+    "ChatViewDark": {
+      "cardMode": "column"
+    },
+    "ActivityViewDark": {
+      "cardMode": "column",
+      "skip": [
+        "activity-activityview-dark--wide-thread-pane"
+      ]
+    },
+    "ScrollControls": {
+      "cardMode": "column",
+      "skip": [
+        "surfaces-scrollcontrols--scrolling-down"
+      ]
+    },
+    "ThreadSummaryPanel": {
+      "cardMode": "column"
+    },
+    "ContextMenuProvider": {
+      "cardMode": "column",
+      "skip": [
+        "surfaces-contextmenu--message-actions"
+      ]
+    },
+    "ToastProvider": {
+      "skip": [
+        "surfaces-toast--fires-success",
+        "surfaces-toast--fires-error"
+      ]
+    },
+    "AgentColorPicker": {
+      "cardMode": "single",
+      "primaryStory": "CustomColor"
+    },
+    "Markdown": {
+      "skip": [
+        "messages-markdown--empty"
+      ]
+    },
+    "SpawnAgentDialog": {
+      "skip": [
+        "agent-states-spawnagentdialog--default",
+        "agent-states-spawnagentdialog--no-launch-config",
+        "agent-states-spawnagentdialog--runtime-unavailable",
+        "agent-states-spawnagentdialog--name-required-validation"
+      ]
+    },
+    "Sheet": {
+      "skip": [
+        "primitives-sheet--open",
+        "primitives-sheet--dismiss-via-escape"
+      ]
+    },
+    "CompactSettingsSheet": {
+      "skip": [
+        "surfaces-compactsettingssheet--light-brutal",
+        "surfaces-compactsettingssheet--dark-glass",
+        "surfaces-compactsettingssheet--row-interactions"
+      ]
+    },
+    "AgentRoster": {
+      "skip": [
+        "navigation-agentroster--view-profile-flow"
+      ]
+    },
+    "Sidebar": {
+      "skip": [
+        "navigation-sidebar--dm-view-profile-flow"
+      ]
+    },
+    "BottomNav": {
+      "skip": [
+        "navigation-bottomnav--chats-active",
+        "navigation-bottomnav--activity-active",
+        "navigation-bottomnav--agents-active-with-badge",
+        "navigation-bottomnav--tap-agents"
+      ]
+    },
+    "SettingsRow": {
+      "viewport": "375x700",
+      "skip": [
+        "primitives-settingsrow--taps"
+      ]
+    },
+    "ChatViewGlass": { "cardMode": "column" },
+    "ThreadSummaryPanelGlass": { "cardMode": "column" },
+    "RoomHeaderGlass": { "cardMode": "column" }
+  },
+  "titleMap": {
+    "ArchiveRecovery": "ArchiveRecoveryProvider",
+    "ContextMenu": "ContextMenuProvider",
+    "Toast": "ToastProvider",
+    "Identity": "IdentityBadge",
+    "ChatSurface": null,
+    "AppShell": null,
+    "SynchronizeUI": null,
+    "URLDeepLinks": null
+  },
+  "buildCmd": "cd web && ./node_modules/.bin/storybook build -c .storybook -o ../.design-sync/sb-reference",
+  "readmeHeader": ".design-sync/conventions.md"
+}

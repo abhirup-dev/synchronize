@@ -48,9 +48,10 @@ export const Group: Story = {
   play: async ({ canvasElement }) => {
     const title = canvasElement.querySelector(".room-title");
     await expect(title?.textContent).toBe(group.name);
-    const tabs = canvasElement.querySelectorAll(".room-tab");
+    // Room tabs now use the shared expanding-rail standard (Rail + RailSegment).
+    const tabs = canvasElement.querySelectorAll("[data-rail-seg]");
     await expect(tabs.length).toBe(3);
-    tabs.forEach((tab) => expect(tab.classList.contains("topbar-control")).toBe(true));
+    tabs.forEach((tab) => expect(tab.getAttribute("role")).toBe("tab"));
   },
 };
 

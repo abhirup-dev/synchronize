@@ -28,36 +28,33 @@ export const Grouped: Story = {
   play: async ({ canvasElement, step }) => {
     await step("Top bar uses compact shared controls", async () => {
       await waitFor(() => {
-        const controls = canvasElement.querySelectorAll(".act-filterbar .topbar-control");
-        if (controls.length < 4) throw new Error("activity topbar controls not found");
+        // Filters are the shared expanding-rail now (All / Awaiting / Mentions).
+        const segs = canvasElement.querySelectorAll(".act-filters [data-rail-seg]");
+        if (segs.length !== 3) throw new Error("activity filter rail not found");
       });
-      const title = canvasElement.querySelector<HTMLElement>(".act-title");
-      expect(title).toBeTruthy();
-      expect(Number.parseFloat(getComputedStyle(title!).fontSize)).toBeLessThanOrEqual(18);
-
       const roomTrigger = canvasElement.querySelector<HTMLElement>(".act-room-filter-trigger");
       expect(roomTrigger).toBeTruthy();
-      expect(roomTrigger?.classList.contains("topbar-control")).toBe(true);
       expect(canvasElement.querySelector(".act-filterbar .act-room-filter-wrap")).toBeTruthy();
 
+      // Sort is a RailChip; the Timeline/Grouped toggle is a two-segment Rail.
       const viewControls = canvasElement.querySelector<HTMLElement>(".act-view-controls");
       expect(viewControls).toBeTruthy();
       expect(viewControls?.querySelector(".act-sort-toggle")).toBeTruthy();
-      expect(viewControls?.querySelectorAll(".act-view-icon").length).toBe(2);
+      expect(viewControls?.querySelectorAll(".act-view-segment [data-rail-seg]").length).toBe(2);
     });
 
     await step("View mode controls drive the matching feed layout", async () => {
-      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('[aria-label="Timeline view"]');
-      const groupedToggle = canvasElement.querySelector<HTMLButtonElement>('[aria-label="Grouped view"]');
+      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Timeline"]');
+      const groupedToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Grouped"]');
       expect(timelineToggle).toBeTruthy();
       expect(groupedToggle).toBeTruthy();
 
-      await waitFor(() => expect(groupedToggle?.getAttribute("aria-pressed")).toBe("true"));
-      expect(timelineToggle?.getAttribute("aria-pressed")).toBe("false");
+      await waitFor(() => expect(groupedToggle?.getAttribute("aria-checked")).toBe("true"));
+      expect(timelineToggle?.getAttribute("aria-checked")).toBe("false");
       expect(canvasElement.querySelector(".act-digest")).toBeTruthy();
 
       await userEvent.click(timelineToggle!);
-      await waitFor(() => expect(timelineToggle?.getAttribute("aria-pressed")).toBe("true"));
+      await waitFor(() => expect(timelineToggle?.getAttribute("aria-checked")).toBe("true"));
       await waitFor(() => {
         const titleSub = canvasElement.querySelector(".act-title-sub")?.textContent ?? "";
         if (!/timeline/i.test(titleSub)) throw new Error("timeline view label not active");
@@ -65,7 +62,7 @@ export const Grouped: Story = {
       expect(canvasElement.querySelector(".act-flat")).toBeTruthy();
 
       await userEvent.click(groupedToggle!);
-      await waitFor(() => expect(groupedToggle?.getAttribute("aria-pressed")).toBe("true"));
+      await waitFor(() => expect(groupedToggle?.getAttribute("aria-checked")).toBe("true"));
       await waitFor(() => {
         if (!canvasElement.querySelector(".act-digest")) throw new Error("grouped digest not restored");
       });
@@ -100,7 +97,7 @@ export const ScopedAcknowledgeControls: Story = {
     });
 
     await step("Timeline buckets can acknowledge only that time interval", async () => {
-      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('[aria-label="Timeline view"]');
+      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Timeline"]');
       expect(timelineToggle).toBeTruthy();
       await userEvent.click(timelineToggle!);
       const bucketAck = await waitFor(() => {

@@ -442,6 +442,12 @@ export interface DataSource {
    *  re-renders. */
   setAgentColor(agentId: string, color: IdentityColorRef | string | null): void;
 
+  /** Switch an agent's runtime model (glass revamp Phase 5). Optimistically
+   *  updates the agent's runtimeDetails.model on the agents snapshot; the daemon
+   *  adapter also POSTs /agent-sessions/set-model. No-op if the agent has no
+   *  runtime binding. */
+  setAgentModel(agentId: string, model: string): void;
+
   // deep links — resolve a /web/e/:id event id into a navigable target, then
   // hydrate enough room context for the target to render even if it is older
   // than the latest window. See {@link WebDeepLinkTarget}.

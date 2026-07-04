@@ -104,11 +104,11 @@ button { font-family: inherit; cursor: pointer; }
 .main-body {
   flex: 1;
   display: grid;
-  /* Two columns by default: chat-column (which internally hosts the timeline
-     rail beside the chat list, so the timeline ends at the composer top, not
-     at the bottom of the panel) + roster. When a thread is open, App.tsx
-     overrides this inline to a 3-column grid with the resize handle. */
-  grid-template-columns: minmax(0, 1fr) 260px;
+  /* Single column: the chat-column (which internally hosts the timeline rail
+     beside the chat list). The roster is no longer a persistent column — it is
+     an overlay toggled by the AGENTS chip. When a thread is open, App.tsx
+     overrides this inline to a 2-column grid with the resize handle. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -882,12 +882,18 @@ button { font-family: inherit; cursor: pointer; }
   animation: shell-slide-in-left 180ms ease-out;
 }
 
-.shell-overlay-agents.shell-overlay-medium {
+.shell-overlay-agents.shell-overlay-medium,
+.shell-overlay-agents.shell-overlay-desktop {
   top: 0;
   right: 0;
   bottom: 0;
   width: min(320px, 42vw);
   animation: shell-slide-in-right 180ms ease-out;
+}
+/* Desktop: the roster is now an AGENTS-toggled right-edge panel (no longer a
+   persistent column); give it a touch more width than medium. */
+.shell-overlay-agents.shell-overlay-desktop {
+  width: min(340px, 26vw);
 }
 
 .shell-overlay-agents.shell-overlay-compact {

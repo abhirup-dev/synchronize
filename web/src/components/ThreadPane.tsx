@@ -193,10 +193,19 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               if (!r) return null;
               const author = agentById.get(r.authorId);
               if (!author) return null;
+              // Group consecutive replies from the same sender (same rule as the
+              // main chat): a grouped reply drops its author header and sits
+              // tighter; a reply followed by the same author trims its gap.
+              const grouped = replies[item.index - 1]?.authorId === r.authorId;
+              const hasFollowup = replies[item.index + 1]?.authorId === r.authorId;
               return (
                 <div
                   key={r.id}
-                  className="virtualized-row thread-virtual-row pb-[var(--space-18)]"
+                  className={cn(
+                    "virtualized-row thread-virtual-row",
+                    hasFollowup ? "has-followup pb-[var(--space-6)]" : "pb-[var(--space-18)]",
+                    grouped && "is-grouped",
+                  )}
                   data-index={item.index}
                   ref={virtualizer.measureElement}
                   style={{ transform: `translateY(${item.start}px)` }}
@@ -205,7 +214,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
                     message={r}
                     author={author}
                     agents={displayAgents}
-                    groupedWithPrev={false}
+                    groupedWithPrev={grouped}
                     onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
                     hideAvatar
                     hideReactionAdd={compact}
