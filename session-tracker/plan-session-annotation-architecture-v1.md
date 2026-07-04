@@ -64,6 +64,455 @@ Indexes are projections over this data. They are never the source of truth.
         +---------------------------------------------+
 ```
 
+## Motivations
+
+Synchronize is becoming a Slack-like workspace for long-running coding agents:
+agents have rooms, threads, direct messages, identities, work state, launch
+history, and eventually durable memory. The missing piece is a reliable way to
+turn each agent's private host transcript into shared, queryable workspace
+knowledge.
+
+Today, the bus knows that an agent exists and may know what it sent through
+Synchronize. The host transcript knows much more: what the user asked, what the
+agent reasoned about, which tools it called, which MCP servers it used, how much
+context it consumed, what model was active, where it compacted, which errors it
+hit, and which pieces of bus traffic were injected into the session. Those facts
+are trapped in host-specific log formats.
+
+Session annotation exists to bridge that gap.
+
+```text
+without annotation:
+
+  Synchronize room
+      |
+      | sees messages, peers, events
+      v
+  "agent said it is working"
+
+  host transcript
+      |
+      | hidden inside Claude/Pi/Codex log format
+      v
+  actual tools, prompts, model, context, failures, decisions
+
+with annotation:
+
+  Synchronize room + host transcript
+      |
+      v
+  shared annotation lake
+      |
+      v
+  workspace memory, status, search, bookmarks, tags, retrieval
+```
+
+The architecture should encode several motivations.
+
+### Make Long-running Agents Inspectable
+
+A long-running coding agent may run for hours or days. It may compact context,
+switch models, run hundreds of tools, receive bus messages, spawn subagents, or
+keep working while the human is away. The workspace needs a passive inspection
+surface that can answer:
+
+- What is this agent doing right now?
+- What was the last concrete file/tool/action it touched?
+- Is it blocked, looping, waiting, or making progress?
+- Which request or bus event triggered the current work?
+- Did it change model, effort, or token profile midway?
+- Which transcript region explains its current state?
+
+This should be answerable without sending the agent a message and perturbing its
+workflow.
+
+```text
+parent/user asks:
+  "what is worker-3 doing?"
+          |
+          v
+  annotation ensure/status
+          |
+          v
+  latest transcript facts
+          |
+          v
+  compact current activity view
+```
+
+### Make The Workspace Remember Work, Not Just Chat
+
+Slack remembers messages. Synchronize needs to remember work.
+
+Coding-agent work is not only chat text. It includes tool calls, diffs, failed
+commands, hidden runtime metadata, model behavior, MCP interactions, generated
+artifacts, and decisions spread across turns. A useful memory layer needs these
+as structured facts, not just a giant transcript blob.
+
+```text
+message memory:
+  "agent said: I will fix tests"
+
+work memory:
+  user request
+  reasoning summary
+  Bash command
+  failing output
+  Edit tool call
+  test command
+  passing output
+  final response
+  linked bus thread
+  model and token usage
+```
+
+The annotation lake is the raw material for future memory, retrieval, handoffs,
+and knowledge graphs.
+
+### Preserve Host Diversity Without Forking Product Logic
+
+Claude, Pi, Codex, Cursor, Gemini, and future custom agents will not share one
+log format. A Slack-like multi-agent workspace cannot afford a separate
+annotation/query/tagging/search stack per tool.
+
+The product needs a single workspace-level model:
+
+```text
+Claude tool_use      \
+Pi toolCall           \
+Codex response item    --->  normalized annotation: tool call
+Cursor action         /
+
+Claude usage         \
+Pi usage              --->  normalized annotation: token usage
+future provider usage/
+
+Claude channel text  \
+Pi injected event     --->  normalized annotation: synchronize event
+```
+
+The host adapter should absorb format differences. The rest of the system
+should stay shared.
+
+### Support Human Curation And Model Curation
+
+Long sessions contain many moments that matter later:
+
+- a decision,
+- a useful debugging trace,
+- a reusable command,
+- a subtle failure mode,
+- a design discussion,
+- a working prompt,
+- a rejected approach,
+- a final implementation checkpoint.
+
+Humans should be able to bookmark or tag those regions. Models should also be
+able to do delayed post-processing and add suggested tags. Those annotations
+must remain filterable and retrievable without rewriting the base transcript.
+
+```text
+base annotation:
+  seq 180..194 = assistant response about daemon routing
+
+human overlay:
+  bookmark "saved"
+  tag "architecture/routing"
+
+model overlay:
+  tag "failure-mode/stale-thread-id"
+  confidence 0.82
+```
+
+This gives Synchronize an Obsidian-like layer over agent work: human-readable
+tags, saved responses, and later knowledge organization.
+
+### Enable Passive Coordination Across Machines
+
+Synchronize already points toward multi-machine agent collaboration. A parent
+agent on one machine may need to inspect a worker running on another machine.
+It should not need to DM the worker just to ask "what are you doing?" That kind
+of message changes the worker's transcript and may distract it from the task.
+
+Annotation gives the platform a control-plane path:
+
+```text
+Machine A parent
+  asks Synchronize for worker status
+        |
+        v
+Machine B daemon
+  incrementally annotates worker transcript
+        |
+        v
+Machine A receives status/query result
+  no bus message sent to worker
+```
+
+This is a precursor to distributed execution, but does not require v1 to become
+a distributed indexing service.
+
+### Avoid Rework And Preserve Incremental Truth
+
+The same active transcript may be inspected repeatedly by the UI, a parent
+agent, a monitoring model, and a human. The system must not reparse the whole
+file every time.
+
+The architecture needs a durable cursor:
+
+```text
+first ensure:
+  parse bytes 0..50 KB
+  store offset 50 KB
+
+second ensure:
+  file unchanged
+  return cached result
+
+third ensure:
+  file grew to 65 KB
+  parse only bytes 50..65 KB
+```
+
+Incremental annotation is not an optimization afterthought. It is what makes
+on-demand status cheap enough to use frequently.
+
+### Prepare For Retrieval And RAG Without Locking Into One Engine
+
+The product will eventually need search and retrieval over large bodies of
+agent work:
+
+- find all failures involving `bridge_reply`,
+- find sessions where a model compacted after a token spike,
+- retrieve the exact tool-output window around a test failure,
+- summarize all decisions tagged `architecture/v1`,
+- build a project memory from saved responses and implementation checkpoints.
+
+SQLite filters are enough for v1. FTS5, Tantivy, vector search, and hybrid RAG
+should be projections over the same lake, not rewrites of the data model.
+
+## Use Cases Unlocked
+
+### 1. Passive "What Is This Agent Doing?" Status
+
+A user or parent agent opens a workspace and sees live agent activity without
+interrupting the workers.
+
+```text
+agent row in UI:
+  worker-api
+  working on: session annotation query API
+  active tool: Bash
+  last command: bun test tests/session-annotation.test.ts
+  model: claude-opus-4-8
+  tokens recent: 42K input, 1.2K output
+  freshness: 3 seconds
+```
+
+This turns opaque long-running sessions into inspectable workspace actors.
+
+### 2. Cross-machine Worker Supervision
+
+A lead agent spawns workers across machines and can inspect their progress
+through Synchronize.
+
+```text
+lead on laptop
+  |
+  +-- worker A on laptop
+  +-- worker B on desktop
+  +-- worker C on remote VM
+
+lead asks annotation status for all workers
+  |
+  v
+one dashboard of current work, recent tools, blockers, and tags
+```
+
+No worker has to be nudged by a chat message just to report status.
+
+### 3. Handoff And Resume With Evidence
+
+When a human or agent resumes a long task, the platform can assemble a useful
+handoff from annotations:
+
+```text
+handoff query:
+  latest user request
+  final assistant response
+  recent failed tool calls
+  edits made
+  tests run
+  saved decisions
+  tags matching architecture/*
+```
+
+This is stronger than a summary-only handoff because the recipient can drill
+back into exact transcript windows.
+
+### 4. Searchable Work History
+
+Users can search across sessions by semantic work units, not only chat text.
+
+Examples:
+
+```text
+find:
+  normalized_tool = bridge_reply
+  text contains "stale thread"
+  tag = failure-mode/threading
+
+find:
+  kind = runtime_model_change
+  current = claude-sonnet
+
+find:
+  category = tool
+  is_error = true
+  window = 3
+```
+
+This enables workspace forensics: "where did we see this before?"
+
+### 5. Human-curated Knowledge
+
+A human can save an agent response or tag a transcript range:
+
+```text
+bookmark:
+  saved/debugging-recipe
+
+tags:
+  architecture/v1
+  ui-design/acme
+  launch-lifecycle
+  failure-mode/mcp-delivery
+```
+
+Later, those tags become filters for search, handoff, RAG, docs generation, and
+memory consolidation.
+
+### 6. Model-assisted Session Librarian
+
+A background model can scan finished or active sessions and propose delayed
+tags:
+
+```text
+model suggestions:
+  tag: architecture/session-annotation
+  tag: decision/defer-tantivy
+  tag: open-question/federated-routing
+  bookmark: implementation-checkpoint
+```
+
+Humans can accept, edit, or ignore these overlays. The base transcript remains
+unchanged.
+
+### 7. Debugging Agent Behavior
+
+When an agent behaves oddly, annotations expose the runtime trail:
+
+```text
+timeline:
+  user asked for parser
+  model changed from A to B
+  effort changed to low
+  compaction at 260K tokens
+  bus event injected
+  tool call failed
+  agent repeated same command 5 times
+```
+
+This helps distinguish model behavior, tool failure, bad instructions, and
+Synchronize delivery issues.
+
+### 8. Cost And Context Observability
+
+Token annotations unlock cost and context analysis:
+
+```text
+per session:
+  total input/output/cache tokens
+  token spikes
+  compaction boundaries
+  expensive tool loops
+  model/effort choices over time
+```
+
+This can eventually power workspace-level dashboards: which agents are burning
+context, which tasks are expensive, and which workflows need better prompts or
+handoffs.
+
+### 9. Workspace-level Memory And RAG
+
+The annotation lake becomes the substrate for durable memory:
+
+```text
+raw transcript
+  -> annotations
+  -> saved/tagged regions
+  -> retrieval chunks
+  -> project memory
+  -> future agents retrieve prior work
+```
+
+The memory system should not have to parse raw Claude/Pi/Codex logs itself. It
+should consume normalized annotations and overlays.
+
+### 10. Auditability And Trust
+
+For important changes, users need to answer:
+
+- Why did the agent make this edit?
+- Which prompt or bus message caused it?
+- Which command proved it?
+- Which model produced the decision?
+- Was this tagged by a human or inferred by a model?
+
+Annotations provide the evidence chain.
+
+```text
+decision
+  -> assistant response seq
+  -> user prompt seq
+  -> tool calls seq range
+  -> synchronize event id
+  -> bookmark/tag overlays
+```
+
+## Product Fit For Synchronize
+
+Session annotation is not a side parser. It is the foundation for a workspace
+where coding agents are long-lived teammates rather than disposable chat tabs.
+
+The Synchronize product direction needs:
+
+- rooms and DMs for live collaboration,
+- launch/resume/archive for agent lifecycle,
+- work state for current activity,
+- annotations for transcript truth,
+- overlays for human/model curation,
+- search/retrieval for memory,
+- cross-machine routing for distributed teams of agents.
+
+```text
+Slack-like workspace:
+  messages + rooms + threads
+
+Synchronize workspace:
+  messages + rooms + threads
+  + agent lifecycle
+  + host transcript annotations
+  + tags/bookmarks
+  + search/RAG
+  + passive status
+  + cross-machine coordination
+```
+
+This is why the architecture is intentionally layered. The immediate feature is
+annotation. The larger product unlock is durable, inspectable, searchable,
+curated work history for teams of coding agents.
+
 ## Goals
 
 - Parse rich agent transcripts into a common annotation model.
@@ -643,6 +1092,120 @@ Message usage record:
   kind = runtime_usage_observed
   confidence = observed
   data = raw usage plus normalized token fields
+```
+
+### Runtime status dimensions
+
+The runtime derivation layer should produce a consistent status vocabulary
+across host tools. The status projector and query layer should not need to know
+whether a field came from Claude JSONL, Pi JSONL, Codex response records, or a
+future host adapter.
+
+```text
+dimension          canonical meaning
+-----------------  ---------------------------------------------------------
+model              model that generated or is configured for the response
+advisor_model      secondary/advisor model when the host distinguishes it
+effort             requested reasoning/effort/thinking level
+thinking_state     observed thinking blocks, signatures, or hidden reasoning
+usage              raw provider usage object attached to a response
+tokens             normalized input/output/cache/total token counters
+compaction         context compaction boundary and token count before compact
+service_tier       provider tier/speed/latency class when available
+active_tool        latest open tool call or unresolved tool result
+runtime_error      provider, tool, or host runtime error
+```
+
+The canonical annotations should be deliberately verbose enough to support both
+status and historical search:
+
+```text
+runtime_model_observed
+runtime_model_change
+runtime_advisor_model_observed
+runtime_advisor_model_change
+runtime_effort_observed
+runtime_effort_change
+runtime_thinking_observed
+runtime_usage_observed
+runtime_token_snapshot
+runtime_token_delta
+runtime_compaction_token_snapshot
+runtime_service_tier_observed
+runtime_service_tier_change
+runtime_active_tool_observed
+runtime_runtime_error
+```
+
+### Host source mapping
+
+Claude and Pi should map into the same status vocabulary even though their raw
+fields differ.
+
+```text
+Claude transcript source                  canonical annotation
+----------------------------------------  ---------------------------------
+message.model                             runtime_model_observed
+record.advisorModel                       runtime_advisor_model_observed
+message.usage.input_tokens                runtime_token_snapshot.input
+message.usage.output_tokens               runtime_token_snapshot.output
+message.usage.cache_read_input_tokens     runtime_token_snapshot.cache_read
+message.usage.cache_creation_input_tokens runtime_token_snapshot.cache_write
+message.usage.service_tier                runtime_service_tier_observed
+message.usage.speed                       runtime_service_tier_observed
+content[].type = thinking                 runtime_thinking_observed
+tool_use without matching result yet      runtime_active_tool_observed
+```
+
+```text
+Pi transcript source                      canonical annotation
+----------------------------------------  ---------------------------------
+record.type = model_change                runtime_model_change explicit
+record.type = thinking_level_change       runtime_effort_change explicit
+message.model                             runtime_model_observed
+message.usage.input                       runtime_token_snapshot.input
+message.usage.output                      runtime_token_snapshot.output
+message.usage.cacheRead                   runtime_token_snapshot.cache_read
+message.usage.cacheWrite                  runtime_token_snapshot.cache_write
+message.usage.totalTokens                 runtime_token_snapshot.total
+record.type = compaction tokensBefore     runtime_compaction_token_snapshot
+content block type = thinking             runtime_thinking_observed
+toolCall without matching toolResult      runtime_active_tool_observed
+```
+
+Future adapters should provide the same mapping table in their decoder module
+or tests. If a host does not expose a dimension, it should omit it rather than
+inventing low-confidence data.
+
+### Confidence and status semantics
+
+Runtime status needs to distinguish hard host facts from inference.
+
+```text
+confidence = explicit
+  Host emitted a direct event, e.g. Pi model_change or thinking_level_change.
+
+confidence = observed
+  Host attached a raw field to a message, e.g. Claude message.model or usage.
+
+confidence = inferred
+  Synchronize compared adjacent observations, e.g. Claude model changed between
+  two assistant messages without a first-class change event.
+```
+
+The status projector should use the highest-confidence latest value per
+dimension, while preserving the full timeline as queryable annotations.
+
+```text
+timeline:
+  seq 10 runtime_model_observed claude-opus-4-7 observed
+  seq 88 runtime_model_observed claude-opus-4-8 observed
+  seq 89 runtime_model_change   4-7 -> 4-8 inferred
+
+status:
+  model = claude-opus-4-8
+  model_confidence = observed
+  last_model_change_seq = 89
 ```
 
 ## Delayed Tags And Bookmarks
@@ -1313,6 +1876,53 @@ Exit criteria:
 - query contract remains unchanged,
 - projections remain rebuildable,
 - SQLite lake remains source of truth.
+
+## Beads Implementation Breakdown
+
+The implementation work is tracked as Beads epics and child tasks. Each child
+issue is intended to be a small implementation slice with context, impact area,
+acceptance criteria, verification notes, and dependencies.
+
+```text
+sync-xwmn  Build local session annotation lake core
+  sync-xwmn.1  Add annotation lake schema and store contracts
+  sync-xwmn.2  Create host adapter registry interfaces
+  sync-xwmn.3  Port Claude and Pi decoders behind adapters
+  sync-xwmn.4  Wire local ensure and query surfaces
+  sync-xwmn.5  Add phase one golden coverage
+
+sync-phoz  Add incremental append and annotation jobs
+  sync-phoz.1  Extend annotation state cursors
+  sync-phoz.2  Implement append planner and safe reader
+  sync-phoz.3  Add append and reparse write transactions
+  sync-phoz.4  Add annotation job dedupe
+  sync-phoz.5  Test incremental fallback matrix
+
+sync-f3j0  Derive runtime status annotations
+  sync-f3j0.1  Add derivation pass framework
+  sync-f3j0.2  Derive model effort and token status
+  sync-f3j0.3  Derive active tool and runtime error status
+  sync-f3j0.4  Implement current activity status projector
+  sync-f3j0.5  Add runtime derivation golden tests
+
+sync-ehmy  Add delayed annotation overlays
+  sync-ehmy.1  Add annotation mark schema and store
+  sync-ehmy.2  Implement overlay anchors and reattachment
+  sync-ehmy.3  Expose mark APIs and CLI commands
+  sync-ehmy.4  Join overlays into annotation queries
+
+sync-er2b  Add search projection architecture
+  sync-er2b.1  Define search projection interface
+  sync-er2b.2  Add SQLite FTS5 projection
+  sync-er2b.3  Integrate FTS hits with query hydration
+  sync-er2b.4  Document Tantivy adapter decision
+
+sync-pq2x  Support on-demand and federated annotation
+  sync-pq2x.1  Expose annotation ownership metadata
+  sync-pq2x.2  Implement local on-demand ensure status
+  sync-pq2x.3  Route federated ensure to owner daemon
+  sync-pq2x.4  Test no-interruption remote supervision
+```
 
 ## Risks And Mitigations
 
