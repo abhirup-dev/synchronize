@@ -4,6 +4,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/useTheme';
 import { useSync } from '../../lib/store';
 
+export const unstable_settings = { initialRouteName: '(rooms)' };
+
 export default function TabsLayout() {
   const { t } = useTheme();
   const { activity } = useSync();
