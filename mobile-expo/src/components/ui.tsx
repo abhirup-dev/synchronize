@@ -37,20 +37,27 @@ export function PresenceDot({ online, size = 8 }: { online?: boolean; size?: num
   );
 }
 
-// Small uppercase badge — used for the APP marker on agent authors.
-export function Badge({ label }: { label: string }) {
+// Small uppercase badge — the APP/tool marker on agent authors. Neutral grey
+// per feedback-1 (color budget lives in avatars + semantic status, not tags).
+export function Badge({ label, bg, fg }: { label: string; bg?: string; fg?: string }) {
   const { t } = useTheme();
   return (
     <View
       style={{
-        backgroundColor: t.surfaceContainerHigh,
+        backgroundColor: bg ?? t.surfaceContainerHigh,
         borderRadius: shape.xs,
         paddingHorizontal: 6,
         paddingVertical: 1.5,
       }}>
-      <Text style={{ ...type.micro, color: t.onSurfaceVariant, letterSpacing: 0.5 }}>{label.toUpperCase()}</Text>
+      <Text style={{ ...type.micro, color: fg ?? t.onSurfaceVariant, letterSpacing: 0.5 }}>{label.toUpperCase()}</Text>
     </View>
   );
+}
+
+// Inset hairline divider — the M3 list separator (starts at the text edge).
+export function Divider({ inset = 0 }: { inset?: number }) {
+  const { t } = useTheme();
+  return <View style={{ height: 1, marginLeft: inset, backgroundColor: t.outlineVariant }} />;
 }
 
 export function FilterChip({
@@ -75,15 +82,15 @@ export function FilterChip({
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: 14,
-        height: 36,
-        borderRadius: shape.full,
-        borderWidth: 1,
-        borderColor: active ? t.primary : t.outlineVariant,
+        height: 32,
+        borderRadius: shape.sm,
+        borderWidth: active ? 0 : 1,
+        borderColor: t.outlineVariant,
         backgroundColor: active ? t.primaryContainer : 'transparent',
       }}>
-      <Text style={{ ...type.label, color: active ? t.onPrimaryContainer : t.onSurface }}>{label}</Text>
+      <Text style={{ ...type.label, color: active ? t.onPrimaryContainer : t.onSurfaceVariant }}>{label}</Text>
       {count !== undefined && (
-        <Text style={{ ...type.label, color: emphasis ? t.awaiting : active ? t.onPrimaryContainer : t.onSurfaceVariant }}>
+        <Text style={{ ...type.label, color: active ? t.onPrimaryContainer : emphasis && count > 0 ? t.awaiting : t.onSurfaceVariant }}>
           {count}
         </Text>
       )}
@@ -91,30 +98,103 @@ export function FilterChip({
   );
 }
 
+// Ack = compact tick toggle: grey outline tick, turns green once acked.
 export function AckButton({ acked, onPress, compact }: { acked?: boolean; onPress: () => void; compact?: boolean }) {
   const { t } = useTheme();
-  if (acked) {
-    return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: compact ? 10 : 14, height: 32 }}>
-        <MaterialIcons name="check" size={14} color={t.success} />
-        <Text style={{ ...type.label, color: t.success }}>Acked</Text>
-      </View>
-    );
-  }
+  const size = compact ? 26 : 32;
   return (
     <Pressable
-      onPress={onPress}
-      hitSlop={8}
+      onPress={acked ? undefined : onPress}
+      hitSlop={10}
       style={{
-        paddingHorizontal: compact ? 12 : 16,
-        height: 32,
+        width: size,
+        height: size,
         borderRadius: shape.full,
-        borderWidth: 1,
+        borderWidth: acked ? 0 : 1,
         borderColor: t.outline,
+        backgroundColor: acked ? t.successContainer : 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-      <Text style={{ ...type.label, color: t.primary }}>Ack</Text>
+      <MaterialIcons
+        name="check"
+        size={compact ? 14 : 16}
+        color={acked ? t.success : t.onSurfaceVariant}
+      />
+    </Pressable>
+  );
+}
+
+// Semantic state chip — maps free-form activity/lifecycle strings to a toned
+// dot+label pill (working→green, awaiting→amber, failed→red, spawning→blue).
+const STATUS_TONES: [RegExp, 'success' | 'awaiting' | 'danger' | 'primary'][] = [
+  [/fail|error|dead|crash/i, 'danger'],
+  [/await|block|wait|need|paus|input/i, 'awaiting'],
+  [/work|run|active|stream|think|online/i, 'success'],
+  [/spawn|launch|start|ready/i, 'primary'],
+];
+
+// Quiet by default (Paseo-style dot + plain label); only the emphasized states
+// (needs input / failed) earn a tonal pill so one glance finds what needs you.
+export function StatusChip({ state }: { state?: string | null }) {
+  const { t } = useTheme();
+  if (!state) return null;
+  const tone = STATUS_TONES.find(([re]) => re.test(state))?.[1];
+  const emphasized = tone === 'awaiting' || tone === 'danger';
+  const dot =
+    tone === 'success' ? t.success
+    : tone === 'awaiting' ? t.awaiting
+    : tone === 'danger' ? t.danger
+    : tone === 'primary' ? t.primary
+    : t.outline;
+  const fg = emphasized
+    ? (tone === 'danger' ? t.onDangerContainer : t.onAwaitingContainer)
+    : t.onSurfaceVariant;
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: emphasized ? (tone === 'danger' ? t.dangerContainer : t.awaitingContainer) : 'transparent',
+        borderRadius: shape.full,
+        paddingHorizontal: emphasized ? 9 : 0,
+        paddingVertical: emphasized ? 3 : 0,
+        alignSelf: 'flex-start',
+      }}>
+      <View style={{ width: 6, height: 6, borderRadius: 6, backgroundColor: dot }} />
+      <Text style={{ ...type.micro, color: fg }} numberOfLines={1}>{state}</Text>
+    </View>
+  );
+}
+
+// Identity-colored selectable chip — used for tool/room pickers so each option
+// carries the same hue it has everywhere else (avatars, badges).
+export function IdentityChip({
+  label,
+  colorKey,
+  active,
+  onPress,
+}: {
+  label: string;
+  colorKey?: string;
+  active?: boolean;
+  onPress?: () => void;
+}) {
+  const { identity } = useTheme();
+  const c = identity(colorKey ?? label);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 14,
+        height: 36,
+        borderRadius: shape.full,
+        backgroundColor: active ? c.bg : c.tint,
+      }}>
+      <Text style={{ ...type.label, color: active ? c.fg : c.onTint }}>{label}</Text>
     </Pressable>
   );
 }

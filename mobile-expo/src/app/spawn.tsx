@@ -7,7 +7,7 @@ import { useTheme } from '../theme/useTheme';
 import { shape, space, type } from '../theme/tokens';
 import { useSync } from '../lib/store';
 import { api } from '../lib/api';
-import { FilterChip, SectionLabel } from '../components/ui';
+import { FilterChip, IdentityChip, SectionLabel } from '../components/ui';
 
 export default function SpawnScreen() {
   const { t } = useTheme();
@@ -95,7 +95,7 @@ export default function SpawnScreen() {
         <SectionLabel>Tool</SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingHorizontal: space.lg }}>
           {tools.map((x) => (
-            <FilterChip key={x.tool} label={x.tool} active={activeTool === x.tool} onPress={() => { setTool(x.tool); setProfile(null); }} />
+            <IdentityChip key={x.tool} label={x.tool} active={activeTool === x.tool} onPress={() => { setTool(x.tool); setProfile(null); }} />
           ))}
           {tools.length === 0 && <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant }}>No launch tools available</Text>}
         </View>
@@ -151,9 +151,10 @@ export default function SpawnScreen() {
         <SectionLabel>Join room</SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingHorizontal: space.lg }}>
           {(state?.groups ?? []).map((g) => (
-            <FilterChip
+            <IdentityChip
               key={g.group_id}
               label={`#${g.name}`}
+              colorKey={g.name}
               active={group === g.name}
               onPress={() => setGroup(group === g.name ? null : g.name)}
             />
@@ -171,9 +172,31 @@ export default function SpawnScreen() {
         />
 
         {result && (
-          <Text style={{ ...type.label, color: result.startsWith('Launched') ? t.success : t.danger, padding: space.lg }}>
-            {result}
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              marginHorizontal: space.lg,
+              marginTop: space.xl,
+              padding: space.md,
+              borderRadius: shape.sm,
+              backgroundColor: result.startsWith('Launched') ? t.successContainer : t.dangerContainer,
+            }}>
+            <MaterialIcons
+              name={result.startsWith('Launched') ? 'rocket-launch' : 'error-outline'}
+              size={16}
+              color={result.startsWith('Launched') ? t.onSuccessContainer : t.onDangerContainer}
+            />
+            <Text
+              style={{
+                ...type.label,
+                flex: 1,
+                color: result.startsWith('Launched') ? t.onSuccessContainer : t.onDangerContainer,
+              }}>
+              {result}
+            </Text>
+          </View>
         )}
       </ScrollView>
     </View>

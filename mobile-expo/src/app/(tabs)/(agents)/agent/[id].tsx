@@ -8,15 +8,28 @@ import { shape, space, type } from '../../../../theme/tokens';
 import { useSync } from '../../../../lib/store';
 import { api } from '../../../../lib/api';
 import { timeAgo } from '../../../../lib/format';
-import { Avatar, Badge, Card, PresenceDot, SectionLabel } from '../../../../components/ui';
+import { Avatar, Badge, Card, SectionLabel, StatusChip } from '../../../../components/ui';
 
-function DetailRow({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {
+function DetailRow({
+  label,
+  value,
+  mono,
+  icon,
+  valueColor,
+}: {
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+  icon: keyof typeof MaterialIcons.glyphMap;
+  valueColor?: string;
+}) {
   const { t } = useTheme();
   if (!value) return null;
   return (
     <View
       style={{
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
         gap: space.md,
         paddingHorizontal: space.md,
@@ -24,9 +37,12 @@ function DetailRow({ label, value, mono }: { label: string; value?: string | nul
         borderTopWidth: 1,
         borderTopColor: t.outlineVariant,
       }}>
-      <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <MaterialIcons name={icon} size={15} color={t.onSurfaceVariant} />
+        <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant }}>{label}</Text>
+      </View>
       <Text
-        style={{ ...(mono ? type.mono : type.label), color: t.onSurface, flexShrink: 1, textAlign: 'right' }}
+        style={{ ...(mono ? type.mono : type.label), color: valueColor ?? t.onSurface, flexShrink: 1, textAlign: 'right' }}
         numberOfLines={2}>
         {value}
       </Text>
@@ -35,7 +51,7 @@ function DetailRow({ label, value, mono }: { label: string; value?: string | nul
 }
 
 export default function AgentProfileScreen() {
-  const { t } = useTheme();
+  const { t, identity } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
@@ -122,19 +138,34 @@ export default function AgentProfileScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: space.xl }}>
-        <View style={{ alignItems: 'center', gap: space.sm, paddingVertical: space.lg }}>
+        <View
+          style={{
+            alignItems: 'center',
+            gap: space.sm,
+            paddingVertical: space.xl,
+            marginHorizontal: space.lg,
+            marginTop: space.xs,
+            borderRadius: shape.lg,
+            backgroundColor: identity(name).tint,
+          }}>
           <Avatar name={name} size={72} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={{ ...type.title, color: t.onSurface }}>{name}</Text>
-            <Badge label={peer.tool} />
+            <Badge label={peer.tool} bg={identity(peer.tool).tint} fg={identity(peer.tool).onTint} />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <PresenceDot online={peer.online} />
-            <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant }}>
-              {archived ? `archived ${timeAgo(peer.archived_at)} ago` : peer.online ? 'online' : 'offline'}
-              {peer.activity_state ? ` · ${peer.activity_state}` : ''}
+          <StatusChip
+            state={
+              archived
+                ? `archived ${timeAgo(peer.archived_at)} ago`
+                : peer.activity_state ?? (peer.online ? 'online' : 'offline')
+            }
+          />
+          {!archived && peer.activity_state && (
+            <Text style={{ ...type.micro, color: t.onSurfaceVariant }}>
+              {peer.online ? 'online' : 'offline'}
+              {runtime?.last_seen_at ? ` · seen ${timeAgo(runtime.last_seen_at)} ago` : ''}
             </Text>
-          </View>
+          )}
         </View>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, justifyContent: 'center', paddingHorizontal: space.lg }}>
@@ -172,23 +203,29 @@ export default function AgentProfileScreen() {
 
         <SectionLabel>Runtime</SectionLabel>
         <Card style={{ marginHorizontal: space.lg }}>
-          <DetailRow label="Model" value={runtime?.model} />
-          <DetailRow label="Thinking" value={runtime?.thinking} />
-          <DetailRow label="Working dir" value={runtime?.cwd} mono />
-          <DetailRow label="Branch" value={runtime?.git_branch ? `${runtime.git_branch}${runtime.git_dirty ? ' *' : ''}` : null} mono />
-          <DetailRow label="PID" value={runtime?.pid ? String(runtime.pid) : null} mono />
-          <DetailRow label="Host" value={runtime?.host_tool} />
-          <DetailRow label="Lifecycle" value={lifecycle?.state ?? peer.lifecycle_state} />
-          <DetailRow label="Last seen" value={runtime?.last_seen_at ? `${timeAgo(runtime.last_seen_at)} ago` : null} />
-          <DetailRow label="Peer id" value={peer.peer_id} mono />
+          <DetailRow icon="memory" label="Model" value={runtime?.model} valueColor={t.primary} />
+          <DetailRow icon="psychology" label="Thinking" value={runtime?.thinking} />
+          <DetailRow icon="folder-open" label="Working dir" value={runtime?.cwd} mono />
+          <DetailRow
+            icon="call-split"
+            label="Branch"
+            value={runtime?.git_branch ? `${runtime.git_branch}${runtime.git_dirty ? ' *' : ''}` : null}
+            valueColor={runtime?.git_dirty ? t.awaiting : undefined}
+            mono
+          />
+          <DetailRow icon="tag" label="PID" value={runtime?.pid ? String(runtime.pid) : null} mono />
+          <DetailRow icon="dns" label="Host" value={runtime?.host_tool} />
+          <DetailRow icon="autorenew" label="Lifecycle" value={lifecycle?.state ?? peer.lifecycle_state} />
+          <DetailRow icon="schedule" label="Last seen" value={runtime?.last_seen_at ? `${timeAgo(runtime.last_seen_at)} ago` : null} />
+          <DetailRow icon="fingerprint" label="Peer id" value={peer.peer_id} mono />
         </Card>
 
         <SectionLabel>Rooms</SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, paddingHorizontal: space.lg }}>
           {agent.rooms.length === 0 && <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant }}>None</Text>}
           {agent.rooms.map((r) => (
-            <View key={r} style={{ backgroundColor: t.surfaceContainer, borderRadius: shape.full, paddingHorizontal: 12, paddingVertical: 6 }}>
-              <Text style={{ ...type.label, color: t.onSurface }}>#{r}</Text>
+            <View key={r} style={{ backgroundColor: identity(r).tint, borderRadius: shape.full, paddingHorizontal: 12, paddingVertical: 6 }}>
+              <Text style={{ ...type.label, color: identity(r).onTint }}>#{r}</Text>
             </View>
           ))}
         </View>

@@ -16,7 +16,7 @@ export default function ThreadScreen() {
   const params = useLocalSearchParams<{ eventId: string; room: string }>();
   const roomId = decodeURIComponent(params.room ?? '');
   const rootId = Number(params.eventId);
-  const { rooms, roomEvents, state, peerId, openRoom, closeRoom, sendMessage, react } = useSync();
+  const { rooms, roomEvents, state, peerId, openRoom, closeRoom, sendMessage, react, ack } = useSync();
 
   const room = rooms.find((r) => r.id === roomId);
   const events = roomEvents[roomId] ?? [];
@@ -64,7 +64,7 @@ export default function ThreadScreen() {
         data={thread}
         keyExtractor={(e) => String(e.event_id)}
         renderItem={({ item }) => (
-          <MessageRow event={item} peers={peers} selfId={peerId ?? ''} onReact={react} isThreadRoot />
+          <MessageRow event={item} peers={peers} selfId={peerId ?? ''} onReact={react} onAck={(id) => ack([id])} isThreadRoot />
         )}
         contentContainerStyle={{ paddingVertical: space.sm }}
       />

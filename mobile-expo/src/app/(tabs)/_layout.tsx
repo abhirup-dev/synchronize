@@ -7,7 +7,7 @@ import { useSync } from '../../lib/store';
 export const unstable_settings = { initialRouteName: '(rooms)' };
 
 export default function TabsLayout() {
-  const { t } = useTheme();
+  const { t, mode } = useTheme();
   const { activity } = useSync();
   const awaiting = activity?.awaiting_count ?? 0;
 
@@ -40,7 +40,12 @@ export default function TabsLayout() {
           title: 'Activity',
           tabBarIcon: icon('notifications-none'),
           tabBarBadge: awaiting > 0 ? (awaiting > 99 ? '99+' : awaiting) : undefined,
-          tabBarBadgeStyle: { backgroundColor: t.awaitingContainer, color: t.awaiting, fontSize: 10 },
+          tabBarBadgeStyle: {
+            backgroundColor: t.awaiting,
+            color: mode === 'dark' ? '#3A2500' : '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '700',
+          },
         }}
       />
       <Tabs.Screen name="(agents)" options={{ title: 'Agents', tabBarIcon: icon('smart-toy') }} />

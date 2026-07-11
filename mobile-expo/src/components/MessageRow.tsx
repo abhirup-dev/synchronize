@@ -3,10 +3,11 @@ import { Image, Pressable, Text, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/useTheme';
 import { shape, space, type } from '../theme/tokens';
-import { clockTime, displayName, splitBody } from '../lib/format';
+import { clockTime, displayName } from '../lib/format';
 import { mediaUrl } from '../lib/api';
 import type { Peer, SyncEvent } from '../lib/types';
 import { Avatar, Badge, PresenceDot } from './ui';
+import { MessageBody } from './MessageBody';
 
 const QUICK_EMOJI = ['👍', '✅', '👀', '🎉', '❤️'];
 
@@ -18,35 +19,41 @@ const SYSTEM_LABEL: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; 
   group_member_alias_reclaimed: { icon: 'edit', text: 'reclaimed their alias' },
 };
 
-// Inline markdown-lite: **bold**, `code`, @mention. Keeps ordinary messages
-// flat and readable (D-001) without a full markdown engine.
-function InlineText({ text, color }: { text: string; color: string }) {
+// Compact ack tick: grey while awaiting your ack, green once acked (by you or
+// anyone). Tapping the grey state acks the event in place.
+function AckTick({ event, onAck }: { event: SyncEvent; onAck?: (eventId: number) => void }) {
   const { t } = useTheme();
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|@[\w:./-]+)/g);
+  const [ackedLocal, setAckedLocal] = useState(false);
+  const count = event.acked_count ?? 0;
+  const awaiting = event.awaiting && !ackedLocal;
+  if (!awaiting && count === 0 && !ackedLocal) return null;
+  const green = !awaiting;
   return (
-    <Text style={{ ...type.body, color }}>
-      {parts.map((p, i) => {
-        if (p.startsWith('**') && p.endsWith('**'))
-          return (
-            <Text key={i} style={{ fontWeight: '700' }}>
-              {p.slice(2, -2)}
-            </Text>
-          );
-        if (p.startsWith('`') && p.endsWith('`') && p.length > 2)
-          return (
-            <Text key={i} style={{ ...type.mono, backgroundColor: t.codeBg }}>
-              {p.slice(1, -1)}
-            </Text>
-          );
-        if (p.startsWith('@') && p.length > 1)
-          return (
-            <Text key={i} style={{ color: t.primary, fontWeight: '600' }}>
-              {p}
-            </Text>
-          );
-        return p;
-      })}
-    </Text>
+    <Pressable
+      disabled={green || !onAck}
+      onPress={() => {
+        setAckedLocal(true);
+        onAck?.(event.event_id);
+      }}
+      hitSlop={6}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        paddingHorizontal: count > 0 ? 8 : 0,
+        width: count > 0 ? undefined : 28,
+        height: 28,
+        borderRadius: shape.full,
+        justifyContent: 'center',
+        backgroundColor: green ? t.successContainer : t.surfaceContainer,
+        borderWidth: green ? 0 : 1,
+        borderColor: t.outlineVariant,
+      }}>
+      <MaterialIcons name="check" size={14} color={green ? t.onSuccessContainer : t.onSurfaceVariant} />
+      {count > 0 && (
+        <Text style={{ ...type.micro, color: green ? t.onSuccessContainer : t.onSurfaceVariant }}>{count}</Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -78,6 +85,7 @@ export function MessageRow({
   selfId,
   onOpenThread,
   onReact,
+  onAck,
   isThreadRoot,
 }: {
   event: SyncEvent;
@@ -85,9 +93,10 @@ export function MessageRow({
   selfId: string;
   onOpenThread?: (event: SyncEvent) => void;
   onReact: (eventId: number, emoji: string) => void;
+  onAck?: (eventId: number) => void;
   isThreadRoot?: boolean;
 }) {
-  const { t } = useTheme();
+  const { t, identity } = useTheme();
   const [picker, setPicker] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
   const sender = peers.find((p) => p.peer_id === event.sender_peer_id);
@@ -97,7 +106,6 @@ export function MessageRow({
   if (!isMessage) return <SystemRow event={event} name={name} />;
 
   const isAgent = !!sender && sender.tool !== 'web';
-  const segments = splitBody(event.body ?? '');
   const reactions = event.reactions ?? [];
 
   return (
@@ -106,29 +114,12 @@ export function MessageRow({
       <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text style={{ ...type.label, fontSize: 14, fontWeight: '700', color: t.onSurface }}>{name}</Text>
-          {isAgent && <Badge label="app" />}
+          {isAgent && <Badge label="app" bg={identity(name).tint} fg={identity(name).onTint} />}
           {sender && <PresenceDot online={sender.online} size={6} />}
           <Text style={{ ...type.micro, color: t.onSurfaceVariant }}>{clockTime(event.created_at)}</Text>
         </View>
 
-        {segments.map((seg, i) =>
-          seg.kind === 'code' ? (
-            <View
-              key={i}
-              style={{
-                backgroundColor: t.codeBg,
-                borderRadius: shape.sm,
-                borderWidth: 1,
-                borderColor: t.outlineVariant,
-                padding: space.md,
-              }}>
-              {seg.lang ? <Text style={{ ...type.micro, color: t.onSurfaceVariant, marginBottom: 4 }}>{seg.lang}</Text> : null}
-              <Text style={{ ...type.mono, color: t.onSurface }}>{seg.content}</Text>
-            </View>
-          ) : (
-            <InlineText key={i} text={seg.content} color={t.onSurface} />
-          ),
-        )}
+        {!!event.body && <MessageBody body={event.body} />}
 
         {/* shared media — image straight from the daemon, chip fallback */}
         {event.media_id != null &&
@@ -163,23 +154,9 @@ export function MessageRow({
             />
           ))}
 
-        {/* reactions + ack count + quick add */}
+        {/* reactions + ack tick + quick add */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          {(event.acked_count ?? 0) > 0 && (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 10,
-                height: 28,
-                borderRadius: shape.full,
-                backgroundColor: t.successContainer,
-              }}>
-              <MaterialIcons name="check" size={13} color={t.onSuccessContainer} />
-              <Text style={{ ...type.micro, color: t.onSuccessContainer }}>ACK {event.acked_count}</Text>
-            </View>
-          )}
+          <AckTick event={event} onAck={onAck} />
           {reactions.map((r) => {
             const mine = r.by.some((b) => b.peer_id === selfId);
             return (

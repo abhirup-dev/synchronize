@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
-import { useTheme } from '../../theme/useTheme';
+import { getThemePref, setThemePref, useTheme, type ThemePref } from '../../theme/useTheme';
 import { shape, space, type } from '../../theme/tokens';
 import { useSync } from '../../lib/store';
 import { getBaseUrl, setBaseUrl } from '../../lib/api';
@@ -25,6 +25,42 @@ function Row({ label, value }: { label: string; value: string }) {
       <Text style={{ ...type.label, color: t.onSurface, flexShrink: 1, textAlign: 'right' }} numberOfLines={1}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+function ThemeToggle() {
+  const { t } = useTheme();
+  const [pref, setPref] = useState(getThemePref());
+  return (
+    <View style={{ flexDirection: 'row', gap: space.sm, padding: space.md }}>
+      {THEME_OPTIONS.map((o) => {
+        const active = pref === o.value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => {
+              setThemePref(o.value);
+              setPref(o.value);
+            }}
+            style={{
+              flex: 1,
+              height: 38,
+              borderRadius: shape.full,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: active ? t.primary : t.surfaceContainerHigh,
+            }}>
+            <Text style={{ ...type.label, color: active ? t.onPrimary : t.onSurfaceVariant }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -101,7 +137,8 @@ export default function MeScreen() {
 
         <SectionLabel>App</SectionLabel>
         <Card style={{ marginHorizontal: space.lg }}>
-          <Row label="Theme" value={mode === 'dark' ? 'Dark (system)' : 'Light (system)'} />
+          <ThemeToggle />
+          <Row label="Active theme" value={mode === 'dark' ? 'Dark' : 'Light'} />
           <Row label="Version" value={Constants.expoConfig?.version ?? '1.0.0'} />
         </Card>
       </ScrollView>

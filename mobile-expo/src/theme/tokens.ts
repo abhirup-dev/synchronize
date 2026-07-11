@@ -1,88 +1,117 @@
-// Flat Material 3 tokens for Synchronize — distilled from the shortlisted
-// design decisions (D-001 chat/thread, D-002/D-003 activity synthesis).
-// One restrained cyan accent, tonal containers only for structured artifacts,
-// semantic green for ACK, pink reserved for "awaiting" signals.
+// Native-quiet Material tokens for Synchronize — revamped per the
+// inspiration-and-divergence doc (Paseo / T3 Code mobile / M3 dark craft /
+// Slack-Spotify-Telegram-X). Two independently designed schemes:
+//   dark  = quiet near-black tonal band, tone-80 pastel accents
+//   light = white/grey neutrals, tone-40 vivid accents
+// Color budget: identity lives in avatars, semantics live in dots/ticks,
+// brand blue appears at most twice per screen. Flat — no glass, no gradients.
 
 export type Scheme = typeof dark;
 
 export const dark = {
-  background: '#0F1417',
-  surface: '#14191D',
-  surfaceContainer: '#1A2126',
-  surfaceContainerHigh: '#222A31',
-  onSurface: '#E4E8EB',
-  onSurfaceVariant: '#93A0A9',
-  outline: '#3A4750',
-  outlineVariant: '#242D34',
-  primary: '#5FC9E8',
-  onPrimary: '#00293A',
-  primaryContainer: '#0E3A4C',
-  onPrimaryContainer: '#BEE9F9',
-  success: '#5AC77F',
-  onSuccessContainer: '#8FE0AC',
-  successContainer: '#123A26',
-  awaiting: '#F2A0B0',
-  awaitingContainer: '#3B222B',
+  background: '#0F1115',
+  surface: '#0F1115', // rows sit directly on background — no card washes
+  surfaceContainer: '#171B20', // chips, composer, sheets
+  surfaceContainerHigh: '#1E242B', // menus, dialogs, text fields
+  onSurface: '#E7EAEE', // never pure white
+  onSurfaceVariant: '#98A2AD',
+  outline: '#3A424C',
+  outlineVariant: '#212831', // inset hairline dividers
+  primary: '#8AB4F8', // tone-80 pastel blue
+  onPrimary: '#062E6F',
+  primaryContainer: '#1B3A61',
+  onPrimaryContainer: '#C2DCFF',
+  success: '#81C995',
+  successContainer: '#143B24',
+  onSuccessContainer: '#A5E8BC',
+  awaiting: '#FDBE71',
+  awaitingContainer: '#3A2B12',
+  onAwaitingContainer: '#FFDDB0',
   danger: '#F28B82',
+  dangerContainer: '#3C1E1B',
+  onDangerContainer: '#FAC5C0',
+  mention: '#D0BCFF',
+  mentionContainer: '#33284A',
+  onMentionContainer: '#E9DDFF',
   scrim: 'rgba(0,0,0,0.55)',
-  codeBg: '#10181D',
-  addedText: '#6BCF8E',
+  codeBg: '#161B22',
+  addedText: '#81C995',
   removedText: '#F28B82',
 };
 
 export const light: Scheme = {
-  background: '#F7F9FA',
+  background: '#F6F7F9',
   surface: '#FFFFFF',
-  surfaceContainer: '#EFF3F5',
-  surfaceContainerHigh: '#E5EBEE',
-  onSurface: '#181C1F',
-  onSurfaceVariant: '#5B6870',
-  outline: '#A9B6BE',
-  outlineVariant: '#DEE5E9',
-  primary: '#00697F',
+  surfaceContainer: '#F0F2F5',
+  surfaceContainerHigh: '#E7EAEE',
+  onSurface: '#191C20',
+  onSurfaceVariant: '#565E68',
+  outline: '#7A838E',
+  outlineVariant: '#E3E7EC',
+  primary: '#1F63D2',
   onPrimary: '#FFFFFF',
-  primaryContainer: '#D2ECF5',
-  onPrimaryContainer: '#003544',
-  success: '#1E8E4B',
-  onSuccessContainer: '#0E6B36',
-  successContainer: '#D9F2E2',
-  awaiting: '#B3324E',
-  awaitingContainer: '#FBDDE4',
-  danger: '#B3261E',
+  primaryContainer: '#DCE8FB',
+  onPrimaryContainer: '#17498F',
+  success: '#188945',
+  successContainer: '#D9F3E2',
+  onSuccessContainer: '#0B6130',
+  awaiting: '#A85E00',
+  awaitingContainer: '#FBEBCE',
+  onAwaitingContainer: '#7E4A05',
+  danger: '#C93A2E',
+  dangerContainer: '#FBE3E0',
+  onDangerContainer: '#93251C',
+  mention: '#6D3AD6',
+  mentionContainer: '#ECE4FB',
+  onMentionContainer: '#54269E',
   scrim: 'rgba(0,0,0,0.35)',
-  codeBg: '#F1F4F6',
-  addedText: '#1E8E4B',
-  removedText: '#B3261E',
+  codeBg: '#F0F2F5',
+  addedText: '#188945',
+  removedText: '#C93A2E',
 };
 
-// Muted identity hues for agents/rooms — [dark container/fg, light container/fg]
+// Identity colors for agents/rooms/people. Solid tempered avatar fill (white
+// glyph, feedback-1) plus:
+//   soft — tone-80 pastel, the ONLY form identity color takes as text on dark
+//   deep — tone-40, identity text on light
+//   tint — ~12% wash, allowed on chips only, never rows/headers
 const IDENTITY = [
-  { darkBg: '#1F3448', darkFg: '#9CC7EC', lightBg: '#D8E8F7', lightFg: '#2A5378' },
-  { darkBg: '#33273F', darkFg: '#C6ADE8', lightBg: '#EADFF7', lightFg: '#5B3E80' },
-  { darkBg: '#3D3320', darkFg: '#E0C388', lightBg: '#F4E8CE', lightFg: '#71581F' },
-  { darkBg: '#1E3A2C', darkFg: '#93D5AE', lightBg: '#D9F0E1', lightFg: '#1F5E3B' },
-  { darkBg: '#3F2B26', darkFg: '#E5AE9A', lightBg: '#F7E2DA', lightFg: '#7A4230' },
-  { darkBg: '#173A40', darkFg: '#8ED4DF', lightBg: '#D5EEF2', lightFg: '#175D68' },
-  { darkBg: '#3A2833', darkFg: '#DFAECC', lightBg: '#F5E0EC', lightFg: '#6F3A59' },
-  { darkBg: '#2B3140', darkFg: '#AEBBE0', lightBg: '#E1E6F5', lightFg: '#414F78' },
+  { c: '#4C8DF5', deep: '#1D4ED8', soft: '#9CC3FF' }, // blue
+  { c: '#3FAE6A', deep: '#15803D', soft: '#8ED9A9' }, // green
+  { c: '#E8823F', deep: '#C2410C', soft: '#FFB68A' }, // orange
+  { c: '#9D6BE8', deep: '#7E22CE', soft: '#CDAAF7' }, // purple
+  { c: '#D9639B', deep: '#BE185D', soft: '#F2A7C9' }, // pink
+  { c: '#2FA396', deep: '#0F766E', soft: '#7FD4C9' }, // teal
+  { c: '#D99A2B', deep: '#B45309', soft: '#F2CC85' }, // amber
+  { c: '#7278E0', deep: '#4338CA', soft: '#AEB2F2' }, // indigo
+  { c: '#2FA8C7', deep: '#0E7490', soft: '#8AD4E8' }, // cyan
 ];
 
 export function identityColor(key: string, mode: 'dark' | 'light') {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  const c = IDENTITY[h % IDENTITY.length];
-  return mode === 'dark' ? { bg: c.darkBg, fg: c.darkFg } : { bg: c.lightBg, fg: c.lightFg };
+  const { c, deep, soft } = IDENTITY[h % IDENTITY.length];
+  return {
+    bg: c,
+    fg: '#FFFFFF',
+    tint: c + (mode === 'dark' ? '21' : '1F'),
+    onTint: mode === 'dark' ? soft : deep,
+  };
 }
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 };
 
 export const shape = { xs: 6, sm: 10, md: 14, lg: 18, full: 999 };
 
+// Row anatomy constants (M3 list idiom): edge-to-edge rows, inset dividers.
+export const row = { one: 56, two: 68, textInset: 68 };
+
 export const type = {
   display: { fontSize: 44, fontWeight: '600' as const, letterSpacing: -1 },
   title: { fontSize: 22, fontWeight: '600' as const },
   section: { fontSize: 16, fontWeight: '600' as const },
   body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 21 },
+  sub: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
   label: { fontSize: 13, fontWeight: '500' as const },
   micro: { fontSize: 11, fontWeight: '500' as const },
   mono: { fontFamily: 'monospace', fontSize: 13, lineHeight: 19 },

@@ -7,6 +7,7 @@ import { useTheme } from '../../../../theme/useTheme';
 import { shape, space, type } from '../../../../theme/tokens';
 import { useSync } from '../../../../lib/store';
 import { api } from '../../../../lib/api';
+import { BoardView } from '../../../../components/BoardView';
 import { Composer } from '../../../../components/Composer';
 import { MessageRow } from '../../../../components/MessageRow';
 import { Avatar, Badge, EmptyState, PresenceDot } from '../../../../components/ui';
@@ -14,7 +15,7 @@ import type { Room } from '../../../../lib/types';
 
 // Bottom sheet with room membership + leave/archive actions.
 function RoomInfoSheet({ room, visible, onClose }: { room: Room; visible: boolean; onClose: () => void }) {
-  const { t } = useTheme();
+  const { t, identity } = useTheme();
   const router = useRouter();
   const { peerId, refresh } = useSync();
   const [busy, setBusy] = useState<string | null>(null);
@@ -93,7 +94,7 @@ function RoomInfoSheet({ room, visible, onClose }: { room: Room; visible: boolea
                   <Text style={{ ...type.label, color: t.onSurface, flex: 1 }} numberOfLines={1}>
                     {m.alias || m.session_name || m.peer_id}
                   </Text>
-                  {m.tool && m.tool !== 'web' && <Badge label={m.tool} />}
+                  {m.tool && m.tool !== 'web' && <Badge label={m.tool} bg={identity(m.tool).tint} fg={identity(m.tool).onTint} />}
                   <PresenceDot online={m.online} size={7} />
                 </View>
               ))}
@@ -134,13 +135,14 @@ function RoomInfoSheet({ room, visible, onClose }: { room: Room; visible: boolea
 }
 
 export default function RoomScreen() {
-  const { t } = useTheme();
+  const { t, identity } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const roomId = decodeURIComponent(params.id ?? '');
-  const { rooms, roomEvents, state, peerId, openRoom, closeRoom, sendMessage, react } = useSync();
+  const { rooms, roomEvents, state, peerId, openRoom, closeRoom, sendMessage, react, ack } = useSync();
   const [showInfo, setShowInfo] = useState(false);
+  const [view, setView] = useState<'chat' | 'board'>('chat');
 
   const room = rooms.find((r) => r.id === roomId);
   const events = roomEvents[roomId] ?? [];
@@ -181,7 +183,7 @@ export default function RoomScreen() {
         </Pressable>
         <Pressable onPress={() => room && setShowInfo(true)} style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            {room?.kind === 'group' && <MaterialIcons name="tag" size={16} color={t.onSurfaceVariant} />}
+            {room?.kind === 'group' && <MaterialIcons name="tag" size={16} color={room ? identity(room.name).onTint : t.onSurfaceVariant} />}
             <Text style={{ ...type.section, color: t.onSurface }} numberOfLines={1}>
               {room?.name ?? '…'}
             </Text>
@@ -197,9 +199,47 @@ export default function RoomScreen() {
         </Pressable>
       </View>
 
+      {/* Chat | Board — M3 secondary tabs */}
+      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: t.outlineVariant }}>
+        {(
+          [
+            { key: 'chat', label: 'Chat', icon: 'chat-bubble-outline' },
+            { key: 'board', label: 'Board', icon: 'view-kanban' },
+          ] as const
+        ).map(({ key, label, icon }) => {
+          const active = view === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setView(key)}
+              android_ripple={{ color: t.outlineVariant }}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                height: 42,
+                borderBottomWidth: 2,
+                borderBottomColor: active ? t.primary : 'transparent',
+              }}>
+              <MaterialIcons name={icon} size={16} color={active ? t.primary : t.onSurfaceVariant} />
+              <Text style={{ ...type.label, color: active ? t.primary : t.onSurfaceVariant }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       {room && <RoomInfoSheet room={room} visible={showInfo} onClose={() => setShowInfo(false)} />}
 
-      {reversed.length === 0 ? (
+      {view === 'board' ? (
+        <BoardView
+          events={events}
+          peers={peers}
+          onAck={(id) => ack([id])}
+          onOpen={(e) => router.push(`/thread/${e.event_id}?room=${encodeURIComponent(roomId)}`)}
+        />
+      ) : reversed.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <EmptyState icon="chat-bubble-outline" title="No messages yet" />
         </View>
@@ -214,6 +254,7 @@ export default function RoomScreen() {
               peers={peers}
               selfId={peerId ?? ''}
               onReact={react}
+              onAck={(id) => ack([id])}
               onOpenThread={(ev) =>
                 router.push(`/thread/${ev.event_id}?room=${encodeURIComponent(roomId)}`)
               }
@@ -223,7 +264,9 @@ export default function RoomScreen() {
         />
       )}
 
-      {room && <Composer placeholder={`Message ${room.kind === 'group' ? '#' + room.name : room.name}`} onSend={(text) => sendMessage(room, text)} />}
+      {room && view === 'chat' && (
+        <Composer placeholder={`Message ${room.kind === 'group' ? '#' + room.name : room.name}`} onSend={(text) => sendMessage(room, text)} />
+      )}
       <View style={{ height: insets.bottom }} />
     </KeyboardAvoidingView>
   );

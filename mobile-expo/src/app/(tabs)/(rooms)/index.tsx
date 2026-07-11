@@ -145,15 +145,15 @@ export default function RoomsScreen() {
             width: 34,
             height: 34,
             borderRadius: 10,
-            backgroundColor: t.primaryContainer,
+            backgroundColor: t.primary,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-          <Text style={{ ...type.section, color: t.onPrimaryContainer }}>S</Text>
+          <Text style={{ ...type.section, color: t.onPrimary }}>S</Text>
         </View>
         <Text style={{ ...type.title, color: t.onSurface, flex: 1 }}>Synchronize</Text>
         <Pressable onPress={() => setShowCreate(true)} hitSlop={8} style={{ padding: space.sm }}>
-          <MaterialIcons name="add" size={23} color={t.onSurface} />
+          <MaterialIcons name="add" size={23} color={t.primary} />
         </Pressable>
         <PresenceDot online={connected} size={9} />
       </View>
