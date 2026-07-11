@@ -9,12 +9,16 @@ import {
   type SynchronizeMcpServer,
 } from "./state.ts";
 import type { ToolContext } from "./tools/context.ts";
+import { registerArchiveTools } from "./tools/archive.ts";
 import { registerGroupTools } from "./tools/groups.ts";
 import { registerLaunchTools } from "./tools/launch.ts";
 import { registerMediaTools } from "./tools/media.ts";
 import { registerMessagingTools } from "./tools/messaging.ts";
 import { registerPeerTools } from "./tools/peers.ts";
+import { registerQueryTools } from "./tools/query.ts";
+import { registerReactionTools } from "./tools/reactions.ts";
 import { registerRegisterTools } from "./tools/register.ts";
+import { registerThreadTools } from "./tools/threads.ts";
 
 export function createMcpServer(): SynchronizeMcpServer {
   const mcp = new McpServer(
@@ -42,7 +46,11 @@ export function createMcpServer(): SynchronizeMcpServer {
   registerMessagingTools(ctx);
   registerGroupTools(ctx);
   registerLaunchTools(ctx);
+  registerArchiveTools(ctx);
   registerMediaTools(ctx);
+  registerQueryTools(ctx);
+  registerReactionTools(ctx);
+  registerThreadTools(ctx);
 
   // Once the client finishes initializing, proactively activate the live
   // channel subscription for launch-bound sessions (gated on launch env), so a

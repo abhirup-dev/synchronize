@@ -2,16 +2,20 @@ import { mkdir, readFile } from "node:fs/promises";
 import { closeSync, openSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
+import { loadDaemonEnvFiles } from "./env-files.ts";
+import { loadConfig, resolveConnection } from "./config.ts";
 import {
   API_VERSION,
+  ENV_HEALTH_TIMEOUT_MS,
   ENV_STARTED_BY_CLIENT,
-  ENV_TOKEN,
+  ENV_REMOTE_URL,
   HEALTH_TIMEOUT_MS,
   STALE_LOCK_MS,
   STARTUP_TIMEOUT_MS,
 } from "./constants.ts";
 import { ensureDir, pathAgeMs, readJson, removePath } from "./fs.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
+import { collectDaemonProvenance } from "./provenance.ts";
 
 export interface Discovery {
   pid: number;
@@ -36,17 +40,33 @@ export interface ClientConfig {
   token: string | null;
   paths: RuntimePaths;
   started: boolean;
+  // True iff this client is pointed at a daemon on another machine (via
+  // SYNCHRONIZE_REMOTE_URL). It is the single ground-truth signal for "the
+  // daemon cannot reach a localhost callback on this client", computed once at
+  // resolution so transport selection (callback vs poll) never re-parses env.
+  // Absent/false means a same-machine daemon (local discovery or auto-spawned).
+  remote?: boolean;
 }
 
 export async function ensureDaemon(): Promise<ClientConfig> {
   const paths = getRuntimePaths();
-  await ensureDir(paths.home);
-  const token = process.env[ENV_TOKEN] ?? null;
+  // Connection comes from env > active profile > local discovery. Profiles let
+  // operators name remote targets without re-typing SYNCHRONIZE_REMOTE_URL/TOKEN
+  // every invocation; env still wins so tests and one-off overrides are intact.
+  const conn = resolveConnection(await loadConfig(paths.configPath));
+  const token = conn.token;
+  const remoteUrl = normalizeRemoteUrl(conn.remoteUrl ?? undefined);
+  if (remoteUrl) {
+    await validateRemoteDaemon(remoteUrl, token, conn.healthTimeoutMs ?? undefined);
+    log(`using remote daemon base_url=${remoteUrl}`);
+    return { baseUrl: remoteUrl, token, paths, started: false, remote: true };
+  }
 
+  await ensureDir(paths.home);
   const existing = await readJson<Discovery>(paths.discoveryPath);
   if (existing && (await isHealthy(existing.baseUrl))) {
     log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
-    return { baseUrl: existing.baseUrl, token, paths, started: false };
+    return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
   }
 
   let started = false;
@@ -65,7 +85,7 @@ export async function ensureDaemon(): Promise<ClientConfig> {
   const discovery = await readJson<Discovery>(paths.discoveryPath);
   if (!discovery) throw new Error("Daemon did not write discovery file");
   log(`${started ? "started" : "using"} daemon base_url=${discovery.baseUrl} pid=${discovery.pid}`);
-  return { baseUrl: discovery.baseUrl, token, paths, started };
+  return { baseUrl: discovery.baseUrl, token, paths, started, remote: false };
 }
 
 // Carries the daemon's structured error envelope across the client boundary so
@@ -100,9 +120,43 @@ export async function requestJson<T>(config: ClientConfig, path: string, init: R
   return body as T;
 }
 
-async function isHealthy(baseUrl: string): Promise<boolean> {
+function normalizeRemoteUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${ENV_REMOTE_URL} must be a valid http(s) URL`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${ENV_REMOTE_URL} must use http or https`);
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+async function validateRemoteDaemon(baseUrl: string, token: string | null, timeoutMs?: number): Promise<void> {
+  if (!(await isHealthy(baseUrl, timeoutMs))) {
+    throw new Error(`${ENV_REMOTE_URL} points to an unreachable or incompatible synchronize daemon: ${baseUrl}`);
+  }
+
+  const headers = new Headers({ accept: "application/json" });
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  const response = await fetch(`${baseUrl}/status`, { headers }).catch((error: unknown) => {
+    throw new Error(`${ENV_REMOTE_URL} health passed but /status failed for ${baseUrl}: ${String(error)}`);
+  });
+  if (response.ok) return;
+
+  if (response.status === 401) {
+    const suffix = token ? "check SYNCHRONIZE_TOKEN" : "set SYNCHRONIZE_TOKEN";
+    throw new Error(`${ENV_REMOTE_URL} requires bearer auth; ${suffix}`);
+  }
+  throw new Error(`${ENV_REMOTE_URL} /status failed: ${response.status} ${response.statusText}`);
+}
+
+async function isHealthy(baseUrl: string, timeoutMs?: number): Promise<boolean> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? healthTimeoutMs());
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
     if (!response.ok) return false;
@@ -113,6 +167,14 @@ async function isHealthy(baseUrl: string): Promise<boolean> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function healthTimeoutMs(): number {
+  const raw = process.env[ENV_HEALTH_TIMEOUT_MS];
+  if (!raw) return HEALTH_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return HEALTH_TIMEOUT_MS;
+  return Math.trunc(parsed);
 }
 
 async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): Promise<void> {
@@ -141,6 +203,8 @@ async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): P
 async function startDaemon(paths: RuntimePaths): Promise<ChildProcess> {
   await ensureDir(paths.home);
   const daemonPath = resolve(import.meta.dir, "daemon.ts");
+  const provenance = collectDaemonProvenance();
+  const fileEnv = await loadDaemonEnvFiles(paths, provenance.source_root, process.env);
   // Capture the spawned daemon's stdout/stderr to a dedicated file so an early
   // crash (e.g. EADDRINUSE on the default port) is diagnosable instead of
   // silently swallowed by stdio:"ignore". This file is intentionally distinct
@@ -152,6 +216,7 @@ async function startDaemon(paths: RuntimePaths): Promise<ChildProcess> {
       stdio: ["ignore", errFd, errFd],
       env: {
         ...process.env,
+        ...fileEnv,
         [ENV_STARTED_BY_CLIENT]: "1",
       },
     });

@@ -1,4 +1,5 @@
 import { createGroup, getGroupHistory, joinGroup, leaveGroup, patchGroup, renameInGroup, sendGroupMessage } from "../../api/groups.ts";
+import { getThread } from "../../api/threads.ts";
 import { ensureDaemon } from "../../client.ts";
 import { parseFlags } from "../flags.ts";
 import { requireIdentity } from "../identity.ts";
@@ -117,10 +118,13 @@ export async function run(argv: string[]): Promise<void> {
     if (threadOf !== undefined && (!Number.isInteger(threadOf) || threadOf < 1)) {
       throw new Error("--thread-of must be a positive integer event_id");
     }
+    if (threadOf !== undefined) {
+      console.log(JSON.stringify(await getThread(client, { rootEventId: threadOf, format: "events", selectors: { strategy: "all" } }), null, 2));
+      return;
+    }
     const response = await getGroupHistory(client, {
       name,
       peerId: identity.peer_id,
-      ...(threadOf !== undefined ? { threadOf } : {}),
     });
     console.log(JSON.stringify(response, null, 2));
     return;

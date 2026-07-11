@@ -1,8 +1,12 @@
 export interface StatusResponse {
   ok: boolean;
   pid: number;
+  host: string;
+  port: number;
   base_url: string;
   started_at: string;
+  /** Hostname of the machine hosting the daemon. */
+  machine?: string;
   token_required: boolean;
   home: string;
   db_path: string;
@@ -31,6 +35,8 @@ export interface Peer {
   tool: string;
   session_name: string;
   purpose: string | null;
+  /** Hostname of the machine the peer registered from (multi-machine roster). */
+  machine_id?: string;
   lease_expires_at: string;
   online?: boolean;
   /** 3-state activity for instrumented agents; null/absent for uninstrumented peers. */
@@ -47,6 +53,8 @@ export interface AgentSessionBinding {
   host_session_id: string;
   host_session_file: string | null;
   cwd: string | null;
+  git_branch: string | null;
+  git_dirty: boolean | null;
   pid: number | null;
   source: string | null;
   model: string | null;
@@ -65,14 +73,152 @@ export interface Event {
   sender_peer_id: string | null;
   recipient_peer_id: string | null;
   group_id: number | null;
+  group_name: string | null;
   body: string | null;
   media_id: string | null;
   parent_event_id: number | null;
+  reply_to_event_id: number | null;
   mentions_json: string | null;
+  skill_directives_json: string | null;
   created_at: string;
   delivered_at?: string | null;
   read_at?: string | null;
   acked_at?: string | null;
+  reactions?: ReactionSummary[];
+}
+
+export type ReplySurface = "dm" | "group_main" | "thread";
+
+export interface ReplyDestination {
+  surface: ReplySurface;
+  direct_event_id: number | null;
+  direct_sender_peer_id: string | null;
+  direct_sender: string | null;
+  direct_preview: string | null;
+  group_id?: number;
+  group_name?: string;
+  thread_root_event_id?: number;
+  thread_root_sender_peer_id?: string | null;
+  thread_root_sender?: string | null;
+  thread_root_preview?: string | null;
+}
+
+export interface ReplyResponse {
+  event: Event;
+  posted_to: ReplyDestination;
+}
+
+export type SkillRuntime = "claude" | "pi";
+
+export interface SkillCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  runtimes: SkillRuntime[];
+  source_path?: string;
+}
+
+export interface ReactionActor {
+  peer_id: string;
+  session_name: string;
+  tool: string;
+  alias: string | null;
+  created_at: string;
+}
+
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  by: ReactionActor[];
+}
+
+export type SqlParam = string | number | boolean | null;
+
+export interface EventQueryResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  truncated: boolean;
+  elapsed_ms: number;
+}
+
+export interface ThreadDiscoveryRow {
+  root_event_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_activity_at: string;
+  reply_count: number;
+  participant_count: number;
+  preview: string | null;
+}
+
+export interface ThreadParticipantStatus {
+  peer_id: string;
+  session_name: string | null;
+  alias: string | null;
+  active: boolean;
+  event_count: number;
+  first_event_id: number;
+  last_event_id: number;
+  last_activity_at: string;
+}
+
+export interface ThreadStatus {
+  root_event_id: number;
+  group_id: number;
+  group_name: string;
+  root_sender_peer_id: string | null;
+  root_sender_session_name: string | null;
+  root_sender_alias: string | null;
+  created_at: string;
+  last_event_id: number;
+  last_activity_at: string;
+  reply_count: number;
+  event_count: number;
+  participant_count: number;
+  participants: ThreadParticipantStatus[];
+}
+
+export type SelectorStrategy = "first" | "last" | "all";
+
+export interface EventSelectors {
+  strategy?: SelectorStrategy | undefined;
+  k?: number | undefined;
+}
+
+export type ThreadFormat = "summary" | "status" | "events" | "transcript";
+
+export interface ThreadResponse {
+  format: ThreadFormat;
+  selectors?: { strategy: SelectorStrategy; k?: number };
+  status?: ThreadStatus;
+  events?: Event[];
+  transcript?: string;
+  summary?: string | null;
+  summary_status?: "ready" | "pending" | "disabled";
+  stale?: boolean;
+  covered_last_event_id?: number | null;
+  covered_event_count?: number | null;
+  selected_event_count?: number;
+  total_event_count?: number;
+  truncated?: boolean;
+  fallback?: { suggested_format: Exclude<ThreadFormat, "summary">; selectors: { strategy: SelectorStrategy; k?: number } };
+}
+
+export interface ThreadSummaryResponse {
+  summary: string | null;
+  model: string | null;
+  strategy: "all" | "first_k" | "last_k" | "first_last" | null;
+  strategy_params: { k?: number; first_k?: number; last_k?: number } | null;
+  prompt_version: number | null;
+  covered_last_event_id: number | null;
+  covered_event_count: number | null;
+  updated_at: string | null;
+  stale: boolean;
+  status: "ready" | "pending" | "disabled";
 }
 
 export interface Group {

@@ -29,6 +29,20 @@ export function getMode(): NotifyMode {
   return process.env.SYNCHRONIZE_MCP_MODE === "claude" ? "claude" : "codex";
 }
 
+/**
+ * Whether to use the localhost callback push transport (EventSubscription)
+ * vs the outbound polling transport (NotificationBridge).
+ *
+ * Callback push is daemon->client, so it is only reachable when the daemon
+ * runs on this same machine. A remote daemon (client.remote) cannot reach our
+ * loopback callback, so it must poll. Codex always polls. The notification
+ * *channel* is unaffected: both transports feed the same mode-parameterized
+ * emit, so a polling Claude session still emits notifications/claude/channel.
+ */
+export function useCallbackPush(mode: NotifyMode, client: Pick<ClientConfig, "remote">): boolean {
+  return mode === "claude" && !client.remote;
+}
+
 export async function getClient(state: AdapterState): Promise<ClientConfig> {
   state.client = await ensureDaemon();
   return state.client;

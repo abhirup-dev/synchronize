@@ -47,6 +47,7 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_whoami",
         "bridge_list_peers",
         "bridge_dm",
+        "bridge_reply",
         "bridge_inbox",
         "bridge_create_group",
         "bridge_join_group",
@@ -59,6 +60,10 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
         "bridge_share_media",
         "bridge_list_media",
         "bridge_get_media",
+        "bridge_query_events",
+        "bridge_react",
+        "bridge_list_reactions",
+        "bridge_get_thread",
       ]),
     );
 
@@ -66,6 +71,30 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
       await client.callTool({ name: "bridge_register", arguments: { session_name: "codex-e2e", purpose: "test" } }),
     ) as { peer: { peer_id: string } };
     const peerId = registered.peer.peer_id;
+    const gitRepo = await mkdtemp(join(tmpdir(), "synchronize-mcp-git-"));
+    homes.push(gitRepo);
+    const gitInit = Bun.spawnSync({ cmd: ["git", "init", "-b", "mcp-context"], cwd: gitRepo, stdout: "pipe", stderr: "pipe" });
+    expect(gitInit.exitCode).toBe(0);
+    const { baseUrl } = (await Bun.file(join(home, "daemon.json")).json()) as { baseUrl: string };
+    const bindingResponse = await fetch(`${baseUrl}/agent-sessions/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        peer_id: peerId,
+        host_tool: "codex",
+        host_session_id: "codex-e2e-session",
+        session_name: "codex-e2e",
+        tool: "codex",
+        cwd: gitRepo,
+      }),
+    });
+    expect(bindingResponse.ok).toBe(true);
+    const whoami = parseToolText(await client.callTool({ name: "bridge_whoami", arguments: {} })) as {
+      runtime_context: { cwd: string | null; git_branch: string | null; git_dirty: boolean | null } | null;
+      agent_sessions: Array<{ cwd: string | null; git_branch: string | null; git_dirty: boolean | null }>;
+    };
+    expect(whoami.runtime_context).toEqual({ cwd: gitRepo, git_branch: "mcp-context", git_dirty: false });
+    expect(whoami.agent_sessions[0]).toMatchObject({ cwd: gitRepo, git_branch: "mcp-context", git_dirty: false });
 
     await client.callTool({ name: "bridge_dm", arguments: { recipient_peer_id: peerId, message: "self notify" } });
     await client.callTool({ name: "bridge_dm", arguments: { peer_id: peerId, message: "self notify via alias" } });
@@ -82,11 +111,146 @@ test("MCP stdio adapter exposes REST-backed parity tools, Codex notifications, a
 
     await client.callTool({ name: "bridge_create_group", arguments: { name: "mcp-room" } });
     await client.callTool({ name: "bridge_join_group", arguments: { name: "mcp-room", alias: "codex" } });
-    await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } });
+    const root = parseToolText(
+      await client.callTool({ name: "bridge_send_group", arguments: { name: "mcp-room", message: "hello room" } }),
+    ) as { event: { event_id: number; group_name: string | null; reply_to_event_id: number | null } };
+    expect(root.event.group_name).toBe("mcp-room");
+    expect(root.event.reply_to_event_id).toBeNull();
+    const threadReply = parseToolText(
+      await client.callTool({
+        name: "bridge_send_group",
+        arguments: { name: "mcp-room", message: "thread reply", in_reply_to: root.event.event_id },
+      }),
+    ) as { event: { event_id: number; reply_to_event_id: number | null } };
+    expect(threadReply.event.reply_to_event_id).toBe(root.event.event_id);
+    const mainReply = parseToolText(
+      await client.callTool({
+        name: "bridge_reply",
+        arguments: { in_reply_to: root.event.event_id, message: "main bridge reply" },
+      }),
+    ) as {
+      event: { event_id: number; parent_event_id: number | null; reply_to_event_id: number | null };
+      posted_to: { surface: string; direct_event_id: number; direct_sender: string; direct_preview: string };
+    };
+    // Regression: bridge_reply to a TOP-LEVEL message must derive parent_event_id
+    // (the target becomes the thread root) so it threads identically to
+    // bridge_send_group(in_reply_to). The daemon owns parent derivation; the agent
+    // only supplies in_reply_to. Both parent_event_id and reply_to_event_id are filled.
+    expect(mainReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(mainReply.event.reply_to_event_id).toBe(root.event.event_id);
+    expect(mainReply.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: root.event.event_id,
+      direct_sender: "codex",
+      direct_preview: "hello room",
+    });
+    const threadedBridgeReply = parseToolText(
+      await client.callTool({
+        name: "bridge_reply",
+        arguments: { in_reply_to: threadReply.event.event_id, message: "threaded bridge reply" },
+      }),
+    ) as {
+      event: { parent_event_id: number | null; reply_to_event_id: number | null };
+      posted_to: {
+        surface: string;
+        direct_event_id: number;
+        direct_sender: string;
+        direct_preview: string;
+        thread_root_event_id: number;
+        thread_root_sender: string;
+        thread_root_preview: string;
+      };
+    };
+    expect(threadedBridgeReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(threadedBridgeReply.event.reply_to_event_id).toBe(threadReply.event.event_id);
+    expect(threadedBridgeReply.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: threadReply.event.event_id,
+      direct_sender: "codex",
+      direct_preview: "thread reply",
+      thread_root_event_id: root.event.event_id,
+      thread_root_sender: "codex",
+      thread_root_preview: "hello room",
+    });
+    const secondThreadReply = parseToolText(await client.callTool({
+      name: "bridge_send_group",
+      arguments: { name: "mcp-room", message: "second thread reply", in_reply_to: root.event.event_id },
+    })) as {
+      event: { parent_event_id: number | null; reply_to_event_id: number | null };
+      posted_to: { surface: string; direct_event_id: number; thread_root_event_id: number };
+    };
+    expect(secondThreadReply.event.parent_event_id).toBe(root.event.event_id);
+    expect(secondThreadReply.event.reply_to_event_id).toBe(root.event.event_id);
+    expect(secondThreadReply.posted_to).toMatchObject({
+      surface: "thread",
+      direct_event_id: root.event.event_id,
+      thread_root_event_id: root.event.event_id,
+    });
     const history = parseToolText(
       await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room" } }),
     ) as { events: Array<{ body: string | null }> };
     expect(history.events.some((event) => event.body === "hello room")).toBe(true);
+    // "main bridge reply" now threads under root (parent derived), so it is NOT a
+    // flat main-channel row — it lives in the thread, asserted below.
+    expect(history.events.some((event) => event.body === "main bridge reply")).toBe(false);
+    const reacted = parseToolText(
+      await client.callTool({ name: "bridge_react", arguments: { event_id: root.event.event_id, emoji: "👍" } }),
+    ) as { reactions: Array<{ emoji: string; count: number; by: Array<{ session_name: string }> }> };
+    expect(reacted.reactions).toEqual([
+      expect.objectContaining({ emoji: "👍", count: 1, by: [expect.objectContaining({ session_name: "codex-e2e" })] }),
+    ]);
+    const listedReactions = parseToolText(
+      await client.callTool({ name: "bridge_list_reactions", arguments: { event_id: root.event.event_id } }),
+    ) as { reactions: Array<{ emoji: string; count: number }> };
+    expect(listedReactions.reactions).toEqual([expect.objectContaining({ emoji: "👍", count: 1 })]);
+    const threads = parseToolText(
+      await client.callTool({ name: "bridge_group_history", arguments: { name: "mcp-room", view: "threads" } }),
+    ) as { threads: Array<{ root_event_id: number; reply_count: number }> };
+    expect(threads.threads).toEqual([expect.objectContaining({ root_event_id: root.event.event_id, reply_count: 4 })]);
+    const status = parseToolText(
+      await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "status" } }),
+    ) as { status: { root_event_id: number; event_count: number } };
+    expect(status.status).toMatchObject({ root_event_id: root.event.event_id, event_count: 5 });
+    const transcript = parseToolText(
+      await client.callTool({ name: "bridge_get_thread", arguments: { root_event_id: root.event.event_id, format: "transcript" } }),
+    ) as { transcript: string };
+    expect(transcript.transcript).toContain("hello room");
+    expect(transcript.transcript).toContain("thread reply");
+    expect(transcript.transcript).toContain("threaded bridge reply");
+    const queried = parseToolText(
+      await client.callTool({
+        name: "bridge_query_events",
+        arguments: {
+          sql: "select body from thread_events where thread_root_event_id = ? order by event_id",
+          params: [root.event.event_id],
+        },
+      }),
+    ) as { rows: Array<{ body: string }> };
+    expect(queried.rows.map((row) => row.body)).toEqual([
+      "hello room",
+      "thread reply",
+      "main bridge reply",
+      "threaded bridge reply",
+      "second thread reply",
+    ]);
+    const directQueried = parseToolText(
+      await client.callTool({
+        name: "bridge_query_events",
+        arguments: {
+          sql: "select body, reply_to_event_id, direct_body, thread_root_event_id, thread_root_body from thread_events where reply_to_event_id = ? order by event_id",
+          params: [threadReply.event.event_id],
+        },
+      }),
+    ) as { rows: Array<{ body: string; reply_to_event_id: number; direct_body: string; thread_root_event_id: number; thread_root_body: string }> };
+    expect(directQueried.rows).toEqual([
+      {
+        body: "threaded bridge reply",
+        reply_to_event_id: threadReply.event.event_id,
+        direct_body: "thread reply",
+        thread_root_event_id: root.event.event_id,
+        thread_root_body: "hello room",
+      },
+    ]);
   } finally {
     await client.close();
   }
@@ -361,14 +525,22 @@ test("MCP errors surface as structured {error:{code,message,status?}} JSON with 
       expect(Array.isArray(left.event.mentions)).toBe(true);
     }
 
-    // 4. event_ids + thread_of together → invalid_argument from the adapter.
-    const conflictErr = parseError(
+    // 4. view=events refuses thread replies and points callers at bridge_get_thread.
+    await client.callTool({ name: "bridge_join_group", arguments: { name: "structured-room", alias: "canary" } });
+    const reply = parseToolText(
+      await client.callTool({
+        name: "bridge_send_group",
+        arguments: { name: "structured-room", message: "reply row", in_reply_to: sent.event.event_id },
+      }),
+    ) as { event: { event_id: number } };
+    const replyLookupErr = parseError(
       await client.callTool({
         name: "bridge_group_history",
-        arguments: { name: "structured-room", event_ids: [sent.event.event_id], thread_of: sent.event.event_id },
+        arguments: { name: "structured-room", view: "events", event_ids: [reply.event.event_id] },
       }),
     );
-    expect(conflictErr.code).toBe("invalid_argument");
+    expect(replyLookupErr.code).toBe("event_is_thread_reply");
+    expect(replyLookupErr.message).toMatch(/bridge_get_thread/);
 
     // Use `registered.peer.peer_id` to silence the unused-var lint.
     expect(registered.peer.peer_id).toMatch(/^[0-9a-f-]+$/);

@@ -5,9 +5,12 @@ import type { LaunchTool } from "../launch/build.ts";
 
 export interface LaunchAgentInput {
   tool: LaunchTool;
+  profileName?: string;
   name: string;
   repo: string;
   group?: string;
+  model?: string;
+  thinking?: string;
   args?: string[];
 }
 
@@ -82,14 +85,34 @@ export function renameAgentSession(
   });
 }
 
+export function setAgentModel(
+  client: ClientConfig,
+  input:
+    | { peerId: string; model: string; hostTool?: never; hostSessionId?: never }
+    | { hostTool: string; hostSessionId: string; model: string; peerId?: never },
+): Promise<{ binding: AgentSessionBinding }> {
+  return requestJson<{ binding: AgentSessionBinding }>(client, "/agent-sessions/set-model", {
+    method: "POST",
+    body: JSON.stringify({
+      peer_id: "peerId" in input ? input.peerId : undefined,
+      host_tool: "hostTool" in input ? input.hostTool : undefined,
+      host_session_id: "hostSessionId" in input ? input.hostSessionId : undefined,
+      model: input.model,
+    }),
+  });
+}
+
 export function launchAgent(client: ClientConfig, input: LaunchAgentInput): Promise<LaunchResult> {
   return requestJson<LaunchResult>(client, "/agent-sessions/launch", {
     method: "POST",
     body: JSON.stringify({
       tool: input.tool,
+      ...(input.profileName ? { profile_name: input.profileName } : {}),
       name: input.name,
       repo: input.repo,
       ...(input.group ? { group: input.group } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.thinking ? { thinking: input.thinking } : {}),
       ...(input.args ? { args: input.args } : {}),
     }),
   });

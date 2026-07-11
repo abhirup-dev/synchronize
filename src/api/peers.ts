@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { requestJson, type ClientConfig } from "../client.ts";
 import type { ActivityState } from "../constants.ts";
 import type { GroupMember, Peer } from "./types.ts";
@@ -31,7 +32,7 @@ export function registerPeer(
       session_name: input.sessionName,
       purpose: input.purpose,
       tool: input.tool,
-      machine_id: input.machineId,
+      machine_id: input.machineId ?? hostname(),
     }),
   });
 }

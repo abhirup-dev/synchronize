@@ -1,0 +1,46 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Overview/Introduction" />
+
+# Synchronize Web UI — Component Glossary
+
+This Storybook is the **UI catalog and flow regression surface** for the
+synchronize web chat UI. Every story renders real production components
+(imported straight from `src/components/` or the exported `Shell`) against
+realistic data from `src/data/seed.ts` via `MockDataSource`. There are no
+Storybook-only forks of components.
+
+Storybook owns component states and composed UI flows. The live `/web` app and
+Bun integration tests still prove daemon/API behavior, routing, and SSE.
+
+## How the catalog is organized
+
+Stories are grouped by product vocabulary, not by file layout:
+
+- **Primitives** — identity badges, avatars, status dots, resize handle.
+- **Messages** — `MessageRow`, `Markdown`, `PollWidget`.
+- **Composer** — `Composer` (with a type-and-send interaction test) and
+  `AttachmentPreview`.
+- **Navigation** — `Sidebar`, `RoomHeader`, `AgentRoster`.
+- **Surfaces** — `ChatView`, `BoardView`, `ThreadPane`, `ThreadSummaryPanel`,
+  `TimelineRail`, `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
+- **Activity** — `ActivityItem`, `ActivityView`.
+- **Agent States** — `AgentPreview`, `SpawnAgentDialog`, `AgentColorPicker`.
+- **Flows** — composed shell journeys in `web/src/flows/*.stories.tsx`.
+
+Each component also has an auto-generated **Docs** page listing its props
+(args/argTypes) — use it to answer "what does this component take?" without
+opening source.
+
+## Tokens, themes, and skins
+
+All visual values flow through CSS custom properties. The authoritative token
+contract — palette, the `data-theme` palettes (light, rose-pine-dawn,
+kanagawa-wave) and the `data-skin` aesthetic layer
+(brutal / glass) — lives in `web/DESIGN.md` and `web/src/styles.css`. Use the
+toolbar **Theme** and **Skin** controls to view any story across them.
+
+## Authoring new stories
+
+See **Overview → Authoring Stories** for the DataSource contract and the
+provider requirements every story relies on.

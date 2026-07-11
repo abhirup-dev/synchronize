@@ -1,0 +1,74 @@
+import { Meta } from "@storybook/addon-docs/blocks";
+
+<Meta title="Overview/Authoring Stories" />
+
+# Authoring Stories
+
+Stories capture **product states over the `DataSource` contract** — busy agents,
+a thread with replies, an archived seat, a draft attachment — not throwaway
+screenshots. Follow these rules so the catalog stays consistent and honest.
+
+## The DataSource contract is the boundary
+
+Components read snapshots and dispatch commands through hooks
+(`useAgents`, `useRooms`, `useMessages`, `useThreadReplies`, `useActivity`, …)
+defined in `src/data/context.tsx`. They never import a concrete backend.
+
+- **Default stories use `MockDataSource`** (`src/data/mock.ts`), seeded from
+  `src/data/seed.ts`. Both `MockDataSource` and the live `DaemonDataSource`
+  `implement DataSource` (`src/data/types.ts`), so fixtures are contract-valid
+  by construction and `bun run typecheck` enforces their shape.
+- **Never import `DaemonDataSource` / `data/daemon.ts` in a story.** Daemon
+  behavior is verified by the Bun integration tests and the live `/web` app.
+- **Reuse `seed.ts` — never paste seed arrays into a story.** Import `AGENTS`,
+  `GROUPS`, `DMS`, `MESSAGES`, `THREAD_REPLIES`, `TASKS`, `ARTIFACTS`, `TIMELINE`
+  and derive from them. (Data the seed genuinely lacks — e.g. attachment fixtures
+  — may be constructed inline against the `types.ts` interfaces.)
+
+## Providers are global — don't re-mount them
+
+`.storybook/preview.tsx` wraps **every** story in the same provider stack as
+`App.tsx`:
+
+```
+DataSourceProvider → ContextMenuProvider → ToastProvider → ArchiveRecoveryProvider
+```
+
+backed by a **fresh `MockDataSource` per mount** (so localStorage/mutable
+snapshot state never leaks between stories). Consequences:
+
+- Components that read data via hooks just work — pass only their non-data props.
+- Components built around a provider + hook (`ContextMenu`, `Toast`,
+  `ArchiveRecovery`) have no standalone render: write a small in-story demo that
+  triggers the UI through the hook. Do **not** mount the provider again.
+- Portal-based UI (dialogs, context menus, toasts) renders over the canvas — use
+  `parameters: { layout: "fullscreen" }` for shells and surfaces.
+
+## Keeping stories current
+
+Stories render the real components, so simple visual implementation changes flow
+into Storybook automatically. You still need to update stories when the component
+contract changes: props/callbacks, visible states, interactions, deleted
+behaviour, or composed flow wiring.
+
+- Update story args when component props are added, removed, or renamed.
+- Add or extend a story when a new visible state or variant is introduced.
+- Add a `play` test for new interactions.
+- Remove stale stories and assertions when behaviour is deleted.
+- For shared menus, dialogs, sheets, or toasts, mount the real surface and assert
+  the visible result; do not duplicate helper logic inside a story.
+- For portal content, query with `screen` rather than `canvas`.
+- If an existing story or flow is stale, violates these rules, or mounts the
+  component differently from the app, call that out for a product/maintenance
+  decision before expanding the scope.
+
+## Conventions
+
+- Pure-prop components: `} satisfies Meta<typeof Component>` + `StoryObj<typeof meta>`,
+  with shared args on `meta` and one `StoryObj` per state. See `MessageRow.stories.tsx`.
+- Render-only / showcase or ref-prop components: `} satisfies Meta` + `StoryObj`
+  (loose), using `render`. See `primitives.stories.tsx`, `ResizeHandle.stories.tsx`.
+- Aim for 2–4 meaningful states per component (empty, populated, edge case).
+- Interaction tests live in `play` functions (`import { within, userEvent, expect } from "storybook/test"`).
+  Add one for any genuinely interactive behavior — see `Composer.stories.tsx`.
+- Use the product-vocabulary `title` families listed in the Introduction.

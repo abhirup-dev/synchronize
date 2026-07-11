@@ -1,55 +1,27 @@
-# MCP Adapter Surface Series
+# MCP Adapter Surface Navigation
 
-Covers MCP tool/API changes after the older `mcp_notification_modes` memory. Search terms: MCP, bridge, tools, event formatting, structured errors, groups, media, peers.
+Use this memory to orient in MCP code, then verify exact behavior in source and
+tests.
 
-## Architecture reminder
+## Where to look
 
-`src/mcp/server.ts` builds the MCP server. It threads `{ mcp, state, emit, lifecycle }` as `ToolContext` into tool registrars under `src/mcp/tools/`.
+- `src/mcp/server.ts` — MCP server construction.
+- `src/mcp/state.ts` — adapter-local state and daemon client discovery.
+- `src/mcp/lifecycle.ts` — registration, heartbeat, sticky peer id.
+- `src/mcp/tools/` — individual bridge tools.
+- `src/mcp/tools/event-format.ts` — daemon event formatting for MCP responses.
+- `tests/mcp.test.ts`, `tests/mcp-e2e.test.ts`, `tests/mcp-archive.test.ts`.
 
-`src/mcp/state.ts` owns adapter-local state and client discovery. `src/mcp/lifecycle.ts` owns registration lifecycle and sticky peer id handling.
+## Mental model
 
-The MCP adapter remains thin: durable truth stays in the daemon, and MCP tools call the typed `src/api/` facade.
+The MCP adapter is intentionally thin. Durable truth lives in the daemon; MCP
+tools call typed `src/api/` helpers.
 
-## Recent tool-surface changes
+Codex uses polling notifications. Claude can use local callback push for local
+daemon connections; remote Claude falls back to polling because a remote daemon
+cannot call back to the client's localhost endpoint. Inbox remains the fallback.
 
-Group tools in `src/mcp/tools/groups.ts` now expose:
+## Config guardrail
 
-- `bridge_create_group` with description metadata.
-- `bridge_rename_in_group` for alias changes.
-- `bridge_send_group` with `in_reply_to` and mention delivery semantics in the tool description.
-- `bridge_group_history` with three modes:
-  - default main-channel history, hiding thread replies.
-  - `thread_of=<root_event_id>` for one thread.
-  - `event_ids=[...]` for exact event fetches regardless of main/thread placement.
-
-`thread_of` and `event_ids` are mutually exclusive. Passing both returns an MCP structured error.
-
-## Structured errors
-
-MCP tools now use structured error envelopes for expected user/input failures:
-
-```json
-{ "error": { "code": "...", "message": "...", "status": 400 } }
-```
-
-The MCP response is marked `isError` where appropriate. See `src/mcp/util.ts` for the helper behavior and `tests/mcp-e2e.test.ts` for expected shape.
-
-## Event formatting
-
-`src/mcp/tools/event-format.ts` converts daemon `Event` objects for MCP responses:
-
-- parse `mentions_json` into `mentions: string[]`.
-- drop the raw `mentions_json` field.
-- tolerate malformed JSON by returning an empty mentions array and logging.
-
-Every MCP response carrying event(s) should pass through this formatting. This was added because some inline event responses previously leaked `mentions_json`.
-
-## Agent registration and peer identity
-
-`src/mcp/lifecycle.ts::resolveMcpRegisterPeerId` honors `SYNCHRONIZE_PEER_ID`. Recent hook/session work also interacts with `SYNCHRONIZE_SESSION_NAME` via daemon agent-session APIs, though MCP peer id still flows through lifecycle/registration.
-
-## Useful tests
-
-- `tests/mcp.test.ts` — unit-ish MCP adapter coverage.
-- `tests/mcp-e2e.test.ts` — full stdio MCP behavior, structured errors, mentions formatting, `event_ids`/`thread_of` validation.
-- `tests/peer-id-env.test.ts` — sticky peer id via env.
+For exact MCP config/env behavior, use `docs/configuration/` and
+`src/mcp/lifecycle.ts`. Do not duplicate env tables here.

@@ -1,14 +1,17 @@
 import { expect, test } from "bun:test";
 import { AoeBackend, buildCmdOverride, parseAoeList, type CommandResult } from "../src/launch/backend.ts";
 
-function recorder(results: Record<string, CommandResult> = {}) {
+function recorder(results: Record<string, CommandResult | CommandResult[]> = {}) {
   const calls: string[][] = [];
   const ok: CommandResult = { exitCode: 0, stdout: "", stderr: "" };
   const run = async (cmd: string[]): Promise<CommandResult> => {
     calls.push(cmd);
     const key = cmd.join(" ");
     for (const [match, res] of Object.entries(results)) {
-      if (key.includes(match)) return res;
+      if (key.includes(match)) {
+        if (Array.isArray(res)) return res.shift() ?? ok;
+        return res;
+      }
     }
     return ok;
   };
@@ -21,6 +24,18 @@ test("buildCmdOverride wraps env + command and quotes spaced values", () => {
   expect(s).toContain("SYNCHRONIZE_HOME=/tmp/h");
   expect(s).toContain("'X=a b'");
   expect(s.endsWith("claude --model opus")).toBe(true);
+});
+
+test("buildCmdOverride wrapExec wraps claude in sh -c so AOE's --session-id is absorbed", () => {
+  const s = buildCmdOverride({ SYNCHRONIZE_HOME: "/tmp/h" }, ["claude", "--resume", "abc"], { wrapExec: true });
+  // AOE appends `--session-id <uuid>` to the sh invocation; it becomes a
+  // positional arg to `sh -c`, never reaching claude. `exec` keeps claude as
+  // the direct PTY process.
+  expect(s.startsWith("sh -c ")).toBe(true);
+  expect(s).toContain("exec env");
+  expect(s).toContain("SYNCHRONIZE_HOME=/tmp/h");
+  expect(s).toContain("claude --resume abc");
+  expect(s.endsWith("aoe-claude-wrap")).toBe(true);
 });
 
 test("spawn issues profile create, group create, add, and session start in order", async () => {
@@ -72,6 +87,22 @@ test("standalone spawn (no group) skips group create and -g", async () => {
   expect(addCall).not.toContain("-g");
 });
 
+test("letta uses an AOE-supported command label while preserving the Letta override", async () => {
+  const { calls, run } = recorder();
+  const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
+  await backend.spawn({
+    title: "letta-abcd1234",
+    tool: "letta",
+    command: ["bun", "run", "extensions/letta-synchronize/src/index.ts", "--model", "zai/glm-4.7"],
+    env: { ZAI_CODING_API_KEY_FILE: "/tmp/zai.key" },
+    cwd: "/r",
+  });
+  const addCall = calls.find((c) => c.includes("add"))!;
+  expect(addCall[addCall.indexOf("--cmd") + 1]).toBe("codex");
+  expect(addCall[addCall.indexOf("--cmd-override") + 1]).toContain("extensions/letta-synchronize/src/index.ts");
+  expect(addCall[addCall.indexOf("--cmd-override") + 1]).toContain("ZAI_CODING_API_KEY_FILE=/tmp/zai.key");
+});
+
 test("spawn throws with backend detail when add fails", async () => {
   const { run } = recorder({ " add ": { exitCode: 1, stdout: "", stderr: "boom" } });
   const backend = new AoeBackend({ profile: "p", run, confirmDevChannel: false });
@@ -93,12 +124,56 @@ test("when session start fails, spawn rolls back the added session and throws", 
 test("autoConfirmDevChannelPrompt sends Enter to the pane when the dev-channel prompt appears", async () => {
   const { calls, run } = recorder({
     "list-sessions": { exitCode: 0, stdout: "other\naoe_worker-12345678_abcd1234\n", stderr: "" },
-    "capture-pane": { exitCode: 0, stdout: "...\n  1. I am using this for local development\n  Enter to confirm\n", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%42\n", stderr: "" },
+    "capture-pane": [
+      { exitCode: 0, stdout: "...\n  1. I am using this for local development\n  Enter to confirm\n", stderr: "" },
+      { exitCode: 0, stdout: "Claude is ready", stderr: "" },
+    ],
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(true);
+  const capture = calls.find((c) => c.includes("capture-pane"));
+  expect(capture).toEqual(["tmux", "capture-pane", "-p", "-J", "-S", "-200", "-t", "%42"]);
+  const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toEqual([["tmux", "send-keys", "-t", "%42", "Enter"]]);
+  const sentCarriageReturn = calls.filter((c) => c.includes("send-keys") && c.includes("C-m"));
+  expect(sentCarriageReturn).toHaveLength(0);
+});
+
+test("autoConfirmDevChannelPrompt falls back to C-m and retries when the prompt remains visible", async () => {
+  const { calls, run } = recorder({
+    "list-sessions": { exitCode: 0, stdout: "aoe_worker-12345678_abcd1234\n", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%42\n", stderr: "" },
+    "capture-pane": { exitCode: 0, stdout: "I am using this for local development\nEnter to confirm", stderr: "" },
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(false);
+  const sentEnter = calls.filter((c) => c.includes("send-keys") && c.includes("Enter"));
+  expect(sentEnter).toHaveLength(3);
+  expect(sentEnter.every((c) => c.join(" ") === "tmux send-keys -t %42 Enter")).toBe(true);
+  const sentCarriageReturn = calls.filter((c) => c.includes("send-keys") && c.includes("C-m"));
+  expect(sentCarriageReturn).toHaveLength(3);
+  expect(sentCarriageReturn.every((c) => c.join(" ") === "tmux send-keys -t %42 C-m")).toBe(true);
+});
+
+test("autoConfirmDevChannelPrompt resolves AOE-truncated tmux names through session id", async () => {
+  const { calls, run } = recorder({
+    "list --json": {
+      exitCode: 0,
+      stdout: JSON.stringify([{ id: "60cd23d0d6644540", title: "abcd1234-verylong" }]),
+      stderr: "",
+    },
+    "list-sessions": { exitCode: 0, stdout: "aoe_abcd1234-verylong_zzz\naoe_abcd1234-verylong_60cd23d0\n", stderr: "" },
+    "display-message": { exitCode: 0, stdout: "%43\n", stderr: "" },
+    "capture-pane": [
+      { exitCode: 0, stdout: "Enter to confirm", stderr: "" },
+      { exitCode: 0, stdout: "ready", stderr: "" },
+    ],
+  });
+  const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
+  await expect(backend.autoConfirmDevChannelPrompt("abcd1234-verylong")).resolves.toBe(true);
   const sentEnter = calls.find((c) => c.includes("send-keys") && c.includes("Enter"));
-  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "aoe_worker-12345678_abcd1234", "Enter"]);
+  expect(sentEnter).toEqual(["tmux", "send-keys", "-t", "%43", "Enter"]);
 });
 
 test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears", async () => {
@@ -107,7 +182,7 @@ test("autoConfirmDevChannelPrompt gives up quietly when no prompt ever appears",
     "capture-pane": { exitCode: 0, stdout: "just a normal claude UI, no prompt", stderr: "" },
   });
   const backend = new AoeBackend({ profile: "p", run, sleep: async () => {} });
-  await backend.autoConfirmDevChannelPrompt("worker-12345678");
+  await expect(backend.autoConfirmDevChannelPrompt("worker-12345678")).resolves.toBe(false);
   expect(calls.some((c) => c.includes("send-keys"))).toBe(false);
 });
 

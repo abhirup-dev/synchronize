@@ -1,0 +1,50 @@
+/* Chat background layer — preset artwork behind the message scroll.
+ *
+ * The artwork is painted by a ::before layer on .chat-region (behind the
+ * scrolling children, above the region's own paper). App.tsx sets the
+ * --chat-bg-* properties on <html> from the selected preset
+ * (data/chatBackgrounds.ts); no preset → background-image: none.
+ *
+ * Per-skin treatment:
+ *  - brutal: painterly — muted saturation, a touch of sepia, low opacity, so
+ *    the art sits in the paper like an oil/watercolour wash under the ink.
+ *  - glass: shine-through — higher opacity and a slight saturation lift; the
+ *    translucent cards and frosted chrome let it glow through.
+ */
+.chat-region {
+  position: relative;
+}
+.chat-region::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--chat-bg-image, none);
+  background-size: var(--chat-bg-size, cover);
+  background-repeat: var(--chat-bg-repeat, no-repeat);
+  background-position: center;
+  opacity: 0.3;
+}
+
+[data-skin="brutal"] .chat-region::before,
+:root:not([data-skin]) .chat-region::before {
+  opacity: 0.42;
+  filter: saturate(0.72) contrast(0.88) sepia(0.16);
+}
+:root[data-theme="kanagawa-wave"][data-skin="brutal"] .chat-region::before{
+  /* On dark papers, screen-blend turns the ink art into faint light — the
+     translucent grays would otherwise read as a muddy veil. */
+  opacity: 0.4;
+  mix-blend-mode: screen;
+  filter: saturate(0.85) brightness(1.7);
+}
+
+[data-skin="glass"] .chat-region::before {
+  opacity: 0.62;
+  filter: saturate(1.08);
+}
+:root[data-theme="kanagawa-wave"][data-skin="glass"] .chat-region::before{
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  filter: saturate(1.15) brightness(1.85);
+}

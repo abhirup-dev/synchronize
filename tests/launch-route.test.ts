@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { startTestDaemon } from "./helpers/daemon.ts";
 
 const homes: string[] = [];
 
@@ -12,34 +13,7 @@ afterEach(async () => {
 });
 
 async function startDaemon(home: string): Promise<{ baseUrl: string; stop: () => Promise<void> }> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "src/daemon.ts"],
-    env: { ...process.env, SYNCHRONIZE_HOME: home, SYNCHRONIZE_PORT: "0" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const discoveryPath = join(home, "daemon.json");
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      const discovery = (await Bun.file(discoveryPath).json()) as { baseUrl: string };
-      const health = await fetch(`${discovery.baseUrl}/health`).catch(() => null);
-      if (health?.ok) {
-        return {
-          baseUrl: discovery.baseUrl,
-          stop: async () => {
-            proc.kill();
-            await proc.exited;
-          },
-        };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  proc.kill();
-  await proc.exited;
-  throw new Error("daemon did not start");
+  return startTestDaemon({ home });
 }
 
 async function postLaunch(baseUrl: string, body: unknown): Promise<{ status: number; json: any }> {
@@ -68,6 +42,9 @@ test("POST /agent-sessions/launch rejects invalid bodies with 400 invalid_launch
 
     const badArgs = await postLaunch(daemon.baseUrl, { tool: "pi", name: "a", repo: "/r", args: [1, 2] });
     expect(badArgs.status).toBe(400);
+
+    const badModel = await postLaunch(daemon.baseUrl, { tool: "pi", name: "a", repo: "/r", model: "gpt-4o" });
+    expect(badModel.status).toBe(400);
   } finally {
     await daemon.stop();
   }

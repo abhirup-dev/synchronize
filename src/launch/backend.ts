@@ -1,4 +1,4 @@
-import type { LaunchTool } from "./build.ts";
+import { LAUNCH_ENV_UNSET_KEYS, type LaunchTool } from "./build.ts";
 
 /**
  * Session backend seam.
@@ -12,6 +12,8 @@ export interface SessionBackend {
   ensureReady(): Promise<void>;
   /** Create + start one agent session. Throws on backend failure. */
   spawn(spec: LaunchSpec): Promise<void>;
+  /** Best-effort prompt confirmation for sessions that need local acceptance. */
+  confirmPrompt?(title: string): Promise<boolean>;
   /** Tear down one session by its backend title. Throws on failure. */
   stop(title: string): Promise<void>;
   /** List live sessions known to the backend. */
@@ -19,7 +21,7 @@ export interface SessionBackend {
 }
 
 export interface LaunchSpec {
-  /** Backend session title (durable, derivable: `${session_name}-${peerid8}`). */
+  /** Backend session title (durable, derivable, <= AOE's 20-char tmux prefix). */
   title: string;
   /** Agent type for the backend's own rendering (AOE: `--cmd`). */
   tool: LaunchTool;
@@ -71,12 +73,40 @@ function shellJoin(tokens: string[]): string {
   return tokens.map(shellQuote).join(" ");
 }
 
+function aoeCommandTool(tool: LaunchTool): string {
+  return tool === "letta" ? "codex" : tool;
+}
+
 /**
  * Build the `--cmd-override` string AOE runs in the pane:
  * `env KEY=VAL … <agent argv>`. Exported for testing.
+ *
+ * `wrapExec` (claude only): AOE recognizes the `claude` binary and appends its
+ * own `--session-id <uuid>` for session tracking. That collides with our
+ * `claude --resume <id>` (claude rejects `--session-id` with `--resume` unless
+ * `--fork-session`, which we must never use — it forks instead of resuming). So
+ * for claude we wrap the real command in `sh -c '<inner>' aoe-claude-wrap`:
+ * AOE's appended `--session-id` lands as an ignored positional arg to `sh`
+ * (never reaching claude), and `exec` replaces the shell with claude so it is
+ * the direct PTY process (clean TTY + signal handling). Pi has no such prompt
+ * and is left unwrapped.
  */
-export function buildCmdOverride(env: Record<string, string>, command: string[]): string {
-  return shellJoin(["env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`), ...command]);
+export function buildCmdOverride(
+  env: Record<string, string>,
+  command: string[],
+  opts: { wrapExec?: boolean } = {},
+): string {
+  const envCmd = [
+    "env",
+    ...LAUNCH_ENV_UNSET_KEYS.flatMap((key) => ["-u", key]),
+    ...Object.entries(env).map(([k, v]) => `${k}=${v}`),
+    ...command,
+  ];
+  if (opts.wrapExec) {
+    const inner = shellJoin(["exec", ...envCmd]);
+    return shellJoin(["sh", "-c", inner, "aoe-claude-wrap"]);
+  }
+  return shellJoin(envCmd);
 }
 
 /** Tolerant parser for `aoe list --json` (top-level array of sessions). */
@@ -154,8 +184,8 @@ export class AoeBackend implements SessionBackend {
       // Cosmetic AOE group for HUD grouping; idempotent, errors ignored.
       await this.run(this.aoe(["group", "create", spec.group]));
     }
-    const override = buildCmdOverride(spec.env, spec.command);
-    const addArgs = ["add", "--title", spec.title, "--cmd", spec.tool, "--cmd-override", override];
+    const override = buildCmdOverride(spec.env, spec.command, { wrapExec: spec.tool === "claude" });
+    const addArgs = ["add", "--title", spec.title, "--cmd", aoeCommandTool(spec.tool), "--cmd-override", override];
     if (spec.group) addArgs.push("-g", spec.group);
     addArgs.push(spec.cwd);
     const added = await this.run(this.aoe(addArgs));
@@ -171,40 +201,81 @@ export class AoeBackend implements SessionBackend {
       await this.run(this.aoe(["remove", "--force", spec.title]));
       throw new Error(failure("aoe session start", spec.title, started));
     }
-    // claude's --dangerously-load-development-channels shows a one-time
-    // "I am using this for local development" confirmation in the pane on every
-    // launch. Auto-dismiss it so the spawned session is unattended. Best-effort
-    // and non-blocking: never delays or fails the launch.
+    // In direct/non-durable use, keep the old best-effort non-blocking prompt
+    // confirmer. The daemon's durable worker also calls confirmPrompt as an
+    // explicit lifecycle step, and duplicate Enter attempts are harmless.
     if (this.confirmDevChannel && spec.tool === "claude") {
-      void this.autoConfirmDevChannelPrompt(spec.title).catch(() => {});
+      void this.confirmPrompt(spec.title).catch(() => {});
     }
+  }
+
+  async confirmPrompt(title: string): Promise<boolean> {
+    if (!this.confirmDevChannel) return true;
+    return this.autoConfirmDevChannelPrompt(title);
   }
 
   /**
    * Poll the session's tmux pane for claude's dev-channel confirmation prompt
-   * and send a named Enter to accept it. Bounded and best-effort.
+   * and accept it. Bounded and best-effort.
    */
-  async autoConfirmDevChannelPrompt(title: string): Promise<void> {
+  async autoConfirmDevChannelPrompt(title: string): Promise<boolean> {
     const PROMPT = /I am using this for local development|Enter to confirm/i;
+    let confirmationsSent = 0;
     for (let attempt = 0; attempt < 24; attempt += 1) {
       await this.sleep(1500);
       const session = await this.tmuxSessionFor(title);
       if (!session) continue;
-      const pane = await this.run(["tmux", "capture-pane", "-p", "-t", session]);
-      if (pane.exitCode !== 0) continue;
-      if (PROMPT.test(pane.stdout)) {
-        await this.run(["tmux", "send-keys", "-t", session, "Enter"]);
-        return;
+      const paneTarget = await this.activePaneFor(session);
+      const target = paneTarget ?? session;
+      const promptVisible = await this.isPromptVisible(target, PROMPT);
+      if (!promptVisible) {
+        if (confirmationsSent > 0) return true;
+        continue;
       }
+
+      await this.sendEnter(target);
+      await this.sleep(250);
+      if (!(await this.isPromptVisible(target, PROMPT))) return true;
+      await this.sendCarriageReturn(target);
+      confirmationsSent += 1;
+      if (confirmationsSent >= 3) return false;
     }
+    return false;
   }
 
-  /** Resolve the tmux session name AOE created for a title (aoe_<title>_<id>). */
+  private async isPromptVisible(target: string, prompt: RegExp): Promise<boolean> {
+    const pane = await this.run(["tmux", "capture-pane", "-p", "-J", "-S", "-200", "-t", target]);
+    return pane.exitCode === 0 && prompt.test(pane.stdout);
+  }
+
+  private async activePaneFor(session: string): Promise<string | null> {
+    const res = await this.run(["tmux", "display-message", "-p", "-t", session, "#{pane_id}"]);
+    if (res.exitCode !== 0) return null;
+    return res.stdout.trim() || null;
+  }
+
+  private async sendEnter(target: string): Promise<void> {
+    await this.run(["tmux", "send-keys", "-t", target, "Enter"]);
+  }
+
+  private async sendCarriageReturn(target: string): Promise<void> {
+    await this.run(["tmux", "send-keys", "-t", target, "C-m"]);
+  }
+
+  /** Resolve the tmux session name AOE created for a title. */
   async tmuxSessionFor(title: string): Promise<string | null> {
+    const aoeList = await this.run(this.aoe(["list", "--json"]));
+    const aoeSession = aoeList.exitCode === 0 ? parseAoeList(aoeList.stdout).find((session) => session.title === title) : undefined;
+    const idSuffix = aoeSession?.id?.slice(0, 8);
     const res = await this.run(["tmux", "list-sessions", "-F", "#{session_name}"]);
     if (res.exitCode !== 0) return null;
+    const sessions = res.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (idSuffix) {
+      const byId = sessions.find((session) => session.startsWith("aoe_") && session.endsWith(`_${idSuffix}`));
+      if (byId) return byId;
+    }
     const prefix = `aoe_${title}_`;
-    const match = res.stdout.split("\n").map((s) => s.trim()).find((s) => s.startsWith(prefix));
+    const match = sessions.find((s) => s.startsWith(prefix));
     return match ?? null;
   }
 

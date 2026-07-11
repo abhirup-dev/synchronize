@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { subscribeToEvents, type Event, type PiSyncClient } from "./client.ts";
+import { readEvents, subscribeToEvents, type Event, type PiSyncClient } from "./client.ts";
 import { formatError, log } from "./log.ts";
 
 export interface PiEventSubscriptionOptions {
@@ -13,6 +13,9 @@ export interface PiEventSubscriptionOptions {
 
 export class PiEventSubscription {
   private server: Server | null = null;
+  private poller: ReturnType<typeof setInterval> | null = null;
+  private polling = false;
+  private cursor = 0;
   private readonly token = crypto.randomUUID();
   private callbackUrl: string | null = null;
   readonly buffer: Event[] = [];
@@ -24,6 +27,10 @@ export class PiEventSubscription {
   }
 
   async start(): Promise<void> {
+    if (this.options.client.remote) {
+      this.startPolling();
+      return;
+    }
     if (!this.server) {
       this.server = createServer((req, res) => {
         void this.handle(req, res);
@@ -53,10 +60,40 @@ export class PiEventSubscription {
     this.server?.close();
     this.server = null;
     this.callbackUrl = null;
+    if (this.poller) log(`stopping poll subscription peer_id=${this.options.peerId}`);
+    if (this.poller) clearInterval(this.poller);
+    this.poller = null;
+    this.polling = false;
   }
 
   isActive(): boolean {
-    return Boolean(this.server && this.callbackUrl);
+    return Boolean((this.server && this.callbackUrl) || this.poller);
+  }
+
+  private startPolling(): void {
+    if (this.poller) return;
+    const intervalMs = pollingIntervalMs();
+    log(`poll subscription starting peer_id=${this.options.peerId} interval_ms=${intervalMs}`);
+    this.poller = setInterval(() => {
+      void this.pollOnce();
+    }, intervalMs);
+    void this.pollOnce();
+  }
+
+  private async pollOnce(): Promise<void> {
+    if (this.polling) return;
+    this.polling = true;
+    try {
+      const response = await readEvents(this.options.client, this.options.peerId, { cursor: this.cursor, limit: 100 });
+      this.cursor = response.next_cursor;
+      for (const event of response.events) {
+        await this.dispatchEvent(event);
+      }
+    } catch (error) {
+      log(`poll subscription failed peer_id=${this.options.peerId}: ${formatError(error)}`);
+    } finally {
+      this.polling = false;
+    }
   }
 
   private async handle(
@@ -85,11 +122,8 @@ export class PiEventSubscription {
       return;
     }
     const limit = this.options.bufferLimit ?? 100;
-    this.buffer.push(body.event);
-    if (this.buffer.length > limit) this.buffer.splice(0, this.buffer.length - limit);
     try {
-      log(`dispatching event_id=${body.event.event_id} type=${body.event.type}`);
-      await this.options.onEvent(body.event);
+      await this.dispatchEvent(body.event, limit);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     } catch (error) {
@@ -97,4 +131,16 @@ export class PiEventSubscription {
       res.writeHead(502).end("dispatch failed");
     }
   }
+
+  private async dispatchEvent(event: Event, limit = this.options.bufferLimit ?? 100): Promise<void> {
+    this.buffer.push(event);
+    if (this.buffer.length > limit) this.buffer.splice(0, this.buffer.length - limit);
+    log(`dispatching event_id=${event.event_id} type=${event.type}`);
+    await this.options.onEvent(event);
+  }
+}
+
+function pollingIntervalMs(): number {
+  const raw = Number(process.env.SYNCHRONIZE_PI_POLL_MS);
+  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 1000;
 }

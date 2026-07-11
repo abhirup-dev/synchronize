@@ -119,12 +119,14 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
       log(`startup reusing peer_id=${peerId} pi_session_id=${piSessionId ?? "<unset>"}`);
       if (piSessionId) {
         const sessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? `pi-${peerId}`;
+        const launchId = process.env.SYNCHRONIZE_LAUNCH_ID;
         try {
           await registerAgentSession(client, {
             peerId,
             sessionName,
             hostSessionId: piSessionId,
             cwd: process.cwd(),
+            ...(launchId ? { launchId } : {}),
           });
           log(`refreshed agent_session host_session_id=${piSessionId} peer_id=${peerId}`);
         } catch (error) {
@@ -142,11 +144,14 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
     log(`synchronize CLI preflight passed cli=${cliPath}`);
     client = await discoverDaemon();
     const envSessionName = process.env.SYNCHRONIZE_SESSION_NAME ?? null;
+    const envPeerId = process.env.SYNCHRONIZE_PEER_ID ?? null;
+    const launchId = process.env.SYNCHRONIZE_LAUNCH_ID;
     const sessionName = resolveSessionName({ piSessionId, envSessionName });
     log(
-      `identity resolved session_name=${sessionName} env_session_name=${envSessionName ?? "<unset>"} pi_session_id=${piSessionId ?? "<unset>"}`,
+      `identity resolved session_name=${sessionName} env_session_name=${envSessionName ?? "<unset>"} env_peer_id=${envPeerId ?? "<unset>"} launch_id=${launchId ?? "<unset>"} pi_session_id=${piSessionId ?? "<unset>"}`,
     );
     const { peer } = await registerPeer(client, {
+      ...(envPeerId ? { peerId: envPeerId } : {}),
       tool: "pi",
       sessionName,
       purpose: PEER_PURPOSE,
@@ -161,6 +166,7 @@ export default function synchronizeExtension(pi: PiExtensionAPI): void {
         sessionName,
         hostSessionId: piSessionId,
         cwd: process.cwd(),
+        ...(launchId ? { launchId } : {}),
       });
       log(`registered agent_session host_tool=pi host_session_id=${piSessionId} peer_id=${peerId}`);
     }

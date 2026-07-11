@@ -4,51 +4,98 @@
 
 import type {
   Agent,
+  AgentRuntimeDetails,
   Artifact,
+  GroupPath,
   Message,
   Room,
   Task,
+  ThreadSummary,
   TimelineEvent,
 } from "./types.ts";
+import { identityColorCss, type IdentityColorRef, type IdentitySlot } from "../theme/identity.ts";
+
+const slot = (slotId: IdentitySlot): { color: string; colorRef: IdentityColorRef } => {
+  const colorRef = { kind: "slot", slot: slotId } satisfies IdentityColorRef;
+  return { colorRef, color: identityColorCss(colorRef) };
+};
+
+const neutralIdentity = (): { color: string; colorRef: IdentityColorRef } => {
+  const colorRef = { kind: "token", token: "--ink" } satisfies IdentityColorRef;
+  return { colorRef, color: identityColorCss(colorRef) };
+};
+
+// Runtime metadata for seeded agents — powers the roster model chips and the
+// agent-profile model picker (glass revamp Phase 5). Shapes mirror what the
+// daemon reports for launched sessions.
+const runtime = (id: string, tool: string, model: string, thinking: string | undefined, launchState: string, cwd: string, gitBranch: string, gitDirty: boolean): { runtimeDetails: AgentRuntimeDetails } => ({
+  runtimeDetails: {
+    peerId: `peer-${id}`,
+    tool,
+    model,
+    ...(thinking ? { thinking } : null),
+    source: "profile:backend",
+    machineId: "mac-studio-01",
+    hostSessionId: `tmux:sync-${id}`,
+    launchState,
+    cwd,
+    gitBranch,
+    gitDirty,
+  },
+});
 
 export const AGENTS: Agent[] = [
-  { id: "you",    name: "You",    handle: "you",    color: "#111111", role: "Human",                status: "online",  avatar: "Y" },
-  { id: "cortex", name: "Cortex", handle: "cortex", color: "#FFD23F", role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C" },
-  { id: "atlas",  name: "Atlas",  handle: "atlas",  color: "#FF5DA2", role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A" },
-  { id: "vega",   name: "Vega",   handle: "vega",   color: "#4D7CFE", role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V" },
-  { id: "nova",   name: "Nova",   handle: "nova",   color: "#7BE389", role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N" },
-  { id: "echo",   name: "Echo",   handle: "echo",   color: "#FF8A3D", role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E" },
-  { id: "pulse",  name: "Pulse",  handle: "pulse",  color: "#B49BFF", role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P" },
-  { id: "mira",   name: "Mira",   handle: "mira",   color: "#F45B69", role: "Teammate",             status: "online",  avatar: "M" },
-  { id: "jay",    name: "Jay",    handle: "jay",    color: "#2EC4B6", role: "Teammate",             status: "idle",    avatar: "J" },
+  { id: "you",    name: "You",    handle: "you",    ...neutralIdentity(), role: "Human",                status: "online",  avatar: "Y" },
+  { id: "cortex", name: "Cortex", handle: "cortex", ...slot(0), role: "Backend / refactors",  status: "busy",    statusNote: "running migrations on staging-db", avatar: "C",
+    ...runtime("cortex", "claude", "claude-opus-4-8", "medium", "running", "~/code/checkout", "feat/checkout-v2", true) },
+  { id: "atlas",  name: "Atlas",  handle: "atlas",  ...slot(1), role: "Frontend / design",    status: "busy",    statusNote: "writing Storybook stories", avatar: "A",
+    ...runtime("atlas", "claude", "claude-sonnet-4-6", "medium", "running", "~/code/checkout/web", "feat/checkout-v2", false) },
+  { id: "vega",   name: "Vega",   handle: "vega",   ...slot(2), role: "Infra / DevOps",       status: "idle",    statusNote: "last active 4m ago", avatar: "V",
+    ...runtime("vega", "pi", "gpt-5.5", "high", "idle", "~/code/infra", "main", false) },
+  { id: "nova",   name: "Nova",   handle: "nova",   ...slot(3), role: "QA / tests",           status: "busy",    statusNote: "fuzzing /api/auth", avatar: "N",
+    ...runtime("nova", "claude", "claude-haiku-4-5-20251001", "high", "running", "~/code/checkout", "feat/checkout-v2", false) },
+  { id: "echo",   name: "Echo",   handle: "echo",   ...slot(4), role: "Docs / research",      status: "idle",    statusNote: "last active 22m ago", avatar: "E",
+    ...runtime("echo", "letta", "zai/glm-4.7", undefined, "idle", "~/code/docs", "main", false) },
+  { id: "pulse",  name: "Pulse",  handle: "pulse",  ...slot(5), role: "Data / analytics",     status: "offline", statusNote: "off duty", avatar: "P",
+    ...runtime("pulse", "pi", "gpt-5.4-mini", "high", "stopped", "~/code/analytics", "main", false) },
+  { id: "mira",   name: "Mira",   handle: "mira",   ...slot(6), role: "Teammate",             status: "online",  avatar: "M" },
+  { id: "jay",    name: "Jay",    handle: "jay",    ...slot(7), role: "Teammate",             status: "idle",    avatar: "J" },
 ];
 
+// SpawnAgentDialog requires group rooms to carry launch paths.
+const groupPaths = (name: string): { paths: GroupPath[] } => ({
+  paths: [
+    { id: `${name}-root`, path: `~/code/${name}` },
+    { id: `${name}-web`, path: `~/code/${name}/web`, label: "web" },
+  ],
+});
+
 export const GROUPS: Room[] = [
-  { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", color: "#FFD23F",
-    members: ["you", "cortex", "atlas", "vega", "nova"],
+  { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", ...slot(0),
+    members: ["you", "cortex", "atlas", "vega", "nova"], ...groupPaths("checkout-revamp"),
     lastPreview: "Cortex: pushed schema migration #4128", unread: 3, pinned: true },
-  { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", color: "#B49BFF",
-    members: ["you", "pulse", "vega", "echo"],
+  { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", ...slot(5),
+    members: ["you", "pulse", "vega", "echo"], ...groupPaths("ml-ranking"),
     lastPreview: "Pulse: AUC bumped to 0.871", unread: 0 },
-  { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", color: "#F45B69",
-    members: ["you", "vega", "nova", "cortex"],
+  { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", ...slot(6),
+    members: ["you", "vega", "nova", "cortex"], ...groupPaths("infra-oncall"),
     lastPreview: "Vega: rotated KMS keys", unread: 2 },
-  { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", color: "#FF5DA2",
-    members: ["you", "atlas", "echo"],
+  { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", ...slot(1),
+    members: ["you", "atlas", "echo"], ...groupPaths("design-system"),
     lastPreview: "Atlas: shipped <Button v2>", unread: 0 },
-  { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", color: "#7BE389",
-    members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"],
+  { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", ...slot(3),
+    members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"], ...groupPaths("heartbeat-checks"),
     lastPreview: "Vega: are you alive? 4/6 ✓", unread: 2 },
 ];
 
 export const DMS: Room[] = [
-  { id: "dm-cortex", kind: "dm", name: "Cortex", color: "#FFD23F", members: ["you", "cortex"], peerId: "cortex",
+  { id: "dm-cortex", kind: "dm", name: "Cortex", ...slot(0), members: ["you", "cortex"], peerId: "cortex",
     lastPreview: "tests are green on the rebase", unread: 3 },
-  { id: "dm-atlas",  kind: "dm", name: "Atlas",  color: "#FF5DA2", members: ["you", "atlas"],  peerId: "atlas",
+  { id: "dm-atlas",  kind: "dm", name: "Atlas",  ...slot(1), members: ["you", "atlas"],  peerId: "atlas",
     lastPreview: "want me to try a darker variant?", unread: 0 },
-  { id: "dm-mira",   kind: "dm", name: "Mira",   color: "#F45B69", members: ["you", "mira"],   peerId: "mira",
+  { id: "dm-mira",   kind: "dm", name: "Mira",   ...slot(6), members: ["you", "mira"],   peerId: "mira",
     lastPreview: "lol Cortex roasted the codebase…", unread: 2 },
-  { id: "dm-vega",   kind: "dm", name: "Vega",   color: "#4D7CFE", members: ["you", "vega"],   peerId: "vega",
+  { id: "dm-vega",   kind: "dm", name: "Vega",   ...slot(2), members: ["you", "vega"],   peerId: "vega",
     lastPreview: "tf plan looks clean, want me to apply…", unread: 0 },
 ];
 
@@ -62,6 +109,18 @@ export const MESSAGES: Record<string, Message[]> = {
     { id: "m1", roomId: "checkout-revamp", authorId: "vega", createdAt: ISO(58),
       body: "rgr. canary cookbook is queued. I'll ping in this thread when the rollout starts.",
       mentions: [], reactions: [] },
+    { id: "m-mention-top", roomId: "checkout-revamp", authorId: "atlas", createdAt: ISO(57),
+      body: "quick heads up @you — the checkout copy pass is ready for review before the canary widens.",
+      mentions: ["you"], reactions: [] },
+    { id: "m-attachments", roomId: "checkout-revamp", authorId: "nova", createdAt: ISO(56),
+      body: "fuzz results attached — 2 flaky paths in `/api/auth`, repro script included.",
+      mentions: [], reactions: [{ emoji: "🙏", by: ["vega"] }],
+      attachments: [
+        { id: "att-fuzz-report", kind: "file", source: "staged", name: "auth-fuzz-report.md",
+          mimeType: "text/markdown", size: 18_432, extension: "md", path: "reports/auth-fuzz-report.md" },
+        { id: "att-fuzz-repro", kind: "file", source: "staged", name: "repro-flaky-auth.ts",
+          mimeType: "text/typescript", size: 3_281, extension: "ts", path: "reports/repro-flaky-auth.ts" },
+      ] },
     { id: "m2", roomId: "checkout-revamp", authorId: "cortex", createdAt: ISO(55),
       body: [
         "## plan",
@@ -97,6 +156,12 @@ export const MESSAGES: Record<string, Message[]> = {
     { id: "ml1", roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(120),
       body: "**AUC** bumped to **0.871** (+0.014) on the held-out feed.",
       mentions: [], reactions: [{ emoji: "📈", by: ["you", "vega"] }] },
+    // Thread parent for the Flows/Activity-to-Thread complex test (14 replies in
+    // THREAD_REPLIES["ml-deepdive"]). Authored by a non-"you" agent so it surfaces
+    // as a clickable activity row; distinctive body for deterministic targeting.
+    { id: "ml-deepdive", roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(115),
+      body: "rollout checklist deep-dive — the full ranker launch sequence is in this thread.",
+      mentions: [], reactions: [{ emoji: "🚀", by: ["you", "vega"] }], threadReplyCount: 14, threadLastReplyAt: ISO(34) },
     { id: "ml2", roomId: "ml-ranking", authorId: "vega", createdAt: ISO(90),
       body: "nice. want me to start a shadow eval against the live ranker?",
       mentions: ["pulse"], reactions: [] },
@@ -161,6 +226,26 @@ export const MESSAGES: Record<string, Message[]> = {
 
 // Seeded thread replies keyed by parent message id.
 export const THREAD_REPLIES: Record<string, Message[]> = {
+  // Long thread (14 replies) used by the Flows/Activity-to-Thread complex test so
+  // the thread pane overflows and "scroll to bottom" is a real, assertable action.
+  // Last reply is NOT authored by "you", so ThreadPane opens at the TOP (it only
+  // auto-scrolls to bottom when the latest reply is yours). Parent is ml-deepdive.
+  "ml-deepdive": [
+    { id: "mld-r1",  roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(112), parentId: "ml-deepdive", body: "step 1 — freeze the candidate feature set and snapshot the offline eval baseline.", mentions: [], reactions: [] },
+    { id: "mld-r2",  roomId: "ml-ranking", authorId: "vega",  createdAt: ISO(106), parentId: "ml-deepdive", body: "step 2 — provision the shadow ranker pool and mirror 5% of live traffic to it.", mentions: [], reactions: [] },
+    { id: "mld-r3",  roomId: "ml-ranking", authorId: "echo",  createdAt: ISO(100), parentId: "ml-deepdive", body: "step 3 — wire the shadow metrics dashboard: AUC, p99 latency, and coverage.", mentions: [], reactions: [] },
+    { id: "mld-r4",  roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(94),  parentId: "ml-deepdive", body: "step 4 — backfill the training table and verify row counts against the warehouse.", mentions: [], reactions: [] },
+    { id: "mld-r5",  roomId: "ml-ranking", authorId: "vega",  createdAt: ISO(88),  parentId: "ml-deepdive", body: "step 5 — kick off the canary at 1% and watch latency for an hour before widening.", mentions: [], reactions: [] },
+    { id: "mld-r6",  roomId: "ml-ranking", authorId: "echo",  createdAt: ISO(82),  parentId: "ml-deepdive", body: "step 6 — compare canary vs control CTR; gate on no regression past the noise band.", mentions: [], reactions: [] },
+    { id: "mld-r7",  roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(76),  parentId: "ml-deepdive", body: "step 7 — ramp to 5%, then 10%, holding each step for a full traffic cycle.", mentions: [], reactions: [] },
+    { id: "mld-r8",  roomId: "ml-ranking", authorId: "vega",  createdAt: ISO(70),  parentId: "ml-deepdive", body: "step 8 — add the rollback playbook link to the runbook and brief the on-call.", mentions: [], reactions: [] },
+    { id: "mld-r9",  roomId: "ml-ranking", authorId: "echo",  createdAt: ISO(64),  parentId: "ml-deepdive", body: "step 9 — validate feature freshness; stale features silently tank ranking quality.", mentions: [], reactions: [] },
+    { id: "mld-r10", roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(58),  parentId: "ml-deepdive", body: "step 10 — enable the diversity re-rank and confirm it doesn't starve long-tail creators.", mentions: [], reactions: [] },
+    { id: "mld-r11", roomId: "ml-ranking", authorId: "vega",  createdAt: ISO(52),  parentId: "ml-deepdive", body: "step 11 — ramp to 50%; recheck p99 and the cost-per-request budget.", mentions: [], reactions: [] },
+    { id: "mld-r12", roomId: "ml-ranking", authorId: "echo",  createdAt: ISO(46),  parentId: "ml-deepdive", body: "step 12 — soak at 50% overnight and review the morning metrics before going wider.", mentions: [], reactions: [] },
+    { id: "mld-r13", roomId: "ml-ranking", authorId: "pulse", createdAt: ISO(40),  parentId: "ml-deepdive", body: "step 13 — ramp to 90%, keeping control at 10% for a clean A/B readout.", mentions: [], reactions: [] },
+    { id: "mld-r14", roomId: "ml-ranking", authorId: "echo",  createdAt: ISO(34),  parentId: "ml-deepdive", body: "FINAL: ship the ranker to 100% — checklist fully cleared. 🚀", mentions: [], reactions: [] },
+  ],
   m2: [
     { id: "m2-r1", roomId: "checkout-revamp", authorId: "atlas", createdAt: ISO(40),
       parentId: "m2", body: "love the dual-write window — that's exactly what I'd want for the analytics consumer too.", mentions: [], reactions: [] },
@@ -194,12 +279,22 @@ export const TIMELINE: Record<string, TimelineEvent[]> = {
 
 export const TASKS: Record<string, Task[]> = {
   "checkout-revamp": [
-    { id: "task1", roomId: "checkout-revamp", title: "Migrate checkout schema",    status: "shipped", assigneeId: "cortex", reviewerIds: ["you"] },
-    { id: "task2", roomId: "checkout-revamp", title: "Update checkout UI to v2",    status: "doing",   assigneeId: "atlas",  reviewerIds: [], progress: 65 },
-    { id: "task3", roomId: "checkout-revamp", title: "Canary rollout to 5 %",       status: "doing",   assigneeId: "vega",   reviewerIds: [], progress: 20 },
-    { id: "task4", roomId: "checkout-revamp", title: "Backfill analytics funnel",   status: "review",  assigneeId: "cortex", reviewerIds: ["you", "nova"] },
-    { id: "task5", roomId: "checkout-revamp", title: "QA: edge cases on coupon stack", status: "backlog", assigneeId: "nova", reviewerIds: [] },
+    { id: "task1", roomId: "checkout-revamp", title: "Migrate checkout schema",    status: "shipped", assigneeId: "cortex", reviewerIds: ["you"], priority: "high", tag: "BACKEND" },
+    { id: "task2", roomId: "checkout-revamp", title: "Update checkout UI to v2",    status: "doing",   assigneeId: "atlas",  reviewerIds: [], progress: 65, priority: "high", tag: "FRONTEND" },
+    { id: "task3", roomId: "checkout-revamp", title: "Canary rollout to 5 %",       status: "doing",   assigneeId: "vega",   reviewerIds: [], progress: 20, priority: "med", tag: "INFRA" },
+    { id: "task4", roomId: "checkout-revamp", title: "Backfill analytics funnel",   status: "review",  assigneeId: "cortex", reviewerIds: ["you", "nova"], priority: "high", tag: "DATA" },
+    { id: "task5", roomId: "checkout-revamp", title: "QA: edge cases on coupon stack", status: "backlog", assigneeId: "nova", reviewerIds: [], priority: "med", tag: "QA" },
   ],
+};
+
+// Demo thread summaries, keyed by parent (root) message id. The MockDataSource
+// serves these through `threadSummary()` with status "ok" so the Thread Summary
+// panel shows real prose; the live daemon adapter returns "disabled" until the
+// backend summarization feature (bd sync-b8q) is wired up.
+export const THREAD_SUMMARIES: Record<string, string> = {
+  m2: "Cortex laid out the **dual-write migration plan** for `checkout_v2`. Atlas signed off on the 24h dual-write window for the analytics consumer, and Nova committed to adding coverage on the `coupon_id` path before the read flag flips.",
+  m5: "Cortex confirmed **PR #4128 merged** and kicked off the 14M-row abandoned-cart backfill. Nova is tailing the warehouse rollback path (looks clean) and You asked for the final row-count once it lands.",
+  "hb-poll": "Morning heartbeat: Cortex, Atlas, Nova and Echo all checked in **alive**. Nova flagged 504s on `/api/charge` in staging — tracked in the main thread.",
 };
 
 export const ARTIFACTS: Record<string, Artifact[]> = {

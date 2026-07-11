@@ -1,70 +1,71 @@
 ---
 name: synchronize-debugging
-description: Use when debugging or inspecting the synchronize agent messaging bus — peers disappearing or showing 404 Peer not found, daemon health or wrong-worktree issues, agents not receiving DMs/group messages/thread replies/@mentions, stale state from prior sessions, isolated dev runtimes for ad-hoc testing, or any "what's actually happening on this daemon?" question. Covers chat, groups, threads, mentions, media, and agent-session surfaces.
+description: Use when debugging or inspecting the synchronize agent messaging bus -- daemon health, wrong worktree, stale state, peer disappearance, 404 Peer not found, missed DMs/group messages/thread replies/@mentions, isolated dev runtimes, archive/resume, launch, web, or "what is this daemon doing?" -- and for web/ UI bugs: component render/visual/layout issues, broken story or play-test, theme/skin/responsive problems, or using Storybook + its MCP to diagnose and regression-guard UI.
 ---
 
 # synchronize-debugging
 
-Reference for diagnosing and inspecting synchronize daemon runtime, peer
-lifecycle, and message delivery. Tuned for fast load: route by symptom,
-load detail files only when needed.
+Small dispatcher for daemon debugging. Use it to pick the next document; do not
+load every reference file.
 
-## State anatomy
-
-```
-$SYNCHRONIZE_HOME/      (default ~/.synchronize)
-  daemon.json           discovery: pid, port, base_url
-  daemon.lock/          startup lock (stale > 30s)
-  synchronize.db        SQLite (WAL): peers, groups, group_members, events,
-                                      inbox, media_items, agent_sessions
-  daemon.log            daemon stderr (when redirected)
-  pi-extension.log      Pi extension lifecycle events
-  pi-sessions/          per-Pi-session manifest files
-  media/                per-group media assets
-```
-
-## Orientation — first 60 seconds
-
-**Makefile is the primary tool surface.** Reach for raw `sqlite3` / `ps` /
-`curl` only when a Make target doesn't cover the need.
+## First Commands
 
 ```bash
-make doctor                 # full snapshot: daemon + peers + groups + events + logs + tmux
-make inspect-daemon         # which-worktree provenance, pid/port/health
+make doctor                 # local runtime: daemon + peers + groups + events + logs + tmux
+make inspect-daemon         # pid, port, base_url, process command/worktree
 make inspect-peers          # alive / online / soft-deleted / agent_sessions
 make inspect-groups         # groups + active members + last activity
-make inspect-events N=50    # most recent events with sender/parent/preview
+make inspect-events N=50    # recent events
+
+synchronize remote doctor   # active remote profile readiness
+synchronize remote show      # resolved remote profile/env values
 ```
 
-For dev runtime override: `SYNCHRONIZE_HOME=$(pwd)/.dev-synchronize make doctor`.
+For web/ UI (Storybook) issues:
 
-## Symptom router
+```bash
+cd web && bun run storybook            # dev server + MCP on :6006
+cd web && bun run storybook:build      # static build (compile check)
+cd web && bun run test:storybook       # render + play + a11y, headless
+cd web && bun run test:storybook:headed  # visible Chromium (own terminal)
+cd web && bun run test:storybook:ui      # @vitest/ui dashboard (own terminal)
+```
+
+For isolated checks, prefix commands with:
+
+```bash
+SYNCHRONIZE_HOME=$(pwd)/.dev-synchronize
+```
+
+Inspect first. Do not relaunch, delete peers, or wipe production state unless
+the operator explicitly asks.
+
+## Router
 
 | Symptom | Load |
 |---|---|
-| Peer disappearance, "404 Peer not found", Pi/MCP cleanup misbehavior, alive-but-unreachable | `peer-lifecycle.md` |
-| Daemon won't run / running from wrong worktree / port collision / lock issues / restart cascades | `daemon-forensics.md` |
-| DM/group/thread/@mention/media routing problems, channel-push vs inbox confusion, alias-vs-session_name traps | `delivery-forensics.md` |
-| Running an isolated daemon for testing without touching production state | `dev-server-mode.md` |
-| Need raw forensic SQL (live roster, soft-delete forensics, thread walks, inbox depth, stale agent_sessions) | `db-queries.md` |
-| "Where in the code does X live?" — file/symbol/env-var navigation | `glossary.md` |
-| Hard reference to a previous design or implementation session — **gated load** | `reference-v0-plans.md` |
+| Daemon stale/down/wrong worktree/port/lock/restart | `daemon-forensics.md` |
+| Isolated runtime for testing | `dev-server-mode.md` |
+| Peer disappeared, 404, online-but-not-pushed | `peer-lifecycle.md` |
+| DM/group/thread/mention/media/inbox/push issue | `delivery-forensics.md` |
+| Exact reply target vs thread root | `reply-target-forensics.md` |
+| web/ UI render/visual/story/play-test/theme/responsive | `ui-forensics.md` |
+| Qualitative Storybook component sweep with screenshots | `storybook-visual-audit.md` |
+| Raw SQL recipes | `docs/debugging/sql-queries.md` |
+| Code ownership/file locations | `glossary.md` |
+| Historical plans | `reference-v0-plans.md` (gated) |
 
-## Mid-session health check
+## Durable References
 
-When something feels off, run `make doctor` and skim the output. Look for:
-- `worktree:` line points where you expect
-- Soft-deleted peer count growing during a session that shouldn't be deleting peers
-- Groups with `active_members` lower than expected
-- Events table not growing during active conversation
+| Need | Go to |
+|---|---|
+| Config/env/profile details | `docs/configuration/README.md` |
+| Heavy debugging recipes | `docs/debugging/README.md` |
+| Storybook/UI heavy recipes + MCP catalog | `docs/debugging/storybook.md` |
+| Repeatable Storybook visual audit protocol | `storybook-visual-audit.md` |
+| Current code map | `glossary.md` |
 
-If anything's off, follow the symptom router.
-
-## Working principle
-
-The Makefile is the canonical tool surface. If you find yourself reaching
-for ad-hoc shell pipelines, consider whether a new `make inspect-*` target
-would serve future sessions better — and add it.
-
-Detail files cross-reference each other liberally. Load multiple if needed,
-but in symptom-order rather than reading-everything order.
+```text
+inspect -> read DB/logs -> preserving restart -> isolated repro
+        -> production wipe only with explicit approval
+```

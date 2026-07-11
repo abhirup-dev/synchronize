@@ -6,7 +6,7 @@ import { ENV_LAUNCH_ID, ENV_PEER_ID } from "../../constants.ts";
 import { EventSubscription } from "../claude-subscription.ts";
 import { NotificationBridge } from "../codex-notifier.ts";
 import { resolveMcpRegisterPeerId } from "../lifecycle.ts";
-import { getClient, getMode } from "../state.ts";
+import { getClient, getMode, useCallbackPush } from "../state.ts";
 import { invalidArgument, log, text, wrap } from "../util.ts";
 import type { ToolContext } from "./context.ts";
 
@@ -66,7 +66,8 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
     {
       description:
         "Show this adapter peer identity. " +
-        "Returns: { peer, registered, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Returns: { peer, registered, runtime_context, agent_sessions, notify_mode, claude_channel_subscription_active, codex_notifier_active, heartbeat_active }. " +
+        "Agent-session bindings include cwd, git_branch, and git_dirty when the host provided a cwd. " +
         "Idempotency: pure read.",
     },
     wrap(async () => {
@@ -79,10 +80,18 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
       }
     }
     const agentSessions = client && state.peer ? (await listAgentSessions(client, { peerId: state.peer.peer_id })).bindings : [];
+    const activeSession = agentSessions[0] ?? null;
     return text({
       peer: state.peer,
       registered: Boolean(state.peer),
       agent_sessions: agentSessions,
+      runtime_context: activeSession
+        ? {
+            cwd: activeSession.cwd,
+            git_branch: activeSession.git_branch,
+            git_dirty: activeSession.git_dirty,
+          }
+        : null,
       notify_mode: getMode(),
       claude_channel_subscription_active: state.subscription?.isActive() ?? false,
       codex_notifier_active: Boolean(state.notifier),
@@ -140,7 +149,11 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
     state.notifier = null;
     state.subscription?.stop();
     state.subscription = null;
-    if (mode === "claude") {
+    // Transport is chosen by location, not channel: see useCallbackPush. A
+    // remote daemon cannot reach our loopback callback, so remote Claude polls
+    // (like codex); local Claude keeps the instant callback. Either transport
+    // feeds the same mode-parameterized emit -> notifications/claude/channel.
+    if (useCallbackPush(mode, client)) {
       state.subscription = new EventSubscription({
         peerId: peer.peer_id,
         mode,
@@ -148,7 +161,7 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
         emit,
       });
       await state.subscription.start();
-      log(`Claude channel subscription active peer_id=${peer.peer_id}`);
+      log(`Claude channel callback subscription active peer_id=${peer.peer_id}`);
     } else {
       state.notifier = new NotificationBridge({
         peerId: peer.peer_id,
@@ -157,7 +170,7 @@ export function registerRegisterTools(ctx: ToolContext): { bootstrapEnvBoundPeer
         emit,
       });
       state.notifier.start();
-      log(`Codex polling notifier active peer_id=${peer.peer_id}`);
+      log(`${mode} polling notifier active peer_id=${peer.peer_id} remote=${Boolean(client.remote)}`);
     }
   }
 

@@ -1,6 +1,6 @@
 DEMO_HOME := $(CURDIR)/.demo-synchronize
 DEV_SYNC_HOME := $(CURDIR)/.dev-synchronize
-SYNC_HOME ?= $(HOME)/.synchronize
+SYNC_HOME ?= $(if $(SYNCHRONIZE_HOME),$(SYNCHRONIZE_HOME),$(HOME)/.synchronize)
 
 # Demo peers are seeded once and never heartbeat, so the demo daemon runs with a
 # far-future lease (≈10y) — otherwise the production 60s lease would flap every
@@ -12,13 +12,13 @@ CLAUDE_DIR   ?= $(HOME)/.claude
 CODEX_DIR    ?= $(HOME)/.codex
 PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
-.PHONY: help setup check-deps \
+.PHONY: help setup check-deps check-install test \
         demo demo-up demo-top demo-json demo-clean demo-spawn demo-down demo-profile \
         daemon-kill daemon-relaunch clean-slate \
         dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
         reinstall-books dev-reset \
         doctor inspect-daemon inspect-peers inspect-groups inspect-events \
-        link install-claude install-codex install-pi install-all \
+        install-cli link install-claude install-codex install-pi install-all \
         uninstall-claude uninstall-codex uninstall-pi uninstall-all
 
 # `make` with no target prints help.
@@ -28,9 +28,12 @@ help:
 	@echo "synchronize — make targets"
 	@echo
 	@echo "Setup:"
-	@echo "  setup            Install root + web deps and check tooling (run this first; also bootstraps a fresh worktree)"
+	@echo "  setup            Install root + web deps (frozen lockfiles) and check tooling (run this first; also bootstraps a fresh worktree)"
 	@echo "  check-deps       Report required/optional CLI tools and how to install them"
+	@echo "  check-install    Verify root + web deps are installed (fails fast with a fix hint)"
+	@echo "  test             Run the test suite (guarded by check-install)"
 	@echo "Install agents (writes to your real ~/.claude, ~/.codex, ~/.pi):"
+	@echo "  install-cli      Link the CLI/MCP binaries and refresh shell completions"
 	@echo "  install-claude | install-codex | install-pi | install-all"
 	@echo "  uninstall-claude | uninstall-codex | uninstall-pi | uninstall-all"
 	@echo "Demo (isolated runtime under $(DEMO_HOME), never touches your real daemon):"
@@ -44,16 +47,51 @@ help:
 	@echo "  daemon-relaunch  Restart the daemon, preserving state"
 	@echo "  clean-slate      Stop daemon, delete its AOE profile, wipe the runtime"
 	@echo "  dev-daemon-relaunch | dev-clean-slate   Same for the dev runtime ($(DEV_SYNC_HOME))"
+	@echo "Web UI:"
+	@echo "  verify-web       Typecheck + daemon/mobile builds + Playwright smoke (compact/medium/desktop × light/dark)"
 	@echo "Diagnostics:"
 	@echo "  doctor | inspect-daemon | inspect-peers | inspect-groups | inspect-events"
 
 setup:
 	@echo "==> Installing dependencies (root + web)"
-	@bun install
-	@cd web && bun install
+	@bun install --frozen-lockfile
+	@cd web && bun install --frozen-lockfile
 	@echo "==> Checking tooling"
 	@$(MAKE) --no-print-directory check-deps || true
 	@echo "==> Setup complete. 'make help' lists all targets; 'make install-claude' wires up an agent."
+
+# Guard against the most common worktree mistake: running tests/daemon before
+# `make setup`. Without root node_modules the daemon can't boot and the test
+# suite fails with a cryptic "daemon did not become healthy" cascade instead of
+# a clear message. (web/node_modules is needed for `bun run web/build.ts`.)
+check-install:
+	@test -d node_modules && test -d web/node_modules || { \
+		echo "Dependencies not installed (missing node_modules)."; \
+		echo "Run 'make setup' first."; exit 1; }
+
+# Guarded test entrypoint. `bun test` still works directly; `make test` adds the
+# install precondition so a fresh/unprovisioned worktree fails fast and clearly.
+test: check-install
+	@bun test
+
+# Web UI regression gate (sync-imeu.1.23). Cheap-to-expensive: typecheck both
+# packages, build both asset bases (daemon /web/ + mobile /), then the Storybook
+# story + play tests (headless Playwright Chromium via Vitest) over the component
+# glossary and the App Shell breakpoint matrix. One-time browser install:
+# cd web && bunx playwright install chromium
+.PHONY: verify-web
+verify-web:
+	@echo "==> Web typecheck"
+	@cd web && bun run typecheck
+	@echo "==> Root typecheck"
+	@bun run typecheck
+	@echo "==> Daemon web build (/web/ asset base)"
+	@cd web && bun run build.ts
+	@echo "==> Mobile web build (/ asset base -> dist-mobile)"
+	@cd web && WEB_ASSET_BASE=/ WEB_DIST_DIR=dist-mobile bun run build.ts
+	@echo "==> UI tests (Storybook stories + play tests)"
+	@cd web && bun run test:storybook
+	@echo "==> verify-web OK. Manual matrix lives in web/VERIFY.md"
 
 # Verify the CLI tooling the project leans on. Required tools fail the check;
 # optional ones (needed only for launch/agent features) are reported, not fatal.
@@ -202,9 +240,15 @@ inspect-events:
 
 # --- install targets -------------------------------------------------------
 
+install-cli: link
+
 link: setup
 	@bun link >/dev/null
+	@command -v synchronize >/dev/null || { echo "synchronize not on PATH after 'bun link'"; exit 1; }
 	@command -v $(MCP_BIN) >/dev/null || { echo "$(MCP_BIN) not on PATH after 'bun link'"; exit 1; }
+	@synchronize completion install --shell zsh >/dev/null
+	@echo "installed Tab zsh completion script for synchronize"
+	@echo "linked synchronize -> $$(readlink $$(command -v synchronize))"
 	@echo "linked $(MCP_BIN) -> $$(readlink $$(command -v $(MCP_BIN)))"
 
 install-claude: link
@@ -214,8 +258,7 @@ install-claude: link
 		claude mcp add synchronize --scope user -e SYNCHRONIZE_MCP_MODE=claude -- sh -c "$$cmd"
 	@bun run scripts/claude-hooks-config.ts $(CLAUDE_DIR)/settings.json
 	@mkdir -p $(CLAUDE_DIR)/skills
-	@rm -rf $(CLAUDE_DIR)/skills/synchronize
-	@cp -R skills/synchronize-claude $(CLAUDE_DIR)/skills/synchronize
+	@bun run scripts/install-skill.ts claude $(CLAUDE_DIR)/skills/synchronize
 	@echo "Claude: MCP server registered + hook configured + skill copied to $(CLAUDE_DIR)/skills/synchronize"
 
 install-codex: link
@@ -239,7 +282,7 @@ install-pi: link
 		'}' \
 		> $(PI_AGENT_DIR)/extensions/synchronize.ts
 	@rm -rf $(PI_AGENT_DIR)/skills/synchronize
-	@cp -R skills/synchronize-pi $(PI_AGENT_DIR)/skills/synchronize
+	@bun run scripts/install-skill.ts pi $(PI_AGENT_DIR)/skills/synchronize
 	@echo "Pi: mcp.json updated + extension shim written + skill copied to $(PI_AGENT_DIR)/skills/synchronize"
 
 install-all: install-claude install-codex install-pi

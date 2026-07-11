@@ -1,4 +1,5 @@
 node_modules/
+.env/
 .demo-synchronize/
 .dev-synchronize/
 .synchronize-itest/
@@ -16,11 +17,20 @@ node_modules/
 # graphify knowledge-graph outputs (regeneratable via /graphify)
 graphify-out/
 
+# Understand Anything knowledge-graph outputs
+.understand-anything/
+
 # Local UI reference captures
 docs/ui-reference/claude-design-screenshots/
+.codex-artifacts/
+mobile/.od-skills/
+mobile/od-sketches/
 
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
+
+# Local Claude launch profiles are machine-specific
+.claude/launch.json
 
 # Local scratch / vendored exploration trees
 work/
@@ -28,3 +38,14 @@ work/
 # Python bytecode from the integration-aoe harness
 __pycache__/
 *.pyc
+
+# /design-sync
+.ds-sync/
+ds-bundle/
+.design-sync/sb-reference/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+# Local secrets — NEVER commit (GCP service-account keys for ad-hoc tooling like Gemini vision)
+.secrets/

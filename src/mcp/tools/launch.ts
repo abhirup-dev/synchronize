@@ -11,18 +11,22 @@ export function registerLaunchTools(ctx: ToolContext): void {
     "bridge_launch",
     {
       description:
-        "Spawn a new persistent agent session (claude or pi) via the local backend (AOE). " +
+        "Spawn a new persistent agent session (claude, pi, or letta) via the local backend (AOE). " +
         "Pass `group` to drop the teammate straight into a synchronize group — it auto-joins on " +
         "boot under alias = name (the group is created if absent); omit `group` for a standalone agent. " +
-        "`repo` is the working directory the agent runs in. Put tool-specific flags (e.g. --model) in `args`. " +
+        "`repo` is the working directory the agent runs in. Put non-provider/non-model/non-thinking tool-specific flags in `args`; " +
+        "daemon/AOE launches own model selection via `model` and `thinking`. " +
         "Returns: { launchId, peerId, sessionName, title, group?, pendingCount, warning? }. The session " +
         "registers itself a few seconds later; poll bridge_list_peers(group) to see it come online. " +
         "Idempotency: each call spawns a new session — names must be unique within a group.",
       inputSchema: {
-        tool: z.enum(["claude", "pi"]),
+        tool: z.enum(["claude", "pi", "letta"]),
+        profile_name: z.string().optional(),
         name: z.string().min(1),
         repo: z.string().min(1),
         group: z.string().optional(),
+        model: z.string().optional(),
+        thinking: z.string().optional(),
         args: z.array(z.string()).optional(),
       },
     },
@@ -31,9 +35,12 @@ export function registerLaunchTools(ctx: ToolContext): void {
       return text(
         await launchAgent(client, {
           tool: args.tool,
+          ...(args.profile_name ? { profileName: args.profile_name } : {}),
           name: args.name,
           repo: args.repo,
           ...(args.group ? { group: args.group } : {}),
+          ...(args.model ? { model: args.model } : {}),
+          ...(args.thinking ? { thinking: args.thinking } : {}),
           ...(args.args ? { args: args.args } : {}),
         }),
       );
