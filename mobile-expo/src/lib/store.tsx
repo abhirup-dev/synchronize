@@ -58,7 +58,8 @@ function buildRooms(s: WebState, selfId: string): Room[] {
       id: `group:${g.group_id}`,
       kind: 'group',
       name: g.name,
-      preview: sum?.last_preview ?? '',
+      // Roster events carry JSON bodies (e.g. {"alias":...}); don't show them as previews.
+      preview: sum?.last_preview?.startsWith('{') ? '' : (sum?.last_preview ?? ''),
       lastAt: sum?.last_event_at ?? null,
       messageCount: sum?.message_count ?? 0,
       members: s.memberships.filter((m) => m.group_id === g.group_id && m.active),
