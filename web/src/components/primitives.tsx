@@ -236,6 +236,7 @@ export function Avatar({
       className="identity-icon"
       color={agent.color}
       {...(agent.colorRef ? { colorRef: agent.colorRef } : null)}
+      style={{ fontFamily: "var(--font-avatar)" }}
       self={isYou}
       size={size}
       fontSize={Math.round(size * 0.45)}

@@ -259,11 +259,6 @@ export function Shell() {
     // history entry, so a refresh re-lands on the same target.
     window.history.replaceState(null, "", deepLinkPath(target));
   }, [pendingDeepLink, activeId, roomMessages]);
-  const threadParent = threadParentId ? roomMessages.find((message) => message.id === threadParentId) : undefined;
-  const threadAuthor = threadParent && room
-    ? agents.find((agent) => agent.id === threadParent.authorId)
-    : undefined;
-  const displayThreadAuthor = threadAuthor && room ? roomAgent(threadAuthor, room) : undefined;
   const layout = shellLayout(shellMode);
   const rosterPersistent = layout.rosterColumn && !threadParentId;
   const rosterPanelAvailable = layout.rosterAsOverlay && !threadParentId;
@@ -396,8 +391,8 @@ export function Shell() {
                 showAgentsButton={rosterPanelAvailable && layout.persistentSidebar}
                 onOpenAgents={openAgents}
                 onOpenSettings={openCompactSettings}
-                {...(displayThreadAuthor && layout.threadAsSplit
-                  ? { threadBanner: { author: displayThreadAuthor, onClose: () => setThreadParentId(null) } }
+                {...(threadParentId && layout.threadAsSplit
+                  ? { onCloseThread: () => setThreadParentId(null) }
                   : {})}
               />
             )}
@@ -544,11 +539,11 @@ export function CompactAppBar({
       <div className="min-w-0 flex items-center gap-[var(--space-8)]">
         <IconButton icon={X} label="close" size={40} iconSize={20} onClick={onClose} />
         <div className="min-w-0 flex flex-col justify-center">
-          <div className="font-display text-[length:var(--text-16)] leading-[1.05] tracking-[var(--tracking-sm)] text-ink truncate">
+          <div className="compact-appbar-title font-ui text-[length:var(--text-14)] font-semibold leading-[1.2] tracking-normal text-ink truncate">
             {title}
           </div>
           {detail ? (
-            <div className="mt-[3px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft truncate">
+            <div className="compact-appbar-detail mt-[2px] font-ui text-[length:var(--text-11)] font-normal leading-[1.2] tracking-normal text-ink-soft truncate">
               {detail}
             </div>
           ) : null}

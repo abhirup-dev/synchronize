@@ -32,13 +32,6 @@ export function IconButton({
   disabled,
   ...rest
 }: IconButtonProps) {
-  const variantClass =
-    variant === "accent"
-      ? "bg-yellow text-ink shadow-sm"
-      : variant === "solid"
-        ? "bg-paper-2 text-ink [border:var(--line-sm)] shadow-xs"
-        : "bg-transparent text-ink-soft hover:enabled:text-ink hover:enabled:bg-paper-2";
-
   return (
     <button
       type="button"
@@ -46,15 +39,12 @@ export function IconButton({
       title={label}
       aria-pressed={active || undefined}
       disabled={disabled}
+      data-variant={variant}
+      data-active={active ? "true" : undefined}
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-[var(--radius-md)] cursor-pointer outline-none",
-        "[transition:background_140ms_ease,color_140ms_ease,transform_120ms_ease]",
-        "focus-visible:[box-shadow:0_0_0_2px_var(--yellow)] active:enabled:scale-90",
+        "icon-button inline-grid shrink-0 place-items-center rounded-[var(--radius-md)] cursor-pointer outline-none",
+        "[transition:background_140ms_ease,color_140ms_ease,transform_120ms_ease,box-shadow_140ms_ease]",
         "disabled:opacity-40 disabled:cursor-default",
-        variantClass,
-        // After variantClass so the active fill wins the twMerge bg/text conflict
-        // — otherwise solid's bg-paper-2 overrides it and active looks inert.
-        active && "bg-yellow text-ink",
         className,
       )}
       style={{ width: size, height: size }}

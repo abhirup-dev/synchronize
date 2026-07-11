@@ -53,8 +53,32 @@
   --shadow-lg: 6px 6px 0 var(--rule);
   --shadow-hover: 3px 3px 0 var(--rule);
   --font-display: "Archivo Black", sans-serif;
+  --font-display-size-scale: 1.1;
+  --font-display-weight: 400;
+  --font-display-heading: var(--font-display);
+  --font-display-medium: var(--font-display);
+  --font-display-small: var(--font-display);
+  --font-display-button: var(--font-heading);
+  --font-display-heading-size: calc(var(--text-14) * var(--font-display-size-scale, 1));
+  --font-display-medium-ratio: 0.65;
+  --font-display-medium-size: calc(var(--font-display-heading-size) * var(--font-display-medium-ratio));
+  --font-display-small-ratio: 0.5;
+  --font-display-small-size: calc(var(--font-display-heading-size) * var(--font-display-small-ratio));
+  --font-display-button-ratio: 0.75;
+  --font-display-button-size: calc(var(--font-display-heading-size) * var(--font-display-button-ratio));
+  --font-display-heading-weight: var(--font-display-weight, 700);
+  --font-display-medium-weight: var(--font-display-weight, 700);
+  --font-display-small-weight: var(--font-display-weight, 700);
+  /* Controls stay quiet even when the selected display face is tuned bold. */
+  --font-display-button-weight: 400;
   --font-heading: var(--font-ui);
   --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
+  --font-control: var(--font-display-button);
+  /* Avatar initials are an independent role: glass may change Display without
+     pulling identity glyphs away from the frozen Archivo Black configuration. */
+  --font-avatar: "Archivo Black", sans-serif;
+  --font-avatar-size-scale: 1.35;
+  --font-avatar-weight: 400;
   --font-mono: "JetBrains Mono", monospace;
   --text-8: 8px;
   --text-8-5: 8.5px;
@@ -348,6 +372,17 @@
   --control-shadow: var(--shadow-chip);
   --control-shadow-hover: var(--shadow-hover-sm);
   --control-radius: var(--radius-md);
+  --control-bg: var(--paper);
+  --control-bg-solid: var(--paper-2);
+  --control-bg-hover: var(--paper-3);
+  --control-bg-active: var(--yellow);
+  --control-bg-accent: var(--yellow);
+  --control-fg: var(--ink);
+  --control-fg-soft: var(--ink-soft);
+  --control-fg-active: var(--ink);
+  --control-fg-accent: var(--ink);
+  --control-hover-transform: translate(-1px, -1px);
+  --control-press-transform: scale(0.96);
 
   /* overlays: menus, dialogs, popovers, toasts */
   --overlay-border-color: var(--rule);
@@ -496,8 +531,8 @@
   --you-bg: #575279;
   --you-fg: #FAF4ED;
   --bubble: #FFF8F0;
-  --code-bg: #2A273F;
-  --code-fg: #F2E9DE;
+  --code-bg: #F2E9DE;
+  --code-fg: #575279;
 }
 
 :root[data-theme="kanagawa-wave"]:not([data-skin]),
@@ -865,11 +900,11 @@
   --radius-panel-top: 14px 14px 0 0;
   --radius-panel-bottom: 0 0 14px 14px;
 
-  --font-display: "Space Grotesk", "Helvetica Neue", sans-serif;
   --tracking-pixel-tight: 0.01em;
   --tracking-pixel: 0.02em;
 
-  --code-bg: rgba(25, 23, 36, 0.90);
+  --code-bg: #f4f6f8;
+  --code-fg: #0f1419;
   --code-inline-bg: rgba(87, 82, 121, 0.10);
   --code-inline-fg: #575279;
   --code-inline-border: rgba(87, 82, 121, 0.16);
@@ -888,9 +923,20 @@
   --control-border-color: var(--rule);
   --control-shadow-color: #0f141914;
   --control-border: var(--line-sm);
-  --control-shadow: var(--shadow-chip);
-  --control-shadow-hover: var(--shadow-hover-sm);
-  --control-radius: var(--radius-md);
+  --control-shadow: none;
+  --control-shadow-hover: none;
+  --control-radius: var(--radius-pill);
+  --control-bg: transparent;
+  --control-bg-solid: color-mix(in srgb, var(--paper-3) 74%, var(--paper-2));
+  --control-bg-hover: color-mix(in srgb, var(--ink) 8%, var(--paper-2));
+  --control-bg-active: color-mix(in srgb, var(--primary) 18%, var(--paper-3));
+  --control-bg-accent: var(--primary);
+  --control-fg: var(--ink);
+  --control-fg-soft: var(--ink-soft);
+  --control-fg-active: var(--ink);
+  --control-fg-accent: var(--primary-foreground);
+  --control-hover-transform: none;
+  --control-press-transform: scale(0.96);
   --overlay-border-color: var(--rule);
   --overlay-shadow-color: #0f141921;
   --overlay-border: var(--line);
@@ -918,15 +964,15 @@
   --rail-pop: 0.5s cubic-bezier(0.34, 1.4, 0.5, 1);
   --rail-label-delay: 0.08s;
   --rail-count-delay: 0.13s;
-  --rail-fill: color-mix(in srgb, var(--ink) 5%, transparent);
-  --rail-hover: color-mix(in srgb, var(--ink) 8%, transparent);
-  --rail-chip-hover: color-mix(in srgb, var(--ink) 10%, transparent);
-  --rail-active: color-mix(in srgb, var(--you-bg) 20%, color-mix(in srgb, var(--ink) 8%, var(--paper)));
-  --rail-active-shadow: 0 1px 2px color-mix(in srgb, #000 20%, transparent);
-  --rail-badge-fill: color-mix(in srgb, #fff 16%, transparent);
+  --rail-fill: color-mix(in srgb, var(--paper-2) 82%, var(--paper-3) 18%);
+  --rail-hover: color-mix(in srgb, var(--paper-3) 68%, var(--paper-2) 32%);
+  --rail-chip-hover: color-mix(in srgb, var(--paper-3) 76%, var(--paper-2) 24%);
+  --rail-active: color-mix(in srgb, var(--you-bg) 22%, var(--paper-3));
+  --rail-active-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent);
+  --rail-badge-fill: var(--paper-2);
 
-  /* Floating composer: kill both the chat and thread dock separators (glass
-     revamp §2.4). The composer floats over the stream instead. */
+  /* Glass removes the heavy dock separator. The main chat composer floats over
+     its stream; the thread composer stays in flow so replies remain scrollable. */
   --composer-separator-line: 0 solid transparent;
 
 }
@@ -1079,9 +1125,15 @@
   --overlay-shadow-color: #000000cc;
 
   --code-bg: rgba(16, 16, 22, 0.88);
+  --code-fg: #d4ceb0;
   --code-inline-bg: rgba(212, 206, 176, 0.09);
   --code-inline-fg: #d4ceb0;
   --code-inline-border: rgba(212, 206, 176, 0.13);
 
   --focus-ring: 0 0 0 3px #1d9bf04d;
+  --rail-fill: #101114;
+  --rail-hover: #181a1f;
+  --rail-chip-hover: #1c1f24;
+  --rail-active: color-mix(in srgb, var(--primary) 22%, #16181c);
+  --rail-badge-fill: #0b0b0c;
 }

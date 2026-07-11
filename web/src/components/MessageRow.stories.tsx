@@ -250,6 +250,31 @@ export const SelfMessage: Story = {
   },
 };
 
+export const SelfMessageWithThreadBadge: Story = {
+  args: {
+    message: {
+      ...msg("m4"),
+      body: "@TesterGLM the message bubble is deliberately wider than its reply preview controls.",
+      threadReplyCount: 7,
+      threadLastReplyAt: new Date().toISOString(),
+      threadParticipantIds: ["atlas", "you", "vega"],
+    },
+    author: authorOf(msg("m4").authorId),
+    onOpenThread: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    const footer = canvasElement.querySelector<HTMLElement>(".message-footer");
+    const stack = canvasElement.querySelector<HTMLElement>(".message-stack");
+    expect(bubble).toBeTruthy();
+    expect(footer).toBeTruthy();
+    expect(stack).toBeTruthy();
+    expect(Math.abs(bubble!.getBoundingClientRect().left - footer!.getBoundingClientRect().left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(bubble!.getBoundingClientRect().right - footer!.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
+    expect(Math.abs(bubble!.getBoundingClientRect().width - stack!.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
+  },
+};
+
 // Interaction test: open the quick-reaction picker and pick an emoji, asserting
 // the onReact callback fires with (messageId, emoji). m1 has no existing
 // reactions, so the picker's 👍 is the only one in the DOM.

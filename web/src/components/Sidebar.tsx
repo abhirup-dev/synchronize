@@ -183,7 +183,7 @@ export function Sidebar({ activeRoomId, onSelect, mode = "navigate", displaySett
             ])
           }
         >
-          <span className="font-display text-[length:var(--text-14)] tracking-[var(--tracking-xs)] leading-none">{me.avatar}</span>
+          <span className="[font-family:var(--font-avatar)] text-[length:var(--text-14)] tracking-[var(--tracking-xs)] leading-none">{me.avatar}</span>
           <StatusDot status={me.status} size={11} />
           <span className={vimModeChip({ mode })} aria-label={`vim mode: ${mode}`}>
             {mode === "navigate" ? "NAV" : "INS"}

@@ -550,7 +550,7 @@ export function Composer({
               onMouseEnter={() => setMentionIdx(i)}
             >
               <IdentityBadge
-                className="w-[28px] h-[28px] [border:var(--line-sm)] rounded-[var(--radius-md)] grid place-items-center font-display text-[length:var(--text-13)] shadow-xs"
+                className="w-[28px] h-[28px] [border:var(--line-sm)] rounded-[var(--radius-md)] grid place-items-center [font-family:var(--font-avatar)] text-[length:var(--text-13)] shadow-xs"
                 color={a.color}
                 {...(a.colorRef ? { colorRef: a.colorRef } : null)}
               >

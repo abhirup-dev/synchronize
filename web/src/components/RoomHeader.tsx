@@ -3,7 +3,6 @@ import { useAgents } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
 import { Avatar, IdentityBadge, IdentityLogoTile, RoomNameInline } from "./primitives.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
-import type { Agent } from "../data/types.ts";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
 import { useIsCompact } from "../shell-mode.tsx";
@@ -53,10 +52,7 @@ interface RoomHeaderProps {
   showAgentsButton?: boolean;
   onOpenAgents?(): void;
   onOpenSettings?(event: ReactMouseEvent<HTMLButtonElement>): void;
-  threadBanner?: {
-    author: Agent;
-    onClose(): void;
-  };
+  onCloseThread?(): void;
 }
 
 export function RoomHeader({
@@ -72,7 +68,7 @@ export function RoomHeader({
   showAgentsButton = false,
   onOpenAgents,
   onOpenSettings,
-  threadBanner,
+  onCloseThread,
 }: RoomHeaderProps) {
   const agents = useAgents();
   const openMenu = useContextMenu();
@@ -82,7 +78,10 @@ export function RoomHeader({
   const working = members.filter((m) => m.status === "busy").length;
 
   return (
-    <header className={cn("room-header", "[border-bottom:var(--line)] bg-paper")}>
+    <header
+      className={cn("room-header", "[border-bottom:var(--line)] bg-paper")}
+      data-thread-open={onCloseThread ? "true" : undefined}
+    >
       <div className="room-header-top flex items-center gap-[var(--space-16)] pt-[16px] px-[22px] pb-[12px]">
         <div className="room-id flex items-center gap-[14px] flex-[1_1_520px] min-w-0">
           {room.kind === "group" ? (
@@ -95,7 +94,7 @@ export function RoomHeader({
             </IdentityBadge>
           )}
           <div className="room-title-block flex flex-col justify-center min-w-0 flex-[1_1_auto]">
-            <div className="room-title font-display text-[length:var(--text-22)] flex items-center leading-[1.1] min-w-0">
+            <div className="room-title flex items-center leading-[1.1] min-w-0" style={{ fontFamily: "var(--font-display-heading)", fontSize: "calc(var(--text-22) * var(--font-display-size-scale, 1))", fontWeight: "var(--font-display-heading-weight)" }}>
               <RoomNameInline
                 kind={room.kind}
                 name={room.name}
@@ -164,22 +163,25 @@ export function RoomHeader({
                 <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
               </button>
             )}
+            {onCloseThread && (
+              <button className="thread-pane-close" onClick={onCloseThread} aria-label="close thread">×</button>
+            )}
           </div>
         )}
       </div>
 
-      {tab === "board" && (
-        // Rendered for both skins; only the glass banner surfaces it (CSS gates
-        // on data-skin, which the parity harness can force — the `skin` prop
-        // can't). Brutal hides it and keeps BoardView's own header.
-        <Rail role="toolbar" aria-label="board filter" className="room-board-filters">
-          {BOARD_FILTERS.map((f, i) => (
-            <RailSegment key={f.id} icon={<f.Icon />} label={f.label} active={i === 0} onSelect={() => {}} />
-          ))}
-        </Rail>
-      )}
-
       <div className="room-tabs topbar-strip relative flex items-center gap-[var(--space-8)] pt-[10px] px-[22px] pb-[10px] [border-top:var(--line-2)]">
+        {tab === "board" && (
+          // The board filter and room-surface rail share this one flowing strip.
+          // Glass shows both; brutal hides this filter and keeps BoardView's
+          // in-surface header. Sibling rails cannot overlap and the strip can
+          // scroll horizontally when their combined width exceeds its surface.
+          <Rail role="toolbar" aria-label="board filter" className="room-board-filters">
+            {BOARD_FILTERS.map((f, i) => (
+              <RailSegment key={f.id} icon={<f.Icon />} label={f.label} active={i === 0} onSelect={() => {}} />
+            ))}
+          </Rail>
+        )}
         <Rail role="tablist" aria-label="room surface">
           {ROOM_TABS.map((t) => (
             <RailSegment
@@ -191,24 +193,10 @@ export function RoomHeader({
             />
           ))}
         </Rail>
-        {threadBanner ? (
-          <div className="absolute top-0 right-0 bottom-0 w-[min(var(--thread-pane-width,420px),46vw)] min-w-0 flex items-center justify-between gap-[var(--space-12)] px-[22px] font-mono text-ink-soft" aria-label={`thread replying to ${threadBanner.author.name}`}>
-            <div className="min-w-0 flex items-center gap-[var(--space-8)] [&_strong]:font-display [&_strong]:text-[length:var(--text-13)] [&_strong]:text-ink">
-              <strong>Thread</strong>
-              <span className="thread-pane-sep">·</span>
-              <span className="thread-pane-sub">replying to</span>
-              <IdentityBadge className="author-name min-w-0 max-w-[min(220px,34vw)] p-[var(--space-thread-author-chip-pad)] [border:var(--line-sm)] rounded-sm shadow-chip font-display text-[length:var(--text-11)] overflow-hidden text-ellipsis whitespace-nowrap" color={threadBanner.author.color} {...(threadBanner.author.colorRef ? { colorRef: threadBanner.author.colorRef } : null)}>
-                {threadBanner.author.name}
-              </IdentityBadge>
-            </div>
-            <button className="thread-pane-close flex-none" onClick={threadBanner.onClose} aria-label="close thread">×</button>
-          </div>
-        ) : (
-          <div className="room-activity ml-auto font-mono text-[length:var(--text-10)] text-ink-soft flex items-center gap-[var(--space-8)]">
-            ROOM ACTIVITY
-            <span className="tracking-[var(--tracking-pixel)] text-ink">▁▂▃▅▆▇▆▅▃▂</span>
-          </div>
-        )}
+        <div className="room-activity ml-auto font-mono text-[length:var(--text-10)] text-ink-soft flex items-center gap-[var(--space-8)]">
+          ROOM ACTIVITY
+          <span className="tracking-[var(--tracking-pixel)] text-ink">▁▂▃▅▆▇▆▅▃▂</span>
+        </div>
       </div>
     </header>
   );

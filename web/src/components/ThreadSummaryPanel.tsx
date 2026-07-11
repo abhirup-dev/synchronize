@@ -144,7 +144,7 @@ export function ThreadSummaryPanel({
           <button className="thread-pane-close" onClick={onClose} aria-label="back to room">
             <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
           </button>
-          <div className="min-w-0 font-display text-[length:var(--text-14)] leading-none">Thread summaries</div>
+          <div className="min-w-0 leading-none" style={{ fontFamily: "var(--font-display-heading)", fontSize: "var(--font-display-heading-size)", fontWeight: "var(--font-display-heading-weight)" }}>Thread summaries</div>
           <span className="rounded-pill bg-paper px-[8px] py-[2px] font-mono text-[length:var(--text-10)] text-ink-soft [border:var(--line-sm)]">
             {threadMessages.length}
           </span>
@@ -395,7 +395,7 @@ function ThreadSummaryRow({
       >
         <div className="flex min-w-0 flex-1 flex-col gap-[8px]">
           <div className="flex min-w-0 flex-wrap items-center gap-[6px] font-mono text-[length:var(--text-10-5)] tracking-[var(--tracking-xs)] text-ink-faint">
-            <IdentityText className="font-display text-[length:var(--text-11)] uppercase tracking-[var(--tracking-sm)]" color={dotColor} {...(dotColorRef ? { colorRef: dotColorRef } : null)}>
+            <IdentityText className="identity-name-pill uppercase tracking-[var(--tracking-sm)]" color={dotColor} {...(dotColorRef ? { colorRef: dotColorRef } : null)}>
               {author?.name ?? "?"}
             </IdentityText>
             <span className="text-ink-faint">·</span>
@@ -478,7 +478,7 @@ function ThreadSummaryRow({
     >
       <div className="box-border flex w-[calc(100%-38px)] max-w-[calc(100%-38px)] flex-1 flex-col items-end gap-[6px] text-right [padding:6px_14px_6px_18px] @max-[290px]:[padding-left:10px] @max-[290px]:[padding-right:10px] group-focus-visible/ts-row:[outline:2px_solid_var(--blue)] group-focus-visible/ts-row:[outline-offset:4px]">
         <div className="inline-flex max-w-full flex-wrap items-baseline justify-end gap-[6px] @max-[290px]:gap-[4px] font-mono text-[length:var(--text-10-5)] tracking-[var(--tracking-xs)] text-ink-faint">
-          <IdentityText className="font-display text-[length:var(--text-11)] uppercase tracking-[var(--tracking-sm)]" color={dotColor} {...(dotColorRef ? { colorRef: dotColorRef } : null)}>
+          <IdentityText className="identity-name-pill uppercase tracking-[var(--tracking-sm)]" color={dotColor} {...(dotColorRef ? { colorRef: dotColorRef } : null)}>
             {author?.name ?? "?"}
           </IdentityText>
           <span className="text-ink-faint">·</span>

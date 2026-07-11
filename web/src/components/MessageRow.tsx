@@ -163,12 +163,13 @@ export const MessageRow = memo(function MessageRow({
         {!hideAuthor && !groupedWithPrev && !isSelf && (
           <div className="author-chip">
             <IdentityBadge
-              className="author-name"
+              className="author-name identity-name-pill"
               color={author.color}
               {...(author.colorRef ? { colorRef: author.colorRef } : null)}
               style={{
-                fontFamily: "var(--font-display)",
-                fontSize: "var(--text-12)",
+                fontFamily: "var(--font-display-medium)",
+                fontSize: "var(--font-display-medium-size)",
+                fontWeight: "var(--font-display-medium-weight)",
                 letterSpacing: "var(--tracking-xs)",
                 padding: "var(--space-author-chip-pad)",
                 border: "var(--line-sm)",
@@ -212,7 +213,7 @@ export const MessageRow = memo(function MessageRow({
                         return (
                           <IdentityBadge
                             key={aid}
-                            className="thread-badge-av -ml-1 grid h-5 w-5 place-items-center rounded-xs font-display text-[length:var(--text-10)] shadow-xs [border:var(--line-xs)] first:ml-0"
+                            className="thread-badge-av -ml-1 grid h-5 w-5 place-items-center rounded-xs [font-family:var(--font-avatar)] text-[length:var(--text-10)] shadow-xs [border:var(--line-xs)] first:ml-0"
                             color={a.color}
                             {...(a.colorRef ? { colorRef: a.colorRef } : null)}
                             title={a.name}

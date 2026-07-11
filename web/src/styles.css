@@ -46,7 +46,58 @@ kbd {
   box-shadow: var(--control-shadow);
 }
 
-button { font-family: inherit; cursor: pointer; }
+/* Buttons are one quiet typography role across every component and skin. The
+   important flags intentionally defeat legacy utility/component font classes;
+   button labels share one family/size and never inherit bold display emphasis. */
+button {
+  font-family: var(--font-display-button) !important;
+  font-size: var(--font-display-button-size) !important;
+  font-weight: var(--font-display-button-weight) !important;
+  font-synthesis: none;
+  cursor: pointer;
+}
+
+.identity-name-pill {
+  font-family: var(--font-display-medium);
+  font-size: var(--font-display-medium-size);
+  font-weight: var(--font-display-medium-weight);
+}
+
+.icon-button {
+  background: var(--control-bg);
+  color: var(--control-fg-soft);
+  border: var(--control-border);
+  border-radius: var(--control-radius);
+  box-shadow: var(--control-shadow);
+}
+.icon-button[data-variant="ghost"] {
+  border-color: transparent;
+}
+.icon-button[data-variant="solid"] {
+  background: var(--control-bg-solid);
+  color: var(--control-fg);
+}
+.icon-button[data-variant="accent"] {
+  background: var(--control-bg-accent);
+  color: var(--control-fg-accent);
+  border-color: transparent;
+}
+.icon-button[data-active="true"] {
+  background: var(--control-bg-active);
+  color: var(--control-fg-active);
+}
+.icon-button:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+  color: var(--control-fg);
+  box-shadow: var(--control-shadow-hover);
+  transform: var(--control-hover-transform);
+}
+.icon-button:active:not(:disabled) {
+  transform: var(--control-press-transform);
+}
+.icon-button:focus-visible {
+  box-shadow: var(--focus-ring);
+}
 
 @keyframes pulse-busy {
   0%, 100% { transform: scale(1); }
@@ -248,7 +299,7 @@ button { font-family: inherit; cursor: pointer; }
   border: var(--line-sm);
   border-radius: var(--radius-xs);
   box-shadow: 1.5px 1.5px 0 var(--ink);
-  font-family: var(--font-display);
+  font-family: var(--font-control);
   font-size: var(--text-10);
   line-height: 1;
   letter-spacing: var(--tracking-md);
@@ -411,8 +462,11 @@ button { font-family: inherit; cursor: pointer; }
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  font-family: var(--font-display);
+  font-family: var(--font-avatar);
   font-size: var(--identity-font-size, var(--text-16));
+  font-size-adjust: calc(0.52 * var(--font-avatar-size-scale, 1));
+  font-weight: var(--font-avatar-weight);
+  font-synthesis: none;
   box-shadow: var(--identity-shadow, var(--shadow-chip));
   position: relative;
 }
@@ -578,26 +632,6 @@ button { font-family: inherit; cursor: pointer; }
   padding: 0 5px;
 }
 
-.shell-compact .composer-hint {
-  display: none;
-}
-
-.shell-compact .composer-foot {
-  gap: var(--space-8);
-}
-
-.shell-compact .community-open-btn {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  padding: 0;
-  border-radius: var(--radius-pill);
-  background: var(--lime);
-  color: var(--on-accent);
-  font-size: var(--text-17);
-  overflow: visible;
-}
-
 .community-icon {
   position: relative;
   width: 26px;
@@ -748,19 +782,21 @@ button { font-family: inherit; cursor: pointer; }
   height: 32px;
   display: grid;
   place-items: center;
-  background: var(--paper);
-  color: var(--ink);
-  border: var(--line-2);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  background: var(--control-bg);
+  color: var(--control-fg-soft);
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  box-shadow: var(--control-shadow);
   font-family: var(--font-display);
   font-size: var(--text-16);
   padding: 0;
 }
 
 .shell-overlay-close:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
+  color: var(--control-fg);
+  background: var(--control-bg-hover);
+  transform: var(--control-hover-transform);
+  box-shadow: var(--control-shadow-hover);
 }
 
 .compact-appbar {
@@ -920,43 +956,12 @@ button { font-family: inherit; cursor: pointer; }
 /* ───────────────────────── room header ───────────────────────── */
 
 /* .room-header, .room-header-top, .room-id, .room-id-icon base migrated to
-   Tailwind utilities in RoomHeader.tsx (these extra.css copies won the cascade;
-   the effective values are reproduced there). Hook/ancestor classes keep their
-   className. The .room-id-name/.room-id-sub/.dot-sep rules below are unrelated
-   (not rendered by RoomHeader) and left as-is. */
-.room-id-name {
-  font-family: var(--font-display);
-  font-size: var(--text-22);
-  letter-spacing: var(--tracking-tight);
-  display: flex;
-  align-items: center;
-}
+   Tailwind utilities in RoomHeader.tsx. Hook/ancestor classes keep their
+   className for live skin and compact selectors. */
 .dot-sep { opacity: 0.4; }
 /* .busy-inline + .room-header-actions base migrated to Tailwind utilities in
    RoomHeader.tsx (the extra.css .busy-inline copy won; room-header-actions
    keeps its className for the .shell-compact override). */
-
-.member-stack {
-  display: flex;
-  margin-right: 4px;
-}
-
-/* ─── tabbar ─── */
-.tabbar {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 0 22px;
-  border-top: var(--line-2);
-  background: var(--paper-2);
-}
-.tab-btn.active {
-  color: var(--ink);
-  border-bottom-color: var(--ink);
-  background: var(--paper);
-  box-shadow: var(--shadow-tab-active);
-}
-.sparkline span { width: 4px; }
 
 /* ───────────────────────── chat ───────────────────────── */
 
@@ -980,13 +985,6 @@ button { font-family: inherit; cursor: pointer; }
 .chat-list::-webkit-scrollbar { width: 10px; }
 .chat-list::-webkit-scrollbar-thumb { background: var(--ink); border-radius: var(--radius-none); }
 .chat-list::-webkit-scrollbar-track { background: var(--paper); }
-.day-divider .line {
-  flex: 1;
-  height: 0;
-  border-top: var(--line-dashed-md);
-  opacity: 0.5;
-}
-
 /* DEAD CSS REMOVED (sync-q48d): legacy .msg-row/.msg-bubble/.msg-gutter/.msg-main/
    .msg-head family — not rendered by MessageRow (live classes are .message-row /
    .bubble, migrated to inline Tailwind utilities). */
@@ -1059,15 +1057,6 @@ button { font-family: inherit; cursor: pointer; }
   }
 }
 
-/* ───────────────────────── composer ───────────────────────── */
-
-.composer-wrap {
-  position: relative;
-  padding: 14px 22px 18px;
-  border-top: var(--line-2);
-  background: var(--paper-2);
-}
-
 /* Composer toolbar/send/input styles are inline Tailwind in components/Composer.tsx.
    Legacy dead hooks (.cmp-btn, .cmp-sep, .hint, .send-btn, .send-arrow) removed — sync-imeu.1.19. */
 
@@ -1077,7 +1066,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ───────────────────────── board / kanban ───────────────────────── */
 
-.board-view, .media-view {
+.board-view {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1300,18 +1289,6 @@ button { font-family: inherit; cursor: pointer; }
 }
 .add-card:hover { background: var(--paper); color: var(--ink); }
 
-/* ───────────────────────── media grid ───────────────────────── */
-
-.media-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-16);
-  padding: 18px 22px 22px;
-  overflow: auto;
-  min-height: 0;
-}
-
 /* ───────────────────────── agent roster ───────────────────────── */
 /* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
  * (sync-9hqo). The live component carries all roster styling; the legacy
@@ -1324,50 +1301,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* DEAD CSS REMOVED (sync-q48d): legacy .msg-status family + status-spin keyframes
    — message status was never rendered by MessageRow. */
-.reader-chip {
-  display: inline-block;
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: var(--text-10-5);
-  padding: 1px 7px;
-  border: var(--line-xs);
-  border-radius: var(--radius-pill);
-  margin: 0 1px;
-  vertical-align: baseline;
-  box-shadow: var(--shadow-xs);
-}
-.reader-stack > div { margin-left: -6px; }
-.reader-stack > div:first-child { margin-left: 0; }
-
-/* mention popup: a few polish touches */
-.mention-pop-head {
-  padding: var(--space-button-pad-md);
-  background: var(--ink);
-  color: var(--on-ink);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-lg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 /* .mention-note base + .status-busy migrated to inline Tailwind utilities in
    components/Composer.tsx (effective font-mono/text-11/ink-soft preserved;
    superseded styles.css copy removed). */
-.mention-kbd {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--paper);
-  border: var(--line-xs);
-  border-radius: var(--radius-sm);
-  padding: var(--space-chip-pad-sm);
-  font-family: var(--font-mono);
-  font-size: var(--text-11);
-  font-weight: 700;
-  box-shadow: var(--shadow-chip);
-}
 
 /* ───────────────────────── timeline rail ───────────────────────── */
 
@@ -1416,22 +1352,6 @@ button { font-family: inherit; cursor: pointer; }
 /* (Removed dead `.timeline-node.focused/.dimmed` rules — never emitted by the
  * migrated TimelineRail component; sync-9hqo.) */
 
-/* roster: focus banner pinned under the AGENTS sticker */
-.roster-focus-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: 7px 10px;
-  background: var(--pink);
-  color: var(--on-accent);
-  border: var(--line-sm);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-chip);
-  font-family: var(--font-mono);
-  font-size: var(--text-10-5);
-  font-weight: 600;
-}
-
 /* ───────────────────────── poll (inline in messages) ───────────────────────── */
 
 .poll {
@@ -1443,13 +1363,6 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: var(--shadow-none);
 }
 .poll.closed { opacity: 0.78; }
-
-.poll-status-open b {
-  font-family: var(--font-display);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-sm);
-  color: var(--ink);
-}
 
 /* ───────────────────────── context menu ───────────────────────── */
 /* Legacy context-menu block removed (sync-mzy3). These rules were already dead:
@@ -1495,66 +1408,10 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
 }
-.chat-view.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 480px);
-  gap: 0;
-}
-.chat-view .chat-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-}
-.chat-view.split .chat-main {
-  border-right: var(--line);
-}
-
 /* widen main-body when thread is open (timeline + roster are hidden in JSX) */
 .main-body.thread-open {
   grid-template-columns: minmax(0, 1fr);
   position: relative;
-}
-
-/* ── collapsed thread stub: minimal, slack-like text row ── */
-.thread-stub {
-  margin-top: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  background: transparent;
-  border: var(--line-none);
-  border-radius: var(--radius-sm);
-  padding: 3px 8px 3px 4px;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  align-self: flex-start;
-  color: var(--ink-soft);
-  transition: background 100ms, color 100ms;
-}
-.thread-stub.active {
-  background: var(--paper-2);
-  color: var(--ink);
-}
-.thread-stub-avatars > div { margin-left: -4px; }
-.thread-stub-avatars > div:first-child { margin-left: 0; }
-/* the active stub gets a tiny ink underscore so it reads as "currently open" */
-.thread-stub.active .thread-stub-count {
-  box-shadow: var(--shadow-accent-inset);
-}
-
-/* ── compressed chat list (left side when thread open) ── */
-/* DEAD CSS REMOVED (sync-q48d): legacy .chat-list.compressed + .msg-row.compressed/
-   .thread-active/.thread-dimmed family — never rendered (no `compressed`/`thread-*`
-   modifier applied; live row is .message-row). */
-
-/* in split mode, chat-main composer slims its outer padding to save vertical space.
-   The thread composer keeps the full chrome (toolbar, hint, etc) since the user
-   may want to compose a full reply there. */
-.chat-view.split .chat-main .composer-wrap {
-  padding: var(--density-compact-pad);
 }
 
 /* ── right-side thread pane: borrows the room-header + chat-list patterns ──
@@ -1563,32 +1420,6 @@ button { font-family: inherit; cursor: pointer; }
    thread-slide-in keyframes + `.chat-view.resizing .thread-pane` animation-kill
    below stay in CSS. */
 
-/* resize grabber pinned to the LEFT edge of the thread pane.
-   Wide enough to grab easily, mostly invisible until hover. */
-.thread-resize-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -3px;
-  width: 8px;
-  cursor: ew-resize;
-  z-index: var(--z-local-control);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-/* while actively resizing, kill text selection + transitions for snappy feel */
-.chat-view.resizing {
-  user-select: none;
-}
-.chat-view.resizing .thread-pane {
-  animation: none;
-}
-.chat-view.resizing .thread-resize-grip {
-  opacity: 1;
-  background: var(--ink);
-  height: 56px;
-}
 @keyframes thread-slide-in {
   from { transform: translateX(16px); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
@@ -1596,12 +1427,6 @@ button { font-family: inherit; cursor: pointer; }
 
 /* .thread-pane-head / .thread-pane-title base rules migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre). */
-.thread-pane-label {
-  font-family: var(--font-display);
-  font-size: var(--text-14);
-  color: var(--ink);
-  letter-spacing: var(--tracking-none);
-}
 .thread-pane-sep {
   color: var(--ink-faint);
   font-size: var(--text-13);
@@ -1647,15 +1472,3 @@ button { font-family: inherit; cursor: pointer; }
    .thread-divider / .thread-divider-line base rules migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre); .thread-divider is kept as a hook for
    `.thread-pane-body .thread-divider` in extra.css. */
-.thread-divider-pill {
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  letter-spacing: var(--tracking-lg);
-  font-weight: 700;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-/* thread pane uses the standard Composer; ensure the wrap doesn't get squished */
-.thread-pane-composer-wrap {
-  flex-shrink: 0;
-}

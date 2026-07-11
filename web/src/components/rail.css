@@ -24,6 +24,7 @@
   background: var(--rail-fill, color-mix(in srgb, var(--ink) 5%, transparent));
   border: var(--line);
   box-shadow: none;
+  font-family: var(--font-control);
 }
 
 /* ── $SEG — a segment: collapsed icon → expanding pane. ── */
@@ -48,7 +49,7 @@
   overflow: hidden;
   white-space: nowrap;
   cursor: pointer;
-  font: inherit;
+  font-family: var(--font-control);
   transition:
     background 0.2s ease,
     color 0.2s ease,
@@ -89,8 +90,9 @@
   margin-left: 0;
   overflow: hidden;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
+  font-family: var(--font-display-button);
+  font-size: var(--font-display-button-size);
+  font-weight: var(--font-display-button-weight);
   letter-spacing: -0.01em;
   color: var(--ink);
   transition:
@@ -167,7 +169,7 @@
   overflow: visible;
 }
 .rail-seg:not(.active)::after {
-  content: attr(data-label);
+  content: attr(data-tooltip);
   position: absolute;
   top: calc(100% + 8px);
   left: 50%;
@@ -180,8 +182,9 @@
   opacity: 0;
   background: var(--ink);
   color: var(--paper);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-family: var(--font-display-button);
+  font-size: var(--font-display-button-size);
+  font-weight: var(--font-display-button-weight);
   letter-spacing: 0;
   box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
   transition: opacity 0.14s ease;
@@ -210,9 +213,9 @@
   border: var(--line);
   cursor: pointer;
   white-space: nowrap;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-family: var(--font-display-button);
+  font-size: var(--font-display-button-size);
+  font-weight: var(--font-display-button-weight);
   letter-spacing: -0.01em;
   transition:
     background 0.18s ease,
@@ -244,6 +247,27 @@
   width: 100%;
   height: 100%;
 }
+.rail-chip-badge {
+  display: inline-grid;
+  place-items: center;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--rail-badge-fill, color-mix(in srgb, var(--paper) 16%, transparent));
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+.rail-chip-trailing {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+.rail-chip-trailing svg { width: 100%; height: 100%; }
 
 .rail-chip[data-tooltip]:hover::after {
   content: attr(data-tooltip);
@@ -258,8 +282,9 @@
   z-index: 60;
   background: var(--ink);
   color: var(--paper);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-family: var(--font-display-button);
+  font-size: var(--font-display-button-size);
+  font-weight: var(--font-display-button-weight);
   letter-spacing: 0;
   box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
 }

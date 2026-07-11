@@ -118,7 +118,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
             </button>
           )}
-          <div className="flex min-w-0 items-center gap-[var(--space-6)] font-display text-[length:var(--text-13)]">
+          <div className="flex min-w-0 items-center gap-[var(--space-6)]" style={{ fontFamily: "var(--font-display-heading)", fontSize: "calc(var(--text-13) * var(--font-display-size-scale, 1))", fontWeight: "var(--font-display-heading-weight)" }}>
             <strong>Thread</strong>
             {!compact && (
               <>
@@ -127,7 +127,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               </>
             )}
             <IdentityBadge
-              className="author-name"
+              className="author-name identity-name-pill"
               color={parentAuthor.color}
               {...(parentAuthor.colorRef ? { colorRef: parentAuthor.colorRef } : null)}
               style={{
@@ -135,8 +135,9 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
                 border: "var(--line-sm)",
                 borderRadius: "var(--radius-sm)",
                 boxShadow: "var(--shadow-chip)",
-                fontFamily: "var(--font-display)",
-                fontSize: "var(--text-11)",
+                fontFamily: "var(--font-display-medium)",
+                fontSize: "var(--font-display-medium-size)",
+                fontWeight: "var(--font-display-medium-weight)",
               }}
             >
               {parentAuthor.name}
@@ -147,7 +148,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
       )}
 
       <div className="thread-scroll-wrap relative flex min-h-0 flex-1 flex-col [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
-      <div className="thread-pane-body autoscroll flex flex-1 flex-col gap-[var(--space-20)] overflow-y-auto [padding:12px_12px_4px]" ref={bodyRef}>
+      <div className="thread-pane-body autoscroll flex min-h-0 flex-1 flex-col gap-[var(--space-20)] overflow-y-auto [padding:12px_12px_4px]" ref={bodyRef}>
         <div className="thread-parent flex flex-col gap-[var(--space-8)]">
           <div className={cn("relative", parentCollapsed && "max-h-[310px] overflow-hidden")}>
             <MessageRow

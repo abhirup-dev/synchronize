@@ -17,7 +17,18 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const ChatsOverlay: Story = { args: { title: "Chats", detail: "5 rooms" } };
-export const AgentsOverlay: Story = { args: { title: "Agents", detail: "4 in #checkout-revamp" } };
+export const AgentsOverlay: Story = {
+  args: { title: "Agents", detail: "4 in #checkout-revamp" },
+  play: async ({ canvasElement }) => {
+    const title = canvasElement.querySelector<HTMLElement>(".compact-appbar-title");
+    const detail = canvasElement.querySelector<HTMLElement>(".compact-appbar-detail");
+    expect(title).toBeTruthy();
+    expect(detail).toBeTruthy();
+    await expect(getComputedStyle(title!).fontFamily).toContain("Space Grotesk");
+    await expect(getComputedStyle(detail!).fontFamily).toContain("Space Grotesk");
+    await expect(getComputedStyle(title!).letterSpacing).toBe("normal");
+  },
+};
 
 // Title that overflows the narrow bar — verifies truncation, not wrap.
 export const LongTitle: Story = {

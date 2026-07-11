@@ -12,7 +12,8 @@ import {
   ArrowDownUp,
   CheckCheck,
   Activity,
-  Filter,
+  ListFilter,
+  ChevronDown,
 } from "lucide-react";
 import { Rail, RailSegment, RailChip } from "./rail.tsx";
 
@@ -101,9 +102,32 @@ export const Chips: Story = {
           tooltip="Only working agents"
           onClick={() => setWorking((v) => !v)}
         />
-        <RailChip icon={<Filter />} tooltip="Filter rooms" onClick={fn()} />
+        <RailChip icon={<ListFilter />} label="Room" badge={12} trailing={<ChevronDown />} tooltip="Filter activity by room" ariaLabel="Filter rooms, all rooms" onClick={fn()} />
       </div>
     );
+  },
+};
+
+export const ComposedMenuChip: Story = {
+  render: () => (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <Rail role="tablist" aria-label="Activity filter">
+        <RailSegment icon={<List />} label="All" count={30} active onSelect={fn()} />
+        <RailSegment icon={<Bell />} label="Awaiting" count={10} onSelect={fn()} />
+      </Rail>
+      <RailChip icon={<ListFilter />} label="Room" badge={12} trailing={<ChevronDown />} tooltip="Filter activity by room" ariaLabel="Filter rooms, all rooms" onClick={fn()} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const segmentBadge = canvasElement.querySelector<HTMLElement>(".rail-seg-count");
+    const chipBadge = canvasElement.querySelector<HTMLElement>(".rail-chip-badge");
+    await expect(segmentBadge).toBeTruthy();
+    await expect(chipBadge).toBeTruthy();
+    const segmentStyle = getComputedStyle(segmentBadge!);
+    const chipStyle = getComputedStyle(chipBadge!);
+    await expect(chipStyle.borderRadius).toBe(segmentStyle.borderRadius);
+    await expect(chipStyle.fontFamily).toBe(segmentStyle.fontFamily);
+    await expect(chipStyle.fontSize).toBe(segmentStyle.fontSize);
   },
 };
 

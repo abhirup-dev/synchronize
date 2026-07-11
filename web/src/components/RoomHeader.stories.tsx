@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 import { RoomHeader } from "./RoomHeader.tsx";
-import { AGENTS, GROUPS, DMS } from "../data/seed.ts";
+import { GROUPS, DMS } from "../data/seed.ts";
 import { inMainColumn } from "../storybook/shellFrames.tsx";
 
 // Provider-backed: RoomHeader reads agents via useAgents() and opens the chat-bg
@@ -15,7 +15,6 @@ const longTitle = {
   description:
     "Standing room for the on-call rotation: heartbeat polls, escalation ladders, and post-incident retros across every regional cluster we operate.",
 };
-const atlas = AGENTS.find((a) => a.id === "atlas")!;
 
 const noop = () => {};
 
@@ -66,19 +65,30 @@ export const LongTitleAndDescription: Story = {
   args: { room: longTitle, showAgentsButton: true, onOpenAgents: noop },
 };
 
-// Thread banner replaces the room-activity strip in the tab row.
-export const WithThreadBanner: Story = {
-  args: {
-    room: group,
-    showAgentsButton: true,
-    onOpenAgents: noop,
-    threadBanner: { author: atlas, onClose: noop },
-  },
+// A split thread keeps only its close action in the room header; the old
+// "Thread · replying to" strip was removed because it overlapped the pane.
+export const WithThreadCloseControl: Story = {
+  args: { room: group, onCloseThread: noop },
 };
 
 // Glass skin + board tab selected — alternate visual state of the toggles/tabs.
 export const GlassSkinBoardTab: Story = {
   args: { room: group, skin: "glass", tab: "board", theme: "ink" },
+  globals: { skin: "glass" },
+  play: async ({ canvasElement }) => {
+    const strip = canvasElement.querySelector<HTMLElement>(".room-tabs");
+    const boardFilters = canvasElement.querySelector<HTMLElement>('[aria-label="board filter"]');
+    const roomSurface = canvasElement.querySelector<HTMLElement>('[aria-label="room surface"]');
+    expect(strip).toBeTruthy();
+    expect(boardFilters).toBeTruthy();
+    expect(roomSurface).toBeTruthy();
+    const filtersRect = boardFilters!.getBoundingClientRect();
+    const surfaceRect = roomSurface!.getBoundingClientRect();
+    await expect(filtersRect.right).toBeLessThanOrEqual(surfaceRect.left);
+    await expect(getComputedStyle(strip!).overflowX).toBe("auto");
+    await expect(getComputedStyle(boardFilters!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(getComputedStyle(roomSurface!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  },
 };
 
 // Compact (mobile-narrow, 390): title truncation, member-pile collapse, and the

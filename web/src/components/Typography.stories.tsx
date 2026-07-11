@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect } from "storybook/test";
+import { expect, fireEvent, userEvent, waitFor } from "storybook/test";
 import { MessageRow } from "./MessageRow.tsx";
 import { ActivityView } from "./ActivityView.tsx";
 import { ChatView } from "./ChatView.tsx";
@@ -87,6 +87,7 @@ const meta = {
     bodyFont: "Avenir Next",
     headingFont: "Space Grotesk",
     displayFont: "Archivo Black",
+    avatarFont: "Archivo Black",
     codeFont: "JetBrains Mono",
     width: 700,
   },
@@ -97,23 +98,38 @@ const meta = {
 export default meta;
 type Story = StoryObj<FontPreviewArgs>;
 
+const configuredFontFamilies = ["Avenir Next", "Space Grotesk", "Archivo Black", "Archivo Black", "JetBrains Mono"];
+
+function expectConfiguredFontPickers(canvasElement: HTMLElement) {
+  const values = [...canvasElement.querySelectorAll<HTMLSelectElement>('[data-testid="font-control-grid"] select')].map((select) => select.value);
+  return expect(values).toEqual(configuredFontFamilies);
+}
+
+async function expectConfiguredTuning(canvasElement: HTMLElement) {
+  const sizes = [...canvasElement.querySelectorAll<HTMLInputElement>('[data-testid="font-control-grid"] input[aria-label^="size"]')].map((input) => Number(input.value));
+  await expect(sizes).toEqual([1, 1, 1.1, 1.35, 1]);
+  await expect(canvasElement.querySelector('[data-freeze-configuration]')).toBeTruthy();
+}
+
 function PreviewFrame({
   bodyFont,
   headingFont,
   displayFont,
+  avatarFont,
   codeFont,
   width,
 }: {
   bodyFont: string;
   headingFont: string;
   displayFont: string;
+  avatarFont: string;
   codeFont: string;
   width: number;
 }) {
   return (
     <section
       style={{
-        ...fontVars(bodyFont, headingFont, displayFont, codeFont),
+        ...fontVars(bodyFont, headingFont, displayFont, avatarFont, codeFont),
         background: "var(--paper)",
         color: "var(--ink)",
         display: "grid",
@@ -143,7 +159,7 @@ function PreviewFrame({
               margin: "4px 0 0",
             }}
           >
-            heading: {headingFont} · display: {displayFont} · code: {codeFont}
+            heading: {headingFont} · display: {displayFont} · avatar: {avatarFont} · code: {codeFont}
           </p>
         </div>
         <AvailabilityBadge font={bodyFont} />
@@ -161,19 +177,21 @@ function ActivityPreviewFrame({
   bodyFont,
   headingFont,
   displayFont,
+  avatarFont,
   codeFont,
   width,
 }: {
   bodyFont: string;
   headingFont: string;
   displayFont: string;
+  avatarFont: string;
   codeFont: string;
   width: number;
 }) {
   return (
     <section
       style={{
-        ...fontVars(bodyFont, headingFont, displayFont, codeFont),
+        ...fontVars(bodyFont, headingFont, displayFont, avatarFont, codeFont),
         background: "var(--paper)",
         color: "var(--ink)",
         fontFamily: "var(--font-ui)",
@@ -198,12 +216,14 @@ function ChatPreviewFrame({
   bodyFont,
   headingFont,
   displayFont,
+  avatarFont,
   codeFont,
   width,
 }: {
   bodyFont: string;
   headingFont: string;
   displayFont: string;
+  avatarFont: string;
   codeFont: string;
   width: number;
 }) {
@@ -218,7 +238,7 @@ function ChatPreviewFrame({
   return (
     <section
       style={{
-        ...fontVars(bodyFont, headingFont, displayFont, codeFont),
+        ...fontVars(bodyFont, headingFont, displayFont, avatarFont, codeFont),
         background: "var(--paper)",
         color: "var(--ink)",
         display: "grid",
@@ -284,28 +304,118 @@ function ChatPreviewFrame({
 }
 
 export const RichMarkdownFontSwitch: Story = {
-  render: ({ bodyFont, headingFont, displayFont, codeFont, width }) => (
-    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} codeFont={codeFont} width={width}>
+  render: ({ bodyFont, headingFont, displayFont, avatarFont, codeFont, width }) => (
+    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} avatarFont={avatarFont} codeFont={codeFont} width={width} sourceStoryId="design-typography--rich-markdown-font-switch">
       {(selection) => <PreviewFrame {...selection} />}
     </FontSwitchChrome>
   ),
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector(".markdown.rich-markdown")).toBeTruthy();
-    await expect(canvasElement.querySelectorAll("select")).toHaveLength(4);
+    await expect(canvasElement.querySelectorAll("select")).toHaveLength(5);
+    await expect(canvasElement.querySelectorAll('input[type="range"]')).toHaveLength(10);
+    const weightPickers = canvasElement.querySelectorAll<HTMLElement>("[data-font-weight-picker]");
+    await expect(weightPickers).toHaveLength(5);
+    await expect([...weightPickers[1]!.querySelectorAll("[data-weight-option]")].map((option) => option.textContent)).toEqual(["400", "500", "600", "700"]);
+    await expect([...weightPickers[2]!.querySelectorAll("[data-weight-option]")].map((option) => option.textContent)).toEqual(["400"]);
+    await expect(weightPickers[2]!.querySelector<HTMLInputElement>('input[type="range"]')?.disabled).toBe(true);
+    await expect([...weightPickers[4]!.querySelectorAll("[data-weight-option]")].map((option) => option.textContent)).toEqual(["400", "500", "700"]);
+    await expect(canvasElement.querySelectorAll('[aria-label$="font preview"]')).toHaveLength(5);
+    await expectConfiguredFontPickers(canvasElement);
+    await expectConfiguredTuning(canvasElement);
+    await expect(canvasElement.querySelector("[data-config-source]")?.getAttribute("data-config-source")).toContain("design-typography--");
+    const optionCounts = [...canvasElement.querySelectorAll("select")].map((select) => select.options.length);
+    await expect(new Set(optionCounts).size).toBe(1);
+    const controlGrid = canvasElement.querySelector<HTMLElement>('[data-testid="font-control-grid"]')!;
+    controlGrid.style.width = "320px";
+    await expect([...controlGrid.children].every((card) => card.scrollWidth <= card.clientWidth)).toBe(true);
+    controlGrid.style.width = "100%";
+
+    const root = canvasElement.ownerDocument.documentElement;
+    const codeBlock = canvasElement.querySelector<HTMLElement>(".markdown pre");
+    const highlightedCode = canvasElement.querySelector<HTMLElement>(".markdown pre code.hljs");
+    await expect(codeBlock).toBeTruthy();
+    await expect(highlightedCode).toBeTruthy();
+
+    const originalTheme = root.getAttribute("data-theme");
+    const stylesFor = (theme: "light" | "kanagawa-wave") => {
+      root.setAttribute("data-theme", theme);
+      return {
+        background: getComputedStyle(codeBlock!).backgroundColor,
+        foreground: getComputedStyle(highlightedCode!).color,
+      };
+    };
+
+    try {
+      const light = stylesFor("light");
+      const dark = stylesFor("kanagawa-wave");
+      await expect(light.background).not.toBe(dark.background);
+      await expect(light.foreground).not.toBe(dark.foreground);
+      await expect(light.background).toBe("rgb(244, 246, 248)");
+      await expect(light.foreground).toBe("rgb(15, 20, 25)");
+    } finally {
+      if (originalTheme) root.setAttribute("data-theme", originalTheme);
+      else root.removeAttribute("data-theme");
+    }
   },
 };
 
 export const ActivityFontSwitch: Story = {
   args: { width: 1080 },
   parameters: { layout: "centered" },
-  render: ({ bodyFont, headingFont, displayFont, codeFont, width }) => (
-    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} codeFont={codeFont} width={width} maxWidth={1160}>
+  render: ({ bodyFont, headingFont, displayFont, avatarFont, codeFont, width }) => (
+    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} avatarFont={avatarFont} codeFont={codeFont} width={width} maxWidth={1160} sourceStoryId="design-typography--activity-font-switch">
       {(selection) => <ActivityPreviewFrame {...selection} />}
     </FontSwitchChrome>
   ),
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector(".activity-view")).toBeTruthy();
-    await expect(canvasElement.querySelectorAll("select")).toHaveLength(4);
+    await expect(canvasElement.querySelectorAll("select")).toHaveLength(5);
+    await expect(canvasElement.querySelectorAll('input[type="range"]')).toHaveLength(10);
+    await expect(canvasElement.querySelectorAll('[aria-label$="font preview"]')).toHaveLength(5);
+    await expectConfiguredFontPickers(canvasElement);
+    await expectConfiguredTuning(canvasElement);
+    await expect(canvasElement.querySelector('[data-copy-changed]')).toBeFalsy();
+    const displaySelect = canvasElement.querySelectorAll("select")[2]!;
+    const roomName = canvasElement.querySelector<HTMLElement>(".act-room-name")!;
+    const awaiting = canvasElement.querySelector<HTMLElement>(".act-room-await")!;
+    const originalDisplayFont = displaySelect.value;
+    try {
+      await userEvent.selectOptions(displaySelect, "Space Grotesk");
+      await waitFor(() => expect(getComputedStyle(roomName).fontFamily).toContain("Space Grotesk"));
+      await expect(getComputedStyle(awaiting).fontFamily).toBe(getComputedStyle(roomName).fontFamily);
+      const displayWeightPicker = canvasElement.querySelectorAll<HTMLElement>("[data-font-weight-picker]")[2]!;
+      const displayWeight = displayWeightPicker.querySelector<HTMLInputElement>('input[type="range"]')!;
+      const displaySize = displayWeightPicker.parentElement!.querySelector<HTMLInputElement>('input[aria-label^="size"]')!;
+      const agentPill = canvasElement.querySelector<HTMLElement>(".author-chip.xs")!;
+      const scopeAction = canvasElement.querySelector<HTMLElement>(".act-scope-ack")!;
+      const openAction = canvasElement.querySelector<HTMLElement>(".act-digest-headgo")!;
+      const railLabel = canvasElement.querySelector<HTMLElement>(".rail-seg.active .rail-seg-label")!;
+      const roomFilter = canvasElement.querySelector<HTMLElement>(".act-room-filter-trigger")!;
+      fireEvent.change(displayWeight, { target: { value: "3" } });
+      fireEvent.change(displaySize, { target: { value: "1.3" } });
+      await waitFor(() => expect(canvasElement.querySelector('[data-copy-changed]')).toBeTruthy());
+      await waitFor(() => expect(getComputedStyle(roomName).fontWeight).toBe("700"));
+      await expect(getComputedStyle(awaiting).fontWeight).toBe("700");
+      await expect(getComputedStyle(roomName).fontSize).toBe("18.2px");
+      await expect(getComputedStyle(awaiting).fontSize).toBe("9.1px");
+      await expect(getComputedStyle(agentPill).fontFamily).toContain("Space Grotesk");
+      await expect(getComputedStyle(agentPill).fontWeight).toBe("700");
+      await expect(getComputedStyle(agentPill).fontSize).toBe("11.83px");
+      const buttonStyle = getComputedStyle(scopeAction);
+      await expect(buttonStyle.fontFamily).toContain("Space Grotesk");
+      await expect(buttonStyle.fontSize).toBe("13.65px");
+      await expect(buttonStyle.fontWeight).toBe("400");
+      for (const control of [openAction, railLabel, roomFilter]) {
+        const controlStyle = getComputedStyle(control);
+        await expect(controlStyle.fontFamily).toBe(buttonStyle.fontFamily);
+        await expect(controlStyle.fontSize).toBe(buttonStyle.fontSize);
+        await expect(controlStyle.fontWeight).toBe(buttonStyle.fontWeight);
+      }
+      await expect(buttonStyle.fontSize).not.toBe(getComputedStyle(agentPill).fontSize);
+    } finally {
+      await userEvent.selectOptions(displaySelect, originalDisplayFont);
+      await waitFor(() => expect(displaySelect.value).toBe(originalDisplayFont));
+    }
   },
 };
 
@@ -315,14 +425,52 @@ export const ChatWindowFontSwitch: Story = {
     layout: "centered",
     viewport: { defaultViewport: "desktop" },
   },
-  render: ({ bodyFont, headingFont, displayFont, codeFont, width }) => (
-    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} codeFont={codeFont} width={width} maxWidth={1180}>
+  render: ({ bodyFont, headingFont, displayFont, avatarFont, codeFont, width }) => (
+    <FontSwitchChrome bodyFont={bodyFont} headingFont={headingFont} displayFont={displayFont} avatarFont={avatarFont} codeFont={codeFont} width={width} maxWidth={1180} sourceStoryId="design-typography--chat-window-font-switch">
       {(selection) => <ChatPreviewFrame {...selection} />}
     </FontSwitchChrome>
   ),
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector(".chat-list")).toBeTruthy();
     await expect(canvasElement.querySelector(".thread-pane")).toBeTruthy();
-    await expect(canvasElement.querySelectorAll("select")).toHaveLength(4);
+    await expect(canvasElement.querySelectorAll("select")).toHaveLength(5);
+    await expect(canvasElement.querySelectorAll('input[type="range"]')).toHaveLength(10);
+    await expect(canvasElement.querySelectorAll('[aria-label$="font preview"]')).toHaveLength(5);
+    await expectConfiguredFontPickers(canvasElement);
+    await expectConfiguredTuning(canvasElement);
+
+    const selects = canvasElement.querySelectorAll("select");
+    const avatar = canvasElement.querySelector<HTMLElement>(".identity-icon");
+    const bubble = canvasElement.querySelector<HTMLElement>(".bubble");
+    const chatAgentPill = canvasElement.querySelector<HTMLElement>(".chat-list .identity-name-pill");
+    const threadAgentPill = canvasElement.querySelector<HTMLElement>(".thread-pane .identity-name-pill");
+    await expect(avatar).toBeTruthy();
+    await expect(bubble).toBeTruthy();
+    await expect(chatAgentPill).toBeTruthy();
+    await expect(threadAgentPill).toBeTruthy();
+    await expect(getComputedStyle(threadAgentPill!).fontFamily).toBe(getComputedStyle(chatAgentPill!).fontFamily);
+    await expect(getComputedStyle(threadAgentPill!).fontSize).toBe(getComputedStyle(chatAgentPill!).fontSize);
+    await expect(getComputedStyle(threadAgentPill!).fontWeight).toBe(getComputedStyle(chatAgentPill!).fontWeight);
+    const chatComposer = canvasElement.querySelector<HTMLElement>(".chat-col > .composer")!;
+    const threadComposer = canvasElement.querySelector<HTMLElement>(".thread-pane > .composer")!;
+    const chatComposerRect = chatComposer.getBoundingClientRect();
+    const threadComposerRect = threadComposer.getBoundingClientRect();
+    await expect(Math.abs(chatComposerRect.bottom - threadComposerRect.bottom)).toBeLessThan(1);
+    await expect(Math.abs(chatComposerRect.height - threadComposerRect.height)).toBeLessThan(1);
+    for (const composer of [chatComposer, threadComposer]) {
+      const style = getComputedStyle(composer);
+      await expect(style.borderBottomLeftRadius).toBe("0px");
+      await expect(style.borderBottomRightRadius).toBe("0px");
+    }
+    const bodyFamily = getComputedStyle(bubble!).fontFamily;
+    const originalAvatarFont = selects[3]!.value;
+    try {
+      await userEvent.selectOptions(selects[3]!, "JetBrains Mono");
+      await waitFor(() => expect(getComputedStyle(avatar!).fontFamily).toContain("JetBrains Mono"));
+      await expect(getComputedStyle(bubble!).fontFamily).toBe(bodyFamily);
+    } finally {
+      await userEvent.selectOptions(selects[3]!, originalAvatarFont);
+      await waitFor(() => expect(selects[3]!.value).toBe(originalAvatarFont));
+    }
   },
 };

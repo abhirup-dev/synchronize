@@ -310,6 +310,10 @@
 .message-row.is-self .message-stack {
   align-self: flex-end;
 }
+.message-row.is-self .bubble {
+  align-self: flex-end;
+  width: 100%;
+}
 
 .author-chip {
   display: flex;
@@ -547,12 +551,6 @@
  * (sync-9hqo). Hooks kept on the live elements: `agent-roster` (styles.css
  * `.shell-overlay` + responsive `display:none`), `roster-head` (skin-glass
  * backdrop-filter), `roster-card` (vim ring below). `.roster-note` was unused. */
-
-/* ─── Timeline rail slot (V0 reserved space) ────────────────────────────── */
-.timeline-rail-slot {
-  border-left: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
-  background: transparent;
-}
 
 /* Timeline tooltip needs to escape the rail's overflow; we render it as
    position:fixed in JSX so this rule just keeps the head-area visible. */

@@ -99,7 +99,7 @@ export function PollWidget({ poll, me, agents, onVote }: PollWidgetProps) {
                   return (
                     <IdentityBadge
                       key={vid}
-                      className="grid h-[18px] w-[18px] place-items-center [border:var(--line-xs)] rounded-xs font-display text-[length:var(--text-9)] -ml-[4px] shadow-xs first:ml-0"
+                      className="grid h-[18px] w-[18px] place-items-center [border:var(--line-xs)] rounded-xs [font-family:var(--font-avatar)] text-[length:var(--text-9)] -ml-[4px] shadow-xs first:ml-0"
                       color={a.color}
                       {...(a.colorRef ? { colorRef: a.colorRef } : null)}
                       title={a.name}

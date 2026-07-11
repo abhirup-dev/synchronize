@@ -7,7 +7,7 @@
 // Grouped/Timeline toggle).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, AtSign, CheckCheck, Inbox, LayoutList, Rows3, Settings, Target, type LucideIcon } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, AtSign, CheckCheck, ChevronDown, Inbox, LayoutList, ListFilter, Rows3, Settings, Target, type LucideIcon } from "lucide-react";
 import { Rail, RailSegment, RailChip } from "./rail.tsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -272,6 +272,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
                     key={f.id}
                     icon={<f.Icon size={17} strokeWidth={2.1} aria-hidden />}
                     label={f.label}
+                    tooltip={`Show ${f.label.toLowerCase()} activity`}
                     count={f.n}
                     active={filter === f.id}
                     onSelect={() => setFilter(f.id)}
@@ -288,6 +289,7 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
             <RoomFilterBar
               roomIds={allRoomIds}
               roomsById={roomsById}
+              agentsById={agentsById}
               selected={roomSel}
               onToggle={toggleRoom}
               onClear={() => setRoomSel(new Set())}
@@ -385,12 +387,14 @@ function ActivityViewControls({
         <RailSegment
           icon={<Rows3 size={18} strokeWidth={2.1} aria-hidden />}
           label="Timeline"
+          tooltip="Show activity as a timeline"
           active={timelineActive}
           onSelect={() => onViewMode("timeline")}
         />
         <RailSegment
           icon={<LayoutList size={18} strokeWidth={2.1} aria-hidden />}
           label="Grouped"
+          tooltip="Group activity by room"
           active={groupedActive}
           onSelect={() => onViewMode("grouped")}
         />
@@ -451,6 +455,7 @@ function RoomDigest({
 }) {
   const { room, roomId, items, awaiting } = group;
   const isDm = room.kind === "dm";
+  const dmAgent = isDm && room.peerId ? agentsById.get(room.peerId) : undefined;
   const label = roomNameText(room.kind, room.name);
   const expanded = !collapsed;
   const last = items[0];
@@ -461,13 +466,8 @@ function RoomDigest({
       <div className="act-digest-head">
         <button className="act-digest-toggle" onClick={onToggle} type="button">
           <span className="act-digest-chevron">{expanded ? "▾" : "▸"}</span>
-          {isDm ? (
-            <IdentityBadge className="act-room-icon sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
-              {room.emoji ?? label[0]}
-            </IdentityBadge>
-          ) : null}
+          {dmAgent ? <Avatar agent={dmAgent} size={34} /> : null}
           <RoomNameInline kind={room.kind} name={room.name} className="act-room-name" />
-          <span className="act-room-count">{items.length}</span>
           {awaiting > 0 && <span className="act-room-await">{awaiting} awaiting</span>}
           {!expanded && last && (
             <span className="act-digest-preview">
@@ -606,7 +606,7 @@ function LatestStrip({
     <div className="act-latest">
       <span className="act-latest-tag">▸ MOST RECENT</span>
       <Avatar agent={actor} size={26} />
-      <IdentityBadge className="act-latest-actor" color={actor.color} {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}>{actor.name}</IdentityBadge>
+      <IdentityBadge className="act-latest-actor identity-name-pill" color={actor.color} {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}>{actor.name}</IdentityBadge>
       <span className="act-latest-text">{stripMd(item.text).slice(0, 90)}</span>
       {room && <RoomNameInline kind={room.kind} name={room.name} className="act-latest-room" />}
       <span className="act-spacer" />
@@ -659,6 +659,7 @@ function bucketTimeline(items: ActivityItemModel[], sortDir: SortDirection): Tim
 function RoomFilterBar({
   roomIds,
   roomsById,
+  agentsById,
   selected,
   onToggle,
   onClear,
@@ -666,6 +667,7 @@ function RoomFilterBar({
 }: {
   roomIds: string[];
   roomsById: Map<string, Room>;
+  agentsById: Map<string, Agent>;
   selected: Set<string>;
   onToggle(id: string): void;
   onClear(): void;
@@ -700,14 +702,13 @@ function RoomFilterBar({
       <div className="act-roomlist-scroll">
         {ordered.map(({ id, room }) => {
           const on = selected.has(id);
+          const dmAgent = room.kind === "dm" && room.peerId ? agentsById.get(room.peerId) : undefined;
           return (
             <button key={id} className={`act-roomlist-row${on ? " on" : ""}`} onClick={() => onToggle(id)} type="button">
               <span className={`act-roomlist-check${on ? " on" : ""}`}>{on ? "✓" : ""}</span>
               {room.kind === "group" ? (
                 <IdentityLogoTile className="act-room-icon sm room-glyph-icon" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>{room.emoji ?? "#"}</IdentityLogoTile>
-              ) : (
-                <IdentityBadge className="act-room-icon sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>{room.emoji ?? room.name[0]}</IdentityBadge>
-              )}
+              ) : dmAgent ? <Avatar agent={dmAgent} size={34} /> : null}
               <RoomNameInline kind={room.kind} name={room.name} className="act-roomlist-name" />
               {room.unread > 0 && <span className="act-roomlist-unread">{room.unread}</span>}
             </button>
@@ -717,23 +718,24 @@ function RoomFilterBar({
     </div>
   ) : null;
 
-  const roomFilterLabel = selected.size === 0 ? "all" : String(selected.size);
+  const roomFilterLabel = String(selected.size === 0 ? roomIds.length : selected.size);
   const roomFilterAria = selected.size === 0 ? "Filter rooms, all rooms" : `Filter rooms, ${selected.size} selected`;
   return (
     <div className={`act-roombar act-roombar-inline act-roombar-menuonly${compact ? " act-roombar-compact" : ""}`}>
         <div className="act-room-filter-wrap" ref={moreRef}>
-        <button
-          className={`act-filter act-room-filter-trigger topbar-control${selected.size > 0 ? " active" : ""}${panelOpen ? " open" : ""}`}
+        <RailChip
+          className={`act-room-filter-trigger${panelOpen ? " open" : ""}`}
           onClick={() => setPanelOpen((o) => !o)}
-          type="button"
-          title="Filter rooms"
-          aria-label={roomFilterAria}
-          aria-pressed={selected.size > 0}
-        >
-          ROOM
-          <span className="act-filter-n">{roomFilterLabel}</span>
-          <span className="act-room-filter-caret">▾</span>
-        </button>
+          icon={<ListFilter strokeWidth={2.1} />}
+          label="Room"
+          badge={roomFilterLabel}
+          trailing={<ChevronDown strokeWidth={2.1} />}
+          active={selected.size > 0}
+          pressed={selected.size > 0}
+          expanded={panelOpen}
+          tooltip="Filter activity by room"
+          ariaLabel={roomFilterAria}
+        />
         {roomList}
       </div>
     </div>

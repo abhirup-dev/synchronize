@@ -34,6 +34,11 @@ export const Grouped: Story = {
       });
       const roomTrigger = canvasElement.querySelector<HTMLElement>(".act-room-filter-trigger");
       expect(roomTrigger).toBeTruthy();
+      expect(roomTrigger?.classList.contains("rail-chip")).toBe(true);
+      expect(roomTrigger?.querySelector(".rail-chip-label")?.textContent).toBe("Room");
+      expect(Number(roomTrigger?.querySelector(".rail-chip-badge")?.textContent)).toBeGreaterThan(0);
+      expect(roomTrigger?.querySelector(".rail-chip-icon svg")).toBeTruthy();
+      expect(roomTrigger?.getAttribute("data-tooltip")).toBe("Filter activity by room");
       expect(canvasElement.querySelector(".act-filterbar .act-room-filter-wrap")).toBeTruthy();
 
       // Sort is a RailChip; the Timeline/Grouped toggle is a two-segment Rail.
@@ -41,6 +46,12 @@ export const Grouped: Story = {
       expect(viewControls).toBeTruthy();
       expect(viewControls?.querySelector(".act-sort-toggle")).toBeTruthy();
       expect(viewControls?.querySelectorAll(".act-view-segment [data-rail-seg]").length).toBe(2);
+      expect(viewControls?.querySelector('[data-label="Timeline"]')?.getAttribute("data-tooltip")).toBe("Show activity as a timeline");
+      expect(viewControls?.querySelector('[data-label="Grouped"]')?.getAttribute("data-tooltip")).toBe("Group activity by room");
+      const filterRail = canvasElement.querySelector<HTMLElement>(".act-filters .rail");
+      const layoutRail = viewControls?.querySelector<HTMLElement>(".act-view-segment");
+      expect(getComputedStyle(layoutRail!).borderTopWidth).toBe(getComputedStyle(filterRail!).borderTopWidth);
+      expect(getComputedStyle(roomTrigger!).fontFamily).toBe(getComputedStyle(layoutRail!).fontFamily);
     });
 
     await step("View mode controls drive the matching feed layout", async () => {
@@ -78,6 +89,16 @@ export const Grouped: Story = {
       });
       expect(groupHeader.querySelector(".act-room-name")?.textContent).toMatch(/^#/);
       expect(groupHeader.querySelector(".act-room-icon")).toBeNull();
+      expect(groupHeader.querySelector(".act-room-count")).toBeNull();
+    });
+
+    await step("DM digest headers use the canonical message avatar", async () => {
+      const avatar = canvasElement.querySelector<HTMLElement>(".act-digest-head .identity-icon");
+      expect(avatar).toBeTruthy();
+      expect(avatar?.classList.contains("identity-icon")).toBe(true);
+      expect(Math.round(avatar!.getBoundingClientRect().width)).toBe(34);
+      expect(Math.round(avatar!.getBoundingClientRect().height)).toBe(34);
+      expect(avatar?.classList.contains("act-room-icon")).toBe(false);
     });
   },
 };

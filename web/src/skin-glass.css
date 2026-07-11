@@ -96,9 +96,13 @@
 :root[data-skin="glass"] #root {
   color: var(--ink);
 }
-/* agent identity reads consistently bold; avatar radius matches the bubble */
-:root[data-skin="glass"] :is(.author-chip, .author-name, .identity-icon, .act-latest-actor) {
-  font-weight: 700;
+/* Identity typography consumes role tokens so Storybook and the app tune the
+   same surfaces. Avatar initials and textual identity pills are separate roles. */
+:root[data-skin="glass"] :is(.author-chip, .author-name, .act-latest-actor) {
+  font-weight: var(--font-display-weight, 700);
+}
+:root[data-skin="glass"] .identity-icon {
+  font-weight: var(--font-avatar-weight, 700);
 }
 :root[data-skin="glass"] .identity-icon {
   border-radius: var(--radius-xl);
@@ -189,51 +193,25 @@
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
 }
-:root[data-skin="glass"] :is(.act-live, .act-markall, .act-sort-toggle, .act-view-icon) {
-  border-width: 1px;
-  border-color: var(--rule);
-  box-shadow: var(--shadow-chip);
-}
-:root[data-skin="glass"] .act-markall { border-radius: var(--radius-sm); }
-:root[data-skin="glass"] .act-view-segment {
-  border: 0;
+:root[data-skin="glass"] :is(.act-live, .act-markall, .act-sort-toggle) {
+  background: var(--rail-fill);
+  color: var(--ink-soft);
+  border: var(--line);
+  border-radius: var(--rail-well-radius);
   box-shadow: none;
 }
 :root[data-skin="glass"] .act-live-dot { border: 1px solid var(--rule); }
-:root[data-skin="glass"] :is(.act-sort-toggle, .act-view-icon:not(.active), .act-markall):hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover-sm);
-}
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .act-filter{
-  border-color: var(--rule);
-  border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-chip);
-}
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .act-filter:hover{
-  box-shadow: var(--shadow-hover-sm);
-}
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .act-filter.active{
-  border-color: var(--rule);
-  box-shadow: var(--shadow-chip), inset 0 -3px 0 var(--ink);
-}
-:root[data-skin="glass"][data-theme="kanagawa-wave"] .act-filter.hot.active{
-  box-shadow: var(--shadow-chip), inset 0 -3px 0 var(--pink);
-}
-:root[data-skin="glass"] .act-filter-n {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-hair);
+:root[data-skin="glass"] :is(.act-sort-toggle, .act-markall):hover:not(:disabled) {
+  background: var(--rail-chip-hover);
+  color: var(--ink);
+  transform: none;
   box-shadow: none;
 }
-:root[data-skin="glass"] .act-filter.hot .act-filter-n { color: var(--on-accent); }
 
 /* -- activity: room filter bar --------------------------------------------- */
 :root[data-skin="glass"] .act-roombar { border-top: var(--line-dashed-faint); }
 
-/* -- activity: section / room-group headers -------------------------------- */
-:root[data-skin="glass"] .act-room-head {
-  background: var(--paper-3);
-  border-radius: var(--radius-panel-top);
-}
+/* -- activity: room-group headers ------------------------------------------ */
 :root[data-skin="glass"] .act-room-icon {
   border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
@@ -245,27 +223,28 @@
   border: 1px solid var(--rule);
   box-shadow: none;
 }
-:root[data-skin="glass"] .act-room-go,
 :root[data-skin="glass"] .act-digest-go,
 :root[data-skin="glass"] .act-digest-headgo,
 :root[data-skin="glass"] .act-scope-ack {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-xs);
-  box-shadow: var(--shadow-chip);
+  background: var(--control-bg-solid);
+  color: var(--control-fg);
+  border: var(--control-border);
+  border-radius: var(--control-radius);
+  box-shadow: none;
 }
-:root[data-skin="glass"] .act-room-go:hover,
 :root[data-skin="glass"] .act-digest-go:hover,
 :root[data-skin="glass"] .act-digest-headgo:hover,
 :root[data-skin="glass"] .act-scope-ack:hover {
-  color: var(--on-accent);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-hover-sm);
+  background: var(--control-bg-hover);
+  color: var(--control-fg);
+  transform: none;
+  box-shadow: none;
 }
 
 /* -- activity: digest room-group container (REVAMP: flattened) --------------
    The group is a bare container, not a card: no panel fill, border, shadow or
-   radius. The only contrasting surfaces in the feed are the row cards
-   (.act-row/.act-card). The group HEADER is a quiet heading — no shade, no rule
+   radius. The only contrasting surfaces in the feed are the activity rows.
+   The group HEADER is a quiet heading — no shade, no rule
    under it. Between-group gap (30px) reads clearly larger than the within-group
    row gap (5px) so the grouping is legible. (glass revamp §2.5) */
 :root[data-skin="glass"] .act-digest { gap: 30px; }
@@ -285,14 +264,7 @@
 /* -- activity: day / timeline bucket headers -------------------------------- */
 :root[data-skin="glass"] .act-timeline-bucket { border-bottom: 1px solid var(--rule); }
 
-/* -- activity: markers, chips ----------------------------------------------- */
-:root[data-skin="glass"] .act-marker {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
-}
-:root[data-skin="glass"] .act-marker.sm { border-radius: var(--radius-xs); box-shadow: var(--shadow-xs); }
-:root[data-skin="glass"] .act-marker-pulse { border: 1px solid var(--rule); }
+/* -- activity: chips -------------------------------------------------------- */
 :root[data-skin="glass"] .act-roomchip {
   border: 1px solid var(--rule);
   box-shadow: var(--shadow-xxs);
@@ -302,13 +274,7 @@
   color: var(--on-accent);
 }
 
-/* -- activity: feed items (card / row / ticket) ----------------------------- */
-:root[data-skin="glass"] .act-card {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-}
-:root[data-skin="glass"] .act-top .author-chip { box-shadow: var(--shadow-xs); }
-:root[data-skin="glass"] .act-reaction-chip.you { color: var(--on-accent); }
+/* -- activity: feed items --------------------------------------------------- */
 :root[data-skin="glass"] .act-act-btn {
   border: 1px solid var(--rule);
   border-radius: var(--radius-xs);
@@ -352,9 +318,6 @@
   transform: translateY(-1px);
   box-shadow: var(--shadow-hover-sm);
 }
-
-/* -- activity: lanes (dropped variant, kept consistent anyway) -------------- */
-:root[data-skin="glass"] .act-lane-await { border: 1px solid var(--rule); }
 
 /* -- activity: room filter popover ------------------------------------------ */
 :root[data-skin="glass"] .act-roomlist {
@@ -407,30 +370,28 @@
 /* ============================================================================
    GLASS REVAMP — floating composer (glass revamp §2.4)
    ----------------------------------------------------------------------------
-   The compose box floats over the message stream instead of sitting in a docked
-   section behind a separator bar. Both the chat and thread separators are one
-   variable — zero it. The composer is already a rounded glass card, so it is
-   lifted out of flow and pinned flush to the bottom (square bottom corners,
-   rounded top + side lift retained so it still reads as floating). It is opaque
-   glass, so messages scroll cleanly behind it — no bottom fade, only enough
-   scroll padding for the last message to clear the card.
+   The main chat composer floats over the message stream instead of sitting in a
+   docked section behind a separator bar. The thread composer stays in flow so
+   its scrollport always ends above the full composer, even when the draft grows.
+   Both composer cards share the same flush-bottom silhouette: a rounded top
+   rising from the viewport edge, with no lower gap or lower corner radius.
    ========================================================================= */
 /* --composer-separator-line is zeroed for glass in styles/tokens.css (global
    tokens may only be defined in the token files). */
 :root[data-skin="glass"] .chat-col { position: relative; }
-:root[data-skin="glass"] .chat-col > .composer,
-:root[data-skin="glass"] .thread-pane > .composer {
+:root[data-skin="glass"] .chat-col > .composer {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 22;
+}
+:root[data-skin="glass"] :is(.chat-col, .thread-pane) > .composer {
   margin-bottom: 0;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 :root[data-skin="glass"] .chat-list { padding-bottom: 168px; }
-:root[data-skin="glass"] .thread-pane-body { padding-bottom: 150px; }
 
 /* ============================================================================
    GLASS REVAMP — the expanding-rail control standard (glass revamp §2.2)
@@ -453,19 +414,10 @@
    the sort / mark-all / working chips are the shared Rail / RailSegment / RailChip
    components now (rail.tsx + rail.css) — real lucide icons + label spans, no
    :nth-child/::after CSS mimicry. Two things the surrounding layout still needs:
-   the thin wrapper holding [sort chip] + [layout rail], and chip styling for the
-   room-filter trigger (a dropdown, not a rail component). */
+   the thin wrapper holding [sort chip] + [layout rail]. The room-filter dropdown
+   is composed directly from RailChip badge/trailing slots. */
 :root[data-skin="glass"] .act-view-controls {
   display: inline-flex; align-items: center; gap: 8px;
-}
-:root[data-skin="glass"] .act-room-filter-trigger {
-  height: var(--rail-well-h); min-height: 0; padding: 0 11px;
-  background: var(--rail-fill); color: var(--ink-soft);
-  border: var(--line); border-radius: var(--rail-well-radius); box-shadow: none;
-  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
-}
-:root[data-skin="glass"] .act-room-filter-trigger:hover {
-  background: var(--rail-chip-hover); color: var(--ink);
 }
 /* the working toggle keeps its green accent when active (semantic: "live only") */
 :root[data-skin="glass"] .act-live.active {
@@ -533,7 +485,7 @@
   -webkit-backdrop-filter: none; backdrop-filter: none;
   pointer-events: none; /* transparent gaps pass clicks to the messages behind */
 }
-/* only the real controls capture pointer events (incl. the thread banner's ×) */
+/* only the real controls capture pointer events */
 :root[data-skin="glass"] .room-header :is(.room-id, .room-tabs, button, a, [role="button"]) { pointer-events: auto; }
 /* drop the room glyph + name — the sidebar selection identifies the room */
 :root[data-skin="glass"] .room-header .room-title-block,
@@ -544,23 +496,44 @@
 :root[data-skin="glass"] .room-header .room-activity { display: none; }
 /* .room-tabs always sheds its strip chrome (border-top + row padding) + goes flat */
 :root[data-skin="glass"] .room-header .room-tabs {
-  order: 1; border-top: 0; padding: 0; margin: 0; background: transparent; box-shadow: none;
+  order: 1;
+  border-top: 0;
+  padding: 2px;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  justify-content: flex-start;
 }
-/* no thread: the tab rail is a centred well, independent of the side clusters */
-:root[data-skin="glass"] .room-header:has(.room-activity) .room-tabs {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: auto;
+:root[data-skin="glass"] .room-header .room-tabs::-webkit-scrollbar { display: none; }
+:root[data-skin="glass"] .room-header .room-tabs > .rail { flex: 0 0 auto; }
+/* the tab rail is a centred well, independent of the side clusters */
+:root[data-skin="glass"] .room-header .room-tabs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  max-width: calc(100% - 36px);
 }
-/* thread open (the "replying to" banner replaces .room-activity): keep .room-tabs
-   a full-width relative strip so the thread banner (absolute, right-0 inside it)
-   rides over the thread pane; the tab rail sits at its left edge. */
-:root[data-skin="glass"] .room-header:not(:has(.room-activity)) .room-tabs {
-  position: relative; flex: 1 1 auto; width: auto; min-width: 0; align-self: stretch;
+:root[data-skin="glass"] .room-header[data-thread-open="true"] .room-tabs {
+  left: calc((100% - var(--thread-pane-width, 420px)) / 2);
+  max-width: calc(100% - var(--thread-pane-width, 420px) - 36px);
+}
+
+:root[data-skin="glass"] .compact-appbar {
+  background: color-mix(in srgb, var(--paper-2) 88%, var(--paper-3));
+  border-bottom: var(--line-hair);
+  box-shadow: none;
 }
 
 /* Phase 4: on the Board tab the filters live in the unified banner (a rail left
    of the centred tab rail); the in-board .board-header bar is dropped and the
    columns flow behind the transparent banner like the chat/activity surfaces. */
-:root[data-skin="glass"] .room-header .room-board-filters { order: 1; flex: 0 0 auto; }
+:root[data-skin="glass"] .room-header .room-board-filters { flex: 0 0 auto; }
 :root[data-skin="glass"] .board-header { display: none; }
 :root[data-skin="glass"] .board-cols { padding-top: 60px; }
 /* brutal keeps BoardView's own header — the banner rail is a glass-only concept */
@@ -616,5 +589,4 @@
    ========================================================================= */
 :root[data-skin="glass"] .shell-compact .composer .composer-input { max-height: 30vh; }
 :root[data-skin="glass"] .shell-compact .chat-list { padding-bottom: 132px; }
-:root[data-skin="glass"] .shell-compact .thread-pane-body { padding-bottom: 120px; }
 :root[data-skin="glass"] .placeholder-stamp { border-radius: var(--radius-xl); }

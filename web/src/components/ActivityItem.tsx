@@ -117,7 +117,7 @@ function ActivityItemImpl({
       </span>
       {showAuthorChip && (
         <IdentityBadge
-          className="author-chip xs"
+          className="author-chip xs identity-name-pill"
           color={actor.color}
           {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}
           onContextMenu={(e) =>

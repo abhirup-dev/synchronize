@@ -97,11 +97,13 @@ interface RailSegmentProps {
   active?: boolean;
   /** Optional trailing count badge (filters). Collapses to 0 width when inactive. */
   count?: number;
+  /** Action-oriented hover explanation; defaults to the visible label. */
+  tooltip?: string;
   onSelect?: () => void;
   className?: string;
 }
 
-export function RailSegment({ icon, label, active = false, count, onSelect, className }: RailSegmentProps) {
+export function RailSegment({ icon, label, active = false, count, tooltip, onSelect, className }: RailSegmentProps) {
   const itemRole = useContext(RailContext);
   const stateProps =
     itemRole === "tab"
@@ -116,6 +118,7 @@ export function RailSegment({ icon, label, active = false, count, onSelect, clas
       role={itemRole}
       data-rail-seg=""
       data-label={label}
+      data-tooltip={tooltip ?? label}
       // Roving tabindex for the single-select rails (tablist/radiogroup): the
       // active pane is the tab stop, arrows reach the rest — one child is always
       // active there. A toolbar has no always-active guarantee, so its segments
@@ -141,6 +144,10 @@ export function RailSegment({ icon, label, active = false, count, onSelect, clas
 interface RailChipProps {
   icon?: ReactNode;
   label?: string;
+  /** Compact value/count rendered after the label. */
+  badge?: ReactNode;
+  /** Trailing disclosure or status glyph. */
+  trailing?: ReactNode;
   active?: boolean;
   /** Toggle semantics — renders aria-pressed. */
   pressed?: boolean;
@@ -149,16 +156,21 @@ interface RailChipProps {
   disabled?: boolean;
   onClick?: () => void;
   className?: string;
+  ariaLabel?: string;
+  expanded?: boolean;
+  title?: string;
 }
 
-export function RailChip({ icon, label, active = false, pressed, tooltip, disabled, onClick, className }: RailChipProps) {
+export function RailChip({ icon, label, badge, trailing, active = false, pressed, tooltip, disabled, onClick, className, ariaLabel, expanded, title }: RailChipProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-pressed={pressed}
-      aria-label={label ? undefined : tooltip}
+      aria-expanded={expanded}
+      aria-label={ariaLabel ?? (label ? undefined : tooltip)}
+      title={title}
       data-tooltip={tooltip}
       className={cn("rail-chip", active && "active", className)}
     >
@@ -168,6 +180,8 @@ export function RailChip({ icon, label, active = false, pressed, tooltip, disabl
         </span>
       )}
       {label && <span className="rail-chip-label">{label}</span>}
+      {badge != null && <span className="rail-chip-badge">{badge}</span>}
+      {trailing != null && <span className="rail-chip-trailing" aria-hidden>{trailing}</span>}
     </button>
   );
 }

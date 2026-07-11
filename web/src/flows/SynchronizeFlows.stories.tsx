@@ -53,6 +53,21 @@ function expectInsideScrollport(container: HTMLElement, target: HTMLElement) {
   expect(targetRect.top).toBeGreaterThanOrEqual(containerRect.top - 2);
 }
 
+function expectAboveThreadComposer(pane: HTMLElement, target: HTMLElement) {
+  const composer = requireElement<HTMLElement>(pane, ":scope > .composer", "thread composer");
+  expect(target.getBoundingClientRect().bottom).toBeLessThanOrEqual(composer.getBoundingClientRect().top + 2);
+}
+
+function expectRoomRailCenteredOverChat() {
+  const chat = requireElement<HTMLElement>(document, ".chat-view", "chat view");
+  const rail = requireElement<HTMLElement>(document, '[aria-label="room surface"]', "room surface rail");
+  const chatRect = chat.getBoundingClientRect();
+  const railRect = rail.getBoundingClientRect();
+  const chatCenter = chatRect.left + chatRect.width / 2;
+  const railCenter = railRect.left + railRect.width / 2;
+  expect(Math.abs(chatCenter - railCenter)).toBeLessThanOrEqual(2);
+}
+
 async function scrollThreadToBottom(pane: HTMLElement, latestReplyId: string, { smooth = false }: FlowOptions) {
   const body = requireElement<HTMLElement>(pane, ".thread-pane-body", "thread pane body");
   const scrollBehavior: ScrollBehavior = smooth ? "smooth" : "auto";
@@ -73,6 +88,7 @@ async function scrollThreadToBottom(pane: HTMLElement, latestReplyId: string, { 
     }
     expect(distanceFromBottom).toBeLessThanOrEqual(2);
     expectInsideScrollport(body, latestReply);
+    expectAboveThreadComposer(pane, latestReply);
   });
 }
 
@@ -138,6 +154,7 @@ async function openThreadFromMessage(messageId: string, latestReplyId: string, l
   const badge = requireElement<HTMLButtonElement>(row, ".thread-badge", `thread badge for ${messageId}`);
   await userEvent.click(badge);
   const pane = await threadPane();
+  expectRoomRailCenteredOverChat();
   await scrollThreadToBottom(pane, latestReplyId, options);
   const latestReplyRow = requireElement<HTMLElement>(pane, `#msg-${latestReplyId}`, `latest reply ${latestReplyId}`);
   const body = requireElement<HTMLElement>(pane, ".thread-pane-body", "thread pane body");
