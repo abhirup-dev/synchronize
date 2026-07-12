@@ -20,22 +20,33 @@ const SYSTEM_LABEL: Record<string, { icon: keyof typeof MaterialIcons.glyphMap; 
 };
 
 // Compact ack tick: grey while awaiting your ack, green once acked (by you or
-// anyone). Tapping the grey state acks the event in place.
-function AckTick({ event, onAck }: { event: SyncEvent; onAck?: (eventId: number) => void }) {
+// anyone). Truthful state machine: pending while the ack is in flight, green
+// only once it resolves, revert to a retry affordance on failure.
+function AckTick({ event, onAck }: { event: SyncEvent; onAck?: (eventId: number) => void | Promise<void> }) {
   const { t } = useTheme();
-  const [ackedLocal, setAckedLocal] = useState(false);
+  const [local, setLocal] = useState<'idle' | 'pending' | 'done' | 'error'>('idle');
   const count = event.acked_count ?? 0;
-  const awaiting = event.awaiting && !ackedLocal;
-  if (!awaiting && count === 0 && !ackedLocal) return null;
+  const awaiting = event.awaiting && local !== 'done';
+  if (!awaiting && count === 0 && local === 'idle') return null;
   const green = !awaiting;
+  const failed = local === 'error';
+  const press = async () => {
+    setLocal('pending');
+    try {
+      await onAck?.(event.event_id);
+      setLocal('done');
+    } catch {
+      setLocal('error');
+    }
+  };
   return (
     <Pressable
-      disabled={green || !onAck}
-      onPress={() => {
-        setAckedLocal(true);
-        onAck?.(event.event_id);
-      }}
-      hitSlop={6}
+      disabled={green || !onAck || local === 'pending'}
+      onPress={press}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={green ? `acknowledged by ${Math.max(count, 1)}` : failed ? 'acknowledge failed, retry' : 'acknowledge'}
+      accessibilityState={{ disabled: green || local === 'pending', checked: green }}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -47,9 +58,14 @@ function AckTick({ event, onAck }: { event: SyncEvent; onAck?: (eventId: number)
         justifyContent: 'center',
         backgroundColor: green ? t.successContainer : t.surfaceContainer,
         borderWidth: green ? 0 : 1,
-        borderColor: t.outlineVariant,
+        borderColor: failed ? t.danger : t.outlineVariant,
+        opacity: local === 'pending' ? 0.55 : 1,
       }}>
-      <MaterialIcons name="check" size={14} color={green ? t.onSuccessContainer : t.onSurfaceVariant} />
+      <MaterialIcons
+        name={failed ? 'refresh' : 'check'}
+        size={14}
+        color={green ? t.onSuccessContainer : failed ? t.danger : t.onSurfaceVariant}
+      />
       {count > 0 && (
         <Text style={{ ...type.micro, color: green ? t.onSuccessContainer : t.onSurfaceVariant }}>{count}</Text>
       )}

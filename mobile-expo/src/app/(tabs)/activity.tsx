@@ -29,6 +29,26 @@ export default function ActivityScreen() {
   const { activity, state, ack } = useSync();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
+  // truthful per-event ack state: pending → done (kept visible locally) / error
+  const [acks, setAcks] = useState<Record<number, 'pending' | 'done' | 'error'>>({});
+  const [ackingAll, setAckingAll] = useState(false);
+  const ackOne = async (id: number) => {
+    setAcks((p) => ({ ...p, [id]: 'pending' }));
+    try {
+      await ack([id]);
+      setAcks((p) => ({ ...p, [id]: 'done' }));
+    } catch {
+      setAcks((p) => ({ ...p, [id]: 'error' }));
+    }
+  };
+  const ackAll = async () => {
+    setAckingAll(true);
+    try {
+      await ack();
+    } finally {
+      setAckingAll(false);
+    }
+  };
   // undefined = preview, 'full' = all rows, false = collapsed
   const [expanded, setExpanded] = useState<Record<string, false | 'full' | undefined>>({});
 
@@ -127,7 +147,8 @@ export default function ActivityScreen() {
 
   const filterChips = (
     <>
-      <FilterChip label="All" count={events.length} active={filter === 'all'} onPress={() => setFilter('all')} />
+      {/* only Awaiting carries a count — the hero metric owns the numbers */}
+      <FilterChip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
       <FilterChip
         label="Awaiting"
         count={awaitingCount}
@@ -135,18 +156,8 @@ export default function ActivityScreen() {
         active={filter === 'awaiting'}
         onPress={() => setFilter('awaiting')}
       />
-      <FilterChip
-        label="Mentions"
-        count={mentionEvents.length}
-        active={filter === 'mentions'}
-        onPress={() => setFilter('mentions')}
-      />
-      <FilterChip
-        label="Rooms"
-        count={events.filter((e) => e.group_id != null).length}
-        active={filter === 'rooms'}
-        onPress={() => setFilter('rooms')}
-      />
+      <FilterChip label="Mentions" active={filter === 'mentions'} onPress={() => setFilter('mentions')} />
+      <FilterChip label="Rooms" active={filter === 'rooms'} onPress={() => setFilter('rooms')} />
     </>
   );
 
@@ -187,9 +198,7 @@ export default function ActivityScreen() {
           </Text>
           <Text style={{ ...type.micro, fontWeight: '400', color: t.onSurfaceVariant }}>{g.events.length}</Text>
           <View style={{ flex: 1 }} />
-          {g.awaiting > 0 && (
-            <Text style={{ ...type.micro, color: t.awaiting }}>{g.awaiting} awaiting</Text>
-          )}
+          {/* no per-group amber text — the amber budget lives in the hero metric and row dots */}
           <MaterialIcons name={isOpen ? 'expand-less' : 'expand-more'} size={18} color={t.onSurfaceVariant} />
         </Pressable>
 
@@ -214,7 +223,7 @@ export default function ActivityScreen() {
                 }}>
                 <View style={{ position: 'relative' }}>
                   <Avatar name={sender} size={36} />
-                  {e.awaiting && (
+                  {e.awaiting && acks[e.event_id] !== 'done' && (
                     <View
                       style={{
                         position: 'absolute',
@@ -263,7 +272,9 @@ export default function ActivityScreen() {
                     {e.body.replace(/\s+/g, ' ')}
                   </Text>
                 </View>
-                {e.awaiting ? <AckButton compact onPress={() => ack([e.event_id])} /> : null}
+                {e.awaiting || acks[e.event_id] ? (
+                  <AckButton compact state={acks[e.event_id] ?? 'idle'} onPress={() => ackOne(e.event_id)} />
+                ) : null}
               </Pressable>
             </View>
           );
@@ -284,38 +295,43 @@ export default function ActivityScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background, paddingTop: insets.top }}>
-      {/* compact command-center header (D-002, densified) */}
+      {/* one hero: awaiting work. Title goes quiet; Ack all appears only when
+          relevant and states its scope (combined-audit Activity direction). */}
       <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ ...type.title, color: t.onSurface }}>Activity</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5, marginLeft: space.md }}>
-            <Text style={{ fontSize: 26, fontWeight: '700', letterSpacing: -0.5, color: awaitingCount > 0 ? t.awaiting : t.onSurface }}>
-              {awaitingCount}
-            </Text>
-            <Text style={{ ...type.micro, fontWeight: '400', color: t.onSurfaceVariant }}>awaiting</Text>
-          </View>
+        <Text style={{ ...type.titleSm, color: t.onSurfaceVariant }}>Activity</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, minHeight: 40 }}>
+          {awaitingCount > 0 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+              <Text style={{ ...type.metric, color: t.awaiting }}>{awaitingCount}</Text>
+              <Text style={{ ...type.sub, color: t.onSurfaceVariant }}>awaiting your ack</Text>
+            </View>
+          ) : (
+            <Text style={{ ...type.section, color: t.onSurfaceVariant }}>All clear</Text>
+          )}
           <View style={{ flex: 1 }} />
-          <Pressable
-            onPress={() => ack()}
-            disabled={awaitingCount === 0}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 16,
-              height: 38,
-              borderRadius: shape.full,
-              backgroundColor: awaitingCount > 0 ? t.primaryContainer : t.surfaceContainer,
-            }}>
-            <MaterialIcons
-              name="done-all"
-              size={16}
-              color={awaitingCount > 0 ? t.onPrimaryContainer : t.onSurfaceVariant}
-            />
-            <Text style={{ ...type.label, color: awaitingCount > 0 ? t.onPrimaryContainer : t.onSurfaceVariant }}>
-              Ack all
-            </Text>
-          </Pressable>
+          {awaitingCount > 0 && (
+            <Pressable
+              onPress={ackAll}
+              disabled={ackingAll}
+              accessibilityRole="button"
+              accessibilityLabel={`Acknowledge all ${awaitingCount}`}
+              accessibilityState={{ disabled: ackingAll }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 16,
+                height: 40,
+                borderRadius: shape.full,
+                backgroundColor: t.primaryContainer,
+                opacity: ackingAll ? 0.55 : 1,
+              }}>
+              <MaterialIcons name="done-all" size={16} color={t.onPrimaryContainer} />
+              <Text style={{ ...type.label, color: t.onPrimaryContainer }}>
+                {ackingAll ? 'Acking…' : `Ack all ${awaitingCount}`}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         {wide ? (

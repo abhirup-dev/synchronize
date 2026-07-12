@@ -7,10 +7,10 @@ import { useTheme } from '../../../theme/useTheme';
 import { shape, space, type } from '../../../theme/tokens';
 import { useSync } from '../../../lib/store';
 import { timeAgo } from '../../../lib/format';
-import { Avatar, Badge, EmptyState, PresenceDot, StatusChip } from '../../../components/ui';
+import { Avatar, Badge, EmptyState, StatusChip } from '../../../components/ui';
 
 export default function AgentsScreen() {
-  const { t, identity } = useTheme();
+  const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { agents } = useSync();
@@ -29,7 +29,9 @@ export default function AgentsScreen() {
         </View>
         <Pressable
           onPress={() => router.push('/archive')}
-          hitSlop={8}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Archived agents"
           style={{ padding: space.sm }}>
           <MaterialIcons name="inventory-2" size={21} color={t.onSurfaceVariant} />
         </Pressable>
@@ -72,8 +74,9 @@ export default function AgentsScreen() {
                 <Text style={{ ...type.label, fontSize: 15, fontWeight: '600', color: t.onSurface }} numberOfLines={1}>
                   {a.peer.session_name || a.peer.peer_id}
                 </Text>
-                <Badge label={a.peer.tool} bg={identity(a.peer.tool).tint} fg={identity(a.peer.tool).onTint} />
-                <PresenceDot online={a.peer.online} size={7} />
+                {/* neutral grey tool tag — one status grammar: lifecycle chip is
+                    the row's single trailing state, no second presence dot */}
+                <Badge label={a.peer.tool} />
               </View>
               <Text style={{ ...type.label, fontWeight: '400', color: t.onSurfaceVariant, marginTop: 2 }} numberOfLines={1}>
                 {a.runtime?.model ? `${a.runtime.model} · ` : ''}
@@ -81,7 +84,9 @@ export default function AgentsScreen() {
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 3, maxWidth: 140 }}>
-              {a.peer.activity_state ? (
+              {!a.peer.online ? (
+                <Text style={{ ...type.micro, color: t.onSurfaceVariant }}>offline</Text>
+              ) : a.peer.activity_state ? (
                 <StatusChip state={a.peer.activity_state} />
               ) : (
                 <Text style={{ ...type.micro, color: t.onSurfaceVariant }}>{timeAgo(a.peer.last_activity_at)}</Text>

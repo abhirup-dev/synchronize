@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View, type ViewStyle } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/useTheme';
 import { shape, space, type } from '../theme/tokens';
@@ -27,6 +27,7 @@ export function PresenceDot({ online, size = 8 }: { online?: boolean; size?: num
   const { t } = useTheme();
   return (
     <View
+      accessibilityLabel={online ? 'online' : 'offline'}
       style={{
         width: size,
         height: size,
@@ -77,6 +78,10 @@ export function FilterChip({
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={{ top: 8, bottom: 8 }}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      accessibilityLabel={count !== undefined ? `${label}, ${count}` : label}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -98,29 +103,50 @@ export function FilterChip({
   );
 }
 
-// Ack = compact tick toggle: grey outline tick, turns green once acked.
-export function AckButton({ acked, onPress, compact }: { acked?: boolean; onPress: () => void; compact?: boolean }) {
+// Ack = compact tick with a truthful state machine (combined-audit "signature
+// pattern"): idle grey outline → pending → confirmed green → error/retry.
+export type AckState = 'idle' | 'pending' | 'done' | 'error';
+
+export function AckButton({
+  state = 'idle',
+  onPress,
+  compact,
+}: {
+  state?: AckState;
+  onPress: () => void;
+  compact?: boolean;
+}) {
   const { t } = useTheme();
-  const size = compact ? 26 : 32;
+  const size = compact ? 28 : 32;
+  const done = state === 'done';
+  const error = state === 'error';
   return (
     <Pressable
-      onPress={acked ? undefined : onPress}
-      hitSlop={10}
+      onPress={done || state === 'pending' ? undefined : onPress}
+      hitSlop={(48 - size) / 2} // 48dp interaction envelope around the compact glyph
+      accessibilityRole="button"
+      accessibilityLabel={done ? 'acknowledged' : error ? 'acknowledge failed, retry' : 'acknowledge'}
+      accessibilityState={{ disabled: state === 'pending', checked: done }}
       style={{
         width: size,
         height: size,
         borderRadius: shape.full,
-        borderWidth: acked ? 0 : 1,
-        borderColor: t.outline,
-        backgroundColor: acked ? t.successContainer : 'transparent',
+        borderWidth: done ? 0 : 1,
+        borderColor: error ? t.danger : t.outline,
+        backgroundColor: done ? t.successContainer : 'transparent',
+        opacity: state === 'pending' ? 0.55 : 1,
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-      <MaterialIcons
-        name="check"
-        size={compact ? 14 : 16}
-        color={acked ? t.success : t.onSurfaceVariant}
-      />
+      {state === 'pending' ? (
+        <ActivityIndicator size={compact ? 12 : 14} color={t.onSurfaceVariant} />
+      ) : (
+        <MaterialIcons
+          name={error ? 'refresh' : 'check'}
+          size={compact ? 15 : 16}
+          color={done ? t.success : error ? t.danger : t.onSurfaceVariant}
+        />
+      )}
     </Pressable>
   );
 }

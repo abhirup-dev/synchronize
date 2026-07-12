@@ -137,25 +137,25 @@ export default function RoomsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background, paddingTop: insets.top }}>
-      {/* workspace identity app bar (D-001) */}
+      {/* quiet workspace header — brand demoted, connection surfaces only when
+          it needs attention (combined-audit Rooms direction) */}
       <View
-        style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, height: 60 }}>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            backgroundColor: t.primary,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Text style={{ ...type.section, color: t.onPrimary }}>S</Text>
-        </View>
-        <Text style={{ ...type.title, color: t.onSurface, flex: 1 }}>Synchronize</Text>
-        <Pressable onPress={() => setShowCreate(true)} hitSlop={8} style={{ padding: space.sm }}>
+        style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, height: 56 }}>
+        <Text style={{ ...type.titleSm, color: t.onSurface, flex: 1 }}>Synchronize</Text>
+        {!connected && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 8, backgroundColor: t.awaiting }} />
+            <Text style={{ ...type.micro, color: t.awaiting }}>connecting</Text>
+          </View>
+        )}
+        <Pressable
+          onPress={() => setShowCreate(true)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="New room"
+          style={{ padding: space.sm }}>
           <MaterialIcons name="add" size={23} color={t.primary} />
         </Pressable>
-        <PresenceDot online={connected} size={9} />
       </View>
 
       <CreateRoomDialog visible={showCreate} onClose={() => setShowCreate(false)} />

@@ -194,40 +194,53 @@ export default function RoomScreen() {
             </Text>
           )}
         </Pressable>
-        <Pressable onPress={() => room && setShowInfo(true)} hitSlop={8} style={{ padding: space.sm }}>
+        {/* Chat | Board — compact mode toggle in the header, not a second
+            full-width nav bar; the message stream keeps the viewport */}
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: t.surfaceContainer,
+            borderRadius: shape.full,
+            padding: 2,
+          }}>
+          {(
+            [
+              { key: 'chat', label: 'Chat', icon: 'chat-bubble-outline' },
+              { key: 'board', label: 'Board', icon: 'view-kanban' },
+            ] as const
+          ).map(({ key, label, icon }) => {
+            const active = view === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setView(key)}
+                hitSlop={{ top: 10, bottom: 10 }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${label} view`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 10,
+                  height: 30,
+                  borderRadius: shape.full,
+                  backgroundColor: active ? t.primaryContainer : 'transparent',
+                }}>
+                <MaterialIcons name={icon} size={14} color={active ? t.onPrimaryContainer : t.onSurfaceVariant} />
+                <Text style={{ ...type.label, color: active ? t.onPrimaryContainer : t.onSurfaceVariant }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={() => room && setShowInfo(true)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Room info"
+          style={{ padding: space.sm }}>
           <MaterialIcons name="more-vert" size={20} color={t.onSurfaceVariant} />
         </Pressable>
-      </View>
-
-      {/* Chat | Board — M3 secondary tabs */}
-      <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: t.outlineVariant }}>
-        {(
-          [
-            { key: 'chat', label: 'Chat', icon: 'chat-bubble-outline' },
-            { key: 'board', label: 'Board', icon: 'view-kanban' },
-          ] as const
-        ).map(({ key, label, icon }) => {
-          const active = view === key;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => setView(key)}
-              android_ripple={{ color: t.outlineVariant }}
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                height: 42,
-                borderBottomWidth: 2,
-                borderBottomColor: active ? t.primary : 'transparent',
-              }}>
-              <MaterialIcons name={icon} size={16} color={active ? t.primary : t.onSurfaceVariant} />
-              <Text style={{ ...type.label, color: active ? t.primary : t.onSurfaceVariant }}>{label}</Text>
-            </Pressable>
-          );
-        })}
       </View>
 
       {room && <RoomInfoSheet room={room} visible={showInfo} onClose={() => setShowInfo(false)} />}

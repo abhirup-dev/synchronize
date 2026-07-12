@@ -106,13 +106,17 @@ export const shape = { xs: 6, sm: 10, md: 14, lg: 18, full: 999 };
 // Row anatomy constants (M3 list idiom): edge-to-edge rows, inset dividers.
 export const row = { one: 56, two: 68, textInset: 68 };
 
+// Semantic type roles (combined-audit rule: typography carries hierarchy
+// before containers or color; four clear levels per screen).
 export const type = {
   display: { fontSize: 44, fontWeight: '600' as const, letterSpacing: -1 },
-  title: { fontSize: 22, fontWeight: '600' as const },
-  section: { fontSize: 16, fontWeight: '600' as const },
+  title: { fontSize: 22, fontWeight: '600' as const }, // expanded destination title
+  titleSm: { fontSize: 17, fontWeight: '600' as const }, // compact app-bar title
+  metric: { fontSize: 30, fontWeight: '700' as const, letterSpacing: -0.5 }, // command-center metric — one per screen, tied to a task
+  section: { fontSize: 16, fontWeight: '600' as const }, // list headline
   body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 21 },
-  sub: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
-  label: { fontSize: 13, fontWeight: '500' as const },
-  micro: { fontSize: 11, fontWeight: '500' as const },
+  sub: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 }, // supporting text
+  label: { fontSize: 13, fontWeight: '500' as const }, // control label
+  micro: { fontSize: 11, fontWeight: '500' as const }, // metadata/timestamps only — never the only copy of important info
   mono: { fontFamily: 'monospace', fontSize: 13, lineHeight: 19 },
 };

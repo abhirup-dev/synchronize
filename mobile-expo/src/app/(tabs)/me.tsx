@@ -35,11 +35,20 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ];
 
+// One true segmented control (M3 connected buttons) — a single joined track,
+// not three pills floating inside a card.
 function ThemeToggle() {
   const { t } = useTheme();
   const [pref, setPref] = useState(getThemePref());
   return (
-    <View style={{ flexDirection: 'row', gap: space.sm, padding: space.md }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        margin: space.md,
+        padding: 3,
+        borderRadius: shape.full,
+        backgroundColor: t.surfaceContainerHigh,
+      }}>
       {THEME_OPTIONS.map((o) => {
         const active = pref === o.value;
         return (
@@ -49,15 +58,18 @@ function ThemeToggle() {
               setThemePref(o.value);
               setPref(o.value);
             }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={o.value === 'system' ? 'Match device appearance' : o.label}
             style={{
               flex: 1,
-              height: 38,
+              height: 36,
               borderRadius: shape.full,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: active ? t.primary : t.surfaceContainerHigh,
+              backgroundColor: active ? t.primaryContainer : 'transparent',
             }}>
-            <Text style={{ ...type.label, color: active ? t.onPrimary : t.onSurfaceVariant }}>{o.label}</Text>
+            <Text style={{ ...type.label, color: active ? t.onPrimaryContainer : t.onSurfaceVariant }}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -70,6 +82,10 @@ export default function MeScreen() {
   const insets = useSafeAreaInsets();
   const { connected, error, peerId, state, rooms, agents, activity, refresh } = useSync();
   const [urlDraft, setUrlDraft] = useState(getBaseUrl());
+  // URL editing is an advanced action — revealed on demand, or automatically
+  // when the connection needs recovery (combined-audit Me direction).
+  const [editUrl, setEditUrl] = useState(false);
+  const showEditor = editUrl || !connected;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background, paddingTop: insets.top }}>
@@ -80,49 +96,70 @@ export default function MeScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: space.xl }}>
         <SectionLabel>Daemon connection</SectionLabel>
         <Card style={{ marginHorizontal: space.lg }}>
+          {/* connection health is the anchor: compact when healthy, expressive
+              with recovery when not */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md }}>
             <PresenceDot online={connected} size={9} />
-            <Text style={{ ...type.label, color: connected ? t.success : t.awaiting }}>
-              {connected ? 'Connected' : 'Disconnected'}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...type.label, color: connected ? t.success : t.danger }}>
+                {connected ? 'Connected' : 'Disconnected'}
+              </Text>
+              <Text style={{ ...type.micro, fontWeight: '400', color: t.onSurfaceVariant }} numberOfLines={1}>
+                {getBaseUrl()}
+              </Text>
+            </View>
+            {connected && (
+              <Pressable
+                onPress={() => setEditUrl((v) => !v)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Edit daemon address"
+                style={{ paddingHorizontal: space.sm, paddingVertical: 6 }}>
+                <Text style={{ ...type.label, color: t.primary }}>{editUrl ? 'Done' : 'Edit'}</Text>
+              </Pressable>
+            )}
           </View>
           {!connected && error && (
             <Text style={{ ...type.micro, fontWeight: '400', color: t.danger, paddingHorizontal: space.md, paddingBottom: space.sm }} numberOfLines={3}>
               {error}
             </Text>
           )}
-          <View style={{ flexDirection: 'row', gap: space.sm, padding: space.md, borderTopWidth: 1, borderTopColor: t.outlineVariant }}>
-            <TextInput
-              value={urlDraft}
-              onChangeText={setUrlDraft}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={{
-                flex: 1,
-                ...type.mono,
-                color: t.onSurface,
-                backgroundColor: t.codeBg,
-                borderRadius: shape.sm,
-                paddingHorizontal: space.md,
-                height: 42,
-              }}
-            />
-            <Pressable
-              onPress={() => {
-                setBaseUrl(urlDraft.trim());
-                refresh();
-              }}
-              style={{
-                paddingHorizontal: 14,
-                height: 42,
-                borderRadius: shape.sm,
-                backgroundColor: t.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Text style={{ ...type.label, color: t.onPrimary }}>Apply</Text>
-            </Pressable>
-          </View>
+          {showEditor && (
+            <View style={{ flexDirection: 'row', gap: space.sm, padding: space.md, borderTopWidth: 1, borderTopColor: t.outlineVariant }}>
+              <TextInput
+                value={urlDraft}
+                onChangeText={setUrlDraft}
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Daemon address"
+                style={{
+                  flex: 1,
+                  ...type.mono,
+                  color: t.onSurface,
+                  backgroundColor: t.codeBg,
+                  borderRadius: shape.sm,
+                  paddingHorizontal: space.md,
+                  height: 42,
+                }}
+              />
+              <Pressable
+                onPress={() => {
+                  setBaseUrl(urlDraft.trim());
+                  refresh();
+                }}
+                accessibilityRole="button"
+                style={{
+                  paddingHorizontal: 14,
+                  height: 42,
+                  borderRadius: shape.sm,
+                  backgroundColor: t.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                <Text style={{ ...type.label, color: t.onPrimary }}>{connected ? 'Apply' : 'Retry'}</Text>
+              </Pressable>
+            </View>
+          )}
           <Row label="Peer id" value={peerId ?? '—'} />
           <Row label="Cursor" value={state ? String(state.cursor) : '—'} />
         </Card>
