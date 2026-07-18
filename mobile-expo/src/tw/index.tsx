@@ -8,6 +8,7 @@ import {
   ScrollView as RNScrollView,
   TextInput as RNTextInput,
 } from 'react-native';
+import { SafeAreaView as RNSafeAreaView } from 'react-native-safe-area-context';
 
 // `as any` casts: typedRoutes href / ScrollView prop unions blow TS2590 inside
 // useCssElement's generic; the runtime mapping is unaffected.
@@ -43,4 +44,9 @@ export const TextInput = (
   props: React.ComponentProps<typeof RNTextInput> & { className?: string },
 ) => useCssElement(RNTextInput as any, props as any, { className: 'style' });
 TextInput.displayName = 'CSS(TextInput)';
+
+export const SafeAreaView = (
+  props: React.ComponentProps<typeof RNSafeAreaView> & { className?: string },
+) => useCssElement(RNSafeAreaView as any, props as any, { className: 'style' });
+SafeAreaView.displayName = 'CSS(SafeAreaView)';
 

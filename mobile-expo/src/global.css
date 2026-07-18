@@ -3,22 +3,9 @@
 @import "tailwindcss/utilities.css";
 
 /* SIGIL — M3 Expressive token set (design.md §6, v2.html mobile theme).
-   Same values live in src/theme/tokens.ts for JS-side consumers. */
-:root {
-  --bg: light-dark(#fafafa, #121316);
-  --surf: light-dark(#f0f0ef, #1a1b1f);
-  --surf2: light-dark(#e6e6e4, #222428);
-  --fg: light-dark(#1d1e20, #e7e8ea);
-  --fg2: light-dark(#5f6268, #9a9da3);
-  --fg3: light-dark(#a4a7ac, #55585f);
-  --outl: light-dark(rgba(29, 30, 32, 0.16), rgba(231, 232, 234, 0.18));
-  --pri: light-dark(#c2571f, #e8825a);
-  --onpri: light-dark(#ffffff, #121316);
-  --pric: light-dark(#c2571f24, #e8825a2e);
-  --onpric: light-dark(#c2571f, #e8825a);
-  --ok: #52c48b;
-  --danger: #d05050;
-}
+   The active palette (light/dark) is provided at runtime by the
+   VariableContextProvider in src/app/_layout.tsx from src/theme/tokens.ts —
+   no :root values here so the provider is the single source of truth. */
 
 @layer theme {
   @theme {

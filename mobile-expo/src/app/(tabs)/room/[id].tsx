@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, Pressable } from '@/tw';
+import { View, Text, Pressable, SafeAreaView } from '@/tw';
 import { MTop } from '@/components/ui';
 import { SigilChip } from '@/components/sigil';
 import { MessageRow } from '@/components/message-row';

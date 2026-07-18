@@ -1,7 +1,6 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, Pressable, ScrollView } from '@/tw';
+import { View, Text, Pressable, ScrollView, SafeAreaView } from '@/tw';
 import { MTop } from '@/components/ui';
 import { SigilChip } from '@/components/sigil';
 import { useSync } from '@/lib/store';
