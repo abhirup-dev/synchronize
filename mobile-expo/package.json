@@ -49,6 +49,9 @@
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
+    "android:device": "./scripts/android-device.sh live",
+    "android:apk": "./scripts/android-device.sh apk",
+    "android:device:apk": "./scripts/android-device.sh install-apk",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"
