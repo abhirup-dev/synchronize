@@ -1,55 +1,52 @@
-/* Adaptive light code-block syntax palette.
+/* Sigil light code-block syntax palette.
  *
- * highlight.js's github-dark sheet is the dark-theme baseline. Light and Rose
- * Pine Dawn use light --code-bg surfaces, so remap syntax tokens to a
- * dark-on-light palette here. Kanagawa Wave intentionally does not match this
- * scope and therefore keeps github-dark's light-on-dark token colours.
- *
- * Loaded after github-dark in styles/css.ts so these light-theme rules win. */
+ * highlight.js's github-dark sheet remains the dark baseline. These scoped
+ * overrides remap syntax tokens to dark-on-light values for Sigil light.
+ * Loaded after github-dark in styles/css.ts so these rules win. */
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown pre code.hljs {
+:root[data-theme="sigil-light"] .markdown pre code.hljs {
   color: var(--code-fg);
   background: transparent;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-comment,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-quote {
+:root[data-theme="sigil-light"] .markdown .hljs-comment,
+:root[data-theme="sigil-light"] .markdown .hljs-quote {
   color: #59636e;
   font-style: italic;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-keyword,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-doctag,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-built_in,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-meta {
+:root[data-theme="sigil-light"] .markdown .hljs-keyword,
+:root[data-theme="sigil-light"] .markdown .hljs-doctag,
+:root[data-theme="sigil-light"] .markdown .hljs-built_in,
+:root[data-theme="sigil-light"] .markdown .hljs-meta {
   color: #a31545;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-string,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-regexp,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-symbol,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-bullet {
+:root[data-theme="sigil-light"] .markdown .hljs-string,
+:root[data-theme="sigil-light"] .markdown .hljs-regexp,
+:root[data-theme="sigil-light"] .markdown .hljs-symbol,
+:root[data-theme="sigil-light"] .markdown .hljs-bullet {
   color: #0a3069;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-number,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-literal,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-variable,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-template-variable,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-attr,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-attribute {
+:root[data-theme="sigil-light"] .markdown .hljs-number,
+:root[data-theme="sigil-light"] .markdown .hljs-literal,
+:root[data-theme="sigil-light"] .markdown .hljs-variable,
+:root[data-theme="sigil-light"] .markdown .hljs-template-variable,
+:root[data-theme="sigil-light"] .markdown .hljs-attr,
+:root[data-theme="sigil-light"] .markdown .hljs-attribute {
   color: #0550ae;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-title,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-section,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-name,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-selector-id,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-selector-class {
+:root[data-theme="sigil-light"] .markdown .hljs-title,
+:root[data-theme="sigil-light"] .markdown .hljs-section,
+:root[data-theme="sigil-light"] .markdown .hljs-name,
+:root[data-theme="sigil-light"] .markdown .hljs-selector-id,
+:root[data-theme="sigil-light"] .markdown .hljs-selector-class {
   color: #6639ba;
 }
 
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-type,
-:is(:root:not([data-theme]), :root[data-theme="light"], :root[data-theme="rose-pine-dawn"]) .markdown .hljs-class .hljs-title {
+:root[data-theme="sigil-light"] .markdown .hljs-type,
+:root[data-theme="sigil-light"] .markdown .hljs-class .hljs-title {
   color: #953800;
 }

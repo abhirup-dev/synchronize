@@ -2,11 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 import { RoomHeader } from "./RoomHeader.tsx";
 import { GROUPS, DMS } from "../data/seed.ts";
-import { inMainColumn } from "../storybook/shellFrames.tsx";
+import { inChatSurface } from "../storybook/shellFrames.tsx";
 
-// Provider-backed: RoomHeader reads agents via useAgents() and opens the chat-bg
-// menu via useContextMenu() — both supplied by the global StorybookProviders
-// decorator. The story only feeds the Room + UI-state props.
+// Provider-backed: RoomHeader reads agents via useAgents(); the story feeds only
+// real room and shell state while global Storybook traits own Sigil light/dark.
 const group = GROUPS.find((r) => r.id === "checkout-revamp")!;
 const dm = DMS.find((r) => r.id === "dm-cortex")!;
 const longTitle = {
@@ -22,78 +21,64 @@ const meta = {
   title: "Navigation/RoomHeader",
   component: RoomHeader,
   parameters: { layout: "fullscreen" },
-  // Mount in the main column with real shell context so the compact story
-  // actually exercises RoomHeader's compact branch (the Settings sheet button).
-  decorators: [inMainColumn],
+  // Mount inside the chat column exactly as the app does (main column ›
+  // main-body › chat column) — the unified top bar is chat-column chrome, so a
+  // thread pane can run full-height beside it.
+  decorators: [inChatSurface],
   args: {
     tab: "chat",
     onTab: noop,
-    theme: "paper",
-    onToggleTheme: noop,
-    skin: "brutal",
-    onToggleSkin: noop,
-    chatBg: "plain",
-    onChatBg: noop,
   },
 } satisfies Meta<typeof RoomHeader>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Group room: boxed `#` glyph, plain title, full member pile, working count, and
-// the AGENTS button.
+// Group room: single Sigil row — `#` title, inline mono meta, text segmented
+// tabs, and the overlapping member crew as the roster trigger.
 export const Group: Story = {
-  args: { room: group, showAgentsButton: true, onOpenAgents: noop },
+  args: { room: group, onOpenAgents: noop },
   play: async ({ canvasElement }) => {
-    const title = canvasElement.querySelector(".room-title");
-    await expect(title?.textContent).toBe(group.name);
-    // Room tabs now use the shared expanding-rail standard (Rail + RailSegment).
-    const tabs = canvasElement.querySelectorAll("[data-rail-seg]");
+    const title = canvasElement.querySelector(".top-bar-title");
+    await expect(title?.textContent).toBe(`#${group.name}`);
+    const tabs = canvasElement.querySelectorAll('[aria-label="room surface"] [role="tab"]');
     await expect(tabs.length).toBe(3);
-    tabs.forEach((tab) => expect(tab.getAttribute("role")).toBe("tab"));
+    await expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
+    // The crew cluster shows the room's agents (operator excluded) and opens
+    // the roster panel.
+    const crew = canvasElement.querySelector<HTMLElement>(".room-crew");
+    await expect(crew).toBeTruthy();
+    await expect(crew!.querySelectorAll(".identity-icon").length).toBeGreaterThan(0);
   },
 };
 
-// DM room: plain name (no `#`), two members, no agents button.
+// DM room: plain name (no `#`), no meta line unless the room has one.
 export const DirectMessage: Story = {
   args: { room: dm },
 };
 
-// Long title + long description exercise the ellipsis / min-width clamps, with
-// the largest member pile (7 members → pile caps at 6 avatars).
+// Long title + long meta exercise the single-row ellipsis clamps with the
+// largest crew (7 members → operator excluded).
 export const LongTitleAndDescription: Story = {
-  args: { room: longTitle, showAgentsButton: true, onOpenAgents: noop },
+  args: { room: longTitle, onOpenAgents: noop },
 };
 
-// A split thread keeps only its close action in the room header; the old
-// "Thread · replying to" strip was removed because it overlapped the pane.
-export const WithThreadCloseControl: Story = {
-  args: { room: group, onCloseThread: noop },
-};
-
-// Glass skin + board tab selected — alternate visual state of the toggles/tabs.
-export const GlassSkinBoardTab: Story = {
-  args: { room: group, skin: "glass", tab: "board", theme: "ink" },
-  globals: { skin: "glass" },
+// Board tab selected — the segmented control carries the active surface.
+export const BoardTab: Story = {
+  args: { room: group, tab: "board" },
   play: async ({ canvasElement }) => {
-    const strip = canvasElement.querySelector<HTMLElement>(".room-tabs");
-    const boardFilters = canvasElement.querySelector<HTMLElement>('[aria-label="board filter"]');
-    const roomSurface = canvasElement.querySelector<HTMLElement>('[aria-label="room surface"]');
-    expect(strip).toBeTruthy();
-    expect(boardFilters).toBeTruthy();
-    expect(roomSurface).toBeTruthy();
-    const filtersRect = boardFilters!.getBoundingClientRect();
-    const surfaceRect = roomSurface!.getBoundingClientRect();
-    await expect(filtersRect.right).toBeLessThanOrEqual(surfaceRect.left);
-    await expect(getComputedStyle(strip!).overflowX).toBe("auto");
-    await expect(getComputedStyle(boardFilters!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
-    await expect(getComputedStyle(roomSurface!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    const active = canvasElement.querySelector('[role="tab"][aria-selected="true"]');
+    await expect(active?.textContent).toBe("Board");
   },
 };
 
-// Compact (mobile-narrow, 390): title truncation, member-pile collapse, and the
-// tab row at a thumb width — the Android header state.
+// Compact (mobile-narrow, 390): title truncation and the settings button; the
+// room surface lives in the bottom nav in compact, so no tabs render here.
 export const Compact: Story = {
-  args: { room: group, showAgentsButton: true, onOpenAgents: noop },
+  args: { room: group, onOpenAgents: noop },
   globals: { viewport: { value: "mobileNarrow", isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[aria-label="room surface"]')).toBeNull();
+    await expect(canvasElement.querySelector('[aria-label="open display settings"]')).toBeTruthy();
+  },
 };

@@ -14,19 +14,11 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--text-14);
+  font-size: var(--text-13-5);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* Paper grain — very subtle dotted noise; alpha adjusts per theme */
-  background-image:
-    radial-gradient(var(--grain-dot) 1px, transparent 1px);
-  background-size: 18px 18px;
   transition: background-color 200ms ease, color 200ms ease;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) body{
-  /* Bump body weight slightly to combat halation on thin glyphs over deep
-     backgrounds. */
-  font-weight: 500;
 }
 
 kbd {
@@ -39,28 +31,18 @@ kbd {
   box-shadow: var(--shadow-xs);
 }
 
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) kbd {
-  background: var(--paper-2);
-  color: var(--ink);
-  border-color: var(--control-border);
-  box-shadow: var(--control-shadow);
-}
-
-/* Buttons are one quiet typography role across every component and skin. The
-   important flags intentionally defeat legacy utility/component font classes;
-   button labels share one family/size and never inherit bold display emphasis. */
+/* Buttons inherit the surrounding type role; each surface (tabs, send, chips)
+   sets its own reference typography instead of a global forced face. */
 button {
-  font-family: var(--font-display-button) !important;
-  font-size: var(--font-display-button-size) !important;
-  font-weight: var(--font-display-button-weight) !important;
+  font: inherit;
   font-synthesis: none;
   cursor: pointer;
 }
 
 .identity-name-pill {
-  font-family: var(--font-display-medium);
-  font-size: var(--font-display-medium-size);
-  font-weight: var(--font-display-medium-weight);
+  font-family: var(--font-ui);
+  font-size: var(--text-11-5);
+  font-weight: 700;
 }
 
 .icon-button {
@@ -126,14 +108,14 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 272px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   background: var(--paper);
 }
 
 .app-shell.shell-medium {
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr);
 }
 
 .app-shell.shell-compact {
@@ -207,25 +189,14 @@ button {
    in Sidebar.tsx. Skin hooks (.sidebar, .brand-mark, .section-head) keep their
    className. */
 .brand-mark {
-  transform: rotate(-3deg);
-  transform-origin: center;
-}
-.identity-logo-tile {
-  border-radius: 0;
-  transform: rotate(-3deg);
-  transform-origin: center;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .identity-logo-tile {
-  background: var(--paper);
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--paper-3);
   color: var(--ink);
-  border-color: var(--card-border-color);
-  box-shadow: var(--card-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .brand-mark{
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--card-border-color);
-  box-shadow: var(--card-shadow);
+  box-shadow: none;
+  transform: none;
 }
 
 .count-chip {
@@ -254,10 +225,11 @@ button {
   justify-content: center;
   gap: var(--space-8);
   min-width: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-12);
+  font-family: var(--font-mono);
+  font-size: var(--text-9);
   line-height: 1;
-  letter-spacing: var(--tracking-md);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
   text-align: center;
 }
 .panel-section-action {
@@ -284,93 +256,6 @@ button {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
-.topbar-strip {
-  background: var(--paper-2);
-}
-.topbar-control {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 30px;
-  padding: 0 10px;
-  background: var(--paper);
-  color: var(--ink-soft);
-  border: var(--line-sm);
-  border-radius: var(--radius-xs);
-  box-shadow: 1.5px 1.5px 0 var(--ink);
-  font-family: var(--font-control);
-  font-size: var(--text-10);
-  line-height: 1;
-  letter-spacing: var(--tracking-md);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: transform 80ms ease, box-shadow 80ms ease, background 80ms ease, color 80ms ease;
-}
-.topbar-control:hover {
-  color: var(--ink);
-  background: var(--paper-3);
-  transform: translate(-1px, -1px);
-  box-shadow: 2.5px 2.5px 0 var(--ink);
-}
-.topbar-control.active,
-.topbar-control[aria-pressed="true"] {
-  background: var(--surface-selected-bg);
-  color: var(--surface-selected-fg);
-  border-color: var(--surface-selected-border);
-}
-.topbar-control .act-filter-n,
-.topbar-control .count-chip {
-  background: var(--paper-3);
-  color: var(--ink);
-  border: var(--line-xs);
-  box-shadow: none;
-}
-.topbar-control.active .act-filter-n,
-.topbar-control[aria-pressed="true"] .act-filter-n,
-.topbar-control.active .count-chip,
-.topbar-control[aria-pressed="true"] .count-chip {
-  background: var(--paper-2);
-  color: var(--ink);
-  border-color: var(--ink);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control {
-  background: var(--activity-control-bg);
-  color: var(--activity-control-fg);
-  border-color: transparent;
-  box-shadow: 2px 2px 0 var(--activity-control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control:hover {
-  background: var(--activity-control-bg-raised);
-  color: var(--activity-control-fg);
-  box-shadow: 3px 3px 0 var(--activity-control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] {
-  background: var(--activity-control-active-bg);
-  color: var(--activity-control-selected-fg);
-  border-color: transparent;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control:focus-visible {
-  outline: 2px solid var(--activity-control-selected-fg);
-  outline-offset: 2px;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control .act-filter-n,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control .count-chip {
-  background: var(--paper);
-  color: var(--activity-control-fg);
-  border-color: var(--activity-control-border);
-  box-shadow: 1px 1px 0 var(--activity-control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active .act-filter-n,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] .act-filter-n,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control.active .count-chip,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .topbar-control[aria-pressed="true"] .count-chip {
-  background: var(--activity-control-badge-bg);
-  color: var(--activity-control-badge-fg);
-  border-color: var(--activity-control-badge-bg);
-}
-
 .room-name-inline {
   display: inline-flex;
   align-items: baseline;
@@ -378,12 +263,12 @@ button {
   min-width: 0;
   max-width: 100%;
 }
+/* ref `.head h2 .h` / `.room .h`: the # glyph is fg3 and regular weight. */
 .room-name-hash {
   flex: 0 0 auto;
-  font-size: 1.14em;
-  font-style: italic;
   line-height: 1;
-  opacity: 0.92;
+  color: var(--ink-faint);
+  font-weight: 400;
 }
 .room-name-text {
   min-width: 0;
@@ -404,9 +289,9 @@ button {
 /* .room-item base migrated to the roomItem() CVA in Sidebar.tsx; the hook class
    stays so these :hover / .active / .archived / [data-theme] state rules bind. */
 .room-item:hover {
-  background: var(--paper);
-  border-color: var(--rule);
-  box-shadow: var(--shadow-sm);
+  background: var(--paper-3);
+  box-shadow: none;
+  transform: none;
 }
 .room-item.archived {
   background: var(--archived-room-bg);
@@ -428,58 +313,33 @@ button {
 .room-item.archived .room-name {
   color: var(--archived-room-name-fg);
 }
-.room-item.archived .room-preview {
-  color: var(--archived-room-preview-fg);
-}
 .room-item.active {
-  background: var(--surface-selected-bg);
-  color: var(--surface-selected-fg);
-  border-color: var(--surface-selected-border);
-  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  background: var(--paper-3);
+  box-shadow: inset 2.5px 0 0 var(--accent);
   transform: none;
 }
-.room-item.active .room-preview { color: var(--surface-selected-muted); opacity: 1; }
 .room-item.active .room-name { color: var(--surface-selected-fg); }
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active{
-  background: var(--paper-3);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: var(--card-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active .room-preview{
-  color: var(--ink-soft);
-  opacity: 1;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-item.active .room-name{
-  color: var(--ink);
-}
 
 .identity-icon {
   width: var(--identity-size, 38px);
   height: var(--identity-size, 38px);
-  border-radius: var(--identity-radius, var(--radius-lg));
-  border: var(--identity-border, var(--line-md));
+  border-radius: 30%;
+  border: 1px solid var(--rule-2);
   display: grid;
   place-items: center;
   flex-shrink: 0;
   font-family: var(--font-avatar);
   font-size: var(--identity-font-size, var(--text-16));
-  font-size-adjust: calc(0.52 * var(--font-avatar-size-scale, 1));
+  font-size-adjust: 0.52;
   font-weight: var(--font-avatar-weight);
   font-synthesis: none;
-  box-shadow: var(--identity-shadow, var(--shadow-chip));
+  box-shadow: none;
+  transform: none;
+  overflow: visible;
   position: relative;
 }
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .identity-icon{
-  box-shadow: var(--identity-icon-shadow);
-}
 
-.room-icon {
-  --identity-size: 38px;
-  --identity-font-size: var(--text-16);
-}
-
-.room-status-dot,
 .identity-status-dot {
   position: absolute;
   bottom: -5px;
@@ -487,11 +347,14 @@ button {
   width: 12px;
   height: 12px;
   border-radius: var(--radius-pill);
-  border: 2px solid var(--status-dot-border, var(--rule));
+  border: 0;
+  outline: 2px solid var(--paper);
   box-shadow: none;
 }
 
 .identity-status-dot {
+  right: -2px;
+  bottom: -2px;
   color: var(--status-online);
   transform-origin: center;
 }
@@ -499,62 +362,9 @@ button {
 .identity-status-dot.status-idle { color: var(--status-idle); }
 .identity-status-dot.status-offline { color: var(--status-offline); }
 
-/* .room-body, .room-name-row, .room-name base, .pin, .room-preview base,
-   .unread base, .room-resume-btn base(+hover), .room-resume-icon migrated to
-   Tailwind utilities in Sidebar.tsx. .room-name/.room-preview/.unread/
-   .room-resume-btn keep their className so the .room-item.active/.archived
-   state rules below still bind. */
-.room-item.active .unread { background: var(--yellow); }
-
-.room-item.active .room-resume-btn {
-  background: var(--paper);
-  color: var(--ink);
-}
-
-/* .sidebar-bottom base, .user-bubble base(+:hover), .user-bubble-avatar, and
-   .archive-open-btn(+:hover) migrated to Tailwind utilities in Sidebar.tsx.
-   The .sidebar-bottom + .user-bubble hooks stay so the descendant
-   `.user-bubble .status-dot` rule and the kanagawa-wave overrides below bind.
-   archive-open-btn had no state/theme rule → its className was dropped. */
-.user-bubble .status-dot {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-}
-
-/* Sidebar dock buttons: base utilities live in Sidebar.tsx; hook classes stay
-   here for active/hover parity and kanagawa-wave shadow treatment. */
-.activity-dock-btn:hover,
-.activity-dock-btn.active,
-.resume-dock-btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: var(--shadow-hover);
-  background: var(--paper-3);
-}
-
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-bottom .user-bubble,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .resume-dock-btn,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-settings-btn {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--control-border-color);
-  box-shadow: var(--control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn:hover,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-btn.active,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-bottom .user-bubble:hover,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .resume-dock-btn:hover,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .sidebar-settings-btn:hover {
-  background: var(--paper-3);
-  box-shadow: var(--control-shadow-hover);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .activity-dock-badge {
-  background: var(--activity-control-badge-bg);
-  color: var(--activity-control-badge-fg);
-  border-color: var(--activity-control-badge-bg);
-  box-shadow: var(--control-shadow);
-}
+/* Sidebar row bases live as Tailwind utilities in Sidebar.tsx.
+   .room-name/.unread/.room-resume-btn keep their className so the
+   .room-item.active/.archived state rules above still bind. */
 
 .icon-btn {
   width: 32px;
@@ -569,188 +379,10 @@ button {
 }
 .icon-btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-hover); }
 
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .scroll-ctrl-new {
-  animation: none;
-  background: var(--paper-3);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: var(--card-shadow), inset 0 -3px 0 var(--lime);
-}
 
-/* .room-agents-btn base + .room-agents-count migrated to Tailwind utilities in
-   RoomHeader.tsx. room-agents-btn keeps its className so the .shell-compact
-   .room-agents-btn override still binds; room-agents-count was dropped. */
-
-.shell-medium .room-header-top {
-  gap: var(--space-10);
-  padding: 12px 16px 10px;
-}
-
-.shell-medium .room-id {
-  flex-basis: 420px;
-  gap: var(--space-10);
-}
-
-.shell-medium .room-id-icon {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  font-size: var(--text-20);
-}
-
-.shell-medium .room-title {
-  font-size: var(--text-20);
-}
-
-.shell-medium .member-pile {
-  display: none;
-}
-
-.shell-medium .room-working-meta {
-  display: none;
-}
-
-.shell-medium .room-header-actions {
-  gap: var(--space-4);
-}
-
-.shell-medium .room-agents-btn {
-  min-width: 68px;
-  padding-inline: 7px;
-}
-
-.shell-medium .room-tabs {
-  padding: 10px 16px 12px;
-}
-
-.shell-compact .room-agents-label {
-  display: none;
-}
-
-.shell-compact .room-agents-btn {
-  min-width: 32px;
-  padding: 0 5px;
-}
-
-.community-icon {
-  position: relative;
-  width: 26px;
-  inline-size: 26px;
-  min-width: 26px;
-  flex: 0 0 26px;
-  height: 19px;
-  display: inline-block;
-  border: 3px solid currentColor;
-  border-radius: 999px;
-  background: var(--lime);
-  box-sizing: border-box;
-  transform: translateY(-1px);
-}
-
-.community-icon::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -8px;
-  width: 12px;
-  height: 12px;
-  background: var(--lime);
-  border-left: 3px solid currentColor;
-  border-bottom: 3px solid currentColor;
-  transform: skew(-24deg) rotate(-18deg);
-  box-sizing: border-box;
-}
-
-.community-icon::after {
-  content: none;
-}
-
-.shell-compact .thread-scan-btn {
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-.composer-send-icon {
-  display: none;
-}
-
-.shell-compact .composer-send {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  padding: 0;
-  border-radius: var(--radius-pill);
-  display: inline-grid;
-  place-items: center;
-}
-
-.shell-compact .composer-send-label {
-  display: none;
-}
-
-.shell-compact .composer-send-icon {
-  display: block;
-  width: 18px;
-  height: 18px;
-  background: currentColor;
-  clip-path: polygon(5% 45%, 94% 4%, 61% 96%, 45% 60%, 5% 45%);
-}
-
-.shell-compact .chat-region {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.shell-compact .timeline-rail {
-  display: none;
-}
-
-.shell-compact .room-header-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-8);
-  padding: 10px 10px 11px;
-}
-
-.shell-compact .room-id {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: var(--space-10);
-  min-width: 0;
-}
-
-.shell-compact .room-id-icon {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  border-radius: var(--radius-xl);
-  font-size: var(--text-20);
-}
-
-.shell-compact .room-title {
+.shell-compact .top-bar-title {
   gap: var(--space-0);
-  font-size: var(--text-18);
   line-height: 1.05;
-}
-
-.shell-compact .room-title .sticker,
-.shell-compact .member-pile,
-.shell-compact .room-header-actions .icon-btn[aria-label="pin"],
-.shell-compact .room-activity {
-  display: none;
-}
-
-.shell-compact .room-title .sticker {
-  display: none !important;
-}
-
-.shell-compact .room-meta {
-  display: none;
-}
-
-.shell-compact .room-header-actions {
-  flex: 0 0 auto;
-  gap: var(--space-4);
 }
 
 .shell-compact .room-tabs {
@@ -765,17 +397,9 @@ button {
   display: none;
 }
 
-.shell-compact .room-tab {
-  flex: 0 0 auto;
-  padding: 5px 8px;
-}
-
 /* .shell-overlay base + .shell-overlay-head migrated to inline Tailwind
-   utilities in App.tsx. The `.shell-overlay` class stays on the element: it is a
-   [data-skin="glass"] backdrop hook (skin-glass.css), the parent of the
-   `.shell-overlay .sidebar` / `.agent-roster` descendant rules below, and the
-   base for the `.shell-overlay-community/-agents/-compact/-medium` position +
-   animation variants below (left as CSS — responsive/animation cluster). */
+   utilities in App.tsx. The class remains the parent for sidebar/roster
+   descendants and the responsive position + animation variants below. */
 
 .shell-overlay-close {
   width: 32px;
@@ -811,8 +435,8 @@ button {
 }
 
 .shell-overlay-community .sidebar-brand,
-.shell-overlay-community .sidebar-bottom,
-.shell-overlay-community .sidebar-search-shortcut {
+.shell-overlay-community .sidebar-nav,
+.shell-overlay-community .sidebar-foot {
   display: none;
 }
 
@@ -832,8 +456,9 @@ button {
   border: var(--line-sm);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
+  font-family: var(--font-ui);
+  font-size: var(--text-12);
+  font-weight: 600;
   letter-spacing: var(--tracking-sm);
 }
 
@@ -880,9 +505,10 @@ button {
 .compact-settings-label {
   margin: 0 0 8px;
   color: var(--ink-soft);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-9);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .compact-settings-grid {
@@ -926,10 +552,10 @@ button {
   width: min(320px, 42vw);
   animation: shell-slide-in-right 180ms ease-out;
 }
-/* Desktop: the roster is now an AGENTS-toggled right-edge panel (no longer a
-   persistent column); give it a touch more width than medium. */
+/* Desktop: the roster is an AGENTS-toggled right-edge panel; 352px matches the
+   reference extras.js .x-panel. */
 .shell-overlay-agents.shell-overlay-desktop {
-  width: min(340px, 26vw);
+  width: min(352px, 26vw);
 }
 
 .shell-overlay-agents.shell-overlay-compact {
@@ -1000,54 +626,9 @@ button {
   transform: none;
 }
 
-.mention {
-  display: inline-block;
-  font-weight: 700;
-  padding: var(--space-chip-pad-sm);
-  border: var(--line-sm);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-chip);
-  font-size: var(--text-scale-mention-inline);
-  margin: 0 1px;
-  transform: translateY(-1px);
-}
 
 /* Message reaction base styles live in components/extra.css. Per-theme dark
    overrides stay here with the rest of the theme-specific surface corrections. */
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--control-border-color);
-  box-shadow: var(--control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction.is-mine {
-  background: var(--paper-2);
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--yellow) 46%, var(--control-border-color));
-  box-shadow: var(--control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction .rcount,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction.add {
-  color: var(--ink);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-picker,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-popover{
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--overlay-border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--overlay-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-choice{
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--rule);
-  box-shadow: none;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .reaction-choice:hover{
-  background: var(--paper-3);
-  box-shadow: var(--control-shadow);
-}
 @media (max-width: 640px) {
   .message-footer {
     align-items: flex-start;
@@ -1061,7 +642,7 @@ button {
    Legacy dead hooks (.cmp-btn, .cmp-sep, .hint, .send-btn, .send-arrow) removed — sync-imeu.1.19. */
 
 /* Mention popup styles are inline Tailwind in components/Composer.tsx
-   (.mention-pop hook class kept on the element for skin-glass.css).
+   (.mention-pop hook class kept on the element for the Sigil overlay composition in this file).
    Legacy dead hooks (.mention-item*, .mention-role, .mention-all-icon) removed — sync-imeu.1.19. */
 
 /* ───────────────────────── board / kanban ───────────────────────── */
@@ -1294,7 +875,7 @@ button {
  * (sync-9hqo). The live component carries all roster styling; the legacy
  * `.roster*` block here (incl. orphaned `.roster-group*`, `.roster-card-*`,
  * `.busy-pulse`, `.focus-badge`, `.roster-foot` — none referenced in any TSX)
- * was removed. Skin hook `.roster-head` lives in skin-glass.css; the vim ring
+ * was removed. `.roster-head` remains a skin hook; the vim ring
  * `.roster-card[data-vim-focused]` lives in components/extra.css. */
 
 /* ───────────────────────── message status (queued / delivered / read) ───────────────────────── */
@@ -1305,52 +886,10 @@ button {
    components/Composer.tsx (effective font-mono/text-11/ink-soft preserved;
    superseded styles.css copy removed). */
 
-/* ───────────────────────── timeline rail ───────────────────────── */
-
-/* Timeline rail base styling (rail/head/track/node/line-segment/marker/time +
- * the tooltip popup box and tooltip-* content) migrated to inline Tailwind
- * utilities + CVA in components/TimelineRail.tsx (sync-9hqo). Kept here as hooks:
- * `.shell-compact .timeline-rail` and the responsive `display:none` below;
- * `.timeline-track::-webkit-scrollbar` (pseudo); `.timeline-tooltip::after`
- * arrow (pseudo); `@keyframes tooltip-in`. The `.timeline-rail`/`.timeline-track`
- * overflow overrides live in extra.css; the skin hook for `.timeline-tooltip`
- * lives in skin-glass.css. Legacy `.timeline-node.hovered/.focused/.dimmed`,
- * `.timeline-legend`/`.legend-*`, and `.timeline-empty-label/sub` were never
- * emitted by this component and were dropped. */
-.timeline-track::-webkit-scrollbar { width: 0; }
-
-@keyframes tooltip-in {
-  /* vertical centering is handled by the Base UI positioner, not a transform */
-  from { transform: translateX(8px); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
-}
-/* arrow that points from tooltip toward the marker, vertically centered */
-.timeline-tooltip::after {
-  content: "";
-  position: absolute;
-  right: -9px;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  background: var(--paper);
-  border-right: var(--line-md);
-  border-top: var(--line-md);
-  transform: translateY(-50%) rotate(45deg);
-}
-
-/* .tooltip-* content, the legend, and the empty-state rules migrated to inline
- * Tailwind utilities in components/TimelineRail.tsx (sync-9hqo). The legend and
- * `.timeline-empty-label/sub` were unused by the live component and dropped. */
-
 /* ───────────────────────── chat: jump-to highlight ───────────────────────── */
 
 /* DEAD CSS REMOVED (sync-q48d): legacy .msg-row.highlight/.focused/.dimmed +
    msg-flash keyframes — superseded by .message-row + .flash-highlight (live). */
-
-/* ───────────────────────── agent focus mode ───────────────────────── */
-
-/* (Removed dead `.timeline-node.focused/.dimmed` rules — never emitted by the
- * migrated TimelineRail component; sync-9hqo.) */
 
 /* ───────────────────────── poll (inline in messages) ───────────────────────── */
 
@@ -1368,8 +907,8 @@ button {
 /* Legacy context-menu block removed (sync-mzy3). These rules were already dead:
  * extra.css redefined .ctx-menu/.ctx-item/.ctx-shortcut later in the cascade
  * and won, and .ctx-header/.ctx-sep/.ctx-icon/.ctx-label were no longer
- * rendered. ContextMenu now uses inline Tailwind utilities; .ctx-menu remains
- * only as a skin-glass.css backdrop-filter hook. */
+ * rendered. ContextMenu now uses inline Tailwind utilities; `.ctx-menu` remains
+ * only as a stable skin hook. */
 
 /* ───────────────────────── spawn agent dialog ───────────────────────── */
 
@@ -1380,18 +919,16 @@ button {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, var(--ink) 26%, transparent);
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  backdrop-filter: none;
 }
 
 /* .spawn-agent-dialog base styles migrated to inline Tailwind utilities in
- * SpawnAgentDialog.tsx. The class name is retained on the element as a
- * [data-skin="glass"] hook (see skin-glass.css). */
+ * SpawnAgentDialog.tsx; the class remains a stable Sigil overlay hook. */
 
 /* .archive-* console/dialog/details chrome migrated to inline Tailwind
  * utilities + CVA in components/ArchiveRecovery.tsx (sync-9hqo). None of these
- * class names are skin or JS hooks, so they were dropped from the markup
- * entirely. `modal-backdrop` (shared, skin-glass hook) and `shell-overlay-close`
- * (shared with App.tsx) live elsewhere and are untouched. */
+ * class names are skin or JS hooks, so they were dropped from the markup. */
 
 /* .spawn-* rules (head, kicker, field, tool/model/path options, error,
  * actions, secondary/primary buttons) migrated to inline Tailwind utilities
@@ -1472,3 +1009,157 @@ button {
    .thread-divider / .thread-divider-line base rules migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre); .thread-divider is kept as a hook for
    `.thread-pane-body .thread-divider` in extra.css. */
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SIGIL SHELL COMPOSITION (folded from skin-sigil.css — sole production skin)
+   `:root` prefixes keep these one specificity notch above the structural rules
+   they refine, matching the cascade the dedicated skin file used to provide.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root #root {
+  color: var(--ink);
+  background: var(--paper);
+}
+
+:root :is(button, input, textarea, select) {
+  font-family: var(--font-ui);
+}
+
+:root :is(
+  .section-head,
+  .composer-foot
+) {
+  font-family: var(--font-mono);
+}
+
+:root .app-shell > main {
+  border-left: 0;
+}
+
+:root .sidebar {
+  background: var(--paper-2);
+  border-right: 1px solid var(--rule);
+}
+
+:root .sidebar-brand {
+  padding: 19px 20px 13px;
+}
+
+:root .sidebar-brand .font-display {
+  font-size: var(--text-14-5);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+:root .section-head {
+  color: var(--ink-faint);
+  font-size: var(--text-9);
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+:root .room-item {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ref .nav-item / .room: 13px 600. Unlayered font shorthand because
+   `button { font: inherit }` above beats layered Tailwind font utilities. */
+:root :is(.side-nav-item, .room-item) {
+  font: 600 var(--text-13) var(--font-ui);
+}
+
+:root .sidebar-foot {
+  border-top: 1px solid var(--rule-2);
+  background: transparent;
+  /* ref .foot is mono 9.5/1.9 — the font shorthand must live unlayered because
+     `button { font: inherit }` above beats layered Tailwind font utilities. */
+  font: var(--text-9-5) / 1.9 var(--font-mono);
+}
+
+/* -- shared identity ------------------------------------------------------- */
+:root .identity-logo-tile,
+:root .room-glyph-icon {
+  border: 1px solid var(--rule-2);
+  border-radius: 30%;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Reference tile treatment: neutral surface (bg3 dark / white light); the
+   per-agent hue lives in the sigil mark and name, never the tile fill. */
+:root .sigil-chip {
+  background: var(--sigil-tile-bg, var(--paper-3));
+  color: var(--identity-text, var(--identity-ink, var(--ink)));
+}
+
+/* Room-header crew cluster: ref renders the crew in the "bare" sigstyle —
+   transparent, borderless glyphs that float and overlap, not tile pills. */
+:root .room-crew .sigil-chip {
+  background: transparent;
+  border: 0;
+}
+
+:root .sigil-harness-mark {
+  display: block;
+  overflow: visible;
+}
+
+:root .sigil-harness-letter {
+  font-family: var(--font-mono);
+  font-size: 0.68em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+:root .sigil-role-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  filter: drop-shadow(0 1px 1px var(--paper)) drop-shadow(0 0 2px var(--paper));
+  pointer-events: none;
+}
+
+:root .status-dot {
+  outline: 2px solid var(--paper);
+  border: 0;
+  box-shadow: none;
+}
+
+/* Reference idle ring is hollow: bg fill + fg3 ring, never a filled amber dot.
+   Important flags defeat StatusDot's inline background. */
+:root .status-dot.status-idle {
+  background: var(--paper) !important;
+  border: 1.5px solid var(--ink-faint) !important;
+}
+
+/* -- overlays --------------------------------------------------------------- */
+:root :is(
+  .ctx-menu,
+  .toast,
+  .spawn-agent-dialog,
+  .shell-overlay,
+  .mention-pop
+) {
+  border: 1px solid var(--rule);
+  border-radius: var(--overlay-radius);
+  background: var(--popover);
+  box-shadow: var(--overlay-shadow);
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root *,
+  :root *::before,
+  :root *::after {
+    scroll-behavior: auto !important;
+  }
+}

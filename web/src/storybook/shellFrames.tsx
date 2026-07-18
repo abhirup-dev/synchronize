@@ -102,17 +102,27 @@ function SidebarColumnFrame({ children }: { children: ReactNode }) {
   );
 }
 
-// AgentRoster — the 260px roster column inside main-body (chat column left empty).
-function RosterColumnFrame({ children }: { children: ReactNode }) {
+// AgentRoster — the right-edge agents overlay, mirroring App.tsx's
+// `shell-overlay-agents` wrapper (fixed panel over an empty shell). In the
+// app a CompactAppBar sits above the roster only in compact mode; the panel
+// head is the roster's own (onClose prop) elsewhere.
+function RosterPanelFrame({ children }: { children: ReactNode }) {
   const mode = useViewportShellMode();
   return (
     <AppShellGrid mode={mode} style={{ gridTemplateColumns: "1fr" }}>
       <ShellMainColumn>
         <ShellMainBody>
           <div />
-          {children}
         </ShellMainBody>
       </ShellMainColumn>
+      <div
+        className={`shell-overlay shell-overlay-agents shell-overlay-${mode} fixed z-[var(--z-modal)] bg-paper text-ink [border:var(--line)] shadow-lg flex flex-col overflow-hidden`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="agents"
+      >
+        {children}
+      </div>
     </AppShellGrid>
   );
 }
@@ -133,5 +143,5 @@ function BottomNavRowFrame({ children }: { children: ReactNode }) {
 export const inMainColumn: Decorator = (Story) => <MainColumnFrame><Story /></MainColumnFrame>;
 export const inChatSurface: Decorator = (Story) => <ChatSurfaceFrame><Story /></ChatSurfaceFrame>;
 export const inSidebarColumn: Decorator = (Story) => <SidebarColumnFrame><Story /></SidebarColumnFrame>;
-export const inRosterColumn: Decorator = (Story) => <RosterColumnFrame><Story /></RosterColumnFrame>;
+export const inRosterPanel: Decorator = (Story) => <RosterPanelFrame><Story /></RosterPanelFrame>;
 export const inBottomNavRow: Decorator = (Story) => <BottomNavRowFrame><Story /></BottomNavRowFrame>;

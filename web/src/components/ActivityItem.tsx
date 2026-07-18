@@ -6,7 +6,7 @@
 
 import { memo } from "react";
 import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/types.ts";
-import { IdentityBadge, IdentityLogoTile, RoomNameInline, StatusDot, roomNameText } from "./primitives.tsx";
+import { Avatar, IdentityBadge, IdentityLogoTile, IdentityText, RoomNameInline, roomNameText } from "./primitives.tsx";
 import { useContextMenu } from "./ContextMenu.tsx";
 import { canShowAgentPreview } from "./AgentPreview.tsx";
 import { useToast } from "./Toast.tsx";
@@ -70,7 +70,9 @@ function ActivityItemImpl({
   if (!actor) return null;
   const awaits = item.awaiting;
   const canViewProfile = Boolean(onViewProfile && canShowAgentPreview(actor));
-  const showAuthorChip = room?.kind !== "dm";
+  // Always render the author name — the row grid keys message text off a fixed
+  // author column, and a DM row without its name would break the table rhythm.
+  const showAuthorChip = true;
 
   const onRowClick = () => {
     onOpenThread(item);
@@ -100,7 +102,7 @@ function ActivityItemImpl({
         ])
       }
     >
-      {awaits && <span className="act-row-bar" />}
+      <span className={`act-row-dot${awaits ? "" : " read"}`} aria-hidden />
       <span
         className="act-message-marker"
         onContextMenu={(e) =>
@@ -115,35 +117,34 @@ function ActivityItemImpl({
       >
         <MessageKindIcon kind={messageKindForActivity(item, room)} mentioned={item.isMention} size={18} />
       </span>
-      {showAuthorChip && (
-        <IdentityBadge
-          className="author-chip xs identity-name-pill"
-          color={actor.color}
-          {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}
-          onContextMenu={(e) =>
-            openMenu(e, agentActionMenuItems(e, {
-              agent: actor,
-              toast,
-              archive,
-              ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
-              ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
-            }))
-          }
-        >
-          {actor.name}
-        </IdentityBadge>
-      )}
+      <span
+        className="act-row-author"
+        onContextMenu={(e) =>
+          openMenu(e, agentActionMenuItems(e, {
+            agent: actor,
+            toast,
+            archive,
+            ...(onOpenDm ? { onOpenDm: () => onOpenDm(actor.id) } : {}),
+            ...(onViewProfile ? { onViewProfile: () => onViewProfile(actor) } : {}),
+          }))
+        }
+      >
+        <Avatar agent={actor} size={20} />
+        {showAuthorChip && (
+          <IdentityText
+            className="author-chip xs identity-name-pill"
+            color={actor.color}
+            {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}
+          >
+            {actor.name}
+          </IdentityText>
+        )}
+      </span>
       <span className="act-row-text">
         <span className="act-row-preview"><InlineMarkdownPreview text={item.text} className="act-inline-markdown" /></span>
       </span>
       {showRoom && room && <RoomChip room={room} onJump={() => onJumpToRoom(item.roomId)} />}
       <span className="act-time">{relativeTime(item.createdAt)}</span>
-      <StatusDot
-        status={actor.status}
-        size={9}
-        className="act-row-presence"
-        pulse={actor.status === "busy"}
-      />
       <span className="act-row-actions" onClick={(e) => e.stopPropagation()}>
         <button
           className={`act-act-btn react${reacted ? " done" : ""}`}

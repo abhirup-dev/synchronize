@@ -6,6 +6,7 @@
 // enable once with `?theme-editor=1` (persists), disable with `?theme-editor=0`.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Palette, X, Copy, RotateCcw } from "lucide-react";
+import { INITIAL_SKIN, INITIAL_THEME } from "./registry.generated.ts";
 
 // The palette knobs worth live-tuning, grouped for the panel. These are the
 // values that differ per theme/skin and that a designer iterates on; aesthetic
@@ -79,10 +80,8 @@ export function ThemeTokenEditor() {
   }, [open]);
 
   // Inline overrides live on <html> and out-rank the [data-theme][data-skin]
-  // stylesheet rules, so without this they'd bleed across switches (tune kanagawa,
-  // switch to light, and the kanagawa --background still wins). Edits are scoped to
-  // the combo you're on and exported per-combo, so when the active theme/skin
-  // changes we drop the overrides and re-read from the new combo. Export first.
+  // stylesheet rules. Edits are scoped to the active Sigil palette, so when the
+  // theme changes we drop the overrides and re-read from the new mode. Export first.
   useEffect(() => {
     if (!enabled) return;
     const root = document.documentElement;
@@ -111,8 +110,8 @@ export function ThemeTokenEditor() {
   };
 
   const exportCss = () => {
-    const theme = document.documentElement.dataset["theme"] ?? "light";
-    const skin = document.documentElement.dataset["skin"] ?? "brutal";
+    const theme = document.documentElement.dataset["theme"] ?? INITIAL_THEME;
+    const skin = document.documentElement.dataset["skin"] ?? INITIAL_SKIN;
     const lines = [...dirty].sort().map((name) => `  ${name}: ${values[name]};`);
     const block = `:root[data-skin="${skin}"][data-theme="${theme}"] {\n${lines.join("\n")}\n}`;
     void navigator.clipboard.writeText(block);
@@ -120,8 +119,8 @@ export function ThemeTokenEditor() {
     window.setTimeout(() => setCopied(false), 1400);
   };
 
-  const theme = document.documentElement.dataset["theme"] ?? "light";
-  const skin = document.documentElement.dataset["skin"] ?? "brutal";
+  const theme = document.documentElement.dataset["theme"] ?? INITIAL_THEME;
+  const skin = document.documentElement.dataset["skin"] ?? INITIAL_SKIN;
 
   return (
     <>

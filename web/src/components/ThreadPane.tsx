@@ -8,7 +8,7 @@ import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
-import { IdentityBadge } from "./primitives.tsx";
+import { IdentityText, RoomNameInline } from "./primitives.tsx";
 import { cn } from "../lib/cn.ts";
 import { useIsCompact } from "../shell-mode.tsx";
 
@@ -109,7 +109,7 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
     >
       {showHeader && (
         <header className={cn(
-          "flex shrink-0 items-center gap-[var(--space-12)] bg-paper-2 [border-bottom:var(--line)] [padding:var(--space-button-pad-md)]",
+          "thread-pane-header flex shrink-0 items-center gap-[var(--space-12)] bg-paper-2 [border-bottom:var(--line)] [padding:var(--space-button-pad-md)]",
           compact ? "justify-start" : "justify-between",
           compact && "min-h-[56px] gap-[var(--space-8)] px-[8px] py-[8px]",
         )}>
@@ -118,30 +118,23 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
             </button>
           )}
-          <div className="flex min-w-0 items-center gap-[var(--space-6)]" style={{ fontFamily: "var(--font-display-heading)", fontSize: "calc(var(--text-13) * var(--font-display-size-scale, 1))", fontWeight: "var(--font-display-heading-weight)" }}>
+          <div className="thread-pane-heading flex min-w-0 items-center gap-[var(--space-6)]" style={{ fontFamily: "var(--font-ui)", fontSize: "var(--text-14)", fontWeight: 700 }}>
             <strong>Thread</strong>
-            {!compact && (
+            {compact ? (
+              <IdentityText
+                className="thread-pane-parent-author identity-name-pill"
+                color={parentAuthor.color}
+                {...(parentAuthor.colorRef ? { colorRef: parentAuthor.colorRef } : null)}
+              >
+                {parentAuthor.name}
+              </IdentityText>
+            ) : (
               <>
                 <span className="thread-pane-sep">·</span>
-                <span className="thread-pane-sub">replying to</span>
+                <RoomNameInline kind={room.kind} name={room.name} className="thread-pane-room" />
+                <span className="thread-pane-count">· {replies.length}</span>
               </>
             )}
-            <IdentityBadge
-              className="author-name identity-name-pill"
-              color={parentAuthor.color}
-              {...(parentAuthor.colorRef ? { colorRef: parentAuthor.colorRef } : null)}
-              style={{
-                padding: "var(--space-thread-author-chip-pad)",
-                border: "var(--line-sm)",
-                borderRadius: "var(--radius-sm)",
-                boxShadow: "var(--shadow-chip)",
-                fontFamily: "var(--font-display-medium)",
-                fontSize: "var(--font-display-medium-size)",
-                fontWeight: "var(--font-display-medium-weight)",
-              }}
-            >
-              {parentAuthor.name}
-            </IdentityBadge>
           </div>
           {!compact && <button className="thread-pane-close" onClick={onClose} aria-label="close thread">×</button>}
         </header>
@@ -157,7 +150,8 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
               agents={displayAgents}
               groupedWithPrev={false}
               onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
-              hideAvatar
+              hideAvatar={compact}
+              miniAvatar={!compact}
               hideAuthor={compact}
               hideReactionAdd={compact}
             />
@@ -217,7 +211,8 @@ export function ThreadPane({ room, parentId, focusMessageId, onFocused, onClose,
                     agents={displayAgents}
                     groupedWithPrev={grouped}
                     onReact={(messageId, emoji) => void reactToMessage({ messageId, roomId: room.id, emoji, op: "toggle" })}
-                    hideAvatar
+                    hideAvatar={compact}
+                    miniAvatar={!compact}
                     hideReactionAdd={compact}
                   />
                 </div>

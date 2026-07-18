@@ -1,203 +1,92 @@
 import { cn } from "../lib/cn.ts";
-import { useAgents } from "../data/context.tsx";
+import { useAgents, useMe } from "../data/context.tsx";
 import type { Room } from "../data/types.ts";
-import { Avatar, IdentityBadge, IdentityLogoTile, RoomNameInline } from "./primitives.tsx";
+import { Avatar, RoomNameInline } from "./primitives.tsx";
+import { TopBar, TopBarTitle, TopBarMeta, TabGroup, type TabGroupItem } from "./TopBar.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
-import { useContextMenu } from "./ContextMenu.tsx";
-import { CHAT_BACKGROUNDS } from "../data/chatBackgrounds.ts";
+import { isSelfAgent } from "../data/identity.ts";
 import { useIsCompact } from "../shell-mode.tsx";
 import { IconButton } from "./IconButton.tsx";
-import { Rail, RailSegment } from "./rail.tsx";
-import { Settings, MessageCircle, Columns3, File, Users, Flame, Ban, type LucideIcon } from "lucide-react";
+import { Settings } from "lucide-react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 export type RoomTab = "chat" | "board" | "artifacts";
 
-// The room surface tabs adopt the shared expanding-rail standard (Rail +
-// RailSegment): a square icon at rest, the active one expands to reveal its
-// label — real lucide icons + label spans, not emoji/CSS-content hacks.
-const ROOM_TABS: { id: RoomTab; label: string; Icon: LucideIcon }[] = [
-  { id: "chat", label: "Chat", Icon: MessageCircle },
-  { id: "board", label: "Board", Icon: Columns3 },
-  { id: "artifacts", label: "Artifacts", Icon: File },
-];
-
-// Board-tab filters live in the unified banner (glass) rather than a second bar
-// inside BoardView. Visual-demo controls (no wired state yet) — the first is the
-// resting selection; adopting the same expanding-rail standard as the tabs.
-const BOARD_FILTERS: { id: string; label: string; Icon: LucideIcon }[] = [
-  { id: "all", label: "All agents", Icon: Users },
-  { id: "high", label: "High priority", Icon: Flame },
-  { id: "blocked", label: "Blocked", Icon: Ban },
+const ROOM_TABS: readonly TabGroupItem<RoomTab>[] = [
+  { id: "chat", label: "Chat", tooltip: "Room conversation" },
+  { id: "board", label: "Board", tooltip: "Room kanban board" },
+  { id: "artifacts", label: "Artifacts", tooltip: "Room artifacts" },
 ];
 
 /**
- * Tokens flow from the styles.css contract via the tw.css `@theme inline`
- * bridge; values without a utility namespace (border shorthand, tracking /
- * space / text tokens) use arbitrary values. Skin-hook classes (`room-header`,
- * `room-tab`) are retained alongside utilities — their base declarations moved
- * here, while `.room-tab.active` + `[data-theme]` overrides stay in extra.css.
- * Shared classes (`icon-btn`, `author-name`, `thread-pane-*`) are untouched. */
+ * The room flavor of the unified TopBar (Sigil ref `.head`, chat/board views):
+ * `# room` title, inline mono meta, the surface TabGroup, and the overlapping
+ * member crew (which doubles as the roster-panel trigger). */
 
 interface RoomHeaderProps {
   room: Room;
   tab: RoomTab;
   onTab(t: RoomTab): void;
-  theme: string;
-  onToggleTheme(shiftKey: boolean): void;
-  skin: "brutal" | "glass";
-  onToggleSkin(): void;
-  chatBg: string;
-  onChatBg(id: string): void;
-  showAgentsButton?: boolean;
   onOpenAgents?(): void;
   onOpenSettings?(event: ReactMouseEvent<HTMLButtonElement>): void;
-  onCloseThread?(): void;
 }
 
-export function RoomHeader({
-  room,
-  tab,
-  onTab,
-  theme,
-  onToggleTheme,
-  skin,
-  onToggleSkin,
-  chatBg,
-  onChatBg,
-  showAgentsButton = false,
-  onOpenAgents,
-  onOpenSettings,
-  onCloseThread,
-}: RoomHeaderProps) {
+export function RoomHeader({ room, tab, onTab, onOpenAgents, onOpenSettings }: RoomHeaderProps) {
   const agents = useAgents();
-  const openMenu = useContextMenu();
+  const me = useMe();
   const compact = useIsCompact();
   const displayAgents = roomAgents(agents, room);
-  const members = room.members.map((id) => displayAgents.find((a) => a.id === id)).filter(Boolean) as import("../data/types.ts").Agent[];
-  const working = members.filter((m) => m.status === "busy").length;
+  // Crew: room members in seed order, operator excluded — the ref cluster
+  // shows the working agents, not the human.
+  const crew = room.members
+    .map((id) => displayAgents.find((a) => a.id === id))
+    .filter((a): a is NonNullable<typeof a> => Boolean(a) && !isSelfAgent(a!, me));
 
   return (
-    <header
-      className={cn("room-header", "[border-bottom:var(--line)] bg-paper")}
-      data-thread-open={onCloseThread ? "true" : undefined}
-    >
-      <div className="room-header-top flex items-center gap-[var(--space-16)] pt-[16px] px-[22px] pb-[12px]">
-        <div className="room-id flex items-center gap-[14px] flex-[1_1_520px] min-w-0">
-          {room.kind === "group" ? (
-            <IdentityLogoTile as="div" className="room-id-icon room-glyph-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
-              {room.emoji ?? "#"}
-            </IdentityLogoTile>
-          ) : (
-            <IdentityBadge as="div" className="room-id-icon w-[46px] h-[46px] min-w-[46px] [border:var(--line)] rounded-lg grid place-items-center font-display text-[length:var(--text-22)] shadow-sm" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>
-              {room.emoji ?? room.name[0]?.toUpperCase() ?? "#"}
-            </IdentityBadge>
-          )}
-          <div className="room-title-block flex flex-col justify-center min-w-0 flex-[1_1_auto]">
-            <div className="room-title flex items-center leading-[1.1] min-w-0" style={{ fontFamily: "var(--font-display-heading)", fontSize: "calc(var(--text-22) * var(--font-display-size-scale, 1))", fontWeight: "var(--font-display-heading-weight)" }}>
-              <RoomNameInline
-                kind={room.kind}
-                name={room.name}
-                showPrefix={room.kind !== "group"}
-                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-              />
-            </div>
-            {room.description ? <div className="text-[length:var(--text-11)] text-ink-soft mt-[5px] max-w-[min(72ch,100%)] overflow-hidden text-ellipsis whitespace-nowrap">{room.description}</div> : null}
-          </div>
-        </div>
+    <TopBar className="room-header">
+      <TopBarTitle>
+        <RoomNameInline
+          kind={room.kind}
+          name={room.name}
+          className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+        />
+      </TopBarTitle>
+      {!compact && room.description ? <TopBarMeta>{room.description}</TopBarMeta> : null}
 
-        {/* The working-count meta and the member pile are desktop/medium chrome.
-            Gate them OUT of the DOM in compact (not just display:none) — an empty
-            wrapper would still claim a grid cell and bump the actions to a 2nd
-            row. The bottom-nav Agents tab carries member presence on mobile. */}
-        {!compact && (
-          <>
-            <div className="room-working-meta flex-none min-w-[120px] flex flex-col items-end justify-center text-right">
-              <div className="room-meta font-mono text-[length:var(--text-11)] text-ink-soft mt-[3px] flex items-center justify-end gap-[var(--space-10)]">
-                <span className="inline-flex items-center gap-[var(--space-6)] text-ink font-extrabold"><span className="w-[9px] h-[9px] rounded-pill bg-pink [border:var(--line-sm)] shadow-xs" />{working} / {members.length} working</span>
-              </div>
-            </div>
-
-            <div className="member-pile flex items-center">
-              {members.slice(0, 6).map((a, i) => (
-                <span key={a.id} className="inline-block ml-[var(--space-0)] [&+span]:ml-[calc(var(--space-8)*-1)]" style={{ zIndex: members.length - i }}>
-                  <Avatar agent={a} size={28} />
+      {compact ? (
+        // Compact keeps a single thumb-sized settings button; the room surface
+        // lives in the bottom nav there.
+        <IconButton
+          icon={Settings}
+          label="open display settings"
+          size={40}
+          iconSize={19}
+          className="ml-auto"
+          onClick={(event) => onOpenSettings?.(event)}
+        />
+      ) : (
+        <>
+          <TabGroup items={ROOM_TABS} value={tab} onChange={onTab} ariaLabel="room surface" className="ml-auto" />
+          {crew.length > 0 && (
+            <button
+              type="button"
+              className={cn("room-crew flex items-center bg-transparent [border:var(--line-none)] p-0 cursor-pointer hover:opacity-80")}
+              title="View agents"
+              aria-label={`view ${crew.length} agents`}
+              onClick={onOpenAgents}
+            >
+              {/* ref bare-sigstyle crew: transparent, borderless glyphs that
+                  float and overlap (-6px), not tile pills. The bare treatment
+                  is applied via `.room-crew .sigil-chip` in styles.css. */}
+              {crew.map((a, i) => (
+                <span key={a.id} className="inline-flex [&+span]:ml-[-6px]" style={{ zIndex: crew.length - i }}>
+                  <Avatar agent={a} size={24} />
                 </span>
               ))}
-            </div>
-          </>
-        )}
-
-        {compact ? (
-          // Compact: a single thumb-sized Lucide button. The settings-y toggles
-          // (theme/skin/chat-bg) fold into an overflow menu so the header bar
-          // stays to a single tight row beside the title.
-          <div className="room-header-actions flex items-center gap-[var(--space-2)]">
-            <IconButton
-              icon={Settings}
-              label="open display settings"
-              size={40}
-              iconSize={19}
-              onClick={(event) => {
-                if (onOpenSettings) {
-                  onOpenSettings(event);
-                  return;
-                }
-                openMenu(event, [
-                  { label: `Theme · ${theme}`, onSelect: () => onToggleTheme(false) },
-                  { label: `Skin · ${skin === "brutal" ? "brutal → glass" : "glass → brutal"}`, onSelect: onToggleSkin },
-                  { divider: true },
-                  ...CHAT_BACKGROUNDS.map((preset) => ({
-                    label: `${preset.id === chatBg ? "✓ " : ""}${preset.name}`,
-                    onSelect: () => onChatBg(preset.id),
-                  })),
-                ]);
-              }}
-            />
-          </div>
-        ) : (
-          <div className="room-header-actions flex gap-[6px]">
-            {showAgentsButton && (
-              <button className="icon-btn room-agents-btn inline-flex items-center justify-center gap-[var(--space-6)] font-display text-[length:var(--text-10)] tracking-[var(--tracking-sm)]" aria-label="open agents" onClick={onOpenAgents}>
-                <span className="room-agents-label">AGENTS</span>
-                <span className="min-w-[18px] h-[18px] inline-grid place-items-center rounded-sm bg-ink text-paper font-mono text-[length:var(--text-10)] tracking-normal">{members.length}</span>
-              </button>
-            )}
-            {onCloseThread && (
-              <button className="thread-pane-close" onClick={onCloseThread} aria-label="close thread">×</button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="room-tabs topbar-strip relative flex items-center gap-[var(--space-8)] pt-[10px] px-[22px] pb-[10px] [border-top:var(--line-2)]">
-        {tab === "board" && (
-          // The board filter and room-surface rail share this one flowing strip.
-          // Glass shows both; brutal hides this filter and keeps BoardView's
-          // in-surface header. Sibling rails cannot overlap and the strip can
-          // scroll horizontally when their combined width exceeds its surface.
-          <Rail role="toolbar" aria-label="board filter" className="room-board-filters">
-            {BOARD_FILTERS.map((f, i) => (
-              <RailSegment key={f.id} icon={<f.Icon />} label={f.label} active={i === 0} onSelect={() => {}} />
-            ))}
-          </Rail>
-        )}
-        <Rail role="tablist" aria-label="room surface">
-          {ROOM_TABS.map((t) => (
-            <RailSegment
-              key={t.id}
-              icon={<t.Icon />}
-              label={t.label}
-              active={tab === t.id}
-              onSelect={() => onTab(t.id)}
-            />
-          ))}
-        </Rail>
-        <div className="room-activity ml-auto font-mono text-[length:var(--text-10)] text-ink-soft flex items-center gap-[var(--space-8)]">
-          ROOM ACTIVITY
-          <span className="tracking-[var(--tracking-pixel)] text-ink">▁▂▃▅▆▇▆▅▃▂</span>
-        </div>
-      </div>
-    </header>
+            </button>
+          )}
+        </>
+      )}
+    </TopBar>
   );
 }

@@ -7,8 +7,9 @@
 // Grouped/Timeline toggle).
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, AtSign, CheckCheck, ChevronDown, Inbox, LayoutList, ListFilter, Rows3, Settings, Target, type LucideIcon } from "lucide-react";
-import { Rail, RailSegment, RailChip } from "./rail.tsx";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, CheckCheck, ChevronDown, ListFilter, Settings } from "lucide-react";
+import { RailChip } from "./rail.tsx";
+import { TopBar, TopBarTitle, TopBarMeta, TabGroup, type TabGroupItem } from "./TopBar.tsx";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useAckActivity,
@@ -25,7 +26,7 @@ import type { ActivityItem as ActivityItemModel, Agent, Room } from "../data/typ
 import { ActivityItem } from "./ActivityItem.tsx";
 import { ThreadPane } from "./ThreadPane.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
-import { Avatar, IdentityBadge, IdentityLogoTile, RoomNameInline, roomNameText } from "./primitives.tsx";
+import { Avatar, IdentityLogoTile, IdentityText, RoomNameInline, roomNameText } from "./primitives.tsx";
 import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { useActivityPreferences, type ActivityViewMode } from "../hooks/useActivityPreferences.ts";
@@ -186,10 +187,15 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
     ...(onOpenDm ? { onOpenDm } : {}),
   });
 
-  const FILTERS: Array<{ id: Filter; label: string; n: number; hot?: boolean; Icon: LucideIcon }> = [
-    { id: "all", label: "All", n: counts.all, Icon: Inbox },
-    { id: "awaits", label: "Awaiting", n: counts.awaits, hot: true, Icon: Target },
-    { id: "mentions", label: "Mentions", n: counts.mentions, Icon: AtSign },
+  // Ref `.head .tabs` order: All / Mentions / Awaiting (counts on All + Awaiting).
+  const FILTER_TABS: readonly TabGroupItem<Filter>[] = [
+    { id: "all", label: "All", count: counts.all, tooltip: "Show all activity" },
+    { id: "mentions", label: "Mentions", tooltip: "Show mentions of you" },
+    { id: "awaits", label: "Awaiting", count: counts.awaits, tooltip: "Show items awaiting you" },
+  ];
+  const LAYOUT_TABS: readonly TabGroupItem<ActivityViewMode>[] = [
+    { id: "grouped", label: "Grouped", tooltip: "Group activity by room" },
+    { id: "timeline", label: "Flat", tooltip: "Flat chronological feed" },
   ];
 
   const openRoom = open ? roomsById.get(open.roomId) : undefined;
@@ -203,100 +209,71 @@ export function ActivityView({ onJumpToRoom, onOpenDm, threadWidth, onThreadWidt
       } as CSSProperties) : undefined}
     >
       <div className="activity-main">
-        <header className="act-header">
-          <div className="act-header-top">
-            <div className="act-title-block">
-              <IdentityLogoTile className="act-title-mark" ariaHidden>
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 13 8 13 10.5 19 14 6 16 13 21 13" />
-                </svg>
-              </IdentityLogoTile>
-              <div>
-                <div className="act-title">ACTIVITY</div>
-                <div className="act-title-sub">
-                  {!compact && (
-                    <>
-                      {groupedView ? "cross-room feed" : "timeline"}
-                      <span className="dot-sep">·</span>
-                    </>
-                  )}
-                  {counts.awaits > 0 ? <span className="act-await-inline">{counts.awaits} awaiting you</span> : <span>all caught up ✓</span>}
-                </div>
-              </div>
-            </div>
-            <div className="act-header-actions">
-              {compact ? (
-                <>
-                  {onOpenSettings ? (
-                    <IconButton
-                      icon={Settings}
-                      label="open display settings"
-                      size={40}
-                      iconSize={20}
-                      onClick={onOpenSettings}
-                      className="act-settings-btn"
-                    />
-                  ) : null}
-                  {counts.awaits > 0 ? (
-                    <IconButton
-                      icon={CheckCheck}
-                      label="mark all handled"
-                      size={40}
-                      iconSize={20}
-                      onClick={() => void ackAll()}
-                      className="act-settings-btn"
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
-                  <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
-                  <RailChip
-                    className="act-markall"
-                    icon={<CheckCheck size={17} strokeWidth={2.1} aria-hidden />}
-                    tooltip="Mark all handled"
-                    disabled={counts.awaits === 0}
-                    onClick={() => void ackAll()}
-                  />
-                </>
-              )}
-            </div>
-          </div>
+        <div className="act-header">
+          {/* The unified top bar — Activity flavor (ref `.head`, activity view):
+              title · mono meta · filter tabs · layout tabs · live/sort/ack. */}
+          <TopBar>
+            <TopBarTitle>Activity</TopBarTitle>
+            {!compact && <TopBarMeta>{counts.all} updates · {counts.awaits} awaiting</TopBarMeta>}
+            {compact ? (
+              <span className="ml-auto flex items-center gap-[var(--space-2)]">
+                {onOpenSettings ? (
+                  <IconButton icon={Settings} label="open display settings" size={40} iconSize={20} onClick={onOpenSettings} className="act-settings-btn" />
+                ) : null}
+                {counts.awaits > 0 ? (
+                  <IconButton icon={CheckCheck} label="mark all handled" size={40} iconSize={20} onClick={() => void ackAll()} className="act-settings-btn" />
+                ) : null}
+              </span>
+            ) : (
+              <>
+                <TabGroup className="ml-auto" items={FILTER_TABS} value={filter} onChange={setFilter} ariaLabel="activity filter" />
+                <TabGroup items={LAYOUT_TABS} value={viewMode} onChange={setViewMode} ariaLabel="activity layout" />
+                <RailChip
+                  className="act-sort-toggle"
+                  icon={sortDir === "desc" ? <ArrowDownWideNarrow size={17} strokeWidth={2.1} aria-hidden /> : <ArrowUpNarrowWide size={17} strokeWidth={2.1} aria-hidden />}
+                  tooltip={sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"}
+                  pressed={sortDir === "desc"}
+                  onClick={() => setSortDir((value) => value === "desc" ? "asc" : "desc")}
+                />
+                <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
+                <RailChip
+                  className="act-markall"
+                  icon={<CheckCheck size={17} strokeWidth={2.1} aria-hidden />}
+                  tooltip="Mark all handled"
+                  disabled={counts.awaits === 0}
+                  onClick={() => void ackAll()}
+                />
+                <RoomFilterBar
+                  roomIds={allRoomIds}
+                  roomsById={roomsById}
+                  agentsById={agentsById}
+                  selected={roomSel}
+                  onToggle={toggleRoom}
+                  onClear={() => setRoomSel(new Set())}
+                />
+              </>
+            )}
+          </TopBar>
 
-          <div className="act-filterbar">
-            <div className="act-filters">
-              <Rail role="tablist" aria-label="activity filter">
-                {FILTERS.map((f) => (
-                  <RailSegment
-                    key={f.id}
-                    icon={<f.Icon size={17} strokeWidth={2.1} aria-hidden />}
-                    label={f.label}
-                    tooltip={`Show ${f.label.toLowerCase()} activity`}
-                    count={f.n}
-                    active={filter === f.id}
-                    onSelect={() => setFilter(f.id)}
-                  />
-                ))}
-              </Rail>
-              {compact && (
-                <>
-                  <ActivityViewControls viewMode={viewMode} sortDir={sortDir} onViewMode={setViewMode} onSortDir={setSortDir} />
-                  <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
-                </>
-              )}
+          {compact && (
+            <div className="act-filterbar">
+              <div className="act-filters">
+                <TabGroup items={FILTER_TABS} value={filter} onChange={setFilter} ariaLabel="activity filter" />
+                <TabGroup items={LAYOUT_TABS} value={viewMode} onChange={setViewMode} ariaLabel="activity layout" />
+                <ActivityLiveToggle aliveOnly={aliveOnly} busyCount={busyCount} onToggle={() => setAliveOnly((value) => !value)} />
+              </div>
+              <RoomFilterBar
+                roomIds={allRoomIds}
+                roomsById={roomsById}
+                agentsById={agentsById}
+                selected={roomSel}
+                onToggle={toggleRoom}
+                onClear={() => setRoomSel(new Set())}
+                compact
+              />
             </div>
-            <RoomFilterBar
-              roomIds={allRoomIds}
-              roomsById={roomsById}
-              agentsById={agentsById}
-              selected={roomSel}
-              onToggle={toggleRoom}
-              onClear={() => setRoomSel(new Set())}
-              compact={compact}
-            />
-          </div>
-        </header>
+          )}
+        </div>
 
         {visible.length === 0 ? (
           <div className="act-scroll">
@@ -359,48 +336,6 @@ function LoadMore({ onLoad }: { onLoad(): Promise<void> }) {
 
 function awaitingEventIds(items: ActivityItemModel[]): number[] {
   return items.filter((item) => item.awaiting).map((item) => item.eventId);
-}
-
-function ActivityViewControls({
-  viewMode,
-  sortDir,
-  onViewMode,
-  onSortDir,
-}: {
-  viewMode: ActivityViewMode;
-  sortDir: SortDirection;
-  onViewMode(value: ActivityViewMode): void;
-  onSortDir(updater: (value: SortDirection) => SortDirection): void;
-}) {
-  const timelineActive = viewMode === "timeline";
-  const groupedActive = viewMode === "grouped";
-  return (
-    <div className="act-view-controls" aria-label="Activity view controls">
-      <RailChip
-        className="act-sort-toggle"
-        icon={sortDir === "desc" ? <ArrowDownWideNarrow size={17} strokeWidth={2.1} aria-hidden /> : <ArrowUpNarrowWide size={17} strokeWidth={2.1} aria-hidden />}
-        tooltip={sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"}
-        pressed={sortDir === "desc"}
-        onClick={() => onSortDir((value) => value === "desc" ? "asc" : "desc")}
-      />
-      <Rail role="radiogroup" aria-label="Activity layout" className="act-view-segment">
-        <RailSegment
-          icon={<Rows3 size={18} strokeWidth={2.1} aria-hidden />}
-          label="Timeline"
-          tooltip="Show activity as a timeline"
-          active={timelineActive}
-          onSelect={() => onViewMode("timeline")}
-        />
-        <RailSegment
-          icon={<LayoutList size={18} strokeWidth={2.1} aria-hidden />}
-          label="Grouped"
-          tooltip="Group activity by room"
-          active={groupedActive}
-          onSelect={() => onViewMode("grouped")}
-        />
-      </Rail>
-    </div>
-  );
 }
 
 function ActivityLiveToggle({
@@ -466,8 +401,9 @@ function RoomDigest({
       <div className="act-digest-head">
         <button className="act-digest-toggle" onClick={onToggle} type="button">
           <span className="act-digest-chevron">{expanded ? "▾" : "▸"}</span>
-          {dmAgent ? <Avatar agent={dmAgent} size={34} /> : null}
+          {dmAgent ? <Avatar agent={dmAgent} size={22} /> : null}
           <RoomNameInline kind={room.kind} name={room.name} className="act-room-name" />
+          <span className="act-digest-count">{items.length}</span>
           {awaiting > 0 && <span className="act-room-await">{awaiting} awaiting</span>}
           {!expanded && last && (
             <span className="act-digest-preview">
@@ -605,8 +541,8 @@ function LatestStrip({
   return (
     <div className="act-latest">
       <span className="act-latest-tag">▸ MOST RECENT</span>
-      <Avatar agent={actor} size={26} />
-      <IdentityBadge className="act-latest-actor identity-name-pill" color={actor.color} {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}>{actor.name}</IdentityBadge>
+      <Avatar agent={actor} size={26} showStatus />
+      <IdentityText className="act-latest-actor identity-name-pill" color={actor.color} {...(actor.colorRef ? { colorRef: actor.colorRef } : null)}>{actor.name}</IdentityText>
       <span className="act-latest-text">{stripMd(item.text).slice(0, 90)}</span>
       {room && <RoomNameInline kind={room.kind} name={room.name} className="act-latest-room" />}
       <span className="act-spacer" />
@@ -708,7 +644,7 @@ function RoomFilterBar({
               <span className={`act-roomlist-check${on ? " on" : ""}`}>{on ? "✓" : ""}</span>
               {room.kind === "group" ? (
                 <IdentityLogoTile className="act-room-icon sm room-glyph-icon" color={room.color} {...(room.colorRef ? { colorRef: room.colorRef } : null)}>{room.emoji ?? "#"}</IdentityLogoTile>
-              ) : dmAgent ? <Avatar agent={dmAgent} size={34} /> : null}
+              ) : dmAgent ? <Avatar agent={dmAgent} size={34} showStatus /> : null}
               <RoomNameInline kind={room.kind} name={room.name} className="act-roomlist-name" />
               {room.unread > 0 && <span className="act-roomlist-unread">{room.unread}</span>}
             </button>

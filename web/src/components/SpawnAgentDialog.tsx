@@ -9,13 +9,11 @@ import { useToast } from "./Toast.tsx";
 import { roomNameText } from "./primitives.tsx";
 
 // Styles migrated from styles.css (.spawn-* family) to inline Tailwind v4
-// utilities. `.spawn-agent-dialog` is retained as a class because it is a
-// [data-skin="glass"] hook in skin-glass.css; its base declaration was removed
-// from styles.css and reproduced here via utilities.
+// utilities. `.spawn-agent-dialog` remains the stable Sigil overlay hook.
 
 // .spawn-agent-kicker / .spawn-agent-field label / .spawn-tool-field legend
 const labelKicker =
-  "font-display text-[length:var(--text-10)] tracking-[var(--tracking-lg)] text-ink-soft uppercase";
+  "font-mono font-semibold text-[length:var(--text-9-5)] tracking-[0.14em] text-ink-soft uppercase";
 
 // .spawn-tool-option / .spawn-model-option / .spawn-path-option (+ selected/disabled)
 const optionCard = cva(
@@ -38,14 +36,14 @@ const optionCard = cva(
 // .spawn-tool-copy / .spawn-model-copy / .spawn-path-copy
 const optionCopy = "min-w-0 grid gap-[2px]";
 // .spawn-tool-label / .spawn-model-label / .spawn-path-label
-const optionLabel = "font-display text-[length:var(--text-14)]";
+const optionLabel = "font-ui font-semibold text-[length:var(--text-12-5)]";
 // .spawn-tool-meta / .spawn-model-meta / .spawn-path-value
 const optionMeta =
   "min-w-0 overflow-hidden text-ellipsis font-mono text-[length:var(--text-11)] text-ink-soft whitespace-nowrap";
 
 // .spawn-secondary / .spawn-primary
 const actionBtn = cva(
-  "min-w-[86px] min-h-[34px] [border:var(--line-xs)] rounded-sm p-[7px_12px] font-display text-[length:var(--text-12)] disabled:opacity-[0.55] disabled:cursor-wait",
+  "min-w-[86px] min-h-[34px] [border:var(--line-xs)] rounded-sm p-[7px_12px] font-ui font-bold text-[length:var(--text-12)] disabled:opacity-[0.55] disabled:cursor-wait",
   {
     variants: {
       kind: {
@@ -251,7 +249,7 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
         <div className="flex items-start justify-between gap-[16px]">
           <div>
             <div className={labelKicker}>agent</div>
-            <Dialog.Title render={<h2 className="mt-[3px] font-display text-[length:var(--text-22)] leading-[1.05]" />}>{title}</Dialog.Title>
+            <Dialog.Title render={<h2 className="mt-[3px] font-ui font-bold text-[length:var(--text-14-5)] leading-[1.05]" />}>{title}</Dialog.Title>
           </div>
           <button
             type="button"
@@ -266,7 +264,7 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
           <input
             id="spawn-agent-name"
             ref={nameRef}
-            className="w-full bg-paper-2 text-ink [border:var(--line-xs)] rounded-sm p-[9px_10px] font-mono text-[length:var(--text-14)]"
+            className="w-full bg-paper-2 text-ink [border:var(--line-xs)] rounded-sm p-[9px_10px] font-ui text-[length:var(--text-12-5)]"
             maxLength={11}
             value={name}
             onChange={(event) => {

@@ -2,11 +2,9 @@ export const tokenDefinitionFiles = ["src/styles/tokens.css", "src/tw.css"];
 
 export const rawColorAllowed = [
   /^src\/styles\/tokens\.css$/,
-  /^src\/skin-glass\.css$/,
   /^src\/styles\/code-light\.css$/,
-  /^src\/chat-bg\.css$/,
-  /^src\/data\/chatBackgrounds\.ts$/,
   /^src\/data\/seed\.ts$/,
+  /^src\/data\/seeds\/.*\.ts$/,
   /^src\/theme\/identity\.ts$/,
   /^src\/theme\/contrast\.ts$/,
   /^src\/theme\/ThemeTokenEditor\.tsx$/,
@@ -17,8 +15,6 @@ export const rawColorAllowed = [
 export const themeSelectorAllowed = [
   /^src\/styles\/tokens\.css$/,
   /^src\/styles\/code-light\.css$/,
-  /^src\/chat-bg\.css$/,
-  /^src\/skin-glass\.css$/,
 ];
 
 export const legacyUndefinedVars = ["--opt-color"];

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { chatBackgroundById } from "../data/chatBackgrounds.ts";
 import {
   ALL_THEMES,
   DARK_THEMES,
@@ -10,19 +9,16 @@ import {
   LIGHT_THEMES,
   normalizeStoredSkin,
   normalizeStoredTheme,
-  type SkinName,
   type ThemeName,
 } from "../theme/registry.generated.ts";
 
-// Theme = palette; skin = aesthetic system (border/shadow/radius language),
-// orthogonal axes. Both persist to localStorage as plain strings and are
-// applied as `data-theme` / `data-skin` on <html> so CSS owns the cascade.
-// Canonical dark theme is Kanagawa Wave. Keep
-// the DEFAULT_* constants the single source for "which theme does each family
-// open in" — App boot, the family toggle, and the Storybook theme matrix all read
-// them so the default can never drift per call site.
+// Theme = Sigil's matched light/dark palette; skin = the Sigil visual grammar.
+// Both remain explicit, typed axes so palette behavior and component geometry do
+// not drift between app, Storybook, and persisted preferences. Legacy stored
+// values normalize through the generated registry before these attributes land
+// on <html>.
 export { ALL_THEMES, DARK_THEMES, DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME, LIGHT_THEMES };
-export type { SkinName, ThemeName };
+export type { ThemeName };
 
 export function themeFamily(theme: ThemeName): "light" | "dark" {
   return LIGHT_THEMES.includes(theme as (typeof LIGHT_THEMES)[number]) ? "light" : "dark";
@@ -67,16 +63,11 @@ export function themeTraits(theme: ThemeName): ThemeTraits {
 export interface PersistentTheme {
   theme: ThemeName;
   setTheme: React.Dispatch<React.SetStateAction<ThemeName>>;
-  skin: SkinName;
-  setSkin: React.Dispatch<React.SetStateAction<SkinName>>;
-  chatBg: string;
-  setChatBg: React.Dispatch<React.SetStateAction<string>>;
 }
 
 /**
- * Owns the persisted display preferences (theme, skin, chat background) and the
- * side effects that apply them to the document. Extracted from App so the Shell
- * is composition, not preference plumbing (sync-imeu.1.20).
+ * Owns the persisted Sigil palette and applies the sole production skin.
+ * Legacy stored values normalize into the matched light/dark pair.
  */
 export function usePersistentTheme(): PersistentTheme {
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -88,27 +79,12 @@ export function usePersistentTheme(): PersistentTheme {
     localStorage.setItem("synchronize.theme", theme);
   }, [theme]);
 
-  const [skin, setSkin] = useState<SkinName>(() => normalizeStoredSkin(localStorage.getItem("synchronize.skin")) ?? INITIAL_SKIN);
   useEffect(() => {
+    const skin = normalizeStoredSkin(localStorage.getItem("synchronize.skin")) ?? INITIAL_SKIN;
     document.documentElement.dataset["skin"] = skin;
     localStorage.setItem("synchronize.skin", skin);
-  }, [skin]);
+    localStorage.removeItem("synchronize.chatbg");
+  }, []);
 
-  const [chatBg, setChatBg] = useState<string>(() => localStorage.getItem("synchronize.chatbg") ?? "none");
-  useEffect(() => {
-    const preset = chatBackgroundById(chatBg);
-    const style = document.documentElement.style;
-    if (preset.image) {
-      style.setProperty("--chat-bg-image", preset.image);
-      style.setProperty("--chat-bg-size", preset.size);
-      style.setProperty("--chat-bg-repeat", preset.repeat);
-    } else {
-      style.removeProperty("--chat-bg-image");
-      style.removeProperty("--chat-bg-size");
-      style.removeProperty("--chat-bg-repeat");
-    }
-    localStorage.setItem("synchronize.chatbg", preset.id);
-  }, [chatBg]);
-
-  return { theme, setTheme, skin, setSkin, chatBg, setChatBg };
+  return { theme, setTheme };
 }

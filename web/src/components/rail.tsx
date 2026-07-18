@@ -9,9 +9,7 @@ import { cn } from "../lib/cn.ts";
 
 // ── Expanding-rail control standard ────────────────────────────────────────
 // A single control language for every top-of-surface single-select cluster
-// (room tabs, activity filters, layout toggle, artifacts grid/list, …). See
-// docs/plans/glass-skin-revamp-port.md §2.2 and the EXPANDING-RAIL STANDARD
-// block in ds-bundle/…/glass-variants.css for the geometry/motion source.
+// (room tabs, activity filters, layout toggle, artifacts grid/list, …).
 //
 //   Rail        — the recessed well container holding segments.
 //   RailSegment — a square icon at rest; the ONE .active segment expands into a
@@ -21,11 +19,10 @@ import { cn } from "../lib/cn.ts";
 //                 room menu) sharing the well's height + surface. Never
 //                 accent-filled except a genuine .active toggle state.
 //
-// All geometry/motion/colour comes from the --rail-* tokens (defined per-skin in
-// tokens.css under glass); rail.css carries inline fallbacks so the primitives
-// render correctly before those land and stay neutral under other skins. The
-// design intent goes in the MARKUP here (lucide icons, real label spans) — never
-// the design bundle's :nth-child / ::after content hacks.
+// All geometry/motion/colour comes from the --rail-* tokens (tokens.css);
+// rail.css carries inline fallbacks so the primitives render correctly before
+// those land. The design intent goes in the MARKUP here (lucide icons, real
+// label spans) — never :nth-child / ::after content hacks.
 //
 // INVARIANT: exactly ONE accent pane per Rail — pass `active` on a single child.
 // This is a caller contract (not enforced at runtime); multiple active segments

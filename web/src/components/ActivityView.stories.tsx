@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fireEvent, fn, screen, userEvent, waitFor } from "storybook/test";
 import { ActivityView } from "./ActivityView.tsx";
 import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
+import { inMainColumn } from "../storybook/shellFrames.tsx";
 
 // Provider-backed shell: ActivityView pulls the cross-room feed, agents, and
 // rooms through hooks (useActivity / useAgents / useRooms / ...) off the
@@ -11,6 +12,7 @@ const meta = {
   title: "Activity/ActivityView",
   component: ActivityView,
   parameters: { layout: "fullscreen" },
+  decorators: [inMainColumn],
   args: {
     onJumpToRoom: () => {},
     onOpenDm: fn(),
@@ -26,12 +28,16 @@ type Story = StoryObj<typeof meta>;
 // with the filter bar, room rail, and "awaiting you" header indicator.
 export const Grouped: Story = {
   play: async ({ canvasElement, step }) => {
-    await step("Top bar uses compact shared controls", async () => {
+    await step("Unified top bar carries the shared TabGroup switchers", async () => {
       await waitFor(() => {
-        // Filters are the shared expanding-rail now (All / Awaiting / Mentions).
-        const segs = canvasElement.querySelectorAll(".act-filters [data-rail-seg]");
-        if (segs.length !== 3) throw new Error("activity filter rail not found");
+        // Filter tabs are the shared TopBar TabGroup (All / Mentions / Awaiting).
+        const tabs = canvasElement.querySelectorAll('[aria-label="activity filter"] [role="tab"]');
+        if (tabs.length !== 3) throw new Error("activity filter tabs not found");
       });
+      expect(canvasElement.querySelectorAll('[aria-label="activity layout"] [role="tab"]').length).toBe(2);
+      expect(canvasElement.querySelector(".top-bar .act-sort-toggle")).toBeTruthy();
+      expect(canvasElement.querySelector(".top-bar .act-markall")).toBeTruthy();
+
       const roomTrigger = canvasElement.querySelector<HTMLElement>(".act-room-filter-trigger");
       expect(roomTrigger).toBeTruthy();
       expect(roomTrigger?.classList.contains("rail-chip")).toBe(true);
@@ -39,41 +45,30 @@ export const Grouped: Story = {
       expect(Number(roomTrigger?.querySelector(".rail-chip-badge")?.textContent)).toBeGreaterThan(0);
       expect(roomTrigger?.querySelector(".rail-chip-icon svg")).toBeTruthy();
       expect(roomTrigger?.getAttribute("data-tooltip")).toBe("Filter activity by room");
-      expect(canvasElement.querySelector(".act-filterbar .act-room-filter-wrap")).toBeTruthy();
-
-      // Sort is a RailChip; the Timeline/Grouped toggle is a two-segment Rail.
-      const viewControls = canvasElement.querySelector<HTMLElement>(".act-view-controls");
-      expect(viewControls).toBeTruthy();
-      expect(viewControls?.querySelector(".act-sort-toggle")).toBeTruthy();
-      expect(viewControls?.querySelectorAll(".act-view-segment [data-rail-seg]").length).toBe(2);
-      expect(viewControls?.querySelector('[data-label="Timeline"]')?.getAttribute("data-tooltip")).toBe("Show activity as a timeline");
-      expect(viewControls?.querySelector('[data-label="Grouped"]')?.getAttribute("data-tooltip")).toBe("Group activity by room");
-      const filterRail = canvasElement.querySelector<HTMLElement>(".act-filters .rail");
-      const layoutRail = viewControls?.querySelector<HTMLElement>(".act-view-segment");
-      expect(getComputedStyle(layoutRail!).borderTopWidth).toBe(getComputedStyle(filterRail!).borderTopWidth);
-      expect(getComputedStyle(roomTrigger!).fontFamily).toBe(getComputedStyle(layoutRail!).fontFamily);
+      expect(canvasElement.querySelector(".top-bar .act-room-filter-wrap")).toBeTruthy();
     });
 
-    await step("View mode controls drive the matching feed layout", async () => {
-      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Timeline"]');
-      const groupedToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Grouped"]');
-      expect(timelineToggle).toBeTruthy();
+    await step("Layout tabs drive the matching feed layout", async () => {
+      const tabByLabel = (label: string) =>
+        [...canvasElement.querySelectorAll<HTMLButtonElement>('[aria-label="activity layout"] [role="tab"]')]
+          .find((tab) => tab.textContent === label);
+      const flatToggle = tabByLabel("Flat");
+      const groupedToggle = tabByLabel("Grouped");
+      expect(flatToggle).toBeTruthy();
       expect(groupedToggle).toBeTruthy();
 
-      await waitFor(() => expect(groupedToggle?.getAttribute("aria-checked")).toBe("true"));
-      expect(timelineToggle?.getAttribute("aria-checked")).toBe("false");
+      await waitFor(() => expect(groupedToggle?.getAttribute("aria-selected")).toBe("true"));
+      expect(flatToggle?.getAttribute("aria-selected")).toBe("false");
       expect(canvasElement.querySelector(".act-digest")).toBeTruthy();
 
-      await userEvent.click(timelineToggle!);
-      await waitFor(() => expect(timelineToggle?.getAttribute("aria-checked")).toBe("true"));
+      await userEvent.click(flatToggle!);
+      await waitFor(() => expect(flatToggle?.getAttribute("aria-selected")).toBe("true"));
       await waitFor(() => {
-        const titleSub = canvasElement.querySelector(".act-title-sub")?.textContent ?? "";
-        if (!/timeline/i.test(titleSub)) throw new Error("timeline view label not active");
+        if (!canvasElement.querySelector(".act-flat")) throw new Error("flat timeline layout not active");
       });
-      expect(canvasElement.querySelector(".act-flat")).toBeTruthy();
 
       await userEvent.click(groupedToggle!);
-      await waitFor(() => expect(groupedToggle?.getAttribute("aria-checked")).toBe("true"));
+      await waitFor(() => expect(groupedToggle?.getAttribute("aria-selected")).toBe("true"));
       await waitFor(() => {
         if (!canvasElement.querySelector(".act-digest")) throw new Error("grouped digest not restored");
       });
@@ -96,9 +91,19 @@ export const Grouped: Story = {
       const avatar = canvasElement.querySelector<HTMLElement>(".act-digest-head .identity-icon");
       expect(avatar).toBeTruthy();
       expect(avatar?.classList.contains("identity-icon")).toBe(true);
-      expect(Math.round(avatar!.getBoundingClientRect().width)).toBe(34);
-      expect(Math.round(avatar!.getBoundingClientRect().height)).toBe(34);
+      // Reference activity spec: DM group headers carry a 22px bare sigil.
+      expect(Math.round(avatar!.getBoundingClientRect().width)).toBe(22);
+      expect(Math.round(avatar!.getBoundingClientRect().height)).toBe(22);
       expect(avatar?.classList.contains("act-room-icon")).toBe(false);
+    });
+
+    await step("Activity rows share the canonical agent identity cluster", async () => {
+      const row = [...canvasElement.querySelectorAll<HTMLElement>(".act-row")].find((candidate) =>
+        candidate.querySelector(".act-row-author .identity-name-pill"),
+      );
+      expect(row).toBeTruthy();
+      expect(row?.querySelector(".act-row-author .identity-icon")).toBeTruthy();
+      expect(row?.querySelector(".act-row-author .identity-name-pill")).toBeTruthy();
     });
   },
 };
@@ -118,9 +123,10 @@ export const ScopedAcknowledgeControls: Story = {
     });
 
     await step("Timeline buckets can acknowledge only that time interval", async () => {
-      const timelineToggle = canvasElement.querySelector<HTMLButtonElement>('.act-view-segment [data-label="Timeline"]');
-      expect(timelineToggle).toBeTruthy();
-      await userEvent.click(timelineToggle!);
+      const flatToggle = [...canvasElement.querySelectorAll<HTMLButtonElement>('[aria-label="activity layout"] [role="tab"]')]
+        .find((tab) => tab.textContent === "Flat");
+      expect(flatToggle).toBeTruthy();
+      await userEvent.click(flatToggle!);
       const bucketAck = await waitFor(() => {
         const button = canvasElement.querySelector<HTMLButtonElement>(".act-timeline-bucket .act-scope-ack");
         if (!button) throw new Error("timeline bucket scoped acknowledge control not found");

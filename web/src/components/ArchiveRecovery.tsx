@@ -35,7 +35,7 @@ const ArchiveWorkflowCtx = createContext<ArchiveWorkflow | null>(null);
 /**
  * Archive console/dialog/details chrome migrated off styles.css `.archive-*`
  * to inline Tailwind utilities + CVA (tokens bridged via tw.css `@theme
- * inline`). `modal-backdrop` (skin-glass hook, shared with SpawnAgentDialog)
+ * inline`). `modal-backdrop` (Sigil overlay hook, shared with SpawnAgentDialog)
  * and `shell-overlay-close` (shared with App.tsx) are left untouched.
  */
 const dialogShell = cva(

@@ -2,25 +2,6 @@
    verbatim styles.css. Keeps each component shell-style clean while letting
    the bulk of the visual system stay in styles.css. */
 
-/* ─── Sidebar sections — two independent scrollers ──────────────────────── */
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 0;
-  min-height: 0;
-}
-.sidebar-section + .sidebar-section {
-  border-top: var(--line-bold);
-  padding-top: var(--space-10);
-  margin-top: -2px;
-}
-.sidebar-section .list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: var(--space-8);
-}
-
 /* ─── Auto-hide scrollbar ────────────────────────────────────────────────
    Applied to anything tagged `.autoscroll`. The `is-scrolling` class is
    toggled by `useAutoScrollbar` (JS) while the user is actively scrolling
@@ -61,7 +42,7 @@
 }
 
 /* Per-surface tint so the thumb matches its panel background. */
-.sidebar-section .list.autoscroll { --scroll-bg: var(--paper-2); }
+.sidebar .autoscroll { --scroll-bg: var(--paper-2); }
 .chat-list.autoscroll            { --scroll-bg: var(--paper); }
 .thread-pane-body.autoscroll     { --scroll-bg: var(--paper); }
 
@@ -86,21 +67,8 @@
 
 /* ─── Composer collapse ──────────────────────────────────────────────────────
    Migrated to inline Tailwind utilities in components/Composer.tsx. Hook classes
-   kept on elements: .composer + .composer-collapsed (skin-glass.css),
+   kept on elements: .composer + .composer-collapsed (Sigil composition in this file),
    .composer-collapsed-stub (hooks/useVimNav.ts). Base declarations deleted. */
-
-/* ─── AGENTS pill (labeled icon-btn) ───────────────────────────────────────
-   The AGENTS button reuses .icon-btn for chrome (border / paper / shadow /
-   hover, incl. the glass-skin overrides) but is a label + count chip, not a
-   square glyph. .icon-btn hardcodes width:32px / padding:0, which wins over the
-   element's Tailwind w-auto on specificity and clips "AGENTS 5". This compound
-   selector (0,2,0) lets it size to its content. Convention: square glyph →
-   plain .icon-btn; labeled button → .icon-btn + a sizing modifier like this. */
-.icon-btn.room-agents-btn {
-  width: auto;
-  min-width: 0;
-  padding: 0 10px;
-}
 
 /* ─── Placeholder tab content ────────────────────────────────────────────── */
 .placeholder {
@@ -125,116 +93,84 @@
   transform: rotate(-2deg);
 }
 
-/* ─── Composer (extras the prototype put inline) ─────────────────────────────
-   Base rules migrated to inline Tailwind utilities in components/Composer.tsx
-   (.composer, .composer-toolbar, .ct-btn, .composer-file-input,
-   .composer-skill-chips/-chip, .composer-input-wrap, .composer-input base +
-   ::placeholder, .composer-foot, .community-open-btn, .composer-hint,
-   .composer-send/.thread-scan-btn base). Kept here: the compact shell margin
-   override below, the .chat-col/.thread-pane border tweaks, the
-   :root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) palette overrides, .thread-scan-btn.active,
-   and the styles.css contextual rules (.shell-compact, .community-icon art). */
-.shell-compact .composer { margin: 6px 10px 10px; }
+/* ─── Composer ────────────────────────────────────────────────────────────────
+   Geometry lives inline in Composer.tsx (ref .compose structure); the unlayered
+   font/skin rules live in the "-- composer --" section further down. */
 
-:root .chat-col > .composer,
-:root .thread-pane > .composer {
-  border-top-width: 1.5px;
-  border-radius: var(--radius-xl);
-}
 
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer {
-  background: var(--composer-bg);
-  border-color: var(--composer-border);
-  border-top-color: var(--composer-border);
-  box-shadow: var(--composer-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn {
-  background: var(--composer-control-bg);
-  color: var(--composer-control-fg);
-  border-color: var(--composer-control-border);
-  box-shadow: var(--composer-control-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn:disabled {
-  color: var(--composer-control-muted, var(--ink-faint));
-  border-color: color-mix(in srgb, var(--composer-control-border) 72%, var(--paper) 28%);
-  opacity: 1;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn.active,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .ct-btn:hover:not(:disabled) {
-  box-shadow: var(--composer-control-shadow-hover);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-input::placeholder {
-  color: var(--composer-control-muted, var(--ink-faint));
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send,
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .thread-scan-btn {
-  background: var(--composer-send-bg);
-  color: var(--composer-control-fg);
-  border-color: var(--composer-control-border);
-  box-shadow: var(--composer-send-shadow);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send {
-  color: var(--composer-send-fg);
-  border-color: var(--composer-send-border);
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .composer-send:disabled {
-  color: var(--composer-send-border);
-  opacity: 1;
-  filter: none;
-}
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .thread-scan-btn.active {
-  border-color: var(--lilac);
-  box-shadow: var(--composer-send-shadow), inset 0 -3px 0 var(--lilac);
-}
 
 /* ─── Mention popup ──────────────────────────────────────────────────────────
    Base rules migrated to inline Tailwind utilities in components/Composer.tsx
-   (.mention-pop hook class kept for skin-glass.css; .mention-row, .mention-av,
+   (.mention-pop hook class kept for the Sigil overlay composition; .mention-row, .mention-av,
    .mention-meta, .mention-name, .mention-handle, .mention-note all inlined). */
 
 /* ─── Skill picker ────────────────────────────────────────────────────────────
    Base + compact layout rules migrated to inline Tailwind utilities in
    components/Composer.tsx. Hook classes remain for skin overrides. */
 
-/* ─── Room header (extras) ───────────────────────────────────────────────
-   .room-header, .room-header-top, .room-id(-text/-icon), .room-title(-name),
-   .room-meta, .busy-inline, .busy-dot, .room-topic, .room-header-summary,
-   .member-pile(-item), .room-header-actions, .room-tabs, .room-tab base, and
-   the .room-thread-* / .room-activity / .activity-spark rules migrated to
-   Tailwind utilities (+ roomTab() CVA) in RoomHeader.tsx. Hook/ancestor classes
-   (room-header, room-id, room-id-icon, room-title, room-meta, member-pile,
-   room-header-actions, room-tabs, room-activity, room-tab) keep their className
-   so skin-glass.css, the .shell-compact descendant rules, and the .room-tab
-   .active + [data-theme] overrides below still bind. Shared classes
-   (author-name, thread-pane-*) are untouched. */
-.room-tab.active {
-  color: var(--surface-selected-fg);
-  background: var(--surface-selected-bg);
-  border-color: var(--surface-selected-border);
+/* ─── Unified top bar ─────────────────────────────────────────────────────
+   Single-row Sigil head shared by every main-column view: styling lives as
+   Tailwind utilities in TopBar.tsx (+ view flavors in RoomHeader.tsx /
+   ActivityView.tsx); `top-bar`, `top-bar-title`, `top-bar-meta`, `tab-group`,
+   `top-tab`, `room-header`, `room-crew` stay as skin hooks. The tab font-size
+   sits here (unlayered) because the global `button { font: inherit }` reset
+   outranks layered utilities. */
+.top-tab {
+  position: relative;
+  font-size: var(--text-12);
+  font-weight: 600;
 }
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-tab{
-  color: var(--activity-control-fg);
+
+/* Every top-bar control sits on ONE 34px well: the tab-group containers and
+   the standalone chips (sort / live / mark-all / room filter) share height,
+   border, radius, surface, and hover. */
+.top-bar .tab-group,
+.top-bar .rail-chip {
+  box-sizing: border-box;
+  height: 34px;
+  border: var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
 }
-:root:is([data-theme="kanagawa-wave"]:not([data-skin]), [data-skin="brutal"][data-theme="kanagawa-wave"]) .room-tab.active{
-  background: var(--activity-control-active-bg);
-  color: var(--activity-control-selected-fg);
-  border-color: transparent;
-  box-shadow: 2px 2px 0 var(--activity-control-shadow);
+
+.top-bar .tab-group {
+  align-items: center;
+}
+
+.top-bar .rail-chip {
+  padding: 0 11px;
+  color: var(--ink-soft);
+}
+
+.top-bar .rail-chip:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+/* Tabs reveal the same hover tooltip pill as the chips (rail.css). */
+.top-tab[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
 }
 /* ─── Chat / messages ────────────────────────────────────────────────────── */
 /* .chat-view base migrated to inline Tailwind utilities in ChatView.tsx
    (sync-q48d). .chat-view.has-thread-summary / .is-group-room state + descendant
    rules remain below / elsewhere. */
-/* Top region of the chat column: chat scroll area + timeline rail beside it.
-   Sits above the composer; the composer spans the full chat-column width
-   below this row, which is why the timeline visually ends at the composer
-   top rather than running the entire panel height. .chat-region base migrated
-   to inline utilities in ChatView.tsx; the :has() collapse rule below stays in
-   CSS (Tailwind can't express it), and chat-bg.css paints its ::before. */
-.chat-region:has(.timeline-rail[hidden]),
-.chat-region:not(:has(.timeline-rail)) {
-  grid-template-columns: minmax(0, 1fr);
-}
 /* .chat-scroll-wrap base migrated to inline utilities in ChatView.tsx.
    .thread-scroll-wrap (ThreadPane) base layout migrated to inline Tailwind
    utilities in ThreadPane.tsx (sync-vmre); the class is kept as a hook because
@@ -284,7 +220,6 @@
 .message-row.is-self {
   width: 100%;
   justify-self: stretch;
-  grid-template-columns: minmax(0, 880px);
 }
 /* Avatar-less variant — used in ThreadPane to reclaim horizontal space. The
    colored author-name pill above the bubble carries the identity instead. */
@@ -303,8 +238,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: fit-content;
-  max-width: min(880px, calc(100% - var(--bubble-shadow-gutter, 6px)));
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 .message-row.is-self .message-stack {
@@ -312,61 +247,61 @@
 }
 .message-row.is-self .bubble {
   align-self: flex-end;
-  width: 100%;
 }
 
 .author-chip {
   display: flex;
-  align-items: center;
+  width: 100%;
+  min-height: 20px;
+  align-items: baseline;
   gap: var(--space-8);
   margin-bottom: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--font-ui);
+  font-weight: 700;
 }
 .author-name {
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-md);
-  padding: 3px 7px;
-  border: var(--line-sm);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-chip);
+  font-family: var(--font-ui);
+  font-size: var(--text-13);
+  font-weight: 700;
 }
 .mention-chip {
-  --mention-color: var(--teal);
-  --mention-ink: var(--ink);
-  display: inline-flex;
-  align-items: baseline;
-  padding: 3px 7px;
-  margin-inline: 2px;
-  background: var(--mention-color);
-  color: var(--mention-ink);
-  border: var(--line-xxs);
-  border-radius: var(--radius-lg);
-  font-family: var(--font-mono);
-  font-size: var(--text-12);
-  font-weight: 600;
-  line-height: 1.2;
-  box-shadow: var(--shadow-xxs);
+  display: inline;
+  padding: 0;
+  margin-inline: 0.04em;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  box-shadow: none;
 }
+/* ref: mentions of the operator carry the accent (`.mention[data-m="you"]`). */
 .mention-chip-self {
-  box-shadow: var(--shadow-xs);
+  color: var(--accent);
 }
 
 .bubble {
   box-sizing: border-box;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
+  max-width: none;
   min-width: 0;
-  border: var(--bubble-border);
-  border-color: var(--bubble-border-color);
-  border-radius: var(--radius-xl);
-  background: var(--bubble);
-  padding: var(--space-bubble-pad);
-  box-shadow: var(--bubble-shadow);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  box-shadow: none;
+  font-size: var(--text-13-5);
+  line-height: 1.6;
 }
-/* skin-glass.css overrides `.bubble` opacity, vim-focus/flash animate it, and
-   this self override out-specifies the base class. Own / web-client messages get
-   the accent bubble everywhere (DM and group rooms alike). */
-.message-row.is-self .bubble { background: var(--you-bg); color: var(--you-fg); }
+/* Vim focus/flash animate `.bubble`; this self override out-specifies the base
+   class. Own / web-client messages keep their dedicated semantic surface. */
 
 /* ─── Markdown body inside bubbles ───────────────────────────────────────── */
 .markdown {
@@ -384,7 +319,8 @@
 .markdown > *:last-child { margin-bottom: 0; }
 .markdown h1, .markdown h2, .markdown h3 {
   font-family: var(--font-heading);
-  font-size: var(--text-15);
+  font-size: var(--text-14);
+  font-weight: 700;
   letter-spacing: var(--tracking-tight);
   margin: 12px 0 6px;
 }
@@ -457,13 +393,13 @@
   color: var(--code-fg);
   border: var(--line-2);
   border-radius: var(--radius-lg);
-  padding: 12px 14px;
+  padding: 11px 14px;
   margin: 8px 0;
   overflow-x: auto;
   overflow-wrap: normal;
   box-shadow: var(--shadow-sm);
-  font-size: var(--text-12-5);
-  line-height: 1.55;
+  font-size: var(--text-12);
+  line-height: 1.6;
 }
 .markdown pre code {
   background: transparent;
@@ -503,9 +439,11 @@
 .markdown th {
   background: var(--ink);
   color: var(--on-ink);
-  font-family: var(--font-display);
-  font-size: var(--text-11);
-  letter-spacing: var(--tracking-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-9);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 .markdown a {
   color: var(--blue);
@@ -549,13 +487,8 @@
 /* ─── Agent roster ───────────────────────────────────────────────────────── */
 /* Migrated to inline Tailwind utilities + CVA in components/AgentRoster.tsx
  * (sync-9hqo). Hooks kept on the live elements: `agent-roster` (styles.css
- * `.shell-overlay` + responsive `display:none`), `roster-head` (skin-glass
- * backdrop-filter), `roster-card` (vim ring below). `.roster-note` was unused. */
-
-/* Timeline tooltip needs to escape the rail's overflow; we render it as
-   position:fixed in JSX so this rule just keeps the head-area visible. */
-.timeline-rail { overflow: visible; }
-.timeline-track { overflow-x: visible; }
+ * `.shell-overlay` + responsive `display:none`), `roster-head` (structural
+ * hook), `roster-card` (vim ring below). `.roster-note` was unused. */
 
 /* ─── Toast stack ────────────────────────────────────────────────────────── */
 /* Pill-shaped notifications anchored to the top-center of the chat region.
@@ -565,7 +498,7 @@
 /* .toast-stack layout + .toast base/hover/-warn/-error/-success migrated to
    inline Tailwind utilities + the `toast` CVA in components/Toast.tsx. The
    `.toast-stack` / `.toast` classes stay on the elements: `.toast` is a
-   skin-glass backdrop hook (skin-glass.css), and the keyframe-reset rule below
+   skin hook (Sigil overlay composition), and the keyframe-reset rule below
    needs both as a descendant selector. The `@keyframes toast-in` stays here. */
 @keyframes toast-in {
   from { transform: translate(-50%, -12px); opacity: 0; }
@@ -606,23 +539,11 @@
     var(--shadow-sm);
 }
 
-/* Model chip on a roster card — the agent's runtime model (data/models.ts
-   modelShort). Token-styled so it reads in both skins. */
-.roster-model-chip {
-  display: inline-block;
-  max-width: 140px;
-  margin-top: 3px;
-  overflow: hidden;
-  padding: 1px 6px;
-  border: var(--line-xs);
-  border-radius: var(--radius-hair);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink-soft);
-  font-family: var(--font-mono);
-  font-size: var(--text-10);
-  line-height: 1.5;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* Spawn button in the agents panel (ref extras.js .x-btn.primary). The font
+   shorthand lives here unlayered because styles.css's unlayered
+   `button { font: inherit }` outranks every layered Tailwind font utility. */
+.roster-spawn {
+  font: 700 var(--text-12) var(--font-ui);
 }
 
 /* ─── Vim mode chip (rides above the user bubble) ─────────────────────────
@@ -669,13 +590,18 @@
 
 /* ─── Context menu ──────────────────────────────────────────────────────── */
 /* Migrated to Tailwind utilities in ContextMenu.tsx (sync-mzy3). `.ctx-menu` is
- * kept ONLY as a skin hook (skin-glass.css backdrop-filter); all visual rules
+ * kept ONLY as a skin hook (Sigil overlay composition); all visual rules
  * — ctx-menu / ctx-item / ctx-danger / ctx-shortcut / ctx-divider — now live
  * inline on the component. */
 
 /* ─── Thread badge under message ─────────────────────────────────────────── */
 /* .thread-badge family (badge button + :hover, -avs, -av + :first-child, -count,
    -time) migrated to inline Tailwind utilities in MessageRow.tsx (sync-q48d). */
+/* ref .tfoot .thread is 12/700 sans accent; unlayered because styles.css's
+   `button { font: inherit }` beats layered font utilities. */
+:root .thread-badge {
+  font: 700 var(--text-12) var(--font-ui);
+}
 
 /* ─── Thread pane (right-side) ───────────────────────────────────────────── */
 /* When a thread is open, App.tsx sets the grid template inline based on the
@@ -692,8 +618,9 @@
 .thread-pane-sep { color: var(--ink-faint); }
 .thread-pane-sub {
   font-family: var(--font-mono);
-  font-size: var(--text-11);
-  color: var(--ink-soft);
+  font-size: var(--text-9-5);
+  /* ref .tpane .th .t2 is fg3 */
+  color: var(--ink-faint);
   font-weight: 400;
 }
 .thread-pane-close {
@@ -712,14 +639,8 @@
    ThreadPane.tsx (sync-vmre). `.thread-pane-body` and `.thread-divider` stay as
    class hooks for the descendant overrides below (`.thread-pane-body .bubble`,
    `.thread-pane-body .thread-divider`, and the scrollbar pseudo in styles.css). */
-.thread-parent .bubble {
-  background: var(--paper-2);
-}
-/* Slightly tighter bubble padding inside the thread pane — the pane itself is
-   narrower than the main chat, so 16px horizontal padding eats too much. */
-.thread-pane-body .bubble {
-  padding: var(--space-thread-bubble-pad);
-}
+/* .thread-parent/.thread-pane-body .bubble tint+padding overrides deleted —
+   dead under the Sigil flat transcript (bubble has no box of its own). */
 .thread-pane-body .thread-divider {
   margin: 4px 0;
 }
@@ -1096,10 +1017,623 @@
    inline Tailwind utilities (@max-[290px]:) in ThreadSummaryPanel.tsx
    (sync-vmre). */
 
-/* Composer footer toggle that opens/closes the panel */
-.thread-scan-btn {
-  margin-right: auto;
-  gap: 6px;
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SIGIL SURFACE COMPOSITION (folded from skin-sigil.css — sole production skin)
+   `:root` prefixes keep these one specificity notch above the structural rules
+   they refine, matching the cascade the dedicated skin file used to provide.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* -- room header ----------------------------------------------------------- */
+:root .room-header {
+  position: relative;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  box-shadow: none;
+}
+
+:root .top-bar {
+  min-height: 58px;
+}
+
+:root .top-bar-title .room-name {
+  font-family: var(--font-ui);
+  font-size: var(--text-15-5) !important;
+  font-weight: 700;
+}
+
+:root .room-tabs {
+  overflow-x: auto;
+  border-top: 0;
+  background: transparent;
+}
+
+/* -- desktop / medium messages: one flowing transcript -------------------- */
+:root .chat-list {
+  padding-top: 14px;
+  padding-right: 28px;
+  padding-left: 28px;
+  background: var(--paper);
+}
+
+:root .message-row {
+  grid-template-columns: 32px minmax(0, 850px);
+  position: relative;
+  column-gap: 12px;
+  padding: 4px 0;
+  margin-top: 14px;
+}
+
+:root .message-row.is-grouped {
+  margin-top: 0;
+}
+
+:root .message-row:hover {
+  box-shadow: 0 -1px 0 var(--rule-2), 0 1px 0 var(--rule-2);
+}
+
+:root .message-body {
+  gap: 2px;
+  padding: 0;
+}
+
+:root .author-name.identity-name-pill {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: var(--text-13);
+  font-weight: 700;
+}
+
+:root .author-chip.is-self-author .author-name {
+  color: var(--accent);
+}
+
+:root .author-harness,
+:root .message-time,
+:root .message-continuation-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-8-5);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* ref .msg .hn / .msg .t are fg3 */
+  color: var(--ink-faint);
+}
+
+:root .message-time {
+  margin-left: auto;
+  font-size: var(--text-9-5);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+:root .message-continuation-time {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  opacity: 1;
+  font-size: var(--text-9-5);
+  text-transform: none;
+}
+
+/* Reference inlay actions: bare quiet glyphs left of the timestamp — no
+   background, border, or shadow on the strip; hover = accent tint pill. */
+:root .message-actions {
+  position: absolute;
+  top: 0;
+  right: 58px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+:root .message-row:is(:hover, :focus-within) .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+:root .message-action {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ink-soft);
+  box-shadow: none;
   cursor: pointer;
 }
-.thread-scan-btn.active { background: var(--lilac); }
+
+:root .message-action:hover,
+:root .message-action:focus-visible {
+  background: var(--accent-bg);
+  color: var(--accent);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Reference action glyphs are JetBrains Mono characters, not an icon font. */
+:root .message-action span {
+  font-family: var(--font-mono);
+  font-size: var(--text-13-5);
+  line-height: 1;
+}
+
+:root .message-footer.is-action-only,
+:root .message-footer .reaction.add {
+  display: none;
+}
+
+:root .shell-compact .message-actions {
+  display: none;
+}
+
+:root .shell-compact .message-footer.is-action-only {
+  display: flex;
+}
+
+:root .shell-compact .message-footer .reaction.add {
+  display: grid;
+}
+
+:root .app-shell:not(.shell-compact) .message-row {
+  grid-template-columns: 32px minmax(0, 850px);
+  column-gap: 12px;
+  padding-block: 4px;
+  margin-top: 14px;
+}
+
+:root .app-shell:not(.shell-compact) .message-row.is-self {
+  grid-template-columns: 32px minmax(0, 850px);
+  margin-right: -12px;
+  margin-left: -12px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--self-row-tint);
+}
+
+:root .app-shell:not(.shell-compact) .message-row.is-self .message-body {
+  align-items: stretch;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root .app-shell:not(.shell-compact) .message-row.is-self .message-stack,
+:root .app-shell:not(.shell-compact) .message-row.is-self .bubble {
+  width: 100%;
+  align-self: stretch;
+  background: transparent;
+  color: var(--ink);
+}
+
+:root .bubble :is(pre, table) {
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius-lg);
+  background: var(--code-bg);
+  box-shadow: none;
+}
+
+:root .bubble code:not(pre code) {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--code-inline-bg);
+}
+
+/* -- composer -------------------------------------------------------------- */
+/* Geometry lives inline in Composer.tsx (ref .compose/.cbar/.crow/.cfoot).
+   These unlayered rules carry ONLY what layered utilities cannot: font
+   shorthands on buttons/inputs (styles.css's unlayered `button/input/textarea`
+   font resets win over layered utilities) and the send-button skin tokens. */
+:root .composer-send {
+  border: 0;
+  border-radius: 7px;
+  background: var(--composer-send-bg);
+  color: var(--composer-send-fg);
+  box-shadow: none;
+  font: 700 var(--text-11) var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+:root .composer-input {
+  font: var(--text-13-5) / 1.5 var(--font-ui);
+}
+
+:root .composer-tool {
+  font: 400 var(--text-12) var(--font-mono);
+}
+
+:root .composer-chip {
+  font: 600 var(--text-10) var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* Thread pane composer hugs the narrower pane gutter (ref .tpane .compose). */
+.thread-pane .composer {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* -- thread --------------------------------------------------------------- */
+:root .thread-pane {
+  border-left: 1px solid var(--rule);
+  background: var(--paper-2);
+  box-shadow: none;
+}
+
+:root .thread-pane-header {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+
+:root .thread-pane .message-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root .thread-pane .chat-list,
+:root .thread-pane-body {
+  background: var(--paper-2);
+}
+
+:root .app-shell:not(.shell-compact) .thread-pane-header {
+  min-height: 44px;
+  padding: 9px 14px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-pane-heading {
+  gap: 6px;
+}
+
+:root .thread-pane-room,
+:root .thread-pane-count,
+:root .thread-pane-parent-author {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+:root .app-shell:not(.shell-compact) .thread-pane-body {
+  gap: 12px;
+  padding: 10px 14px 4px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-parent {
+  gap: 4px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-pane .message-row,
+:root .app-shell:not(.shell-compact) .thread-pane .message-row.is-self {
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 6px;
+  padding: 2px 0;
+  border-left: 0;
+}
+
+:root .app-shell:not(.shell-compact) .thread-pane .message-row.is-self {
+  padding: 7px 12px;
+  margin-right: -12px;
+  margin-left: -12px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-divider {
+  gap: 8px;
+  padding-block: 2px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-virtual-row {
+  padding-bottom: 12px;
+}
+
+:root .app-shell:not(.shell-compact) .thread-virtual-row.has-followup {
+  padding-bottom: 4px;
+}
+
+/* -- board ----------------------------------------------------------------- */
+:root .task-card {
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius-xl);
+  background: var(--paper-2);
+  box-shadow: none;
+  transform: none;
+}
+
+:root .task-card:hover {
+  border-color: var(--accent);
+  box-shadow: none;
+  transform: none;
+}
+
+:root .app-shell:not(.shell-compact) .board-cols {
+  align-content: start;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 16px 28px 28px;
+}
+
+:root .app-shell:not(.shell-compact) .board-col {
+  min-height: max-content;
+}
+
+:root .app-shell:not(.shell-compact) .board-col-head {
+  padding: 7px 0 9px;
+  border: 0;
+  border-bottom: 1px solid var(--rule-2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+:root .app-shell:not(.shell-compact) .col-count {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: var(--text-9-5);
+}
+
+:root .app-shell:not(.shell-compact) .board-col-body {
+  flex: none;
+  gap: 8px;
+  min-height: auto;
+  padding: 10px 0 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root .app-shell:not(.shell-compact) .task-card {
+  padding: 10px 12px 9px;
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+}
+
+:root .app-shell:not(.shell-compact) .task-card:hover {
+  background: var(--paper-3);
+}
+
+:root .app-shell:not(.shell-compact) .task-title {
+  margin-bottom: 4px;
+  font-size: var(--text-13);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+:root .app-shell:not(.shell-compact) .task-top {
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+:root .app-shell:not(.shell-compact) .task-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius-pill);
+  background: var(--paper-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-9);
+  letter-spacing: 0.04em;
+}
+
+:root .app-shell:not(.shell-compact) .task-card[data-priority="high"] .task-tag {
+  background: color-mix(in srgb, var(--pink) 24%, var(--paper-2));
+}
+
+:root .app-shell:not(.shell-compact) .task-card[data-priority="med"] .task-tag {
+  background: color-mix(in srgb, var(--yellow) 24%, var(--paper-2));
+}
+
+:root .app-shell:not(.shell-compact) .task-tag-out {
+  color: var(--ink-faint);
+  font-size: var(--text-9);
+  letter-spacing: 0.04em;
+}
+
+:root .app-shell:not(.shell-compact) .task-progress {
+  height: 13px;
+  margin: 1px 0 8px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root .app-shell:not(.shell-compact) .task-progress-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  opacity: 0.7;
+}
+
+:root .app-shell:not(.shell-compact) .task-progress-label {
+  top: 0;
+  right: 0;
+  transform: none;
+  color: var(--ink-faint);
+  font-size: var(--text-9);
+  text-shadow: none;
+}
+
+:root .app-shell:not(.shell-compact) .task-reviewers {
+  gap: 6px;
+  margin-bottom: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:root .app-shell:not(.shell-compact) .reviewer-label {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-9);
+}
+
+:root .app-shell:not(.shell-compact) .task-bottom {
+  min-height: 24px;
+  padding-top: 2px;
+  border-top: 0;
+}
+
+:root .app-shell:not(.shell-compact) .task-assignee-name {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--identity-text, var(--ink));
+  font-family: var(--font-ui);
+  font-size: var(--text-11-5);
+  font-weight: 700;
+}
+
+:root .app-shell:not(.shell-compact) .task-live-pill {
+  padding: 2px 7px;
+  border: 1px solid var(--rule-2);
+  background: color-mix(in srgb, var(--accent) 14%, var(--paper-2));
+  font-family: var(--font-mono);
+  animation: none;
+}
+
+:root .app-shell:not(.shell-compact) .task-check {
+  color: var(--accent);
+  font-size: var(--text-13);
+  -webkit-text-stroke: 0;
+}
+
+:root .app-shell:not(.shell-compact) .add-card {
+  margin-top: 0;
+  padding: 8px 2px;
+  border: 0;
+  border-top: 1px dashed var(--rule-2);
+  border-radius: 0;
+  text-align: left;
+  opacity: 0.7;
+}
+
+:root .app-shell:not(.shell-compact) .add-card:hover {
+  background: transparent;
+  color: var(--accent);
+  opacity: 1;
+}
+
+
+/* -- compact: preserve the established flow, use Sigil's tonal treatment -- */
+:root .shell-compact .sidebar,
+:root .shell-compact .shell-overlay {
+  background: var(--paper);
+}
+
+:root .shell-compact .chat-list {
+  padding: 12px 16px 112px;
+}
+
+:root .shell-compact .message-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+  margin-top: 12px;
+}
+
+:root .shell-compact .bubble {
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 6px 18px 18px 18px;
+  background: var(--bubble);
+  line-height: 1.48;
+}
+
+:root .shell-compact .message-row.is-grouped .bubble {
+  border-top-left-radius: 18px;
+}
+
+:root .shell-compact .message-row.is-self {
+  grid-template-columns: minmax(0, 1fr);
+  margin: 8px 0 0;
+}
+
+:root .shell-compact .message-row.is-self .message-gutter {
+  display: none;
+}
+
+:root .shell-compact .message-row.is-self .message-body {
+  padding: 0;
+  background: transparent;
+}
+
+:root .shell-compact .message-row.is-self .bubble {
+  margin-left: auto;
+  border-radius: 18px 6px 18px 18px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--paper-2));
+}
+
+:root .app-shell:not(.shell-compact) .message-row.is-grouped,
+:root .shell-compact .message-row.is-grouped {
+  margin-top: 0;
+}
+
+:root .shell-compact .composer {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+
+:root .shell-compact .bottom-nav {
+  border-top: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+
+/* ── Late-cascade transcript adjustments (deliberate divergences from the
+   reference, requested 2026-07-13) — kept last so they beat the per-surface
+   thread/chat rules above. ─────────────────────────────────────────────── */
+
+/* Continuation rows reserve headroom so the hover action glyphs never overlap
+   the first text line (the reference lets them overlap; we don't). */
+:root .app-shell:not(.shell-compact) .message-row.is-grouped,
+:root .app-shell:not(.shell-compact) .thread-pane .message-row.is-grouped {
+  padding-top: 24px;
+}
+
+/* Mini thread avatars: 20px sigil tile inline with the author-name text. */
+:root .app-shell:not(.shell-compact) .thread-pane .message-row.mini-avatar {
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+/* Always-on hairline between consecutive agent bubbles (chat + thread);
+   hovering the row darkens its rules to emphasize the current message. */
+:root .app-shell:not(.shell-compact)
+  :is(.message-virtual-row + .message-virtual-row, .thread-virtual-row + .thread-virtual-row)
+  .message-row:not(.is-self) {
+  box-shadow: 0 -1px 0 var(--rule-2);
+}
+
+:root .app-shell:not(.shell-compact) .message-row:not(.is-self):hover {
+  box-shadow: 0 -1px 0 var(--rule), 0 1px 0 var(--rule);
+}

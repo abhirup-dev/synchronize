@@ -144,7 +144,7 @@ export function ThreadSummaryPanel({
           <button className="thread-pane-close" onClick={onClose} aria-label="back to room">
             <ChevronLeft size={22} strokeWidth={2.4} aria-hidden />
           </button>
-          <div className="min-w-0 leading-none" style={{ fontFamily: "var(--font-display-heading)", fontSize: "var(--font-display-heading-size)", fontWeight: "var(--font-display-heading-weight)" }}>Thread summaries</div>
+          <div className="min-w-0 leading-none" style={{ fontFamily: "var(--font-ui)", fontSize: "var(--text-14)", fontWeight: 700 }}>Thread summaries</div>
           <span className="rounded-pill bg-paper px-[8px] py-[2px] font-mono text-[length:var(--text-10)] text-ink-soft [border:var(--line-sm)]">
             {threadMessages.length}
           </span>

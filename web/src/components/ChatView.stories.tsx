@@ -18,7 +18,7 @@ const meta = {
   // Mount through the real chat-surface cells so timeline/composer/compact track
   // the shell mode the viewport width implies — same as the app.
   decorators: [inChatSurface],
-  args: { room: group, onOpenThread: () => {}, onToggleThreadSummary: () => {}, onOpenCommunity: () => {} },
+  args: { room: group, onOpenThread: () => {}, onToggleThreadSummary: () => {} },
 } satisfies Meta<typeof ChatView>;
 
 export default meta;

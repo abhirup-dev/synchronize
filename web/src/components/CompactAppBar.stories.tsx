@@ -24,8 +24,8 @@ export const AgentsOverlay: Story = {
     const detail = canvasElement.querySelector<HTMLElement>(".compact-appbar-detail");
     expect(title).toBeTruthy();
     expect(detail).toBeTruthy();
-    await expect(getComputedStyle(title!).fontFamily).toContain("Space Grotesk");
-    await expect(getComputedStyle(detail!).fontFamily).toContain("Space Grotesk");
+    await expect(getComputedStyle(title!).fontFamily).toContain("Instrument Sans");
+    await expect(getComputedStyle(detail!).fontFamily).toContain("Instrument Sans");
     await expect(getComputedStyle(title!).letterSpacing).toBe("normal");
   },
 };

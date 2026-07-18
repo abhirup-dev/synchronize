@@ -4,29 +4,21 @@
 // useTasks hook so it tracks live task state once the daemon serves tasks.
 
 import { useMemo } from "react";
-import type { Agent, Task, TaskPriority, TaskStatus } from "../data/types.ts";
+import type { Agent, Task, TaskStatus } from "../data/types.ts";
 import { useAgents, useTasks } from "../data/context.tsx";
-import { Avatar, IdentityBadge, Sticker } from "./primitives.tsx";
+import { Avatar, IdentityBadge, IdentityText } from "./primitives.tsx";
 
 interface Column {
   id: TaskStatus;
   label: string;
-  /** Header background — an existing accent token. */
-  bg: string;
 }
 
 const COLUMNS: Column[] = [
-  { id: "backlog", label: "BACKLOG", bg: "var(--paper-3)" },
-  { id: "doing", label: "IN PROGRESS", bg: "var(--yellow)" },
-  { id: "review", label: "IN REVIEW", bg: "var(--lilac)" },
-  { id: "shipped", label: "SHIPPED", bg: "var(--lime)" },
+  { id: "backlog", label: "BACKLOG" },
+  { id: "doing", label: "IN PROGRESS" },
+  { id: "review", label: "IN REVIEW" },
+  { id: "shipped", label: "SHIPPED" },
 ];
-
-const PRIORITY_BG: Record<TaskPriority, string> = {
-  high: "var(--pink)",
-  med: "var(--yellow)",
-  low: "var(--paper-3)",
-};
 
 export function BoardView({ roomId }: { roomId: string }) {
   const tasks = useTasks(roomId);
@@ -41,23 +33,10 @@ export function BoardView({ roomId }: { roomId: string }) {
 
   return (
     <div className="board-view" data-vim-panel="board">
-      <div className="board-header">
-        <div className="board-title">
-          <Sticker label="KANBAN" color="var(--yellow)" tilt={-3} />
-          <span className="board-sub">who's building what · drag to reorder (visual demo)</span>
-        </div>
-        <div className="board-filters">
-          <button className="filter-chip active" type="button" title="filter (visual demo)">ALL AGENTS</button>
-          <button className="filter-chip" type="button" title="filter (visual demo)">HIGH PRIORITY</button>
-          <button className="filter-chip" type="button" title="filter (visual demo)">BLOCKED</button>
-          <button className="filter-chip add" type="button" title="filter (visual demo)">+ FILTER</button>
-        </div>
-      </div>
-
       <div className="board-cols">
         {COLUMNS.map((col) => (
-          <div className="board-col" key={col.id}>
-            <div className="board-col-head" style={{ background: col.bg }}>
+          <div className="board-col" data-status={col.id} key={col.id}>
+            <div className="board-col-head">
               <span className="col-label">{col.label}</span>
               <span className="col-count">{byColumn[col.id].length}</span>
             </div>
@@ -82,14 +61,12 @@ function TaskCard({ task, agentById }: { task: Task; agentById: Map<string, Agen
     .filter((a): a is Agent => Boolean(a));
 
   return (
-    <div className="task-card">
+    <div className="task-card" data-priority={priority} data-status={task.status}>
+      <div className="task-title">{task.title}</div>
       <div className="task-top">
-        <span className="task-tag" style={{ background: PRIORITY_BG[priority] }}>
-          {priority.toUpperCase()}
-        </span>
+        <span className="task-tag">{priority.toUpperCase()}</span>
         {task.tag ? <span className="task-tag-out">{task.tag}</span> : null}
       </div>
-      <div className="task-title">{task.title}</div>
 
       {task.status === "doing" && typeof task.progress === "number" ? (
         <div className="task-progress">
@@ -119,7 +96,13 @@ function TaskCard({ task, agentById }: { task: Task; agentById: Map<string, Agen
         {assignee ? (
           <div className="task-assignee">
             <Avatar agent={assignee} size={24} showStatus />
-            <span className="task-assignee-name">{assignee.name}</span>
+            <IdentityText
+              className="task-assignee-name identity-name-pill"
+              color={assignee.color}
+              {...(assignee.colorRef ? { colorRef: assignee.colorRef } : null)}
+            >
+              {assignee.name}
+            </IdentityText>
           </div>
         ) : (
           <span className="task-assignee-name">unassigned</span>

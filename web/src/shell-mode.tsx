@@ -45,16 +45,12 @@ export interface ShellLayout {
   persistentSidebar: boolean;
   /** Thread opens as a resizable side-split with a header banner. Else it is a pushed full panel. */
   threadAsSplit: boolean;
-  /** Persistent right roster column (when no thread is open). */
-  rosterColumn: boolean;
   /** Roster is reachable as an overlay panel (AGENTS header button in medium, bottom-nav in compact). */
   rosterAsOverlay: boolean;
   /** Room switcher is the Chats overlay. */
   communityOverlay: boolean;
   /** Bottom navigation bar. */
   bottomNav: boolean;
-  /** Timeline rail in chat. */
-  timeline: boolean;
   /** Display settings presented as a bottom sheet. */
   settingsSheet: boolean;
 }
@@ -65,13 +61,11 @@ export function shellLayout(mode: ShellMode): ShellLayout {
     persistentSidebar: mode !== "compact",
     threadAsSplit: mode === "desktop",
     // Unified top-banner model: the roster is never a persistent column — it is
-    // an overlay toggled by the AGENTS chip in the banner (desktop + medium),
-    // closed by default. Compact reaches the same overlay via the bottom nav.
-    rosterColumn: false,
+    // an overlay toggled from the room-header crew (desktop + medium), closed
+    // by default. Compact reaches the same overlay via the bottom nav.
     rosterAsOverlay: true,
     communityOverlay: mode === "compact",
     bottomNav: mode === "compact",
-    timeline: mode !== "compact",
     settingsSheet: mode === "compact",
   };
 }

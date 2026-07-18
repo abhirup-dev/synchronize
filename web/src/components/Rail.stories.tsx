@@ -17,16 +17,13 @@ import {
 } from "lucide-react";
 import { Rail, RailSegment, RailChip } from "./rail.tsx";
 
-// The expanding-rail control standard (glass skin revamp §2.2). A well holds
-// square icon segments; the ONE active segment expands into a raised pane
-// revealing its real label (+ optional count). Chips are standalone companions
-// sharing the well's height/surface. Pinned to the glass skin because this is
-// the glass control language; theme is still swept from the toolbar.
+// The Sigil expanding-rail control standard. A well holds square icon segments;
+// the ONE active segment expands into a raised pane revealing its real label
+// (+ optional count). Chips are standalone companions sharing the well surface.
 const meta = {
   title: "Primitives/Rail",
   component: Rail,
   parameters: { layout: "centered" },
-  globals: { skin: "glass" },
   // Every story supplies its own markup via `render`; this default satisfies the
   // required `children` prop so stories don't each repeat it.
   args: { children: null },

@@ -1,6 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, waitFor } from "storybook/test";
 import { Shell } from "../App.tsx";
+import {
+  INITIAL_SKIN,
+  INITIAL_THEME,
+  normalizeStoredSkin,
+  normalizeStoredTheme,
+} from "../theme/registry.generated.ts";
 
 // Full app shell pinned to each breakpoint. Replaces the old Playwright smoke
 // (web/scripts/verify-ui.mjs, sync-imeu.1.23): the shell reads window.innerWidth
@@ -12,6 +18,15 @@ const meta = {
   title: "Layouts/App Shell",
   component: Shell,
   parameters: { layout: "fullscreen" },
+  render: (_args, context) => {
+    const requestedTheme = context.globals["theme"];
+    const requestedSkin = context.globals["skin"];
+    const theme = normalizeStoredTheme(typeof requestedTheme === "string" ? requestedTheme : null) ?? INITIAL_THEME;
+    const skin = normalizeStoredSkin(typeof requestedSkin === "string" ? requestedSkin : null) ?? INITIAL_SKIN;
+    localStorage.setItem("synchronize.theme", theme);
+    localStorage.setItem("synchronize.skin", skin);
+    return <Shell key={`${theme}-${skin}`} />;
+  },
 } satisfies Meta<typeof Shell>;
 
 export default meta;
@@ -55,5 +70,25 @@ export const Desktop: Story = {
   play: async ({ canvasElement }) => {
     await expectShellMode(canvasElement, "desktop");
     await waitFor(() => expect(canvasElement.querySelector(".chat-view")).toBeTruthy());
+  },
+};
+
+// Desktop with a thread open: the composite the design reference renders
+// (chat + ThreadPane side-by-side). Seed-agnostic — clicks the first thread
+// badge in the loaded feed, so it works under both the stable seed (test run)
+// and an injected design seed (parity harness). The parity manifest drives the
+// same open deterministically via its scene `setup`; this story is the
+// interactive/tested twin.
+export const ChatThreadOpen: Story = {
+  globals: { viewport: { value: "desktop", isRotated: false } },
+  play: async ({ canvasElement }) => {
+    await expectShellMode(canvasElement, "desktop");
+    const badge = await waitFor(() => {
+      const b = canvasElement.querySelector<HTMLElement>(".thread-badge");
+      if (!b) throw new Error("no thread badge in the feed to open");
+      return b;
+    });
+    badge.click();
+    await waitFor(() => expect(document.querySelector(".thread-pane")).toBeTruthy());
   },
 };

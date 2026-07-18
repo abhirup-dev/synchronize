@@ -4,7 +4,6 @@ import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
 import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
 import { deepLinkPath, parseDeepLinkId } from "./deeplinks.ts";
 import { MockDataSource } from "./data/mock.ts";
-import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { RoomHeader, type RoomTab } from "./components/RoomHeader.tsx";
@@ -24,7 +23,7 @@ import { shellLayout, shellModeForWidth, type ShellMode } from "./shell-mode.tsx
 import { AppShellGrid, ShellMainColumn, ShellMainBody, ShellChatColumn } from "./shell-layout.tsx";
 import { IconButton } from "./components/IconButton.tsx";
 import { Sheet } from "./ui/Sheet.tsx";
-import { usePersistentTheme, type ThemeName, themeFamily, cycleTheme, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
+import { usePersistentTheme, type ThemeName, themeFamily, toggleThemeFamily } from "./hooks/usePersistentTheme.ts";
 import { useShellNavigation } from "./hooks/useShellNavigation.ts";
 // Dev-only live token editor — EXCLUDED from production builds. web/build.ts
 // replaces process.env.NODE_ENV at build time ("production" unless --watch), so in
@@ -34,14 +33,6 @@ const ThemeTokenEditor =
   process.env.NODE_ENV !== "production"
     ? lazy(() => import("./theme/ThemeTokenEditor.tsx").then((m) => ({ default: m.ThemeTokenEditor })))
     : null;
-
-function titleCase(value: string): string {
-  return value
-    .split(/[-_ ]+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 function pickDataSource(): DataSource {
   if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "mock") {
@@ -132,12 +123,12 @@ export function Shell() {
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const [threadWidth, setThreadWidth] = useState<number>(() => {
     const stored = Number(localStorage.getItem("synchronize.threadWidth"));
-    return Number.isFinite(stored) && stored >= 320 && stored <= 820 ? stored : 420;
+    return Number.isFinite(stored) && stored >= 320 && stored <= 820 ? stored : 380;
   });
   useEffect(() => {
     localStorage.setItem("synchronize.threadWidth", String(threadWidth));
   }, [threadWidth]);
-  const { theme, setTheme, skin, setSkin, chatBg, setChatBg } = usePersistentTheme();
+  const { theme, setTheme } = usePersistentTheme();
 
   const isActivity = activeId === ACTIVITY_ID;
   if (!isActivity && activeId) lastRoomIdRef.current = activeId;
@@ -260,7 +251,6 @@ export function Shell() {
     window.history.replaceState(null, "", deepLinkPath(target));
   }, [pendingDeepLink, activeId, roomMessages]);
   const layout = shellLayout(shellMode);
-  const rosterPersistent = layout.rosterColumn && !threadParentId;
   const rosterPanelAvailable = layout.rosterAsOverlay && !threadParentId;
   const communityPanelAvailable = layout.communityOverlay;
   const pushedThreadOpen = Boolean(threadParentId && !layout.threadAsSplit);
@@ -359,15 +349,9 @@ export function Shell() {
         <Sidebar
           activeRoomId={isActivity ? ACTIVITY_ID : (room?.id ?? "")}
           onSelect={selectRoom}
-          mode={vim.mode}
-          displaySettings={{
-            theme,
-            skin,
-            chatBg,
-            onTheme: setTheme,
-            onToggleSkin: () => setSkin((current) => (current === "brutal" ? "glass" : "brutal")),
-            onChatBg: setChatBg,
-          }}
+          tab={tab}
+          onTab={setTab}
+          displaySettings={{ theme, onTheme: setTheme }}
         />
       )}
       <ShellMainColumn
@@ -377,25 +361,6 @@ export function Shell() {
           <ActivityView onJumpToRoom={jumpToRoom} onOpenDm={openDmForAgent} threadWidth={threadWidth} onThreadWidth={setThreadWidth} onOpenSettings={openCompactSettings} />
         ) : room ? (
           <>
-            {!pushedThreadOpen && (
-              <RoomHeader
-                room={room}
-                tab={tab}
-                onTab={setTab}
-                theme={theme}
-                onToggleTheme={(shiftKey) => setTheme((t) => (shiftKey ? cycleTheme(t) : toggleThemeFamily(t)))}
-                skin={skin}
-                onToggleSkin={() => setSkin((s) => (s === "brutal" ? "glass" : "brutal"))}
-                chatBg={chatBg}
-                onChatBg={setChatBg}
-                showAgentsButton={rosterPanelAvailable && layout.persistentSidebar}
-                onOpenAgents={openAgents}
-                onOpenSettings={openCompactSettings}
-                {...(threadParentId && layout.threadAsSplit
-                  ? { onCloseThread: () => setThreadParentId(null) }
-                  : {})}
-              />
-            )}
             <ShellMainBody
               threadOpen={!!threadParentId}
               style={
@@ -410,6 +375,16 @@ export function Shell() {
             >
               {!pushedThreadOpen ? (
                 <ShellChatColumn>
+                  {/* The unified top bar lives INSIDE the chat column (ref
+                      `.head` sits in `.main`) so an open thread pane runs the
+                      full shell height beside it. */}
+                  <RoomHeader
+                    room={room}
+                    tab={tab}
+                    onTab={setTab}
+                    onOpenAgents={openAgents}
+                    onOpenSettings={openCompactSettings}
+                  />
                   {tab === "chat" ? (
                     <ChatView
                       room={room}
@@ -418,12 +393,8 @@ export function Shell() {
                       isThreadOpen={!!threadParentId}
                       threadSummaryOpen={threadSummaryOpen}
                       onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
-                      showTimeline={layout.timeline}
                       {...(!threadParentId && focusMessageId
                         ? { focusMessageId, onFocusedMessage: () => setFocusMessageId(null) }
-                        : {})}
-                      {...(communityPanelAvailable
-                        ? { onOpenCommunity: openCommunity }
                         : {})}
                     />
                   ) : tab === "board" ? (
@@ -441,22 +412,16 @@ export function Shell() {
                     parentId={threadParentId}
                     {...(focusMessageId ? { focusMessageId, onFocused: () => setFocusMessageId(null) } : {})}
                     onClose={() => setThreadParentId(null)}
-                    showHeader={!layout.threadAsSplit}
+                    showHeader
                   />
                 </>
-              ) : rosterPersistent ? (
-                <AgentRoster
-                  room={room}
-                  onAgentDoubleClick={jumpToAgentLast}
-                  onOpenDm={openDmForAgent}
-                />
               ) : null}
             </ShellMainBody>
           </>
         ) : (
           <div className="min-h-0 h-full grid place-items-center bg-paper text-ink [border-left:var(--line-2)]">
             <div className="max-w-[520px] [border:var(--line-bold)] shadow-lg bg-paper-2 p-[var(--space-24)]">
-              {/* `.brand-mark` kept: shared Sidebar hook (skin-glass + [data-theme] override). */}
+              {/* `.brand-mark` remains the shared product-identity skin hook. */}
               <div className="brand-mark">S</div>
               <h1 className="mt-[16px] mb-[8px] font-display text-[length:var(--text-24)]">No rooms yet</h1>
               <p className="mt-[8px] font-ui leading-[1.45]">Registered sessions will appear as direct messages. Create or join a group to start a room.</p>
@@ -472,7 +437,7 @@ export function Shell() {
             onSettings={openCompactSettings}
             onClose={closeOverlays}
           />
-          <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} mode={vim.mode} />
+          <Sidebar activeRoomId={room?.id ?? ""} onSelect={selectRoom} />
         </div>
       )}
       {rosterPanelAvailable && agentPanelOpen && room && (
@@ -482,16 +447,19 @@ export function Shell() {
           aria-modal="true"
           aria-label="agents"
         >
-          <CompactAppBar
-            title="Agents"
-            detail={`${room.members.length} in ${room.kind === "group" ? `#${room.name}` : room.name}`}
-            onSettings={openCompactSettings}
-            onClose={closeOverlays}
-          />
+          {shellMode === "compact" ? (
+            <CompactAppBar
+              title="Agents"
+              detail={`${room.members.length} in ${room.kind === "group" ? `#${room.name}` : room.name}`}
+              onSettings={openCompactSettings}
+              onClose={closeOverlays}
+            />
+          ) : null}
           <AgentRoster
             room={room}
             onAgentDoubleClick={jumpToAgentLast}
             onOpenDm={openDmForAgent}
+            {...(shellMode === "compact" ? {} : { onClose: closeOverlays })}
           />
         </div>
       )}
@@ -508,12 +476,7 @@ export function Shell() {
         <CompactSettingsSheet
           open={compactSettingsOpen}
           theme={theme}
-          skin={skin}
-          chatBg={chatBg}
           onToggleAppearance={() => setTheme((current) => toggleThemeFamily(current))}
-          onCycleTheme={() => setTheme((current) => cycleTheme(current))}
-          onToggleSkin={() => setSkin((current) => (current === "brutal" ? "glass" : "brutal"))}
-          onChatBg={setChatBg}
           onClose={closeCompactSettings}
         />
       )}
@@ -554,74 +517,36 @@ export function CompactAppBar({
   );
 }
 
-// Exported for Storybook (Surfaces/CompactSettingsSheet) — the compact display
-// settings bottom sheet (theme / skin / chat background).
+// Exported for Storybook (Surfaces/CompactSettingsSheet). Sigil has one visual
+// system and a matched light/dark pair, so compact settings expose only the
+// meaningful appearance switch.
 export function CompactSettingsSheet({
   open,
   theme,
-  skin,
-  chatBg,
   onToggleAppearance,
-  onCycleTheme,
-  onToggleSkin,
-  onChatBg,
   onClose,
 }: {
   open: boolean;
   theme: ThemeName;
-  skin: "brutal" | "glass";
-  chatBg: string;
   onToggleAppearance(): void;
-  onCycleTheme(): void;
-  onToggleSkin(): void;
-  onChatBg(id: string): void;
   onClose(): void;
 }) {
+  const appearance = themeFamily(theme) === "light" ? "Light" : "Dark";
   return (
     <Sheet open={open} onClose={onClose} ariaLabel="display settings" className="compact-settings-sheet">
-        <div className="compact-settings-head flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[12px] [border-bottom:var(--line)] bg-paper-2">
-          <div className="min-w-0">
-            <div className="font-display text-[length:var(--text-17)] leading-none tracking-[var(--tracking-sm)]">Display</div>
-            <div className="mt-[5px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft">
-              {themeFamily(theme)} · {titleCase(theme)} · {skin}
-            </div>
-          </div>
-          <button type="button" className="compact-settings-done" onClick={onClose}>Done</button>
-        </div>
-
-        <div className="compact-settings-section">
-          <SettingsRow
-            label="Appearance"
-            value={themeFamily(theme) === "light" ? "Light" : "Dark"}
-            onClick={onToggleAppearance}
-          />
-          <SettingsRow
-            label="Theme"
-            value={titleCase(theme)}
-            onClick={onCycleTheme}
-          />
-          <SettingsRow
-            label="Skin"
-            value={skin === "brutal" ? "Brutal" : "Glass"}
-            onClick={onToggleSkin}
-          />
-        </div>
-
-        <div className="compact-settings-section">
-          <div className="compact-settings-label">Chat background</div>
-          <div className="compact-settings-grid">
-            {CHAT_BACKGROUNDS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={`compact-settings-choice${preset.id === chatBg ? " active" : ""}`}
-                onClick={() => onChatBg(preset.id)}
-              >
-                {preset.name}
-              </button>
-            ))}
+      <div className="compact-settings-head flex items-center justify-between gap-[var(--space-12)] px-[14px] py-[12px] [border-bottom:var(--line)] bg-paper-2">
+        <div className="min-w-0">
+          <div className="font-display text-[length:var(--text-17)] leading-none tracking-[var(--tracking-sm)]">Display</div>
+          <div className="mt-[5px] font-mono text-[length:var(--text-10)] leading-none text-ink-soft">
+            Sigil · {appearance}
           </div>
         </div>
+        <button type="button" className="compact-settings-done" onClick={onClose}>Done</button>
+      </div>
+
+      <div className="compact-settings-section">
+        <SettingsRow label="Appearance" value={appearance} onClick={onToggleAppearance} />
+      </div>
     </Sheet>
   );
 }

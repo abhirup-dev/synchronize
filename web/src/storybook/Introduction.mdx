@@ -23,7 +23,7 @@ Stories are grouped by product vocabulary, not by file layout:
   `AttachmentPreview`.
 - **Navigation** — `Sidebar`, `RoomHeader`, `AgentRoster`.
 - **Surfaces** — `ChatView`, `BoardView`, `ThreadPane`, `ThreadSummaryPanel`,
-  `TimelineRail`, `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
+  `ScrollControls`, `ContextMenu`, `Toast`, `ArchiveRecovery`.
 - **Activity** — `ActivityItem`, `ActivityView`.
 - **Agent States** — `AgentPreview`, `SpawnAgentDialog`, `AgentColorPicker`.
 - **Flows** — composed shell journeys in `web/src/flows/*.stories.tsx`.
@@ -35,10 +35,10 @@ opening source.
 ## Tokens, themes, and skins
 
 All visual values flow through CSS custom properties. The authoritative token
-contract — palette, the `data-theme` palettes (light, rose-pine-dawn,
-kanagawa-wave) and the `data-skin` aesthetic layer
-(brutal / glass) — lives in `web/DESIGN.md` and `web/src/styles.css`. Use the
-toolbar **Theme** and **Skin** controls to view any story across them.
+contract — the `data-theme` palettes (sigil-light / sigil-dark) and the
+`data-skin` aesthetic layer (Sigil, the sole production skin) — lives in
+`web/DESIGN.md`, `web/src/styles/tokens.css`, and the Sigil composition sections in `web/src/styles.css` / `web/src/components/extra.css`.
+Use the toolbar **Theme** control to view any story across both palettes.
 
 ## Authoring new stories
 

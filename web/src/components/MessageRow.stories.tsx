@@ -3,6 +3,7 @@ import { fireEvent, userEvent, expect, fn, screen, waitFor, within } from "story
 import { MessageRow } from "./MessageRow.tsx";
 import { AGENTS, MESSAGES } from "../data/seed.ts";
 import { agentsWithRuntimeDetails } from "../storybook/runtimeDetailsProvider.tsx";
+import { inChatSurface } from "../storybook/shellFrames.tsx";
 
 const msgs = MESSAGES["checkout-revamp"]!;
 const msg = (id: string) => msgs.find((m) => m.id === id)!;
@@ -19,6 +20,24 @@ const meta = {
   title: "Messages/MessageRow",
   component: MessageRow,
   args: { agents: AGENTS, groupedWithPrev: false },
+  decorators: [
+    inChatSurface,
+    (Story) => (
+      <div className="chat-col flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="chat-region flex min-h-0 flex-1 flex-col">
+          <div className="chat-scroll-wrap relative flex min-h-0 flex-1 flex-col">
+            <div className="chat-list autoscroll virtualized-list block min-h-0 flex-1 overflow-y-auto pt-[18px] pr-6 pb-[10px] pl-[18px]">
+              <div className="virtualized-spacer">
+                <div className="virtualized-row message-virtual-row pb-[var(--space-16)]" style={{ position: "relative" }}>
+                  <Story />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof MessageRow>;
 
 export default meta;
@@ -170,9 +189,10 @@ export const LongMultiParagraphMessage: Story = {
     expect(bubble!.querySelector(".markdown.rich-markdown")).toBeTruthy();
     const paragraphs = [...bubble!.querySelectorAll<HTMLParagraphElement>(".markdown p")];
     expect(paragraphs).toHaveLength(3);
-    expect(getComputedStyle(paragraphs[0]!).lineHeight).toBe(getComputedStyle(paragraphs[1]!).lineHeight);
-    expect(getComputedStyle(paragraphs[1]!).lineHeight).toBe("21px");
-    expect(parseFloat(getComputedStyle(paragraphs[1]!).marginBlockStart)).toBeGreaterThan(0);
+    const paragraphStyle = getComputedStyle(paragraphs[1]!);
+    expect(getComputedStyle(paragraphs[0]!).lineHeight).toBe(paragraphStyle.lineHeight);
+    expect(parseFloat(paragraphStyle.lineHeight)).toBeCloseTo(parseFloat(paragraphStyle.fontSize) * 1.5, 3);
+    expect(parseFloat(paragraphStyle.marginBlockStart)).toBeGreaterThan(0);
   },
 };
 
@@ -221,6 +241,26 @@ export const RichWithHeadingLevels: Story = {
   },
 };
 
+export const HoverActions: Story = {
+  args: { message: msg("m1"), author: authorOf(msg("m1").authorId), onReact: fn(), onOpenThread: fn() },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const actions = canvasElement.querySelector<HTMLElement>(".message-actions")!;
+    const reply = canvas.getByRole("button", { name: "reply in thread" });
+    reply.focus();
+    await waitFor(() => expect(getComputedStyle(actions).opacity).toBe("1"));
+    await expect(reply).toBeTruthy();
+    await expect(canvas.getByRole("button", { name: "add reaction" })).toBeTruthy();
+    await expect(canvas.getByRole("button", { name: "copy message text" })).toBeTruthy();
+    await expect(canvas.getByRole("button", { name: "copy message link" })).toBeTruthy();
+    await userEvent.click(canvas.getByRole("button", { name: "reply in thread" }));
+    await expect(args.onOpenThread).toHaveBeenCalledWith("m1");
+    await userEvent.click(canvas.getByRole("button", { name: "more message actions" }));
+    await waitFor(() => expect(screen.getByText("Copy text")).toBeTruthy());
+    await expect(screen.getByText("Copy link")).toBeTruthy();
+  },
+};
+
 export const MessagePermalinkMenu: Story = {
   args: { message: msg("m1"), author: authorOf(msg("m1").authorId), onReact: fn(), onOpenThread: fn() },
   play: async ({ canvasElement }) => {
@@ -236,17 +276,26 @@ export const MessagePermalinkMenu: Story = {
 
 export const GroupedWithPrev: Story = {
   args: { message: msg("m3"), author: authorOf(msg("m3").authorId), groupedWithPrev: true },
+  play: async ({ canvasElement }) => {
+    const timestamp = canvasElement.querySelector<HTMLElement>(".message-continuation-time")!;
+    await expect(getComputedStyle(timestamp).opacity).toBe("1");
+  },
 };
 
-// Self message: NO avatar gutter — the .is-self row is single-column. Regression
-// guard for the stray centered avatar bug (gutter was rendered into the 1-col grid
-// and floated mid-pane). The refactor unified is-you/is-web-author into is-self.
+// Self messages keep the same transcript columns as agent messages. The local
+// operator uses the web/operator sigil rather than a generated initial tile.
 export const SelfMessage: Story = {
   args: { message: msg("m4"), author: authorOf(msg("m4").authorId) },
   play: async ({ canvasElement }) => {
     const row = canvasElement.querySelector(".message-row.is-self");
     await expect(row).toBeTruthy();
-    await expect(row!.querySelector(".message-gutter")).toBeNull();
+    const gutter = row!.querySelector(".message-gutter");
+    await expect(gutter).toBeTruthy();
+    const avatar = gutter!.querySelector<HTMLElement>(".identity-icon");
+    await expect(avatar).toBeTruthy();
+    await expect(avatar!.querySelector(".sigil-harness-mark")).toBeTruthy();
+    await expect(avatar!.textContent?.trim()).toBe("");
+    await expect(row!.querySelector(".author-name")?.textContent).toBe("You");
   },
 };
 
@@ -254,7 +303,7 @@ export const SelfMessageWithThreadBadge: Story = {
   args: {
     message: {
       ...msg("m4"),
-      body: "@TesterGLM the message bubble is deliberately wider than its reply preview controls.",
+      body: "@atlas the message bubble is deliberately wider than its reply preview controls. @you can review it.",
       threadReplyCount: 7,
       threadLastReplyAt: new Date().toISOString(),
       threadParticipantIds: ["atlas", "you", "vega"],
@@ -269,6 +318,12 @@ export const SelfMessageWithThreadBadge: Story = {
     expect(bubble).toBeTruthy();
     expect(footer).toBeTruthy();
     expect(stack).toBeTruthy();
+    const mentions = bubble!.querySelectorAll<HTMLElement>(".mention-chip");
+    expect(mentions).toHaveLength(2);
+    expect(getComputedStyle(mentions[0]!).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(mentions[1]!.classList.contains("mention-chip-self")).toBe(true);
+    expect(footer!.querySelector(".thread-badge-avs")).toBeNull();
+    expect(footer!.querySelector(".thread-badge-participants")?.textContent).toContain("Atlas");
     expect(Math.abs(bubble!.getBoundingClientRect().left - footer!.getBoundingClientRect().left)).toBeLessThanOrEqual(1);
     expect(Math.abs(bubble!.getBoundingClientRect().right - footer!.getBoundingClientRect().right)).toBeLessThanOrEqual(1);
     expect(Math.abs(bubble!.getBoundingClientRect().width - stack!.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
@@ -282,7 +337,10 @@ export const ReactWithPicker: Story = {
   args: { message: msg("m1"), author: authorOf(msg("m1").authorId), onReact: fn() },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "add reaction" }));
+    const action = canvas.getByRole("button", { name: "add reaction" });
+    action.focus();
+    await waitFor(() => expect(getComputedStyle(action).pointerEvents).toBe("auto"));
+    await userEvent.click(action);
     await userEvent.click(await screen.findByRole("button", { name: "👍" }));
     await expect(args.onReact).toHaveBeenCalledWith("m1", "👍");
   },

@@ -1,0 +1,184 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>parity harness</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #101218; color: #e6e9ef; font: 13px ui-sans-serif, system-ui; display: flex; flex-direction: column; height: 100vh; }
+  header { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #2a2e3a; flex-wrap: wrap; }
+  header b { letter-spacing: .12em; font-size: 11px; color: #99a0ad; }
+  select, button, input[type=range] { background: #191c24; color: #e6e9ef; border: 1px solid #2a2e3a; border-radius: 7px; padding: 5px 9px; font: inherit; }
+  button.on { background: #6c8cff; color: #fff; border-color: transparent; }
+  #stage { flex: 1; display: flex; min-height: 0; position: relative; }
+  .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid #2a2e3a; }
+  .pane:last-child { border-right: 0; }
+  /* stack: wide content gets full-width panes split by a horizontal divider
+     (side-by-side would squeeze each below the design's natural width) */
+  #stage.stack { flex-direction: column; }
+  #stage.stack .pane { border-right: 0; border-bottom: 1px solid #2a2e3a; }
+  #stage.stack .pane:last-child { border-bottom: 0; }
+  .pane .lbl { font-size: 10px; letter-spacing: .14em; color: #99a0ad; padding: 4px 10px; }
+  .pane iframe { flex: 1; border: 0; background: #fff; width: 100%; }
+  #stage.onion { display: block; }
+  #stage.onion .pane { position: absolute; inset: 0; border: 0; }
+  #stage.onion .pane .lbl { display: none; }
+  #stage.onion #paneImpl iframe { opacity: var(--onion, .5); }
+  .hidden { display: none !important; }
+  .note { color: #99a0ad; margin-left: auto; }
+  /* loading overlay: covers the stage until BOTH panes + their setup finish, so
+     a blank pane reads as "still loading" (spinner) not "broken". After a
+     timeout it turns red so slow is distinguishable from stuck. */
+  #spin { position: absolute; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(16,18,24,.9); color: #99a0ad; font-size: 12px; letter-spacing: .04em; }
+  #spin.hidden { display: none; }
+  #spin .ring { width: 34px; height: 34px; border: 3px solid #2a2e3a; border-top-color: #6c8cff; border-radius: 50%; animation: spin .8s linear infinite; }
+  #spin.err .ring { border-top-color: #ff6b6b; animation: none; }
+  #spin.err { color: #ff8f8f; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<header>
+  <b>PARITY</b>
+  <select id="scene"></select>
+  <select id="theme"></select>
+  <span>
+    <button data-mode="split" class="on">Split</button><button data-mode="ref">Ref</button><button data-mode="impl">Impl</button><button data-mode="onion">Onion</button>
+  </span>
+  <button id="crop" title="Crop each pane to the diffed component only">Crop</button>
+  <input type="range" id="onion" min="0" max="100" value="50" title="onion opacity">
+  <button id="reload">Reload</button>
+  <span class="note" id="note"></span>
+</header>
+<div id="stage">
+  <div class="pane" id="paneRef"><div class="lbl">REFERENCE (design bundle)</div><iframe id="fRef"></iframe></div>
+  <div class="pane" id="paneImpl"><div class="lbl">IMPLEMENTATION (storybook)</div><iframe id="fImpl"></iframe></div>
+  <div id="spin" class="hidden"><div class="ring"></div><span id="spinmsg">loading…</span></div>
+</div>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  const mPath = q.get("m") ?? "/tools/parity/manifests/sigil-vs-aesthetic-rerun-r3.json";
+  const M = await fetch(mPath).then(r => r.json());
+  const $ = (id) => document.getElementById(id);
+
+  $("scene").innerHTML = M.scenes.map(s => `<option>${s.name}</option>`).join("");
+  $("theme").innerHTML = Object.keys(M.themes).map(t => `<option>${t}</option>`).join("");
+  let mode = "split";
+
+  const sub = (tpl, theme, side) => tpl
+    .replace(/\{theme\}/g, M.themes[theme][side])
+    .replace(/\{(\w+)\}/g, (_, k) => M.vars?.[k] ?? `{${k}}`);
+
+  const showSpin = (msg, err) => { const s = $("spin"); s.classList.remove("hidden"); s.classList.toggle("err", !!err); $("spinmsg").textContent = msg; };
+  const hideSpin = () => $("spin").classList.add("hidden");
+
+  // One side is "ready" only after: iframe onload → setup steps (poll+click,
+  // await eval, wait) → the diffed selector actually exists in the DOM. So the
+  // spinner hides only when BOTH panes are truly rendered, not merely navigated.
+  function loadSide(side, frame, spec, theme, cb) {
+    return new Promise((resolve) => {
+      frame.onload = async () => {
+        try {
+          const doc = frame.contentDocument;
+          const st = doc.createElement("style");
+          st.textContent = (M.hideCss?.[side] ?? "") +
+            (spec.selector ? `${spec.selector}{outline:2px dashed #6c8cff;outline-offset:-2px}` : "");
+          doc.head.appendChild(st);
+          for (const step of spec.setup ?? []) {
+            if (step.click) { const el = await poll(() => doc.querySelector(step.click), 8000); el?.click(); }
+            if (step.eval) { try { await frame.contentWindow.eval(step.eval); } catch (e) {} }
+            if (step.wait) await new Promise((r) => setTimeout(r, step.wait));
+          }
+          // gate readiness on the diffed element existing (blank pane => still loading)
+          if (spec.selector) await poll(() => doc.querySelector(spec.selector), 8000);
+          doc.querySelector(spec.selector ?? "body")?.scrollIntoView?.();
+          applyCrop(frame, spec.selector ?? (side === "impl" ? M.implRootSelector : null));
+          if (side === "ref") updateSplit();
+        } catch (e) { console.warn(side, e); }
+        resolve();
+      };
+      // Cache-bust every load: a unique param forces a fresh iframe navigation
+      // (paired with serve.mjs no-store on the shell + iframe.html) so Reload and
+      // browser refresh both always show the CURRENT build, never a stale render.
+      const url = sub(spec.url, theme, side);
+      frame.src = url + (url.includes("?") ? "&" : "?") + "_cb=" + cb;
+    });
+  }
+
+  let loadToken = 0;
+  async function load() {
+    const scene = M.scenes.find(s => s.name === $("scene").value);
+    const theme = $("theme").value;
+    const token = ++loadToken; // ignore a stale load if the user switched again
+    showSpin("loading both panes…");
+    $("note").textContent = `${scene.ref.selector ?? "page"} vs ${scene.impl.selector ?? "story root"} — dashed outline = diffed subtree`;
+    const cb = Date.now();
+    const both = Promise.all([
+      loadSide("ref", $("fRef"), scene.ref, theme, cb),
+      loadSide("impl", $("fImpl"), scene.impl, theme, cb),
+    ]).then(() => "ok");
+    const outcome = await Promise.race([both, new Promise((r) => setTimeout(() => r("timeout"), 25000))]);
+    if (token !== loadToken) return; // superseded
+    if (outcome === "ok") hideSpin();
+    else showSpin("still loading (>25s) — likely broken, check the console", true);
+  }
+
+  // Split orientation is width-driven: measure the reference's natural width and
+  // stack the panes (horizontal divider, each full-width) when two side-by-side
+  // would fall below that width; otherwise sit them side-by-side (vertical
+  // divider). So a 1440px shell stacks; a narrow sidebar/thread pane sits abreast.
+  // Poll for a value (e.g. a not-yet-mounted element) until truthy or timeout.
+  const poll = (fn, ms) => new Promise((res) => {
+    const t0 = Date.now();
+    const tick = () => {
+      const v = fn();
+      if (v || Date.now() - t0 > ms) return res(v || null);
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+
+  // Crop a pane to just the diffed component (hide everything else, pin it to
+  // the top-left) so the interactive view matches what the diff/report compare:
+  // one element, not the whole page.
+  let crop = false;
+  function applyCrop(frame, selector) {
+    try {
+      const doc = frame.contentDocument;
+      let st = doc.getElementById("__parityCrop");
+      if (!crop || !selector) { st?.remove(); return; }
+      if (!st) { st = doc.createElement("style"); st.id = "__parityCrop"; doc.head.appendChild(st); }
+      st.textContent = `html,body{overflow:hidden!important;margin:0!important}
+        body *{visibility:hidden!important}
+        ${selector},${selector} *{visibility:visible!important}
+        ${selector}{position:fixed!important;top:0!important;left:0!important}`;
+    } catch (e) { /* cross-origin / not loaded */ }
+  }
+  function reapplyCrop() {
+    const scene = M.scenes.find(s => s.name === $("scene").value);
+    applyCrop($("fRef"), scene.ref.selector ?? null);
+    applyCrop($("fImpl"), scene.impl.selector ?? M.implRootSelector);
+  }
+  $("crop").onclick = () => { crop = !crop; $("crop").classList.toggle("on", crop); reapplyCrop(); };
+
+  function updateSplit() {
+    if (mode !== "split") { $("stage").classList.remove("stack"); return; }
+    try {
+      const scene = M.scenes.find(s => s.name === $("scene").value);
+      const doc = $("fRef").contentDocument;
+      const el = scene.ref.selector ? doc.querySelector(scene.ref.selector) : doc.body;
+      const w = el ? el.getBoundingClientRect().width : 0;
+      $("stage").classList.toggle("stack", w > 0 && w * 2 > window.innerWidth);
+    } catch (e) { /* cross-origin or not loaded yet */ }
+  }
+  addEventListener("resize", updateSplit);
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+    $("stage").classList.toggle("onion", m === "onion");
+    $("paneRef").classList.toggle("hidden", m === "impl");
+    $("paneImpl").classList.toggle("hidden", m === "ref");
+    updateSplit();
+  }
+  document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  $("onion").oninput = () => $("stage").style.setProperty("--onion", $("onion").value / 100);
+  $("scene").onchange = $("theme").onchange = $("reload").onclick = load;
+  load();
+</script>

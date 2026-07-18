@@ -10,15 +10,8 @@ const meta: Meta<typeof Iconography> = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Icon vocabulary — identity tiles + activity message-kind markers — on the
-// canonical light palette.
-export const Light: Story = {
-  globals: { theme: "light", skin: "brutal" },
-  render: () => <Iconography />,
-};
-
-// Same gallery on the canonical dark palette (kanagawa-wave).
-export const KanagawaWave: Story = {
-  globals: { theme: "kanagawa-wave", skin: "brutal" },
+// Theme and skin are global toolbar traits; this one gallery exercises the
+// shared Sigil identity and activity icon vocabulary in either palette.
+export const Gallery: Story = {
   render: () => <Iconography />,
 };

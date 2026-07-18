@@ -26,7 +26,6 @@ import type {
   Snapshot,
   Task,
   ThreadSummary,
-  TimelineEvent,
   WebDeepLinkTarget,
 } from "./types.ts";
 import { createSnapshot, type MutableSnapshot } from "./store.ts";
@@ -38,17 +37,17 @@ import {
   type IdentityColorRef,
 } from "../theme/identity.ts";
 import { readIdentityOverrideMap, writeIdentityOverrideMap } from "../theme/storage.ts";
-import {
-  AGENTS,
-  ARTIFACTS,
-  DMS,
-  GROUPS,
-  MESSAGES,
-  TASKS,
-  THREAD_REPLIES,
-  THREAD_SUMMARIES,
-  TIMELINE,
-} from "./seed.ts";
+import * as stableSeed from "./seed.ts";
+
+// Parity-harness seam: the parity runner/viewer injects window.__PARITY_SEED__
+// (a full seed in ./seed.ts's shape) before the Storybook iframe bundle loads,
+// so it can render an alternate design-iteration world without touching stable
+// stories. Undefined in the app and in normal Storybook → stableSeed →
+// bit-identical behavior. ponytail: module-eval reads the global once, so a
+// single page can only show one dataset; the harness uses a fresh page per
+// scene, so that ceiling never bites.
+const S = (globalThis as { __PARITY_SEED__?: typeof stableSeed }).__PARITY_SEED__ ?? stableSeed;
+const { AGENTS, ARTIFACTS, DMS, GROUPS, MESSAGES, TASKS, THREAD_REPLIES, THREAD_SUMMARIES } = S;
 
 // Persistent overrides for agent identity colors. Stored in localStorage so the
 // user's customizations survive reloads; we restore them on construction.
@@ -105,7 +104,6 @@ export class MockDataSource implements DataSource {
   private readonly _rooms = createSnapshot<Room[]>([...GROUPS, ...DMS]);
   private readonly _messages = new Map<string, MutableSnapshot<Message[]>>();
   private readonly _threadReplies = new Map<string, MutableSnapshot<Message[]>>();
-  private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
@@ -208,15 +206,6 @@ export class MockDataSource implements DataSource {
     if (!snap) {
       snap = createSnapshot<Message[]>(THREAD_REPLIES[parentId] ?? []);
       this._threadReplies.set(parentId, snap);
-    }
-    return snap;
-  }
-
-  timeline(roomId: string): Snapshot<TimelineEvent[]> {
-    let snap = this._timeline.get(roomId);
-    if (!snap) {
-      snap = createSnapshot<TimelineEvent[]>(TIMELINE[roomId] ?? []);
-      this._timeline.set(roomId, snap);
     }
     return snap;
   }

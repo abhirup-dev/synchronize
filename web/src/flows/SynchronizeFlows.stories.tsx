@@ -58,14 +58,17 @@ function expectAboveThreadComposer(pane: HTMLElement, target: HTMLElement) {
   expect(target.getBoundingClientRect().bottom).toBeLessThanOrEqual(composer.getBoundingClientRect().top + 2);
 }
 
-function expectRoomRailCenteredOverChat() {
-  const chat = requireElement<HTMLElement>(document, ".chat-view", "chat view");
-  const rail = requireElement<HTMLElement>(document, '[aria-label="room surface"]', "room surface rail");
-  const chatRect = chat.getBoundingClientRect();
-  const railRect = rail.getBoundingClientRect();
-  const chatCenter = chatRect.left + chatRect.width / 2;
-  const railCenter = railRect.left + railRect.width / 2;
-  expect(Math.abs(chatCenter - railCenter)).toBeLessThanOrEqual(2);
+// Sigil single-row head: the room-surface segmented control lives inside the
+// room header, right of the title (it is no longer a centered second-row rail).
+function expectRoomTabsInHeader() {
+  const header = requireElement<HTMLElement>(document, ".room-header", "room header");
+  const tabs = requireElement<HTMLElement>(document, '[aria-label="room surface"]', "room surface tabs");
+  const headerRect = header.getBoundingClientRect();
+  const tabsRect = tabs.getBoundingClientRect();
+  expect(tabsRect.top).toBeGreaterThanOrEqual(headerRect.top - 2);
+  expect(tabsRect.bottom).toBeLessThanOrEqual(headerRect.bottom + 2);
+  const title = requireElement<HTMLElement>(header, ".top-bar-title", "room title");
+  expect(tabsRect.left).toBeGreaterThanOrEqual(title.getBoundingClientRect().right);
 }
 
 async function scrollThreadToBottom(pane: HTMLElement, latestReplyId: string, { smooth = false }: FlowOptions) {
@@ -97,7 +100,7 @@ async function openActivity(ctx: PlayCtx, options: FlowOptions = {}) {
   const canvas = within(ctx.canvasElement);
   await ctx.step("Open the Activity view from the sidebar", async () => {
     await pause();
-    await userEvent.click(canvas.getByTitle(/activity/i));
+    await userEvent.click(canvas.getByRole("button", { name: /^activity/i }));
     await waitFor(() => expect(ctx.canvasElement.querySelector(".act-scroll")).toBeTruthy());
   });
 }
@@ -154,7 +157,7 @@ async function openThreadFromMessage(messageId: string, latestReplyId: string, l
   const badge = requireElement<HTMLButtonElement>(row, ".thread-badge", `thread badge for ${messageId}`);
   await userEvent.click(badge);
   const pane = await threadPane();
-  expectRoomRailCenteredOverChat();
+  expectRoomTabsInHeader();
   await scrollThreadToBottom(pane, latestReplyId, options);
   const latestReplyRow = requireElement<HTMLElement>(pane, `#msg-${latestReplyId}`, `latest reply ${latestReplyId}`);
   const body = requireElement<HTMLElement>(pane, ".thread-pane-body", "thread pane body");

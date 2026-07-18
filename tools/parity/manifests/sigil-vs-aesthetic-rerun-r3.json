@@ -1,0 +1,178 @@
+{
+  "name": "sigil-vs-aesthetic-rerun-r3",
+  "description": "Sigil skin (current worktree Storybook) vs design bundle templates/aesthetic-rerun-r3/v2.html",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "vars": {
+    "ref": "/ds-bundle/templates/aesthetic-rerun-r3/v2.html",
+    "impl": "/web/storybook-static/iframe.html"
+  },
+  "implSeed": "web/src/data/seeds/design-sigil-r3.ts",
+  "themes": {
+    "dark": {
+      "ref": "dark",
+      "impl": "sigil-dark"
+    },
+    "light": {
+      "ref": "light",
+      "impl": "sigil-light"
+    }
+  },
+  "hideCss": {
+    "ref": ".rtw{display:none!important}",
+    "impl": ""
+  },
+  "implRootSelector": "#storybook-root > *",
+  "staleness": {
+    "build": "web/storybook-static/index.html",
+    "sources": [
+      "web/src",
+      "web/.storybook"
+    ]
+  },
+  "caveats": [
+    "Data is matched: the impl renders the injected implSeed (design-sigil-r3), the same world the reference mock ships. Residual content deltas are design-legit: 'you' shows 'You' (no app displayName field for 'Dhruv'), and plan/doc messages render as markdown vs the ref's rich blocks. Trust the triptych, not the raw number.",
+    "Positional shifts inflate % downstream of the shift point \u2014 confirm cause in the report before filing a gap.",
+    "Reference loads Instrument Sans/JetBrains Mono from Google Fonts and sigil marks from unpkg \u2014 offline runs diff fonts/icons, not design."
+  ],
+  "scenes": [
+    {
+      "name": "whole-app",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=layouts-app-shell--desktop&globals=theme:{theme}",
+        "setup": [
+          {
+            "click": ".thread-badge"
+          },
+          {
+            "eval": "new Promise((r)=>{const t=setInterval(()=>{if(document.querySelector('.thread-pane')){clearInterval(t);r()}},50);setTimeout(()=>{clearInterval(t);r()},8000)})"
+          }
+        ]
+      }
+    },
+    {
+      "name": "chat",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "setup": [
+          {
+            "click": "[data-thread=\"close\"]"
+          }
+        ],
+        "selector": ".main"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=layouts-app-shell--desktop&globals=theme:{theme}",
+        "selector": "main"
+      }
+    },
+    {
+      "name": "chat-thread-open",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "selector": ".main"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=layouts-app-shell--desktop&globals=theme:{theme}",
+        "setup": [
+          {
+            "click": ".thread-badge"
+          },
+          {
+            "eval": "new Promise((r)=>{const t=setInterval(()=>{if(document.querySelector('.thread-pane')){clearInterval(t);r()}},50);setTimeout(()=>{clearInterval(t);r()},8000)})"
+          }
+        ],
+        "selector": "main"
+      }
+    },
+    {
+      "name": "thread-pane",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "selector": ".tpane"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=layouts-app-shell--desktop&globals=theme:{theme}",
+        "setup": [
+          {
+            "click": ".thread-badge"
+          },
+          {
+            "eval": "new Promise((r)=>{const t=setInterval(()=>{if(document.querySelector('.thread-pane')){clearInterval(t);r()}},50);setTimeout(()=>{clearInterval(t);r()},8000)})"
+          }
+        ],
+        "selector": ".thread-pane"
+      }
+    },
+    {
+      "name": "activity",
+      "ref": {
+        "url": "{ref}?view=activity&mode={theme}&embed=1",
+        "selector": ".main"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=layouts-app-shell--desktop&globals=theme:{theme}",
+        "setup": [
+          {
+            "click": "[data-vim-item=\"room-activity\"]"
+          },
+          {
+            "eval": "new Promise((r)=>{const t=setInterval(()=>{if(document.querySelector('.activity-view')){clearInterval(t);r()}},50);setTimeout(()=>{clearInterval(t);r()},8000)})"
+          }
+        ],
+        "selector": "main"
+      }
+    },
+    {
+      "name": "sidebar",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "selector": ".side"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=navigation-sidebar--group-selected&globals=theme:{theme}",
+        "selector": "aside.sidebar"
+      }
+    },
+    {
+      "name": "composer",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "setup": [
+          {
+            "click": "[data-thread=\"close\"]"
+          }
+        ],
+        "selector": ".compose"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=composer-composer--default&globals=theme:{theme}",
+        "selector": ".composer"
+      }
+    },
+    {
+      "name": "agents-panel",
+      "ref": {
+        "url": "{ref}?view=chat&mode={theme}&embed=1",
+        "setup": [
+          {
+            "click": "[data-thread=\"close\"]"
+          },
+          {
+            "click": "[data-x-agents]"
+          }
+        ],
+        "selector": ".x-panel"
+      },
+      "impl": {
+        "url": "{impl}?viewMode=story&id=navigation-agentroster--default&globals=theme:{theme}",
+        "selector": ".shell-overlay-agents"
+      }
+    }
+  ]
+}

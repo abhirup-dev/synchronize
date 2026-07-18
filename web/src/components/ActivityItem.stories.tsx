@@ -161,6 +161,8 @@ export const DirectMessage: Story = {
   },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByLabelText("direct message")).toBeVisible();
-    await expect(canvasElement.querySelector(".author-chip")).toBeNull();
+    // DM rows keep the author name: the activity grid aligns message text off a
+    // fixed author column, so every row renders its chip.
+    await expect(canvasElement.querySelector(".author-chip")).not.toBeNull();
   },
 };

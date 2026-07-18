@@ -4,7 +4,8 @@ import { cn } from "../lib/cn.ts";
 import { useAgents, useMe, useRemoveDraftAttachment, useRooms, useSendMessage, useSkillCatalog, useStageAttachment } from "../data/context.tsx";
 import type { Agent, AgentLaunchTool, MessageAttachment, SkillCatalogEntry } from "../data/types.ts";
 import { roomAgents } from "../data/roomAgents.ts";
-import { IdentityBadge } from "./primitives.tsx";
+import { isSelfAgent } from "../data/identity.ts";
+import { IdentityBadge, roomNameText } from "./primitives.tsx";
 import { AttachmentPreviewList } from "./AttachmentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { useIsCompact } from "../shell-mode.tsx";
@@ -20,8 +21,6 @@ interface ComposerProps {
   /** When provided, render the Thread Summary toggle in the footer. */
   threadSummaryOpen?: boolean;
   onToggleThreadSummary?(): void;
-  /** Compact shell hook for opening the room/community navigator. */
-  onOpenCommunity?(): void;
 }
 
 const MENTION_TRAILING_PUNCTUATION_RE = /[.,;:!?]+$/;
@@ -86,26 +85,14 @@ function skillMatchScore(skill: SkillCatalogEntry, query: string): number | null
   return q.length >= 3 ? fuzzyNameScore(name, q) : null;
 }
 
-// Toolbar buttons (B/I/code/link/mention/slash/attach). Base from extra.css
-// .ct-btn; .active and :disabled states via variants. Kanagawa dark overrides
-// stay in extra.css (:root[data-theme=...]), so no theme-dark: utilities here.
-const toolbarBtn = cva(
-  "[border:var(--line-sm)] rounded-[var(--radius-sm)] bg-paper-2 px-[9px] py-[6px] text-[length:var(--text-13)] font-extrabold text-ink shadow-chip disabled:opacity-40 disabled:cursor-default hover:enabled:translate-x-[-1px] hover:enabled:translate-y-[-1px] hover:enabled:shadow-[var(--shadow-hover-sm)]",
-  {
-    variants: {
-      active: {
-        true: "bg-yellow translate-x-[-1px] translate-y-[-1px] shadow-[var(--shadow-hover-sm)]",
-        false: "",
-      },
-    },
-    defaultVariants: { active: false },
-  },
-);
-
-// .composer-send / .thread-scan-btn shared base from extra.css. Kanagawa dark
-// overrides stay in extra.css.
-const footBtn =
-  "inline-flex items-center justify-center [border:var(--line-2)] rounded-[var(--radius-md)] bg-paper-3 px-[18px] py-[9px] font-display text-[length:var(--text-11)] tracking-[var(--tracking-md)] text-ink shadow-sm hover:enabled:translate-x-[-1px] hover:enabled:translate-y-[-1px] hover:enabled:shadow-[var(--shadow-hover)]";
+// Quiet 26px toolbar glyphs (ref .cbar span) and pill footer chips (ref .cfoot
+// .ck). Font shorthands live unlayered in extra.css (.composer-tool /
+// .composer-chip): styles.css's unlayered `button { font: inherit }` beats
+// every layered Tailwind font utility.
+const toolBtn =
+  "composer-tool w-[26px] h-[26px] grid place-items-center p-0 rounded-md bg-transparent [border:var(--line-none)] shadow-none text-ink-faint cursor-pointer hover:enabled:bg-[color:var(--accent-bg)] hover:enabled:text-[color:var(--accent)] disabled:opacity-40 disabled:cursor-default";
+const chipBtn =
+  "composer-chip [border:1px_solid_var(--rule-2)] rounded-pill bg-transparent px-[10px] py-[3px] text-ink-faint whitespace-nowrap cursor-pointer hover:text-[color:var(--accent)] hover:[border-color:var(--accent)]";
 
 // .mention-row / .skill-row hover+focused background.
 const popRow = cva("text-left rounded-[var(--radius-sm)] [border:var(--line-none)] bg-transparent cursor-pointer", {
@@ -119,7 +106,6 @@ export function Composer({
   collapsedDefault = false,
   threadSummaryOpen = false,
   onToggleThreadSummary,
-  onOpenCommunity,
 }: ComposerProps) {
   const agents = useAgents();
   const me = useMe();
@@ -197,6 +183,19 @@ export function Composer({
   }, [mentionQuery, mentionAgents, me.id]);
 
   const mentionOpen = mentionQuery !== null && candidates.length > 0;
+
+  // ref .cfoot .ctx (`→ #CHECKOUT-REVAMP · 6 AGENTS`) + room-aware placeholder
+  // (`message #checkout-revamp — @ tags an agent`). Crew counts agents only.
+  const crewCount = useMemo(() => mentionAgents.filter((a) => !isSelfAgent(a, me)).length, [mentionAgents, me]);
+  const roomLabel = room ? roomNameText(room.kind, room.name) : "";
+  const ctxLabel = room ? `${roomLabel} · ${crewCount} agents` : `${crewCount} agents`;
+  const placeholder = compact
+    ? "Message…"
+    : parentMessageId
+      ? "reply in thread…"
+      : room
+        ? `message ${roomLabel} — @ tags an agent`
+        : "message the room — @ tags an agent";
 
   useEffect(() => {
     if (candidates.length > 0 && mentionIdx >= candidates.length) setMentionIdx(0);
@@ -431,12 +430,11 @@ export function Composer({
 
   if (collapsed) {
     return (
-      // `composer` + `composer-collapsed`: skin-glass.css backdrop-filter hooks — kept.
-      <div className={cn("composer composer-collapsed", "relative flex flex-shrink-0 flex-col overflow-hidden bg-paper [border:var(--line-md)] [border-top:3.5px_solid_var(--rule)] rounded-[var(--radius-xl)] shadow-md mx-[12px] mt-[6px] mb-[12px] p-[var(--space-button-pad-md)]")}>
+      <div className={cn("composer composer-collapsed", "relative flex flex-shrink-0 flex-col [border-top:var(--line)] bg-[color:var(--composer-bg)] px-[28px] py-[6px]")}>
         <button
           type="button"
           // `composer-collapsed-stub`: queried by hooks/useVimNav.ts — kept.
-          className={cn("composer-collapsed-stub", "w-full flex items-center justify-between gap-[var(--space-10)] p-[var(--space-button-pad-md)] bg-paper-2 text-ink-soft [border:var(--line-sm)] rounded-[var(--radius-md)] shadow-sm [font:inherit] text-[length:var(--text-13)] cursor-pointer text-left hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[var(--shadow-hover)] hover:text-ink")}
+          className={cn("composer-collapsed-stub", "w-full flex items-center justify-between gap-[var(--space-10)] px-0 py-[6px] bg-transparent text-ink-faint [border:var(--line-none)] shadow-none [font:inherit] cursor-pointer text-left hover:text-ink")}
           onClick={() => {
             setCollapsed(false);
             queueMicrotask(() => taRef.current?.focus());
@@ -454,11 +452,10 @@ export function Composer({
   }
 
   return (
-    // `composer`: skin-glass.css backdrop-filter hook — kept.
-    <div className={cn("composer", "relative flex flex-shrink-0 flex-col overflow-hidden bg-paper [border:var(--line-md)] [border-top:3.5px_solid_var(--rule)] rounded-[var(--radius-xl)] shadow-md mx-[12px] mt-[6px] mb-[12px]")}>
+    <div className={cn("composer", "relative flex flex-shrink-0 flex-col [border-top:var(--line)] bg-[color:var(--composer-bg)] px-[28px] pt-[8px] pb-[10px]")}>
       <button
         type="button"
-        className="absolute top-[6px] right-[10px] w-[18px] h-[18px] grid place-items-center bg-transparent text-ink-soft [border:var(--line-none)] shadow-none rounded-none p-0 text-[length:var(--text-11)] leading-none cursor-pointer opacity-55 z-[var(--z-local-control)] [transition:opacity_140ms_ease,color_140ms_ease] hover:opacity-100 hover:text-ink"
+        className="composer-collapse absolute top-[4px] right-[8px] w-[18px] h-[18px] grid place-items-center bg-transparent text-ink-soft [border:var(--line-none)] shadow-none rounded-none p-0 text-[length:var(--text-11)] leading-none cursor-pointer opacity-55 z-[var(--z-local-control)] [transition:opacity_140ms_ease,color_140ms_ease] hover:opacity-100 hover:text-ink"
         onClick={() => setCollapsed(true)}
         aria-label="collapse composer"
         title="collapse composer"
@@ -467,18 +464,24 @@ export function Composer({
       </button>
       <input ref={fileInputRef} className="absolute w-px h-px opacity-0 pointer-events-none" type="file" multiple onChange={handleFileInput} />
       {!compact && (
-      <div className="flex items-center gap-[var(--space-8)] w-full bg-transparent [border:var(--line-none)] [border-bottom:var(--line-sm)] rounded-none px-[10px] py-[8px] shadow-none">
-        <button className={cn(toolbarBtn())} title="bold" disabled>B</button>
-        <button className={cn(toolbarBtn())} title="italic" disabled><i>I</i></button>
-        <button className={cn(toolbarBtn())} title="code" disabled>{"</>"}</button>
-        <button className={cn(toolbarBtn())} title="link" disabled>↗</button>
-        <button className={cn(toolbarBtn())} title="mention">@</button>
-        <button className={cn(toolbarBtn({ active: skillPickerOpen }))} title="use skills" onClick={() => openSkillPicker()}>/</button>
-        <button type="button" className={cn(toolbarBtn())} title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>📎</button>
+      <div className="composer-toolbar flex items-center gap-[2px] w-full bg-transparent [border:var(--line-none)] rounded-none pt-[2px] pb-[4px] shadow-none">
+        <button type="button" className={toolBtn} title="bold" disabled>B</button>
+        <button type="button" className={toolBtn} title="italic" disabled><i>I</i></button>
+        <button type="button" className={toolBtn} title="inline code" disabled>{"</>"}</button>
+        <button type="button" className={toolBtn} title="mention an agent" onClick={insertMention}>@</button>
+        <button
+          type="button"
+          className={cn(toolBtn, skillPickerOpen && "bg-[color:var(--accent-bg)] text-[color:var(--accent)]")}
+          title="use skills"
+          onClick={() => openSkillPicker()}
+        >
+          /
+        </button>
+        <button type="button" className={toolBtn} title="attach file" aria-label="attach file" onClick={() => fileInputRef.current?.click()}>⌗</button>
       </div>
       )}
       {selectedSkills.length > 0 && (
-        <div className="flex flex-wrap gap-[var(--space-6)] px-[10px] pt-[8px]" aria-label="selected skills">
+        <div className="flex flex-wrap gap-[var(--space-6)] pt-[4px] pb-[2px]" aria-label="selected skills">
           {selectedSkills.map((skillName) => (
             <button
               key={skillName}
@@ -495,29 +498,53 @@ export function Composer({
       {attachments.length > 0 && (
         <AttachmentPreviewList attachments={attachments} mode="draft" onRemove={removeAttachment} />
       )}
-      <div className="relative bg-transparent [border:var(--line-none)] rounded-none shadow-none" ref={wrapRef}>
-        <textarea
-          ref={taRef}
-          // `composer-input`: queried by hooks/useVimNav.ts + kanagawa placeholder
-          // override in extra.css (:root[data-theme=...]) — class kept.
-          className={cn(
-            "composer-input w-full bg-transparent text-ink [border:var(--line-none)] outline-none [font:inherit] text-[length:var(--text-14)] leading-[1.5] placeholder:text-ink-faint",
-            compact
-              ? "resize-none min-h-[44px] max-h-[132px] px-[14px] py-[10px]"
-              : "resize-y min-h-[78px] max-h-[200px] px-[18px] py-[14px]",
-          )}
-          placeholder={compact ? "Message…" : "message the room… use @ to tag an agent"}
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKey}
-          onPaste={handlePaste}
-          rows={compact ? 1 : 3}
-          aria-autocomplete="list"
+      {/* ref .crow: input, ⏎ SEND hint, and the inverted SEND button share one row. */}
+      <div className="composer-crow flex items-center gap-[12px] min-w-0">
+        <div
+          className="composer-input-wrap relative flex-1 min-w-0 bg-transparent [border:var(--line-none)] rounded-none shadow-none"
+          ref={wrapRef}
+          role="combobox"
           aria-haspopup="listbox"
           aria-expanded={mentionOpen}
-          aria-controls={mentionOpen ? mentionListboxId : undefined}
-          aria-activedescendant={mentionOpen && candidates[mentionIdx] ? mentionOptionId(candidates[mentionIdx].id) : undefined}
-        />
+          aria-controls={mentionListboxId}
+        >
+          <textarea
+            ref={taRef}
+            // `composer-input`: queried by hooks/useVimNav.ts; the font shorthand
+            // is unlayered in extra.css (theme contract).
+            className={cn(
+              "composer-input w-full block resize-none bg-transparent text-ink [border:var(--line-none)] outline-none placeholder:text-ink-faint",
+              compact
+                ? "min-h-[44px] max-h-[132px] px-[4px] py-[10px]"
+                : "[field-sizing:content] min-h-[30px] max-h-[200px] px-0 py-[6px]",
+            )}
+            placeholder={placeholder}
+            value={value}
+            onChange={handleChange}
+            onKeyDown={handleKey}
+            onPaste={handlePaste}
+            rows={1}
+            aria-autocomplete="list"
+            aria-controls={mentionOpen ? mentionListboxId : undefined}
+            aria-activedescendant={mentionOpen && candidates[mentionIdx] ? mentionOptionId(candidates[mentionIdx].id) : undefined}
+          />
+        </div>
+        {!compact && (
+          <>
+            <span className="composer-hint flex-none font-mono text-[length:var(--text-9)] text-ink-faint whitespace-nowrap" aria-hidden>
+              ⏎ SEND
+            </span>
+            {/* `composer-send`: skin hook — colors + mono font live unlayered in extra.css. */}
+            <button
+              className="composer-send flex-none px-[18px] py-[9px] cursor-pointer hover:opacity-[0.88] disabled:opacity-[0.52] disabled:cursor-default"
+              onClick={submit}
+              disabled={addingAttachments || (!value.trim() && attachments.length === 0)}
+              aria-label="send message"
+            >
+              SEND
+            </button>
+          </>
+        )}
       </div>
       <div aria-live="polite" role="status" style={SR_ONLY_STYLE}>
         {mentionAnnouncement}
@@ -525,7 +552,7 @@ export function Composer({
       {mentionOpen && popRect && (
         <div
           id={mentionListboxId}
-          // `mention-pop`: skin-glass.css backdrop-filter hook — kept.
+          // `mention-pop` remains the shared mention-overlay skin hook.
           className={cn("mention-pop", "bg-paper [border:var(--line-md)] rounded-[var(--radius-xl)] shadow-md z-[var(--z-mention-overlay)] max-h-[300px] overflow-y-auto p-[var(--space-6)] flex flex-col gap-[var(--space-2)]")}
           role="listbox"
           aria-label="mention suggestions"
@@ -659,7 +686,7 @@ export function Composer({
         </div>
       )}
       {compact ? (
-        <div className="flex items-center gap-[var(--space-4)] px-[8px] py-[6px] [border-top:var(--line-rule-dashed-sm)]">
+        <div className="composer-foot composer-foot-compact flex items-center gap-[var(--space-4)] px-[8px] py-[6px] [border-top:var(--line-rule-dashed-sm)]">
           {/* Room switching lives in the bottom nav's Chats tab in compact mode,
               so the composer stays focused on message actions. */}
           <IconButton icon={Paperclip} label="attach file" onClick={() => fileInputRef.current?.click()} disabled={addingAttachments} />
@@ -684,41 +711,27 @@ export function Composer({
           />
         </div>
       ) : (
-      <div className="flex items-center gap-[var(--space-12)] justify-between px-[14px] py-[10px] [border-top:var(--line-rule-dashed-sm)]">
-        {onOpenCommunity ? (
-          <button
-            type="button"
-            className={cn(footBtn, "mr-auto gap-[6px] cursor-pointer flex-shrink-0")}
-            onClick={onOpenCommunity}
-            title="open communities"
-            aria-label="open communities"
-          >
-            {/* `community-icon`: ::before/::after pseudo-element art in styles.css — class kept. */}
-            <span className="community-icon" aria-hidden />
-          </button>
-        ) : null}
+      // ref .cfoot: dashed rule, quick-action chips, room context right.
+      <div className="composer-foot flex items-center gap-[8px] min-w-0 mt-[6px] pt-[7px] [border-top:1px_dashed_var(--rule-2)]">
+        <button type="button" className={chipBtn} onClick={insertMention}>@ mention</button>
+        <button type="button" className={cn(chipBtn, skillPickerOpen && "text-[color:var(--accent)] [border-color:var(--accent)]")} onClick={() => openSkillPicker()}>/ command</button>
+        <button type="button" className={chipBtn} onClick={() => fileInputRef.current?.click()} disabled={addingAttachments}>⌗ attach</button>
         {onToggleThreadSummary ? (
           <button
             type="button"
-            // `thread-scan-btn`: responsive (.shell-compact) + kanagawa .active overrides in CSS — class kept.
-            className={cn("thread-scan-btn", footBtn, "mr-auto gap-[6px] cursor-pointer", threadSummaryOpen && "bg-lilac")}
+            // `thread-scan-btn`: vim-nav / flow hook — kept on the chip.
+            className={cn("thread-scan-btn", chipBtn, threadSummaryOpen && "text-[color:var(--accent)] [border-color:var(--accent)]")}
             onClick={onToggleThreadSummary}
             aria-pressed={threadSummaryOpen}
             title={threadSummaryOpen ? "hide the thread summary panel" : "show thread summaries"}
           >
-            ☰ {threadSummaryOpen ? "HIDE SUMMARY" : "THREADS"}
+            ☰ {threadSummaryOpen ? "hide summary" : "threads"}
           </button>
         ) : null}
-        <span className="text-[length:var(--text-10-5)] text-ink-soft">
-          <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>@</kbd> tag
-          {addingAttachments ? " · attaching..." : ""}
+        <span className="composer-ctx ml-auto min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[length:var(--text-9)] tracking-[0.06em] uppercase text-ink-faint">
+          → {ctxLabel}
+          {addingAttachments ? " · attaching…" : ""}
         </span>
-        {/* `composer-send`: .shell-compact sizing + kanagawa overrides in CSS — class kept. */}
-        <button className={cn("composer-send", footBtn, "disabled:opacity-[0.52] disabled:cursor-default disabled:[filter:grayscale(0.35)]")} onClick={submit} disabled={addingAttachments || (!value.trim() && attachments.length === 0)} aria-label="send message">
-          {/* `composer-send-label` / `composer-send-icon`: toggled by .shell-compact in styles.css — classes kept. */}
-          <span className="composer-send-label">SEND</span>
-          <span className="composer-send-icon" aria-hidden />
-        </button>
       </div>
       )}
     </div>

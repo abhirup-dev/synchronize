@@ -23,8 +23,6 @@ import type {
   Snapshot,
   Task,
   ThreadSummary,
-  TimelineEvent,
-  TimelineEventType,
   WebDeepLinkSurface,
   WebDeepLinkTarget,
 } from "./types.ts";
@@ -392,7 +390,6 @@ export class DaemonDataSource implements DataSource {
   private readonly _me = createSnapshot<Agent>(EMPTY_AGENT);
   private readonly _messages = new Map<string, MutableSnapshot<Message[]>>();
   private readonly _threadReplies = new Map<string, MutableSnapshot<Message[]>>();
-  private readonly _timeline = new Map<string, MutableSnapshot<TimelineEvent[]>>();
   private readonly _tasks = new Map<string, MutableSnapshot<Task[]>>();
   private readonly _artifacts = new Map<string, MutableSnapshot<Artifact[]>>();
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
@@ -468,16 +465,6 @@ export class DaemonDataSource implements DataSource {
     if (!snap) {
       snap = createSnapshot<Message[]>(this.threadReplyCache.get(parentId) ?? []);
       this._threadReplies.set(parentId, snap);
-    }
-    return snap;
-  }
-
-  timeline(roomId: string): Snapshot<TimelineEvent[]> {
-    let snap = this._timeline.get(roomId);
-    if (!snap) {
-      snap = createSnapshot<TimelineEvent[]>([]);
-      this._timeline.set(roomId, snap);
-      if (this.connected) void this.refreshRoom(roomId, { reset: true });
     }
     return snap;
   }
@@ -1263,11 +1250,8 @@ export class DaemonDataSource implements DataSource {
     const roomAgents = agentsFromState(state, this.peerId);
     this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, roomAgents)));
 
-    const peerById = new Map(state.peers.map((peer) => [peer.peer_id, peer] as const));
-    const groupById = new Map(state.groups.map((group) => [group.group_id, group] as const));
     const groupedMessages = new Map<string, Message[]>();
     const groupedReplies = new Map<string, Message[]>();
-    const timelines = new Map<string, TimelineEvent[]>();
     for (const event of state.events) {
       if (event.type === "group_message" && event.group_id !== null) {
         const roomId = groupRoomId(event.group_id);
@@ -1277,15 +1261,12 @@ export class DaemonDataSource implements DataSource {
       } else if (event.type === "dm" && event.recipient_peer_id && event.sender_peer_id) {
         const other = event.sender_peer_id === this.peerId ? event.recipient_peer_id : event.sender_peer_id;
         pushMap(groupedMessages, dmRoomId(other), this.hydrateLocalMessage(mapMessage(event, dmRoomId(other), statusForEvent(event, this.peerId))));
-      } else if (event.group_id !== null) {
-        pushMap(timelines, groupRoomId(event.group_id), mapTimelineEvent(event, groupById, peerById));
       }
     }
     this.roomCursor.set(roomId, state.cursor);
     const nextMessages = groupedMessages.get(roomId) ?? [];
     const currentMessages = this._messages.get(roomId)?.get() ?? [];
     this._messages.get(roomId)?.set(opts.append ? mergeMessages(currentMessages, nextMessages) : nextMessages);
-    this._timeline.get(roomId)?.set(opts.append ? mergeTimeline(this._timeline.get(roomId)?.get() ?? [], timelines.get(roomId) ?? []) : timelines.get(roomId) ?? []);
     if (!opts.append) {
       for (const [parentId, parentRoomId] of this.threadParentRoom) {
         if (parentRoomId !== roomId) continue;
@@ -1389,7 +1370,7 @@ export class DaemonDataSource implements DataSource {
       // here — the feed react button clears awaiting optimistically instead.
       void this.refreshActivity({});
       for (const roomId of this.pendingRooms) {
-        if (this._messages.has(roomId) || this._timeline.has(roomId)) {
+        if (this._messages.has(roomId)) {
           void this.refreshRoom(roomId, { reset: change.domains.includes("reactions") });
         }
       }
@@ -1601,38 +1582,6 @@ function roomIdForEvent(event: DaemonEvent, peerId: string): string | null {
   return dmRoomId(other);
 }
 
-function mapTimelineEvent(event: DaemonEvent, groupById: Map<number, DaemonGroup>, peerById: Map<string, DaemonPeer>): TimelineEvent {
-  const agentId = event.sender_peer_id ?? "system";
-  return {
-    id: messageId(event.event_id),
-    roomId: event.group_id === null ? "" : groupRoomId(event.group_id),
-    type: timelineType(event.type),
-    agentId,
-    label: timelineLabel(event, groupById, peerById),
-    createdAt: event.created_at,
-  };
-}
-
-function timelineType(type: string): TimelineEventType {
-  if (type === "group_created" || type === "group_joined") return "kickoff";
-  if (type === "group_left") return "alert";
-  if (type === "media_shared") return "deliver";
-  if (type === "group_member_renamed" || type === "group_member_alias_reclaimed") return "review";
-  return "request";
-}
-
-function timelineLabel(event: DaemonEvent, groupById: Map<number, DaemonGroup>, peerById: Map<string, DaemonPeer>): string {
-  const actor = event.sender_peer_id ? peerById.get(event.sender_peer_id)?.session_name ?? event.sender_peer_id : "system";
-  const group = event.group_id ? groupById.get(event.group_id)?.name : undefined;
-  if (event.type === "group_created") return `${actor} created #${group ?? event.group_id}`;
-  if (event.type === "group_joined") return `${actor} joined #${group ?? event.group_id}`;
-  if (event.type === "group_left") return `${actor} left #${group ?? event.group_id}`;
-  if (event.type === "media_shared") return `${actor} shared media`;
-  if (event.type === "group_member_renamed") return `${actor} renamed their alias`;
-  if (event.type === "group_member_alias_reclaimed") return `${actor} reclaimed an alias`;
-  return event.type;
-}
-
 function parseSseChange(raw: string): WebStateChange | null {
   const data = raw.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
   if (!data) return null;
@@ -1834,13 +1783,6 @@ function mergeMessages(prev: Message[], next: Message[]): Message[] {
   const byId = new Map(prev.map((item) => [item.id, item] as const));
   for (const item of next) byId.set(item.id, item);
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-}
-
-function mergeTimeline(prev: TimelineEvent[], next: TimelineEvent[]): TimelineEvent[] {
-  if (next.length === 0) return prev;
-  const byId = new Map(prev.map((item) => [item.id, item] as const));
-  for (const item of next) byId.set(item.id, item);
-  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 function mergeAgents(prev: Agent[], next: Agent[]): Agent[] {

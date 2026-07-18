@@ -49,3 +49,8 @@ ds-bundle/
 
 # Local secrets — NEVER commit (GCP service-account keys for ad-hoc tooling like Gemini vision)
 .secrets/
+tools/parity/out/
+
+# reg visual-regression stray output
+/reg.json
+/Users/

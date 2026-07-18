@@ -7,8 +7,7 @@ interface SheetProps {
   onClose(): void;
   /** Accessible name for the dialog. */
   ariaLabel: string;
-  /** Extra classes for the sheet surface (carries skin hooks, e.g.
-   *  `.compact-settings-sheet` for skin-glass.css). */
+  /** Extra classes for the sheet surface, including component skin hooks. */
   className?: string;
   children: ReactNode;
 }

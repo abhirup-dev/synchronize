@@ -1,9 +1,8 @@
 /* Expanding-rail control standard — geometry/motion/colour for the Rail,
-   RailSegment and RailChip primitives (see rail.tsx and
-   docs/plans/glass-skin-revamp-port.md §2.2).
+   RailSegment and RailChip primitives (see rail.tsx).
 
-   Everything is driven by the --rail-* tokens, defined per-skin in
-   tokens.css under glass so the whole standard is tuned in ONE place. This
+   Everything is driven by the --rail-* tokens, defined in tokens.css so the
+   whole standard is tuned in ONE place. This
    file references those tokens with inline fallbacks that mirror the mono
    spec values, so the primitives render correctly before the token block
    lands and stay sane under skins that do not define --rail-*. This file
@@ -24,7 +23,7 @@
   background: var(--rail-fill, color-mix(in srgb, var(--ink) 5%, transparent));
   border: var(--line);
   box-shadow: none;
-  font-family: var(--font-control);
+  font-family: var(--font-ui);
 }
 
 /* ── $SEG — a segment: collapsed icon → expanding pane. ── */
@@ -49,7 +48,7 @@
   overflow: hidden;
   white-space: nowrap;
   cursor: pointer;
-  font-family: var(--font-control);
+  font-family: var(--font-ui);
   transition:
     background 0.2s ease,
     color 0.2s ease,
@@ -90,10 +89,9 @@
   margin-left: 0;
   overflow: hidden;
   white-space: nowrap;
-  font-family: var(--font-display-button);
-  font-size: var(--font-display-button-size);
-  font-weight: var(--font-display-button-weight);
-  letter-spacing: -0.01em;
+  font-family: var(--font-ui);
+  font-size: var(--text-12);
+  font-weight: 600;
   color: var(--ink);
   transition:
     max-width var(--rail-label, 0.44s cubic-bezier(0.22, 0.61, 0.36, 1)),
@@ -113,8 +111,9 @@
   overflow: hidden;
   padding: 0;
   margin: 0;
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  font-weight: 400;
   line-height: 1.7;
   border-radius: 999px;
   background: var(--rail-badge-fill, color-mix(in srgb, var(--paper) 16%, transparent));
@@ -182,10 +181,10 @@
   opacity: 0;
   background: var(--ink);
   color: var(--paper);
-  font-family: var(--font-display-button);
-  font-size: var(--font-display-button-size);
-  font-weight: var(--font-display-button-weight);
-  letter-spacing: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
   transition: opacity 0.14s ease;
 }
@@ -213,10 +212,9 @@
   border: var(--line);
   cursor: pointer;
   white-space: nowrap;
-  font-family: var(--font-display-button);
-  font-size: var(--font-display-button-size);
-  font-weight: var(--font-display-button-weight);
-  letter-spacing: -0.01em;
+  font-family: var(--font-ui);
+  font-size: var(--text-12);
+  font-weight: 600;
   transition:
     background 0.18s ease,
     color 0.18s ease,
@@ -255,9 +253,9 @@
   border-radius: 999px;
   background: var(--rail-badge-fill, color-mix(in srgb, var(--paper) 16%, transparent));
   color: var(--ink);
-  font-family: inherit;
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: var(--text-10);
+  font-weight: 400;
   line-height: 1.7;
 }
 .rail-chip-trailing {
@@ -282,9 +280,10 @@
   z-index: 60;
   background: var(--ink);
   color: var(--paper);
-  font-family: var(--font-display-button);
-  font-size: var(--font-display-button-size);
-  font-weight: var(--font-display-button-weight);
-  letter-spacing: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-9-5);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   box-shadow: var(--overlay-shadow, 0 4px 14px color-mix(in srgb, var(--ink) 36%, transparent));
 }
+

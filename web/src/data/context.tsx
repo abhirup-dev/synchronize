@@ -26,7 +26,6 @@ export function useRooms()  { return useSnapshot(useDataSource().rooms()); }
 export function useMe()      { return useSnapshot(useDataSource().me()); }
 export function useMessages(roomId: string) { return useSnapshot(useDataSource().messages(roomId)); }
 export function useThreadReplies(parentId: string) { return useSnapshot(useDataSource().threadReplies(parentId)); }
-export function useTimeline(roomId: string) { return useSnapshot(useDataSource().timeline(roomId)); }
 export function useTasks(roomId: string)    { return useSnapshot(useDataSource().tasks(roomId)); }
 export function useArtifacts(roomId: string) { return useSnapshot(useDataSource().artifacts(roomId)); }
 export function useThreadSummary(parentMessageId: string) { return useSnapshot(useDataSource().threadSummary(parentMessageId)); }

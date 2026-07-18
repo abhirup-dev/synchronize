@@ -7,10 +7,9 @@ import { MessageRow } from "./MessageRow.tsx";
 import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
-import { TimelineRail } from "./TimelineRail.tsx";
 import { ThreadSummaryPanel } from "./ThreadSummaryPanel.tsx";
 import { roomAgents } from "../data/roomAgents.ts";
-import { useShellMode, useShellLayout } from "../shell-mode.tsx";
+import { useShellMode } from "../shell-mode.tsx";
 
 const THREAD_SUMMARY_DEFAULT_WIDTH = 340;
 const THREAD_SUMMARY_MIN_WIDTH = 240;
@@ -31,8 +30,6 @@ export function ChatView({
   isThreadOpen = false,
   threadSummaryOpen = false,
   onToggleThreadSummary,
-  onOpenCommunity,
-  showTimeline = true,
   focusMessageId,
   onFocusedMessage,
 }: {
@@ -42,8 +39,6 @@ export function ChatView({
   isThreadOpen?: boolean;
   threadSummaryOpen?: boolean;
   onToggleThreadSummary?(): void;
-  onOpenCommunity?(): void;
-  showTimeline?: boolean;
   focusMessageId?: string;
   onFocusedMessage?(): void;
 }) {
@@ -53,7 +48,6 @@ export function ChatView({
   const reactToMessage = useReactToMessage();
   const displayAgents = useMemo(() => roomAgents(agents, room), [agents, room]);
   const shellMode = useShellMode();
-  const layout = useShellLayout();
   const listRef = useAutoScrollbar<HTMLDivElement>();
   const lastSeenMessageId = useRef<string | null>(null);
   const [threadSummaryWidth, setThreadSummaryWidth] = useState(() => {
@@ -243,12 +237,10 @@ export function ChatView({
         />
       )}
       <div className="chat-col flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* Top region: chat scroll area + timeline rail, side by side. The
-            composer lives BELOW this region so the timeline ends at the top of
-            the composer rather than running the full height of the panel.
-            `.chat-region` is kept as a hook for chat-bg.css's ::before paint
-            layer and its `:has(.timeline-rail[hidden])` collapse rule. */}
-        <div className="chat-region grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_112px] [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
+        {/* Top region: the chat scroll area. The composer lives BELOW this
+            region, spanning the full chat-column width. `.chat-region` is kept
+            as a structural hook. */}
+        <div className="chat-region flex min-h-0 flex-1 flex-col [border-bottom:var(--composer-separator-line,2px_solid_var(--rule))]">
           <div className="chat-scroll-wrap relative flex min-h-0 flex-1 flex-col">
             {/* `.chat-list` keeps its overscroll-behavior + scrollbar rules in
                 styles.css (scroll-perf, not inlinable); `.virtualized-list`
@@ -287,17 +279,12 @@ export function ChatView({
             </div>
             <ScrollControls targetRef={listRef} newItemsKey={messages.at(-1)?.id ?? null} />
           </div>
-          {/* `layout.timeline` is the single source of truth (false in compact) —
-              don't rely on the .shell-compact CSS hide alone, which needs an
-              ancestor class the component can't guarantee. */}
-          {layout.timeline && showTimeline && !isThreadOpen && !(threadSummaryOpen && shellMode !== "desktop") && <TimelineRail roomId={room.id} />}
         </div>
         <Composer
           key={isThreadOpen ? "thread-open" : "thread-closed"}
           roomId={room.id}
           collapsedDefault={isThreadOpen && shellMode === "compact"}
           {...(onToggleThreadSummary ? { threadSummaryOpen, onToggleThreadSummary } : {})}
-          {...(onOpenCommunity ? { onOpenCommunity } : {})}
         />
       </div>
     </div>

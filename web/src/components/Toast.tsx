@@ -5,11 +5,10 @@ import { cn } from "../lib/cn.ts";
 
 export type ToastKind = "info" | "warn" | "error" | "success";
 
-// `.toast` keeps its class as a skin-glass backdrop hook (skin-glass.css) and so
-// the `.toast-stack .toast { transform: none; animation-fill-mode: both }` reset
-// (+ `@keyframes toast-in`) in extra.css still bind. Base visuals migrated inline.
+// `.toast` remains a stable selector hook for the animation reset and Sigil
+// surface treatment; Base UI owns behavior while the base visuals stay inline.
 const toast = cva(
-  "toast pointer-events-auto max-w-[min(560px,80vw)] px-[16px] py-[8px] bg-paper text-ink font-mono text-[length:var(--text-12-5)] [border:var(--line-sm)] rounded-pill shadow-sm cursor-pointer text-center animate-[toast-in_180ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:[box-shadow:var(--shadow)]",
+  "toast pointer-events-auto max-w-[min(560px,80vw)] px-[16px] py-[8px] bg-paper text-ink font-ui font-semibold text-[length:var(--text-12)] [border:var(--line-sm)] rounded-pill shadow-sm cursor-pointer text-center animate-[toast-in_180ms_ease] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:[box-shadow:var(--shadow)]",
   {
     variants: {
       kind: {
@@ -35,9 +34,9 @@ const DEFAULT_DURATION_MS = 3000;
 /**
  * Toast surface built on Base UI's Toast (provider + manager), wrapped behind
  * the original `useToast().show/dismiss` API so call sites stay unchanged.
- * Toast visuals are inline Tailwind; `.toast-stack` / `.toast` classes stay as
- * hooks (keyframe reset + skin-glass backdrop). Base UI adds screen-reader
- * announcements, F6 viewport focus, and hover timer pausing.
+ * Toast visuals are inline Tailwind; `.toast-stack` / `.toast` remain stable
+ * animation and skin hooks. Base UI adds screen-reader announcements, F6
+ * viewport focus, and hover timer pausing.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   return (

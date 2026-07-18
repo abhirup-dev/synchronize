@@ -11,7 +11,6 @@ import type {
   Room,
   Task,
   ThreadSummary,
-  TimelineEvent,
 } from "./types.ts";
 import { identityColorCss, type IdentityColorRef, type IdentitySlot } from "../theme/identity.ts";
 
@@ -263,17 +262,6 @@ export const THREAD_REPLIES: Record<string, Message[]> = {
     { id: "hbp-r2", roomId: "heartbeat-checks", authorId: "atlas",  createdAt: ISO(27), parentId: "hb-poll", body: "alive, ☕ in hand", mentions: [], reactions: [] },
     { id: "hbp-r3", roomId: "heartbeat-checks", authorId: "nova",   createdAt: ISO(26), parentId: "hb-poll", body: "alive — but seeing 504s on `/api/charge` staging, see main thread", mentions: [], reactions: [] },
     { id: "hbp-r4", roomId: "heartbeat-checks", authorId: "echo",   createdAt: ISO(22), parentId: "hb-poll", body: "alive ✓", mentions: [], reactions: [] },
-  ],
-};
-
-export const TIMELINE: Record<string, TimelineEvent[]> = {
-  "checkout-revamp": [
-    { id: "t1", roomId: "checkout-revamp", type: "kickoff", agentId: "you",   label: "kicked off the checkout revamp", createdAt: ISO(120) },
-    { id: "t2", roomId: "checkout-revamp", type: "claim",   agentId: "cortex", label: "claimed the schema migration", createdAt: ISO(95) },
-    { id: "t3", roomId: "checkout-revamp", type: "analyze", agentId: "atlas",  label: "analyzing the existing checkout UI", createdAt: ISO(80), messageId: "m3" },
-    { id: "t4", roomId: "checkout-revamp", type: "review",  agentId: "you",    label: "reviewed PR #4128",                createdAt: ISO(46), messageId: "m4" },
-    { id: "t5", roomId: "checkout-revamp", type: "deliver", agentId: "cortex", label: "PR #4128 merged",                  createdAt: ISO(38), messageId: "m5" },
-    { id: "t6", roomId: "checkout-revamp", type: "ship",    agentId: "vega",   label: "5% canary rolling out",            createdAt: ISO(15) },
   ],
 };
 

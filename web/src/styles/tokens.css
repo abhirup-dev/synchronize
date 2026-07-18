@@ -1,85 +1,19 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   DESIGN TOKEN CONTRACT (sync-imeu.1.22)
+   SIGIL DESIGN TOKEN CONTRACT
 
-   The single home for CSS custom properties. Two orthogonal axes:
-     • SKIN   (aesthetic) :root[data-skin="…"]   — brutal (default), glass
-     • THEME  (palette)   :root[data-theme="…"]  — light, rose-pine-dawn, kanagawa-wave
-
-   Components reference ROLE tokens (never raw hex). Imported BEFORE styles.css so
-   the contract is defined before any component rule consumes it. Keep token
-   DEFINITIONS here; application rules live in styles.css and skin-glass.css.
+   The single home for semantic visual values. Sigil owns one component grammar
+   (`data-skin="sigil"`) and one matched palette pair (`sigil-light` / `sigil-dark`).
+   Components consume role tokens rather than palette literals; selector-level
+   composition lives in the Sigil sections of styles.css / extra.css / activity.css / rail.css.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* shadcn-compatible primitives — the authoritative palette source (inverted
-     ownership). A tweakcn export of these names drives the UI directly; the
-     synchronize role tokens below reference them. The role→primitive mapping lives
-     here ONCE; every theme/skin block (rose-pine-dawn, kanagawa-wave, glass,
-     glass+kanagawa) overrides the PRIMITIVES, not the role tokens, so all themes
-     are tweakcn-drivable. Collisions: shadcn's --accent (hover surface) and --muted
-     (subtle bg) are intentionally NOT introduced — synchronize already owns those
-     names — so the brand accent maps to --primary instead. */
-  --background: #F4EFE3;
-  --card: #ECE6D2;
-  --popover: #E0D9C0;
-  --secondary: #ECE6D2;
-  --foreground: #111111;
-  --muted-foreground: #4A4636;
-  --primary: #FFD23F;
-  --primary-foreground: #111111;
-  --secondary-foreground: #111111;
-  --destructive: #F45B69;
-  --border: #111111;
-  --input: #111111;
-  --ring: #FF5DA2;
-  --radius: 5px;
 
-  /* Light theme (default) — role names reference the shadcn primitives above. */
-  --paper: var(--background);
-  --paper-2: var(--card);
-  --paper-3: var(--popover);
-  --ink: var(--foreground);
-  --ink-soft: var(--muted-foreground);
-  --ink-faint: #8A8268;
-  /* `--rule` is the color used for borders and offset shadows. In light mode
-     it's the same as --ink (full brutalist contrast, now via --border). In dark
-     mode it gets softened so the heavy black outlines/shadows don't fight the
-     text — see the Kanagawa block below. */
-  --rule: var(--border);
-  --line: 3px solid var(--rule);
-  --line-2: 2px solid var(--rule);
-  --shadow: 4px 4px 0 var(--rule);
-  --shadow-sm: 2px 2px 0 var(--rule);
-  --shadow-lg: 6px 6px 0 var(--rule);
-  --shadow-hover: 3px 3px 0 var(--rule);
-  --font-display: "Archivo Black", sans-serif;
-  --font-display-size-scale: 1.1;
-  --font-display-weight: 400;
-  --font-display-heading: var(--font-display);
-  --font-display-medium: var(--font-display);
-  --font-display-small: var(--font-display);
-  --font-display-button: var(--font-heading);
-  --font-display-heading-size: calc(var(--text-14) * var(--font-display-size-scale, 1));
-  --font-display-medium-ratio: 0.65;
-  --font-display-medium-size: calc(var(--font-display-heading-size) * var(--font-display-medium-ratio));
-  --font-display-small-ratio: 0.5;
-  --font-display-small-size: calc(var(--font-display-heading-size) * var(--font-display-small-ratio));
-  --font-display-button-ratio: 0.75;
-  --font-display-button-size: calc(var(--font-display-heading-size) * var(--font-display-button-ratio));
-  --font-display-heading-weight: var(--font-display-weight, 700);
-  --font-display-medium-weight: var(--font-display-weight, 700);
-  --font-display-small-weight: var(--font-display-weight, 700);
-  /* Controls stay quiet even when the selected display face is tuned bold. */
-  --font-display-button-weight: 400;
-  --font-heading: var(--font-ui);
-  --font-ui: "Space Grotesk", "Helvetica Neue", sans-serif;
-  --font-control: var(--font-display-button);
-  /* Avatar initials are an independent role: glass may change Display without
-     pulling identity glyphs away from the frozen Archivo Black configuration. */
-  --font-avatar: "Archivo Black", sans-serif;
-  --font-avatar-size-scale: 1.35;
-  --font-avatar-weight: 400;
-  --font-mono: "JetBrains Mono", monospace;
+  /* Shared scales and component roles used by both Sigil palettes.
+     Typography is FIXED to the Sigil reference (sigil/design.md §3): two
+     families only — Instrument Sans for prose/UI, JetBrains Mono for anything
+     a machine produced or that is metadata. Sizes come from the --text-N px
+     ladder below; there is no configurable display-font machinery. */
   --text-8: 8px;
   --text-8-5: 8.5px;
   --text-9: 9px;
@@ -93,7 +27,9 @@
   --text-13: 13px;
   --text-13-5: 13.5px;
   --text-14: 14px;
+  --text-14-5: 14.5px;
   --text-15: 15px;
+  --text-15-5: 15.5px;
   --text-16: 16px;
   --text-17: 17px;
   --text-18: 18px;
@@ -104,7 +40,6 @@
   --text-28: 28px;
   --text-scale-kbd: 0.85em;
   --text-scale-code-inline: 0.88em;
-  --text-scale-mention-inline: 0.92em;
   --tracking-pixel-tight: -1px;
   --tracking-pixel: 1px;
   --tracking-tight: -0.01em;
@@ -115,44 +50,12 @@
   --tracking-lg: 0.08em;
   --radius-none: 0;
   --radius-hair: 1px;
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 5px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
-  --radius-2xl: 10px;
   --radius-pill: 999px;
-  --radius-panel-top: 6px 6px 0 0;
-  --radius-panel-bottom: 0 0 6px 6px;
-  --line-bold: 3px solid var(--rule);
-  --line-md: 2.5px solid var(--rule);
-  --line-sm: 2px solid var(--rule);
-  --line-xs: 1.5px solid var(--rule);
-  --line-xxs: 1.25px solid var(--rule);
-  --line-hair: 1px solid var(--rule);
-  --line-xs-ink: 1.5px solid var(--ink);
-  --line-xs-faint: 1.5px solid var(--ink-faint);
-  --line-hair-faint: 1px solid var(--ink-faint);
   --line-none: none;
   --line-transparent: 2px solid transparent;
   --line-md-transparent: 2.5px solid transparent;
-  --line-dashed-md: 2.5px dashed var(--ink);
-  --line-dashed-sm: 2px dashed var(--ink);
-  --line-dashed-xs: 1.5px dashed var(--ink);
-  --line-dashed-faint: 1.5px dashed var(--ink-faint);
-  --line-rule-dashed-sm: 2px dashed var(--rule);
-  --line-rule-dashed-xs: 1.5px dashed var(--rule);
   --shadow-none: none;
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-chip: 1.5px 1.5px 0 var(--rule);
-  --shadow-md: 4px 4px 0 var(--rule);
-  --shadow-hover-sm: 2.5px 2.5px 0 var(--rule);
-  --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2.5px 2.5px 0 var(--pink), 3.5px 3.5px 0 var(--rule);
   --shadow-accent-inset: inset 0 -2px 0 var(--accent);
-  --shadow-tab-active: inset 0 -4px 0 var(--yellow);
-  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
   --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
   --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
   --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
@@ -189,8 +92,8 @@
   --space-thread-bubble-pad: 10px 12px;
   --space-thread-bubble-pad-compact: 12px 14px;
   --leading-message-paragraph: 1.5;
-  --rich-heading-h1-size: var(--text-16);
-  --rich-heading-h2-size: var(--text-14);
+  --rich-heading-h1-size: var(--text-14);
+  --rich-heading-h2-size: var(--text-13-5);
   --rich-heading-h3-size: var(--text-12-5);
   --rich-heading-h3-fg: var(--ink-soft);
   --rich-strong-weight: var(--strong-weight);
@@ -217,130 +120,46 @@
   --z-mention-overlay: 1500;
   --z-toast: 1800;
   --z-modal: 2200;
-  --yellow: #FFD23F;
-  --pink: #FF5DA2;
-  --blue: #4D7CFE;
-  --lime: #7BE389;
-  --tangerine: #FF8A3D;
-  --lilac: #B49BFF;
-  --teal: #2EC4B6;
-  --red: var(--destructive);
-  --muted: #BFB9A8;
-  --accent: var(--primary);
-  --status-online: #7BE389;
-  --status-busy: #FF5DA2;
-  --status-idle: #FFD23F;
-  --status-offline: var(--muted);
-  --identity-0-bg: #FFD23F;
-  --identity-0-fg: #111111;
   --identity-0-border: var(--rule);
-  --identity-0-text: color-mix(in srgb, #FFD23F 70%, var(--ink) 30%);
-  --identity-1-bg: #FF5DA2;
-  --identity-1-fg: #111111;
+  --identity-0-text: var(--identity-0-fg);
   --identity-1-border: var(--rule);
-  --identity-1-text: color-mix(in srgb, #FF5DA2 70%, var(--ink) 30%);
-  --identity-2-bg: #4D7CFE;
-  --identity-2-fg: #FFFFFF;
+  --identity-1-text: var(--identity-1-fg);
   --identity-2-border: var(--rule);
-  --identity-2-text: color-mix(in srgb, #4D7CFE 70%, var(--ink) 30%);
-  --identity-3-bg: #7BE389;
-  --identity-3-fg: #111111;
+  --identity-2-text: var(--identity-2-fg);
   --identity-3-border: var(--rule);
-  --identity-3-text: color-mix(in srgb, #7BE389 70%, var(--ink) 30%);
-  --identity-4-bg: #FF8A3D;
-  --identity-4-fg: #111111;
+  --identity-3-text: var(--identity-3-fg);
   --identity-4-border: var(--rule);
-  --identity-4-text: color-mix(in srgb, #FF8A3D 70%, var(--ink) 30%);
-  --identity-5-bg: #B49BFF;
-  --identity-5-fg: #111111;
+  --identity-4-text: var(--identity-4-fg);
   --identity-5-border: var(--rule);
-  --identity-5-text: color-mix(in srgb, #B49BFF 70%, var(--ink) 30%);
-  --identity-6-bg: #F45B69;
-  --identity-6-fg: #111111;
+  --identity-5-text: var(--identity-5-fg);
   --identity-6-border: var(--rule);
-  --identity-6-text: color-mix(in srgb, #F45B69 70%, var(--ink) 30%);
-  --identity-7-bg: #2EC4B6;
-  --identity-7-fg: #111111;
+  --identity-6-text: var(--identity-6-fg);
   --identity-7-border: var(--rule);
-  --identity-7-text: color-mix(in srgb, #2EC4B6 70%, var(--ink) 30%);
-  --identity-8-bg: #1F7A3A;
-  --identity-8-fg: #FFFFFF;
+  --identity-7-text: var(--identity-7-fg);
   --identity-8-border: var(--rule);
-  --identity-8-text: color-mix(in srgb, #1F7A3A 74%, var(--ink) 26%);
-  --identity-9-bg: #1E2A78;
-  --identity-9-fg: #FFFFFF;
+  --identity-8-text: var(--identity-8-fg);
   --identity-9-border: var(--rule);
-  --identity-9-text: color-mix(in srgb, #1E2A78 74%, var(--ink) 26%);
-  --identity-10-bg: #A14A1A;
-  --identity-10-fg: #FFFFFF;
+  --identity-9-text: var(--identity-9-fg);
   --identity-10-border: var(--rule);
-  --identity-10-text: color-mix(in srgb, #A14A1A 74%, var(--ink) 26%);
-  --identity-11-bg: #555E6E;
-  --identity-11-fg: #FFFFFF;
+  --identity-10-text: var(--identity-10-fg);
   --identity-11-border: var(--rule);
-  --identity-11-text: color-mix(in srgb, #555E6E 74%, var(--ink) 26%);
-  --identity-12-bg: #C9A227;
-  --identity-12-fg: #111111;
+  --identity-11-text: var(--identity-11-fg);
   --identity-12-border: var(--rule);
-  --identity-12-text: color-mix(in srgb, #C9A227 72%, var(--ink) 28%);
-  --identity-13-bg: #B85FA8;
-  --identity-13-fg: #111111;
+  --identity-12-text: var(--identity-12-fg);
   --identity-13-border: var(--rule);
-  --identity-13-text: color-mix(in srgb, #B85FA8 72%, var(--ink) 28%);
-  --identity-14-bg: #3B8EA5;
-  --identity-14-fg: #111111;
+  --identity-13-text: var(--identity-13-fg);
   --identity-14-border: var(--rule);
-  --identity-14-text: color-mix(in srgb, #3B8EA5 72%, var(--ink) 28%);
-  --identity-15-bg: #8B6F47;
-  --identity-15-fg: #FFFFFF;
+  --identity-14-text: var(--identity-14-fg);
   --identity-15-border: var(--rule);
-  --identity-15-text: color-mix(in srgb, #8B6F47 74%, var(--ink) 26%);
-  --grain-alpha: 0.04;
-  --grain-dot: rgba(0, 0, 0, var(--grain-alpha));
-  --placeholder-stripe: rgba(0, 0, 0, 0.03);
-  --on-ink: var(--paper);
-  --on-accent: var(--primary-foreground);
-  --surface-selected-bg: color-mix(in srgb, var(--paper-3) 82%, var(--ink) 10%);
-  --surface-selected-fg: var(--ink);
-  --surface-selected-muted: color-mix(in srgb, var(--ink-soft) 76%, var(--ink) 24%);
-  --surface-selected-border: var(--ink);
-  --count-chip-bg: var(--surface-selected-bg);
-  --count-chip-fg: var(--surface-selected-fg);
-  --count-chip-border: var(--surface-selected-border);
-  /* Light/brutal: self bubble + code blocks ride a darker-cream surface (paper-3)
-     with ink text rather than stark black — keeps the palette warm and matches
-     the roster focused-card treatment. Kanagawa overrides these below. The
-     light code-syntax palette lives in styles/code-light.css (after github-dark). */
-  --you-bg: var(--paper-3);
-  --you-fg: var(--ink);
-  --bubble: #ECE6D2;
-  --code-bg: var(--paper-3);
-  --code-fg: var(--ink);
-  --code-inline-bg: var(--paper-3);
-  --code-inline-fg: var(--ink);
-  --code-inline-border: var(--line-none);
+  --identity-15-text: var(--identity-15-fg);
   --strong-fg: var(--ink);
   --strong-weight: 700;
 }
 
-/* Kanagawa dark theme — off-white ink, muted surfaces, and dark offset shadows.
-   Research notes (Atlassian elevation, Material 3 tonal elevation, Muz.li dark-mode
-   guide, accessibilitychecker.org on halation):
-     - Dark mode communicates elevation via SURFACE LIGHTNESS, not via hard offset
-       shadows. A cream shadow on a dark surface reads as a glowing block, not depth.
-     - Heavy ink-color borders (3 px+) in dark mode produce a "billboard" effect:
-       they out-shout the text. Halve border weights, soften their color to ~45%
-       of the text ink — they still delineate but stop competing.
-     - Body text bumped from 400 → 500 weight; thin strokes "halate" (appear to
-       glow/blur) on dark backgrounds, especially for users with astigmatism. A
-       slightly heavier weight closes the perceptual gap without changing the
-       typeface character. */
-/* === Brutal skin token contract ============================================
-   :root is the no-skin fallback used before React applies data attributes.
-   Keep Brutal theme values scoped to the Brutal axis so Glass can tune the same
-   palette independently instead of inheriting Brutal values and patching them. */
-:root,
-:root[data-skin="brutal"] {
+/* === Shared Sigil component roles ==========================================
+   These semantic aliases are palette-independent. Sigil light supplies the
+   default palette below; Sigil dark overrides only the color values that differ. */
+:root {
   /* surfaces & foreground */
   --surface: var(--paper);
   --surface-raised: var(--paper-2);
@@ -434,521 +253,8 @@
   --archived-room-icon-fg: color-mix(in srgb, var(--archived-room-fg) 82%, var(--ink) 18%);
   --archived-room-icon-border: color-mix(in srgb, var(--archived-room-border) 80%, var(--ink) 20%);
   --archived-room-name-fg: color-mix(in srgb, var(--archived-room-fg) 88%, var(--ink) 12%);
-  --archived-room-preview-fg: color-mix(in srgb, var(--archived-room-fg) 76%, var(--paper) 24%);
-}
 
-
-:root[data-theme="rose-pine-dawn"]:not([data-skin]),
-:root[data-skin="brutal"][data-theme="rose-pine-dawn"] {
-  --background: #FAF4ED;
-  --card: #FFF8F0;
-  --popover: #F2E9DE;
-  --foreground: #575279;
-  --muted-foreground: #797593;
-  --ink-faint: #9893A5;
-  --border: #575279;
-  --yellow: #EA9D34;
-  --pink: #D7827E;
-  --blue: #286983;
-  --lime: #56949F;
-  --tangerine: #D7827E;
-  --lilac: #907AA9;
-  --teal: #56949F;
-  --destructive: #B4637A;
-  --muted: #DFD8D1;
-  --primary: var(--yellow);
-  --status-online: var(--lime);
-  --status-busy: var(--pink);
-  --status-idle: var(--yellow);
-  --status-offline: var(--muted);
-  --identity-0-bg: #EA9D34;
-  --identity-0-fg: #575279;
-  --identity-0-border: #B4637A;
-  --identity-0-text: #A66B20;
-  --identity-1-bg: #D7827E;
-  --identity-1-fg: #FAF4ED;
-  --identity-1-border: #B4637A;
-  --identity-1-text: #B4637A;
-  --identity-2-bg: #286983;
-  --identity-2-fg: #FAF4ED;
-  --identity-2-border: #56949F;
-  --identity-2-text: #286983;
-  --identity-3-bg: #56949F;
-  --identity-3-fg: #FAF4ED;
-  --identity-3-border: #286983;
-  --identity-3-text: #3D7F8A;
-  --identity-4-bg: #D7827E;
-  --identity-4-fg: #FAF4ED;
-  --identity-4-border: #B4637A;
-  --identity-4-text: #B4637A;
-  --identity-5-bg: #907AA9;
-  --identity-5-fg: #FAF4ED;
-  --identity-5-border: #797593;
-  --identity-5-text: #745C8D;
-  --identity-6-bg: #B4637A;
-  --identity-6-fg: #FAF4ED;
-  --identity-6-border: #D7827E;
-  --identity-6-text: #B4637A;
-  --identity-7-bg: #56949F;
-  --identity-7-fg: #FAF4ED;
-  --identity-7-border: #286983;
-  --identity-7-text: #3D7F8A;
-  --identity-8-bg: #6E8B62;
-  --identity-8-fg: #FAF4ED;
-  --identity-8-border: #56949F;
-  --identity-8-text: #58764E;
-  --identity-9-bg: #575279;
-  --identity-9-fg: #FAF4ED;
-  --identity-9-border: #797593;
-  --identity-9-text: #575279;
-  --identity-10-bg: #A66B20;
-  --identity-10-fg: #FAF4ED;
-  --identity-10-border: #EA9D34;
-  --identity-10-text: #8A5A1F;
-  --identity-11-bg: #797593;
-  --identity-11-fg: #FAF4ED;
-  --identity-11-border: #9893A5;
-  --identity-11-text: #67627F;
-  --identity-12-bg: #DCA561;
-  --identity-12-fg: #575279;
-  --identity-12-border: #EA9D34;
-  --identity-12-text: #A66B20;
-  --identity-13-bg: #C4A7E7;
-  --identity-13-fg: #575279;
-  --identity-13-border: #907AA9;
-  --identity-13-text: #745C8D;
-  --identity-14-bg: #9CCFD8;
-  --identity-14-fg: #575279;
-  --identity-14-border: #56949F;
-  --identity-14-text: #286983;
-  --identity-15-bg: #B89A78;
-  --identity-15-fg: #575279;
-  --identity-15-border: #A66B20;
-  --identity-15-text: #8A5A1F;
-  --grain-alpha: 0.03;
-  --on-ink: #FAF4ED;
-  --primary-foreground: #575279;
-  --you-bg: #575279;
-  --you-fg: #FAF4ED;
-  --bubble: #FFF8F0;
-  --code-bg: #F2E9DE;
-  --code-fg: #575279;
-}
-
-:root[data-theme="kanagawa-wave"]:not([data-skin]),
-:root[data-skin="brutal"][data-theme="kanagawa-wave"] {
-  --background: #16161D;
-  --card: #1F1F28;
-  --popover: #2A2A37;
-  --foreground: #D4CEB0;
-  --muted-foreground: #B6AD86;
-  --ink-faint: #727169;
-  --on-ink: #16161D;
-  --border: rgba(212, 206, 176, 0.36);
-  --surface-selected-bg: var(--paper-3);
-  --surface-selected-fg: var(--ink);
-  --surface-selected-muted: var(--ink-soft);
-  --surface-selected-border: var(--rule);
-  --count-chip-bg: var(--ink);
-  --count-chip-fg: var(--paper);
-  --count-chip-border: var(--ink);
-  --line: 1.5px solid var(--rule);
-  --line-2: 1px solid var(--rule);
-  --line-bold: 2px solid var(--rule);
-  --line-md: 1.5px solid var(--rule);
-  --line-sm: 1px solid var(--rule);
-  --line-xs: 1px solid rgba(212, 206, 176, 0.28);
-  --line-xxs: 1px solid rgba(212, 206, 176, 0.22);
-  --line-hair: 1px solid rgba(212, 206, 176, 0.18);
-  --line-xs-ink: 1px solid rgba(212, 206, 176, 0.5);
-  --line-xs-faint: 1px solid rgba(114, 113, 105, 0.6);
-  --line-hair-faint: 1px solid rgba(114, 113, 105, 0.42);
-  --line-transparent: 1px solid transparent;
-  --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed rgba(212, 206, 176, 0.44);
-  --line-dashed-sm: 1px dashed rgba(212, 206, 176, 0.36);
-  --line-dashed-xs: 1px dashed rgba(212, 206, 176, 0.3);
-  --line-dashed-faint: 1px dashed rgba(114, 113, 105, 0.52);
-  --line-rule-dashed-sm: 1px dashed var(--rule);
-  --line-rule-dashed-xs: 1px dashed var(--rule);
-  --shadow: 2px 2px 0 var(--rule);
-  --shadow-sm: 1px 1px 0 var(--rule);
-  --shadow-lg: 3px 3px 0 var(--rule);
-  --shadow-hover: 2px 2px 0 var(--rule);
-  --shadow-md: 3px 3px 0 var(--rule);
-  --shadow-hover-sm: 1.5px 1.5px 0 var(--rule);
-  --shadow-chip: 1px 1px 0 var(--rule);
-  --shadow-xs: 1px 1px 0 var(--rule);
-  --shadow-xxs: 0.75px 0.75px 0 var(--rule);
-  --shadow-accent-pink: 2px 2px 0 var(--pink);
-  --shadow-accent-pink-strong: 2px 2px 0 var(--pink), 3px 3px 0 var(--rule);
-  --shadow-focus-pink: var(--shadow-sm), 0 0 0 2px var(--pink);
-  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
-  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px var(--pink), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 6px var(--pink), var(--shadow-sm);
-  --yellow: #D4B16F;
-  --pink: #C06F8A;
-  --blue: #718BC4;
-  --lime: #849F63;
-  --tangerine: #D98B5F;
-  --lilac: #8570A4;
-  --teal: #5E857B;
-  --destructive: #CF5F6C;
-  --muted: #363646;
-  --primary: var(--yellow);
-  --status-online: var(--lime);
-  --status-busy: var(--pink);
-  --status-idle: var(--yellow);
-  --status-offline: var(--muted);
-  --identity-0-bg: #D4B16F;
-  --identity-0-fg: #16161D;
-  --identity-0-border: #A89562;
-  --identity-0-text: #C8A96A;
-  --identity-1-bg: #C06F8A;
-  --identity-1-fg: #16161D;
-  --identity-1-border: #D1A0B3;
-  --identity-1-text: #C7839A;
-  --identity-2-bg: #718BC4;
-  --identity-2-fg: #16161D;
-  --identity-2-border: #8EA4D2;
-  --identity-2-text: #8298C8;
-  --identity-3-bg: #849F63;
-  --identity-3-fg: #16161D;
-  --identity-3-border: #A3B887;
-  --identity-3-text: #93AA72;
-  --identity-4-bg: #D98B5F;
-  --identity-4-fg: #16161D;
-  --identity-4-border: #E3A782;
-  --identity-4-text: #D2946C;
-  --identity-5-bg: #8570A4;
-  --identity-5-fg: #16161D;
-  --identity-5-border: #A090BB;
-  --identity-5-text: #9582B0;
-  --identity-6-bg: #CF5F6C;
-  --identity-6-fg: #16161D;
-  --identity-6-border: #D98A92;
-  --identity-6-text: #D0737E;
-  --identity-7-bg: #5E857B;
-  --identity-7-fg: #16161D;
-  --identity-7-border: #83A69C;
-  --identity-7-text: #77A196;
-  --identity-8-bg: #6F8A54;
-  --identity-8-fg: #16161D;
-  --identity-8-border: #93AA72;
-  --identity-8-text: #849F63;
-  --identity-9-bg: #65739E;
-  --identity-9-fg: #16161D;
-  --identity-9-border: #8298C8;
-  --identity-9-text: #8298C8;
-  --identity-10-bg: #B37A56;
-  --identity-10-fg: #16161D;
-  --identity-10-border: #D2946C;
-  --identity-10-text: #D98B5F;
-  --identity-11-bg: #777783;
-  --identity-11-fg: #16161D;
-  --identity-11-border: #8F8D9A;
-  --identity-11-text: #A7A59B;
-  --identity-12-bg: #A89562;
-  --identity-12-fg: #16161D;
-  --identity-12-border: #D4B16F;
-  --identity-12-text: #D4B16F;
-  --identity-13-bg: #B47EAA;
-  --identity-13-fg: #16161D;
-  --identity-13-border: #C69BC0;
-  --identity-13-text: #C69BC0;
-  --identity-14-bg: #6F9EA5;
-  --identity-14-fg: #16161D;
-  --identity-14-border: #8CB9BF;
-  --identity-14-text: #8CB9BF;
-  --identity-15-bg: #9A7C5A;
-  --identity-15-fg: #16161D;
-  --identity-15-border: #B99A72;
-  --identity-15-text: #B99A72;
-  --grain-alpha: 0.045;
-  --grain-dot: rgba(255, 255, 255, 0.025);
-  --placeholder-stripe: rgba(255, 255, 255, 0.025);
-  --primary-foreground: #16161D;
-  --you-bg: #3A3A46;
-  --you-fg: #D4CEB0;
-  --bubble: #2A2A37;
-  --card-border-color: #4F4F5F;
-  --card-shadow-color: #05060C;
-  --card-border: 1.5px solid var(--card-border-color);
-  --card-shadow: 2px 2px 0 var(--card-shadow-color);
-  --card-shadow-hover: 3px 3px 0 var(--card-shadow-color);
-  --card-shadow-raised: 4px 4px 0 var(--card-shadow-color);
-  --bubble-border: var(--card-border);
-  --bubble-border-color: var(--card-border-color);
-  --bubble-shadow-offset: 4px;
-  --bubble-shadow: var(--bubble-shadow-offset) var(--bubble-shadow-offset) 0 var(--card-shadow-color);
-  --identity-icon-shadow: 0 0 0 1px rgba(17, 17, 17, 0.58), var(--shadow-chip);
-  --activity-identity-icon-shadow:
-    1px 1px 0 rgba(5, 6, 12, 0.72),
-    3px 3px 0 color-mix(in srgb, var(--ink) 30%, transparent);
-  --activity-identity-badge-shadow:
-    1px 1px 0 rgba(5, 6, 12, 0.72),
-    2.5px 2.5px 0 color-mix(in srgb, var(--ink) 28%, transparent);
-  --control-border-color: #5E5D66;
-  --control-shadow-color: var(--card-shadow-color);
-  --control-shadow: 2px 2px 0 var(--control-shadow-color);
-  --control-shadow-hover: 3px 3px 0 var(--control-shadow-color);
-  --overlay-border-color: var(--rule);
-  --overlay-shadow-color: var(--card-shadow-color);
-  --overlay-shadow: 4px 4px 0 var(--overlay-shadow-color);
-  --activity-row-bg: var(--paper-3);
-  --activity-row-border: var(--card-border-color);
-  --activity-row-shadow: var(--card-shadow);
-  --activity-control-bg: var(--paper-3);
-  --activity-control-bg-raised: #343440;
-  --activity-control-fg: #A7A59B;
-  --activity-control-muted: #7C7B82;
-  --activity-control-border: var(--control-border-color);
-  --activity-control-shadow: var(--control-shadow-color);
-  --activity-control-active-bg: var(--paper-3);
-  --activity-control-active-fg: #F4EFD7;
-  --activity-control-selected-fg: #F4EFD7;
-  --activity-control-badge-bg: #5E5D66;
-  --activity-control-badge-fg: #F4EFD7;
-  --activity-control-height: 32px;
-  --status-dot-border: var(--activity-control-border);
-  --composer-bg: var(--paper-3);
-  --composer-border: var(--card-border-color);
-  --composer-shadow: var(--card-shadow-raised);
-  --composer-control-bg: var(--paper-2);
-  --composer-control-fg: var(--ink);
-  --composer-control-border: var(--control-border-color);
-  --composer-control-muted: #8F8D9A;
-  --composer-control-shadow: var(--control-shadow);
-  --composer-control-shadow-hover: var(--control-shadow-hover);
-  --composer-send-bg: var(--paper-3);
-  --composer-send-fg: #D4CEB0;
-  --composer-send-border: #A89562;
-  --composer-send-shadow: var(--composer-control-shadow);
-  --composer-separator-line: 2px solid var(--composer-control-border);
-  --code-bg: #1B1B24;
-  --code-fg: #E4DCBE;
-  --code-inline-bg: #383847;
-  --code-inline-fg: #E8E0C2;
-  --code-inline-border: 1px solid rgba(212, 206, 176, 0.28);
-  --strong-fg: #E8E0C2;
-  --strong-weight: 800;
-  --rich-strong-weight: 700;
-}
-
-/* === Glass skin token contract =============================================
-   Glass shares the component token names, not the values. Selector behavior
-   such as backdrop-filter and glass-only component tuning lives in
-   ../skin-glass.css. */
-:root[data-skin="glass"] {
-  /* Glass skin = the mono revamp (X 2025 unified minimal): flat neutral
-     surfaces, hairline rules, one accent (#1d9bf0). Light values here; the
-     kanagawa-wave block below carries the dark overrides. */
-  --background: #ffffffee;
-  --card: #ffffff;
-  --popover: #f4f6f8;
-  --bubble: #f2f5f7;
-  --foreground: #0f1419;
-  --muted-foreground: #475662;
-  --ink-faint: #7c8893;
-  --border: #0f14191f;
-  --muted: #0f141926;
-  --on-ink: #ffffff;
-  --primary-foreground: #ffffff;
-  --you-bg: #1d9bf0;
-  --you-fg: #ffffff;
-  --grain-alpha: 0;
-  --grain-dot: rgba(0, 0, 0, 0);
-  --placeholder-stripe: rgba(15, 20, 25, 0.06);
-
-  /* hue tokens collapse to the single accent; --lime and --red stay semantic */
-  --yellow: #1d9bf0;
-  --pink: #1d9bf0;
-  --blue: #1d9bf0;
-  --lime: #00ba7c;
-  --tangerine: #1d9bf0;
-  --lilac: #1d9bf0;
-  --teal: #1d9bf0;
-  --destructive: #f4212e;
-  --primary: var(--yellow);
-  --status-online: var(--lime);
-  --status-busy: var(--pink);
-  --status-idle: var(--yellow);
-  --status-offline: var(--muted);
-  --identity-0-bg: #EA9D34;
-  --identity-0-fg: #575279;
-  --identity-0-border: #B4637A;
-  --identity-0-text: #A66B20;
-  --identity-1-bg: #D7827E;
-  --identity-1-fg: #FAF4ED;
-  --identity-1-border: #B4637A;
-  --identity-1-text: #B4637A;
-  --identity-2-bg: #286983;
-  --identity-2-fg: #FAF4ED;
-  --identity-2-border: #56949F;
-  --identity-2-text: #286983;
-  --identity-3-bg: #56949F;
-  --identity-3-fg: #FAF4ED;
-  --identity-3-border: #286983;
-  --identity-3-text: #3D7F8A;
-  --identity-4-bg: #D7827E;
-  --identity-4-fg: #FAF4ED;
-  --identity-4-border: #B4637A;
-  --identity-4-text: #B4637A;
-  --identity-5-bg: #907AA9;
-  --identity-5-fg: #FAF4ED;
-  --identity-5-border: #797593;
-  --identity-5-text: #745C8D;
-  --identity-6-bg: #B4637A;
-  --identity-6-fg: #FAF4ED;
-  --identity-6-border: #D7827E;
-  --identity-6-text: #B4637A;
-  --identity-7-bg: #56949F;
-  --identity-7-fg: #FAF4ED;
-  --identity-7-border: #286983;
-  --identity-7-text: #3D7F8A;
-  --identity-8-bg: #6E8B62;
-  --identity-8-fg: #FAF4ED;
-  --identity-8-border: #56949F;
-  --identity-8-text: #58764E;
-  --identity-9-bg: #575279;
-  --identity-9-fg: #FAF4ED;
-  --identity-9-border: #797593;
-  --identity-9-text: #575279;
-  --identity-10-bg: #A66B20;
-  --identity-10-fg: #FAF4ED;
-  --identity-10-border: #EA9D34;
-  --identity-10-text: #8A5A1F;
-  --identity-11-bg: #797593;
-  --identity-11-fg: #FAF4ED;
-  --identity-11-border: #9893A5;
-  --identity-11-text: #67627F;
-  --identity-12-bg: #DCA561;
-  --identity-12-fg: #575279;
-  --identity-12-border: #EA9D34;
-  --identity-12-text: #A66B20;
-  --identity-13-bg: #C4A7E7;
-  --identity-13-fg: #575279;
-  --identity-13-border: #907AA9;
-  --identity-13-text: #745C8D;
-  --identity-14-bg: #9CCFD8;
-  --identity-14-fg: #575279;
-  --identity-14-border: #56949F;
-  --identity-14-text: #286983;
-  --identity-15-bg: #B89A78;
-  --identity-15-fg: #575279;
-  --identity-15-border: #A66B20;
-  --identity-15-text: #8A5A1F;
-  --surface-selected-bg: color-mix(in srgb, var(--ink) 6%, var(--paper));
-  --surface-selected-fg: var(--ink);
-  --surface-selected-muted: var(--ink-soft);
-  --surface-selected-border: var(--rule);
-  --count-chip-bg: var(--ink);
-  --count-chip-fg: var(--paper);
-  --count-chip-border: var(--ink);
-
-  --line: 1px solid var(--rule);
-  --line-2: 1px solid var(--rule);
-  --line-bold: 1px solid #0f141930;
-  --line-md: 1px solid var(--rule);
-  --line-sm: 1px solid var(--rule);
-  --line-xs: 1px solid var(--rule);
-  --line-xxs: 1px solid var(--rule);
-  --line-hair: 1px solid var(--rule);
-  --line-xs-ink: 1px solid #0f141938;
-  --line-xs-faint: 1px solid #0f141912;
-  --line-hair-faint: 1px solid #0f14190a;
-  --line-transparent: 1px solid transparent;
-  --line-md-transparent: 1px solid transparent;
-  --line-dashed-md: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
-  --line-dashed-sm: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
-  --line-dashed-xs: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
-  --line-dashed-faint: 1px dashed color-mix(in srgb, var(--ink) 12%, transparent);
-  --line-rule-dashed-sm: 1px dashed var(--rule);
-  --line-rule-dashed-xs: 1px dashed var(--rule);
-
-  --glass-sheen: none;
-  --shadow-none: none;
-  --shadow-xxs: 0 1px 2px #0f14190f;
-  --shadow-xs: 0 1px 2px #0f141914;
-  --shadow-chip: 0 1px 2px #0f141914;
-  --shadow-sm: 0 1px 3px #0f141917;
-  --shadow: 0 2px 8px #0f14191a;
-  --shadow-md: 0 2px 8px #0f14191a;
-  --shadow-lg: 0 8px 24px #0f141921;
-  --shadow-hover: 0 2px 8px #0f14191f;
-  --shadow-hover-sm: 0 1px 4px #0f141917;
-  --shadow-accent-pink: 0 2px 10px #1d9bf040;
-  --shadow-accent-pink-strong: 0 4px 14px #1d9bf059;
-  --shadow-accent-inset: inset 0 -2px 0 var(--accent);
-  --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px #1d9bf040;
-  --shadow-presence-in: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 60%, transparent);
-  --shadow-presence-out: var(--shadow-sm), 0 0 0 0 color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-presence-peak: var(--shadow-hover), 0 0 0 7px color-mix(in srgb, var(--lime) 0%, transparent);
-  --shadow-busy-pulse-start: 0 0 0 4px rgba(215, 130, 126, 0.45), var(--shadow-sm);
-  --shadow-busy-pulse-peak: 0 0 0 7px rgba(215, 130, 126, 0.25), var(--shadow-sm);
-
-  --radius-hair: 5px;
-  --radius-xs: 7px;
-  --radius-sm: 9px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
-  --radius-2xl: 16px;
-  --radius-panel-top: 14px 14px 0 0;
-  --radius-panel-bottom: 0 0 14px 14px;
-
-  --tracking-pixel-tight: 0.01em;
-  --tracking-pixel: 0.02em;
-
-  --code-bg: #f4f6f8;
-  --code-fg: #0f1419;
-  --code-inline-bg: rgba(87, 82, 121, 0.10);
-  --code-inline-fg: #575279;
-  --code-inline-border: rgba(87, 82, 121, 0.16);
-
-  --card-border-color: var(--rule);
-  --card-shadow-color: #0f141914;
-  --card-border: var(--line-2);
-  --card-shadow: var(--shadow-sm);
-  --card-shadow-hover: var(--shadow-hover-sm);
-  --card-shadow-raised: var(--shadow);
-  --card-radius: var(--radius-lg);
-  --bubble-border: var(--card-border);
-  --bubble-border-color: var(--card-border-color);
-  --bubble-shadow-offset: 0px;
-  --bubble-shadow: none;
-  --control-border-color: var(--rule);
-  --control-shadow-color: #0f141914;
-  --control-border: var(--line-sm);
-  --control-shadow: none;
-  --control-shadow-hover: none;
-  --control-radius: var(--radius-pill);
-  --control-bg: transparent;
-  --control-bg-solid: color-mix(in srgb, var(--paper-3) 74%, var(--paper-2));
-  --control-bg-hover: color-mix(in srgb, var(--ink) 8%, var(--paper-2));
-  --control-bg-active: color-mix(in srgb, var(--primary) 18%, var(--paper-3));
-  --control-bg-accent: var(--primary);
-  --control-fg: var(--ink);
-  --control-fg-soft: var(--ink-soft);
-  --control-fg-active: var(--ink);
-  --control-fg-accent: var(--primary-foreground);
-  --control-hover-transform: none;
-  --control-press-transform: scale(0.96);
-  --overlay-border-color: var(--rule);
-  --overlay-shadow-color: #0f141921;
-  --overlay-border: var(--line);
-  --overlay-shadow: var(--shadow-lg);
-  --overlay-radius: var(--radius-xl);
-  --focus-ring: 0 0 0 3px #1d9bf040;
-  --status-dot-border: var(--rule);
-
-  /* ── Expanding-rail control standard (Phase 2 consumes these) ──────────────
-     Geometry/motion/colour for every top-of-surface single-select cluster.
-     Colour tokens use color-mix over --ink/--you-bg/--paper so they re-resolve
-     per theme; no separate dark block needed. */
+  /* Shared expanding-rail geometry and motion. Palette values live below. */
   --rail-well-h: 40px;
   --rail-seg-h: 32px;
   --rail-gap: 3px;
@@ -964,176 +270,321 @@
   --rail-pop: 0.5s cubic-bezier(0.34, 1.4, 0.5, 1);
   --rail-label-delay: 0.08s;
   --rail-count-delay: 0.13s;
-  --rail-fill: color-mix(in srgb, var(--paper-2) 82%, var(--paper-3) 18%);
-  --rail-hover: color-mix(in srgb, var(--paper-3) 68%, var(--paper-2) 32%);
-  --rail-chip-hover: color-mix(in srgb, var(--paper-3) 76%, var(--paper-2) 24%);
-  --rail-active: color-mix(in srgb, var(--you-bg) 22%, var(--paper-3));
   --rail-active-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent);
-  --rail-badge-fill: var(--paper-2);
-
-  /* Glass removes the heavy dock separator. The main chat composer floats over
-     its stream; the thread composer stays in flow so replies remain scrollable. */
-  --composer-separator-line: 0 solid transparent;
-
 }
 
-:root[data-skin="glass"][data-theme="kanagawa-wave"] {
-  /* Mono · dark ("lights out"). --on-ink stays dark: it is the fg over the
-     near-white --ink surface (count chips), so mono's literal #ffffff would be
-     invisible; --primary-foreground goes white (fg over the blue accent). */
-  --background: #000000d9;
-  --card: #0b0b0cf7;
-  --popover: #16181c;
-  --bubble: #16181c;
-  --foreground: #e7e9ea;
-  --muted-foreground: #8b98a5;
-  --ink-faint: #5b6671;
-  --border: #ffffff1f;
-  --muted: #ffffff26;
-  --on-ink: #16161d;
-  --primary-foreground: #ffffff;
-  --you-bg: #4f95dd;
-  --you-fg: #ffffff;
+/* === Sigil — the sole production visual system =============================
+   The prototype's raw values are translated into the existing semantic token
+   contract. Components consume these roles; they do not know about light/dark
+   palette details or carry a second design language locally. */
+:root,
+:root[data-theme="sigil-light"],
+:root[data-skin="sigil"],
+:root[data-skin="sigil"][data-theme="sigil-light"] {
+  color-scheme: light;
 
-  --yellow: #4f95dd;
-  --pink: #4f95dd;
-  --blue: #4f95dd;
-  --lime: #00ba7c;
-  --tangerine: #4f95dd;
-  --lilac: #4f95dd;
-  --teal: #4f95dd;
-  --destructive: #f4212e;
-  --primary: var(--yellow);
-  --status-online: var(--lime);
-  --status-busy: var(--pink);
-  --status-idle: var(--yellow);
-  --status-offline: var(--muted);
+  --background: #fafafa;
+  --card: #f2f2f1;
+  --popover: #ffffff;
+  --secondary: #e9e9e7;
+  --foreground: #1d1e20;
+  --muted-foreground: #5f6268;
+  --primary: #c2571f;
+  --primary-foreground: #ffffff;
+  --secondary-foreground: #1d1e20;
+  --destructive: #b84238;
+  --border: rgba(29, 30, 32, 0.1);
+  --input: rgba(29, 30, 32, 0.14);
+  --ring: #c2571f;
+  --radius: 8px;
+
+  --paper: var(--background);
+  --paper-2: var(--card);
+  --paper-3: var(--secondary);
+  --ink: var(--foreground);
+  --ink-soft: var(--muted-foreground);
+  /* ref light fg3 */
+  --ink-faint: #a4a7ac;
+  --rule: var(--border);
+  --rule-2: rgba(29, 30, 32, 0.05);
+  --accent: var(--primary);
+  --on-ink: var(--paper);
+  --on-accent: var(--primary-foreground);
+
+  /* Two families only (Sigil reference): sans for prose/UI, mono for metadata. */
+  --font-display: "Instrument Sans", sans-serif;
+  --font-heading: var(--font-ui);
+  --font-ui: "Instrument Sans", sans-serif;
+  --font-avatar: "Instrument Sans", sans-serif;
+  --font-avatar-weight: 700;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --line: 1px solid var(--rule);
+  --line-2: 1px solid var(--rule);
+  --line-bold: 1px solid var(--rule);
+  --line-md: 1px solid var(--rule);
+  --line-sm: 1px solid var(--rule);
+  --line-xs: 1px solid var(--rule);
+  --line-xxs: 1px solid var(--rule-2);
+  --line-hair: 1px solid var(--rule);
+  --line-xs-ink: 1px solid var(--rule);
+  --line-xs-faint: 1px solid var(--rule-2);
+  --line-hair-faint: 1px solid var(--rule-2);
+  --line-dashed-md: 1px dashed var(--rule);
+  --line-dashed-sm: 1px dashed var(--rule);
+  --line-dashed-xs: 1px dashed var(--rule);
+  --line-dashed-faint: 1px dashed var(--rule-2);
+  --line-rule-dashed-sm: 1px dashed var(--rule);
+  --line-rule-dashed-xs: 1px dashed var(--rule-2);
+
+  --shadow: none;
+  --shadow-xxs: none;
+  --shadow-xs: none;
+  --shadow-chip: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 16px 48px rgba(29, 30, 32, 0.14);
+  --shadow-hover: none;
+  --shadow-hover-sm: none;
+  --shadow-accent-pink: none;
+  --shadow-accent-pink-strong: none;
+  --shadow-tab-active: inset 0 -2px 0 var(--accent);
+  --shadow-focus-pink: 0 0 0 2px var(--accent);
+  --focus-ring: 0 0 0 2px var(--accent);
+
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-panel-top: 10px 10px 0 0;
+  --radius-panel-bottom: 0 0 10px 10px;
+
+  --yellow: #a17f25;
+  --pink: #a63c68;
+  --blue: #35689b;
+  --lime: #267d55;
+  --tangerine: #c2571f;
+  --lilac: #6a58a8;
+  --teal: #267d78;
+  --red: var(--destructive);
+  --muted: #a4a7ac;
+  --status-online: #52c48b;
+  --status-busy: var(--accent);
+  --status-idle: #d47a4a;
+  --status-offline: var(--ink-faint);
+
+  /* Sigil reference (v2.html) surfaces — light values */
+  --accent-bg: rgba(194, 87, 31, 0.08);
+  --sigil-tile-bg: #ffffff;
+  --self-row-tint: color-mix(in srgb, var(--ink) 5.5%, transparent);
+
+  --identity-0-bg: color-mix(in srgb, #b59632 12%, var(--paper-2));
+  --identity-0-fg: #7d6015;
+  --identity-1-bg: color-mix(in srgb, #b13f71 12%, var(--paper-2));
+  --identity-1-fg: #9b315f;
+  --identity-2-bg: color-mix(in srgb, #318c68 12%, var(--paper-2));
+  --identity-2-fg: #287a59;
+  --identity-3-bg: color-mix(in srgb, #3f6fa8 12%, var(--paper-2));
+  --identity-3-fg: #315f94;
+  --identity-4-bg: color-mix(in srgb, #725ca8 12%, var(--paper-2));
+  --identity-4-fg: #604b94;
+  --identity-5-bg: color-mix(in srgb, #b56943 12%, var(--paper-2));
+  --identity-5-fg: #9d5534;
+  --identity-6-bg: color-mix(in srgb, #b84238 12%, var(--paper-2));
+  --identity-6-fg: #a2352d;
+  --identity-7-bg: color-mix(in srgb, #267d78 12%, var(--paper-2));
+  --identity-7-fg: #1f6d68;
+  --identity-8-bg: color-mix(in srgb, #2f8f64 12%, var(--paper-2));
+  --identity-8-fg: #277a55;
+  --identity-9-bg: color-mix(in srgb, #3f6fa8 12%, var(--paper-2));
+  --identity-9-fg: #315f94;
+  --identity-10-bg: color-mix(in srgb, #b56943 12%, var(--paper-2));
+  --identity-10-fg: #9d5534;
+  --identity-11-bg: color-mix(in srgb, #6e737c 12%, var(--paper-2));
+  --identity-11-fg: #5e626a;
+  --identity-12-bg: color-mix(in srgb, #b59632 12%, var(--paper-2));
+  --identity-12-fg: #7d6015;
+  --identity-13-bg: color-mix(in srgb, #a65b94 12%, var(--paper-2));
+  --identity-13-fg: #914c80;
+  --identity-14-bg: color-mix(in srgb, #3f8299 12%, var(--paper-2));
+  --identity-14-fg: #336f84;
+  --identity-15-bg: color-mix(in srgb, #8a704f 12%, var(--paper-2));
+  --identity-15-fg: #755f43;
+
+  --surface: var(--paper);
+  --surface-raised: var(--paper-2);
+  --surface-sunken: var(--paper-3);
+  --fg: var(--ink);
+  --fg-soft: var(--ink-soft);
+  --fg-faint: var(--ink-faint);
   --surface-selected-bg: var(--paper-3);
   --surface-selected-fg: var(--ink);
   --surface-selected-muted: var(--ink-soft);
-  --surface-selected-border: var(--rule);
-  --count-chip-bg: var(--ink);
-  --count-chip-fg: var(--on-ink);
-  --count-chip-border: var(--ink);
-  /* Muted identity palette for glass · dark — matches the frozen reference.
-     Derived by an HSL normalization of the base :root palette: hue preserved,
-     saturation ×0.46, lightness pinned to ~41% so every identity reads at a
-     consistent mid-dark weight on the near-black glass backdrop, carrying LIGHT
-     ink (#E7E9EA). (The prior values were vivified "to pop"; the shipped glass
-     reference is muted, so parity wins.) -border is a darker shade, -text a
-     lighter tint of the same muted hue for identity-coloured text on dark. */
-  --identity-0-bg: #998238;
-  --identity-0-fg: #E7E9EA;
-  --identity-0-border: #7F6C2F;
-  --identity-0-text: #DECC92;
-  --identity-1-bg: #993861;
-  --identity-1-fg: #E7E9EA;
-  --identity-1-border: #7F2F51;
-  --identity-1-text: #DE92B2;
-  --identity-2-bg: #395298;
-  --identity-2-fg: #E7E9EA;
-  --identity-2-border: #2F447E;
-  --identity-2-text: #92A6DD;
-  --identity-3-bg: #498852;
-  --identity-3-fg: #E7E9EA;
-  --identity-3-border: #3D7144;
-  --identity-3-text: #9FD0A6;
-  --identity-4-bg: #995F38;
-  --identity-4-fg: #E7E9EA;
-  --identity-4-border: #7F4E2F;
-  --identity-4-text: #DEB092;
-  --identity-5-bg: #503899;
-  --identity-5-fg: #E7E9EA;
-  --identity-5-border: #432F7F;
-  --identity-5-text: #A592DE;
-  --identity-6-bg: #933E46;
-  --identity-6-fg: #E7E9EA;
-  --identity-6-border: #7A343A;
-  --identity-6-text: #D9969D;
-  --identity-7-bg: #4B8681;
-  --identity-7-fg: #E7E9EA;
-  --identity-7-border: #3E706B;
-  --identity-7-text: #A0CFCB;
-  --identity-8-bg: #4C855D;
-  --identity-8-fg: #E7E9EA;
-  --identity-8-border: #3F6F4D;
-  --identity-8-text: #A1CEAE;
-  --identity-9-bg: #4C5386;
-  --identity-9-fg: #E7E9EA;
-  --identity-9-border: #3F456F;
-  --identity-9-text: #A1A7CE;
-  --identity-10-bg: #8B5E46;
-  --identity-10-fg: #E7E9EA;
-  --identity-10-border: #744E3A;
-  --identity-10-text: #D3B09C;
-  --identity-11-bg: #62676F;
-  --identity-11-fg: #E7E9EA;
-  --identity-11-border: #52555C;
-  --identity-11-text: #B3B6BC;
-  --identity-12-bg: #897948;
-  --identity-12-fg: #E7E9EA;
-  --identity-12-border: #72653C;
-  --identity-12-text: #D1C59E;
-  --identity-13-bg: #7B5674;
-  --identity-13-fg: #E7E9EA;
-  --identity-13-border: #664761;
-  --identity-13-text: #C6A9C1;
-  --identity-14-bg: #52757F;
-  --identity-14-fg: #E7E9EA;
-  --identity-14-border: #44616A;
-  --identity-14-text: #A6C2CA;
-  --identity-15-bg: #786B59;
-  --identity-15-fg: #E7E9EA;
-  --identity-15-border: #64594A;
-  --identity-15-text: #C4BAAB;
+  --surface-selected-border: var(--accent);
+  --count-chip-bg: var(--accent);
+  --count-chip-fg: var(--on-accent);
+  --count-chip-border: transparent;
 
-  --line-bold: 1px solid #ffffff30;
-  --line-xs-ink: 1px solid #ffffff38;
-  --line-xs-faint: 1px solid #ffffff12;
-  --line-hair-faint: 1px solid #ffffff0a;
-  --line-dashed-md: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
-  --line-dashed-sm: 1px dashed color-mix(in srgb, var(--ink) 22%, transparent);
-  --line-dashed-xs: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent);
-  --line-dashed-faint: 1px dashed color-mix(in srgb, var(--ink) 12%, transparent);
+  --card-border-color: var(--rule);
+  --card-shadow-color: transparent;
+  --card-border: 1px solid var(--rule);
+  --card-shadow: none;
+  --card-shadow-hover: none;
+  --card-shadow-raised: none;
+  --card-radius: var(--radius-xl);
+  --identity-icon-shadow: none;
+  --activity-identity-icon-shadow: none;
+  --activity-identity-badge-shadow: none;
+  --bubble: var(--paper-2);
+  --bubble-border: 0;
+  --bubble-border-color: transparent;
+  --bubble-shadow-offset: 0;
+  --bubble-shadow: none;
+  --you-bg: color-mix(in srgb, var(--ink) 5.5%, transparent);
+  --you-fg: var(--ink);
 
-  --glass-sheen: none;
-  --shadow-xxs: 0 1px 2px #00000080;
-  --shadow-xs: 0 1px 2px #0000008c;
-  --shadow-chip: 0 1px 2px #0000008c;
-  --shadow-sm: 0 1px 3px #000000a6;
-  --shadow: 0 2px 8px #000000b3;
-  --shadow-md: 0 2px 8px #000000b3;
-  --shadow-lg: 0 8px 24px #000000cc;
-  --shadow-hover: 0 2px 8px #000000b3;
-  --shadow-hover-sm: 0 1px 4px #000000a6;
-  /* Avatar chrome — the reference glass keeps the brutalist hard offset shadow
-     (near-black drop + a light --ink echo), not a soft blur. Consumed by the
-     glass .identity-icon rule in skin-glass.css. */
-  --identity-icon-shadow: 1px 1px 0 0 rgba(5, 6, 12, 0.72), 3px 3px 0 0 color-mix(in srgb, var(--ink) 30%, transparent);
-  /* Composer — the reference glass keeps the kanagawa elevated OPAQUE surface
-     (--paper-3 tone) rather than a translucent black panel, and a gold-accented
-     SEND. Consumed by the glass .composer / .composer-send rules in skin-glass.css. */
-  --composer-bg: #2A2A37;
-  --composer-send-fg: #A89562;
-  --composer-send-border: #A89562;
-  --shadow-accent-pink: 0 2px 10px #1d9bf04d;
-  --shadow-accent-pink-strong: 0 4px 14px #1d9bf066;
-  --shadow-tab-active: inset 0 -2px 0 var(--blue);
-  --shadow-focus-pink: 0 0 0 3px #1d9bf04d;
-  --card-shadow-color: #00000080;
-  --control-shadow-color: #00000080;
-  --overlay-shadow-color: #000000cc;
+  --control-border-color: var(--rule);
+  --control-shadow-color: transparent;
+  --control-border: 1px solid var(--rule);
+  --control-shadow: none;
+  --control-shadow-hover: none;
+  --control-radius: var(--radius-md);
+  --control-bg: transparent;
+  --control-bg-solid: var(--paper-2);
+  --control-bg-hover: var(--paper-3);
+  --control-bg-active: var(--paper-3);
+  --control-bg-accent: var(--accent);
+  --control-fg: var(--ink);
+  --control-fg-soft: var(--ink-soft);
+  --control-fg-active: var(--ink);
+  --control-fg-accent: var(--on-accent);
+  --control-hover-transform: none;
+  --control-press-transform: scale(0.98);
 
-  --code-bg: rgba(16, 16, 22, 0.88);
-  --code-fg: #d4ceb0;
-  --code-inline-bg: rgba(212, 206, 176, 0.09);
-  --code-inline-fg: #d4ceb0;
-  --code-inline-border: rgba(212, 206, 176, 0.13);
+  --overlay-border-color: var(--rule);
+  --overlay-shadow-color: rgba(29, 30, 32, 0.14);
+  --overlay-border: 1px solid var(--rule);
+  --overlay-shadow: var(--shadow-lg);
+  --overlay-radius: var(--radius-xl);
 
-  --focus-ring: 0 0 0 3px #1d9bf04d;
-  --rail-fill: #101114;
-  --rail-hover: #181a1f;
-  --rail-chip-hover: #1c1f24;
-  --rail-active: color-mix(in srgb, var(--primary) 22%, #16181c);
-  --rail-badge-fill: #0b0b0c;
+  --activity-row-bg: transparent;
+  --activity-row-border: var(--rule-2);
+  --activity-row-shadow: none;
+  --activity-control-bg: var(--paper-2);
+  --activity-control-bg-raised: var(--paper-3);
+  --activity-control-fg: var(--ink);
+  --activity-control-muted: var(--ink-soft);
+  --activity-control-border: var(--rule);
+  --activity-control-shadow: transparent;
+  --activity-control-active-bg: var(--paper-3);
+  --activity-control-active-fg: var(--ink);
+  --activity-control-selected-fg: var(--ink);
+  --activity-control-badge-bg: var(--accent);
+  --activity-control-badge-fg: var(--on-accent);
+  --activity-control-height: 32px;
+  --status-dot-border: var(--paper);
+
+  --composer-bg: var(--paper-2);
+  --composer-border: var(--rule);
+  --composer-shadow: none;
+  --composer-control-bg: transparent;
+  --composer-control-fg: var(--ink-faint);
+  --composer-control-border: transparent;
+  --composer-control-shadow: none;
+  --composer-control-shadow-hover: none;
+  --composer-send-bg: var(--ink);
+  --composer-send-fg: var(--paper);
+  --composer-send-border: var(--ink);
+  --composer-send-shadow: none;
+  --composer-separator-line: 1px dashed var(--rule-2);
+
+  --code-bg: var(--paper-2);
+  --code-fg: var(--ink);
+  --code-inline-bg: var(--paper-3);
+  --code-inline-fg: var(--ink);
+  --code-inline-border: transparent;
+
+  --rail-fill: var(--paper-2);
+  --rail-hover: var(--paper-3);
+  --rail-chip-hover: var(--paper-3);
+  --rail-active: var(--paper-3);
+  --rail-badge-fill: var(--accent);
+
+  --grain-alpha: 0;
+  --grain-dot: transparent;
+  --placeholder-stripe: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+
+:root[data-theme="sigil-dark"],
+:root[data-skin="sigil"][data-theme="sigil-dark"] {
+  color-scheme: dark;
+
+  --background: #121316;
+  --card: #17181c;
+  --popover: #1e2025;
+  --secondary: #1e2025;
+  --foreground: #e7e8ea;
+  --muted-foreground: #9a9da3;
+  --primary: #e8825a;
+  --primary-foreground: #16130f;
+  --secondary-foreground: #e7e8ea;
+  --destructive: #e06c68;
+  --border: rgba(231, 232, 234, 0.09);
+  --input: rgba(231, 232, 234, 0.14);
+  --ring: #e8825a;
+
+  --paper: var(--background);
+  --paper-2: var(--card);
+  --paper-3: var(--popover);
+  --ink: var(--foreground);
+  --ink-soft: var(--muted-foreground);
+  /* ref dark fg3 */
+  --ink-faint: #55585f;
+  --rule: var(--border);
+  --rule-2: rgba(231, 232, 234, 0.045);
+  --accent: var(--primary);
+  --on-accent: var(--primary-foreground);
+
+  --yellow: #d2b85e;
+  --pink: #d06b96;
+  --blue: #7598c8;
+  --lime: #67c397;
+  --tangerine: #e8825a;
+  --lilac: #9985cf;
+  --teal: #61aaa6;
+  --muted: #55585f;
+  --status-online: #52c48b;
+  --status-busy: var(--accent);
+  --status-idle: #ed8b61;
+  --status-offline: var(--ink-faint);
+
+  /* Sigil reference (v2.html) surfaces — dark values */
+  --accent-bg: rgba(232, 130, 90, 0.11);
+  --sigil-tile-bg: var(--paper-3);
+  --self-row-tint: color-mix(in srgb, var(--ink) 4.5%, transparent);
+
+  --identity-0-fg: #d6bd64;
+  --identity-1-fg: #d5759d;
+  --identity-2-fg: #6bc99b;
+  --identity-3-fg: #7ca0d3;
+  --identity-4-fg: #a28dd9;
+  --identity-5-fg: #d58b63;
+  --identity-6-fg: #df7771;
+  --identity-7-fg: #69b7b1;
+  --identity-8-fg: #6bc99b;
+  --identity-9-fg: #7ca0d3;
+  --identity-10-fg: #d58b63;
+  --identity-11-fg: #a0a4ab;
+  --identity-12-fg: #d6bd64;
+  --identity-13-fg: #cf80ba;
+  --identity-14-fg: #78b2c7;
+  --identity-15-fg: #b7a17f;
+
+  --you-bg: color-mix(in srgb, var(--ink) 4.5%, transparent);
+  --overlay-shadow-color: rgba(0, 0, 0, 0.64);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.64);
+  --code-bg: #17181c;
+  --code-inline-bg: #1e2025;
 }

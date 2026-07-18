@@ -71,8 +71,8 @@ export const Markdown = memo(function Markdown({
               const text = String(children ?? "");
               const m = text.match(/^@@([a-zA-Z0-9._-]+)$/);
               if (m) {
-                const agent = agents.find((a) => a.handle === m[1]);
-                if (agent) return <MentionChip agent={agent} />;
+                const agent = agents.find((a) => a.handle.toLowerCase() === m[1]!.toLowerCase());
+                if (agent) return <MentionChip agent={agent} text={`@${m[1]}`} />;
               }
             }
             return <code className={className}>{children}</code>;

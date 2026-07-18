@@ -2,16 +2,16 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fireEvent, fn, screen, userEvent, waitFor, within } from "storybook/test";
 import { AgentRoster } from "./AgentRoster.tsx";
 import { GROUPS } from "../data/seed.ts";
-import { inRosterColumn } from "../storybook/shellFrames.tsx";
+import { inRosterPanel } from "../storybook/shellFrames.tsx";
 import { RuntimeDetailsProvider } from "../storybook/runtimeDetailsProvider.tsx";
 
 // Provider-backed: AgentRoster reads the agent set through useAgents() off the
 // MockDataSource supplied by the global StorybookProviders decorator. The story
-// only chooses which room to scope the roster to (room.members filters which
-// agents appear).
+// chooses which room to scope the roster to (room.members filters which agents
+// appear) and passes onClose so the desktop/medium panel head renders, exactly
+// as App.tsx mounts it inside the shell-overlay-agents panel.
 const checkoutRevamp = GROUPS.find((r) => r.id === "checkout-revamp")!;
-// heartbeat-checks includes every agent, so all four status groups
-// (WORKING / READY / IDLE / OFF) render — including offline `pulse`.
+// heartbeat-checks includes every agent, so all statuses render at once.
 const heartbeat = GROUPS.find((r) => r.id === "heartbeat-checks")!;
 
 async function expectSharedAgentMenu() {
@@ -28,41 +28,64 @@ const meta = {
   title: "Navigation/AgentRoster",
   component: AgentRoster,
   parameters: { layout: "fullscreen" },
-  // Mount in the real 260px roster column so cards stay within the roster
-  // width instead of stretching into a full-bleed band.
-  decorators: [inRosterColumn],
-  args: {},
+  decorators: [inRosterPanel],
+  args: { onClose: fn() },
 } satisfies Meta<typeof AgentRoster>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// Default project room — a busy/idle mix (cortex+atlas+nova busy, vega idle,
-// you online).
+// Default project room — a busy/idle mix.
 export const Default: Story = {
   args: { room: checkoutRevamp },
 };
 
-// Every agent present, so all four status sections show at once, including the
-// offline OFF group (pulse).
+// Every agent present: one flat "In this group" list (no status grouping),
+// each row carrying the avatar status dot AND the right-aligned mono status
+// label; the operator ("you") never appears as crew.
 export const AllStatuses: Story = {
   args: { room: heartbeat },
+  play: async ({ canvasElement }) => {
+    const cards = await waitFor(() => {
+      const found = [...canvasElement.querySelectorAll<HTMLElement>(".roster-card")];
+      if (found.length === 0) throw new Error("roster rows not found");
+      return found;
+    });
+    cards.forEach((card) => {
+      expect(card.querySelector(".identity-status-dot")).toBeTruthy();
+      expect(card.textContent).toMatch(/WORKING|READY|IDLE|OFF/);
+    });
+    expect(canvasElement.querySelector('[data-vim-item="agent-you"]')).toBeNull();
+  },
 };
 
+// The panel head is the ref x-panel head: Agents title, mono room meta with
+// agent/working counts, and a close control wired to onClose.
 export const Header: Story = {
   args: { room: checkoutRevamp },
-  globals: { theme: "kanagawa-wave", skin: "brutal" },
-  play: async ({ canvasElement, step }) => {
-    await step("Roster header follows the shared borderless panel label", async () => {
-      const header = await waitFor(() => {
-        const match = canvasElement.querySelector<HTMLElement>(".roster-head");
-        if (!match) throw new Error("roster header not found");
-        return match;
-      });
-      expect(header.classList.contains("panel-section-head")).toBe(true);
-      expect(getComputedStyle(header).borderRadius).toBe("0px");
-      expect(getComputedStyle(header).borderStyle).toBe("none");
+  play: async ({ canvasElement, args }) => {
+    const header = await waitFor(() => {
+      const match = canvasElement.querySelector<HTMLElement>(".roster-head");
+      if (!match) throw new Error("roster header not found");
+      return match;
     });
+    expect(within(header).getByRole("heading", { name: "Agents" })).toBeTruthy();
+    expect(header.textContent).toMatch(/# checkout-revamp/);
+    expect(header.textContent).toMatch(/\d+ agents · \d+ working/i);
+    await userEvent.click(within(header).getByRole("button", { name: "close agents panel" }));
+    expect(args.onClose).toHaveBeenCalled();
+  },
+};
+
+// The + Spawn agent button opens the real spawn dialog scoped to the room.
+export const SpawnFromPanel: Story = {
+  args: { room: checkoutRevamp },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "+ Spawn agent" }));
+    await expect(await screen.findByRole("heading", { name: /Spawn into #checkout-revamp/i })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "close" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: /Spawn into/i })).toBeNull());
   },
 };
 
@@ -83,8 +106,8 @@ export const ViewProfileFlow: Story = {
       await expectSharedAgentMenu();
       await userEvent.click(screen.getByText("View profile"));
       await waitFor(() => expect(screen.getByText(`${expectedName} profile`)).toBeTruthy());
-      // The model text also appears on the roster card's model chip now, so scope
-      // this assertion to the profile dialog (rendered in a portal backdrop).
+      // The model also appears on the roster runtime line, so scope the
+      // assertion to the profile dialog (rendered in a portal backdrop).
       await waitFor(() => {
         const dialog = document.querySelector(".modal-backdrop");
         expect(dialog).toBeTruthy();
@@ -119,16 +142,10 @@ export const ViewProfileFlow: Story = {
       await userEvent.keyboard("{Escape}");
     });
 
-    await step("Do not expose View profile for You", async () => {
+    await step("The operator is not listed as crew", async () => {
       const canvas = within(canvasElement);
-      expect(await canvas.findByText("AGENTS")).toBeTruthy();
-      const youCard = canvasElement.querySelector<HTMLElement>('[data-vim-item="agent-you"]');
-      expect(youCard).toBeTruthy();
-      await fireEvent.contextMenu(youCard!);
-      await waitFor(() => {
-        expect(screen.queryByText("View profile")).toBeNull();
-        expect(screen.queryByText(/Focus on/i)).toBeNull();
-      });
+      expect(await canvas.findByText("In this group")).toBeTruthy();
+      expect(canvasElement.querySelector('[data-vim-item="agent-you"]')).toBeNull();
     });
   },
 };

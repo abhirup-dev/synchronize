@@ -21,7 +21,7 @@ defined in `src/data/context.tsx`. They never import a concrete backend.
 - **Never import `DaemonDataSource` / `data/daemon.ts` in a story.** Daemon
   behavior is verified by the Bun integration tests and the live `/web` app.
 - **Reuse `seed.ts` — never paste seed arrays into a story.** Import `AGENTS`,
-  `GROUPS`, `DMS`, `MESSAGES`, `THREAD_REPLIES`, `TASKS`, `ARTIFACTS`, `TIMELINE`
+  `GROUPS`, `DMS`, `MESSAGES`, `THREAD_REPLIES`, `TASKS`, `ARTIFACTS`
   and derive from them. (Data the seed genuinely lacks — e.g. attachment fixtures
   — may be constructed inline against the `types.ts` interfaces.)
 

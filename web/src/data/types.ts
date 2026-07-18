@@ -156,26 +156,6 @@ export interface MessageAttachment {
   previewUrl?: string;
 }
 
-export type TimelineEventType =
-  | "claim"
-  | "analyze"
-  | "deliver"
-  | "ship"
-  | "review"
-  | "alert"
-  | "kickoff"
-  | "request";
-
-export interface TimelineEvent {
-  id: string;
-  roomId: string;
-  type: TimelineEventType;
-  agentId: string;
-  label: string;
-  createdAt: string;
-  messageId?: string;
-}
-
 export type TaskStatus = "backlog" | "doing" | "review" | "shipped";
 export type TaskPriority = "high" | "med" | "low";
 
@@ -400,7 +380,6 @@ export interface DataSource {
   agents(): Snapshot<Agent[]>;
   messages(roomId: string): Snapshot<Message[]>;
   threadReplies(parentMessageId: string): Snapshot<Message[]>;
-  timeline(roomId: string): Snapshot<TimelineEvent[]>;
   tasks(roomId: string): Snapshot<Task[]>;
   artifacts(roomId: string): Snapshot<Artifact[]>;
   /** Summary for a thread, keyed by its parent (root) message id. Integration

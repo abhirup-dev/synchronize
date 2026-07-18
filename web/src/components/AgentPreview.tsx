@@ -31,13 +31,13 @@ const cardBase =
   "agent-preview min-w-0 bg-surface text-fg [border:var(--card-border)] rounded-card overflow-hidden shadow-card";
 
 const sectionTitle =
-  "font-display text-[length:var(--text-10)] tracking-[var(--tracking-lg)] uppercase text-ink-soft";
+  "font-mono font-bold text-[length:var(--text-9)] tracking-[0.2em] uppercase text-ink-soft";
 
 const labelClass =
-  "font-mono text-[length:var(--text-10)] uppercase tracking-[var(--tracking-sm)] text-ink-faint";
+  "font-ui text-[length:var(--text-11-5)] text-ink-faint";
 
 const valueBaseClass =
-  "min-w-0 font-mono text-[length:var(--text-11)] text-ink";
+  "min-w-0 font-mono text-[length:var(--text-11-5)] text-ink";
 
 export function AgentPreview({ agent, details, density = "default" }: AgentPreviewProps) {
   const runtimeDetails = details ?? agent.runtimeDetails;
@@ -51,10 +51,10 @@ export function AgentPreview({ agent, details, density = "default" }: AgentPrevi
         <Avatar agent={agent} size={compact ? 38 : 42} showStatus />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-[var(--space-8)]">
-            <h3 className="m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-display text-[length:var(--text-17)] leading-[1.05]">
+            <h3 className="m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-ui font-bold text-[length:var(--text-16)] leading-[1.05]">
               {agent.name}
             </h3>
-            <span className="inline-flex items-center rounded-pill bg-surface px-[7px] py-[2px] font-mono text-[length:var(--text-10)] text-ink-soft [border:var(--control-border)]">
+            <span className="inline-flex items-center rounded-pill bg-surface px-[7px] py-[2px] font-mono font-semibold uppercase tracking-[var(--tracking-lg)] text-[length:var(--text-10)] text-ink-soft [border:var(--control-border)]">
               {agent.status}
             </span>
           </div>
@@ -123,7 +123,7 @@ export function canShowAgentPreview(agent: Agent): boolean {
   return Boolean(agent.runtimeDetails);
 }
 
-// Model picker (glass revamp Phase 5). Lists the models available for the
+// Model picker. Lists the models available for the
 // agent's tool (single-source MODEL_OPTIONS, shared with SpawnAgentDialog) and
 // switches on click via the DataSource (mock store or daemon /agent-sessions/
 // set-model). Renders nothing when the agent's tool has no model options.

@@ -12,9 +12,9 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* Kanagawa is the only supported dark palette. Use `theme-dark:` for utilities that must override only in Kanagawa. */
+/* Sigil has one matched light/dark pair. `theme-dark:` is the behavioral dark-family variant. */
 @custom-variant theme-dark (&:where(
-  [data-theme="kanagawa-wave"] *
+  [data-theme="sigil-dark"] *
 ));
 
 @theme inline {

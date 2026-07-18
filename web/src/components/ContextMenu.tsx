@@ -7,15 +7,14 @@ import { cn } from "../lib/cn";
  * Context-menu styling migrated off styles.css/extra.css into Tailwind
  * utilities. The active look came from extra.css (it imports after styles.css,
  * so its `.ctx-menu`/`.ctx-item`/`.ctx-shortcut` rules won at equal
- * specificity); those exact values are reproduced here. `.ctx-menu` is KEPT on
- * the popup element because skin-glass.css hooks it for the backdrop-filter
- * glass surface. Positioning + z-index are owned by Base UI's Positioner, so
- * the legacy `position: fixed` / `z-index` are intentionally dropped.
+ * specificity); those exact values are reproduced here. `.ctx-menu` remains a
+ * stable hook for Sigil surface styling. Positioning + z-index are owned by
+ * Base UI's Positioner, so legacy fixed positioning is intentionally dropped.
  */
 const ctxItem = cva(
   [
     "flex w-full items-center justify-between gap-[var(--space-16)] px-[10px] py-[7px]",
-    "bg-transparent [border:var(--line-none)] text-left text-[length:var(--text-13)] text-ink",
+    "bg-transparent [border:var(--line-none)] text-left text-[length:var(--text-12-5)] text-ink",
     "rounded-xs cursor-pointer",
     "hover:enabled:bg-paper-2 enabled:data-[highlighted]:bg-paper-2",
     "disabled:opacity-[0.46] disabled:cursor-default",
@@ -122,7 +121,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
               className={cn(
                 "ctx-menu",
                 "flex min-w-[220px] flex-col gap-[var(--space-1)] p-[var(--space-4)]",
-                "bg-paper [border:var(--line-md)] rounded-lg font-mono shadow-overlay",
+                "bg-paper [border:var(--line-md)] rounded-lg font-ui font-medium text-[length:var(--text-12-5)] shadow-overlay",
               )}
             >
               {state && state.stack.length > 0 ? (
@@ -175,7 +174,8 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                     {it.submenu ? (
                       <span className="text-[length:var(--text-11)] text-ink-soft">›</span>
                     ) : it.shortcut ? (
-                      <span className="text-[length:var(--text-11)] text-ink-soft">
+                      // ref x-menu .kbd is fg3.
+                      <span className="font-mono text-[length:var(--text-10)] text-ink-faint">
                         {it.shortcut}
                       </span>
                     ) : null}
