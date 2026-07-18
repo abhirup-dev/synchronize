@@ -52,8 +52,9 @@ export default function RootLayout() {
   return (
     <SyncProvider>
       <VariableContextProvider value={vars}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
-      <NavigationBar style="auto" />
+      {/* Full-screen (reference): both system bars hidden, swipe to reveal. */}
+      <StatusBar style={dark ? 'light' : 'dark'} hidden />
+      <NavigationBar style="auto" hidden />
       <Stack
         screenOptions={{
           headerShown: false,

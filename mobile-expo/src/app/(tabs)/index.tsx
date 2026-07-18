@@ -37,7 +37,7 @@ export default function RoomsScreen() {
           </Text>
           {room.preview ? (
             <Text className="mt-0.5 font-sans text-[12px] text-fg2" numberOfLines={1}>
-              {room.preview}
+              {room.preview.replace(/[`*]/g, '')}
             </Text>
           ) : null}
         </View>

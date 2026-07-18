@@ -82,6 +82,12 @@ export function MTop({
   );
 }
 
+// Bottom-sheet grab handle (mobile.js .sheet .grab) — Android formSheet
+// draws no grabber of its own, so sheets render this 36×4 bar themselves.
+export function SheetGrab() {
+  return <View className="mb-0.5 mt-2.5 h-1 w-9 self-center rounded-full bg-outl" />;
+}
+
 // Mono section label (profile/menu sheets).
 export function Section({ label }: { label: string }) {
   return (

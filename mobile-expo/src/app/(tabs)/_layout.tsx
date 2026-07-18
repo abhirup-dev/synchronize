@@ -33,18 +33,22 @@ function NavBar({ state, navigation }: any) {
             className="flex-1 items-center gap-[3px]"
             onPress={() => navigation.navigate(state.routes[idx].name)}
           >
-            {/* plain RN View: rn-css class styles would clobber the inline geometry */}
-            <RNView
-              style={{
-                width: 56,
-                height: 30,
-                borderRadius: 999,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: on ? c.pric : 'transparent',
-              }}
-            >
-              <Text className={`text-[15px] ${on ? 'text-onpric' : 'text-fg2'}`}>{d.icon}</Text>
+            {/* plain RN View: rn-css class styles would clobber the inline geometry.
+               Badge lives outside the pill — an overflowing absolute child makes
+               Android drop the parent's borderRadius. */}
+            <RNView>
+              <RNView
+                style={{
+                  width: 56,
+                  height: 30,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: on ? c.pric : 'transparent',
+                }}
+              >
+                <Text className={`text-[15px] ${on ? 'text-onpric' : 'text-fg2'}`}>{d.icon}</Text>
+              </RNView>
               {badge > 0 ? (
                 <View className="absolute -top-[3px] right-1.5 rounded-full bg-pri px-[5px] py-px">
                   <Text className="font-mono text-[8.5px] text-onpri">{badge}</Text>

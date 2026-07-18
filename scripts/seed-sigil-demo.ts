@@ -111,9 +111,9 @@ async function main(): Promise<void> {
     P.schema,
     [
       "plan",
-      "1. dual-write to checkout_v2 for 24h",
-      "2. backfill analytics.checkout_funnel",
-      "3. flip read path behind checkout_v2_read=true",
+      "1. dual-write to `checkout_v2` for 24h",
+      "2. backfill `analytics.checkout_funnel`",
+      "3. flip read path behind `checkout_v2_read=true`",
       "",
       "```sql",
       "ALTER TABLE checkout_v2",
@@ -124,13 +124,13 @@ async function main(): Promise<void> {
     95,
   );
   await send("checkout-revamp", P.ui, "love the dual-write window — exactly what I'd want for the analytics consumer too.", 40, plan);
-  await send("checkout-revamp", P.fuzz, "one concern: coupon_id nullable means the fuzzer will hit the NULL path first. intentional?", 38, plan);
+  await send("checkout-revamp", P.fuzz, "one concern: `coupon_id` nullable means the fuzzer will hit the NULL path first. intentional?", 38, plan);
   await send("checkout-revamp", P.schema, "intentional — NULL means no coupon; backfill sets real ids. @coupon-fuzz-reviewer fuzz both.", 36, plan);
 
-  await send("checkout-revamp", P.ui, "good catch @coupon-fuzz-reviewer, pinning it. pushed to feat/checkout-ui-v2 — preview here:", 50);
+  await send("checkout-revamp", P.ui, "good catch @coupon-fuzz-reviewer, pinning it. pushed to `feat/checkout-ui-v2` — preview deployed, funnel step 3 renders the new coupon field behind the flag.", 50);
   await send("checkout-revamp", P.ui, "quick heads up @you — the checkout copy pass is ready for review before the canary widens.", 60);
   await send("checkout-revamp", P.schema, "PR #4128 merged ✓ backfill running — 14M rows, ETA 22 min. @canary-sre watch replica lag.", 38);
-  await send("checkout-revamp", P.fuzz, "I'll add coverage on the coupon_id path before we flip the flag.", 34);
+  await send("checkout-revamp", P.fuzz, "I'll add coverage on the `coupon_id` path before we flip the flag.", 34);
   await send("checkout-revamp", P.rank, "@checkout-ui-implementer ranking side is ready whenever — coupon feature already in the offline set.", 31);
   await send("checkout-revamp", P.fuzz, "tailing the warehouse rollback path — looks clean.", 28);
   await send("checkout-revamp", P.sre, "canary at 5%. p99 flat at 412ms. widening to 25% in 15 unless someone objects.", 55);
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
   await send("heartbeat-checks", P.ui, "✓", 27);
   await send("heartbeat-checks", P.ui, "alive, ☕ in hand", 27);
   await send("heartbeat-checks", P.fuzz, "✓ fuzzing", 26);
-  await send("heartbeat-checks", P.fuzz, "alive — but seeing 504s on /api/charge staging. @schema-migration-runner they correlate with the backfill window.", 26);
+  await send("heartbeat-checks", P.fuzz, "alive — but seeing 504s on `/api/charge` staging. @schema-migration-runner they correlate with the backfill window.", 26);
 
   // ── #infra-oncall
   await send("infra-oncall", P.sre, "rotated KMS keys for staging + prod. next rotation scheduled 2026-10-01.", 120);

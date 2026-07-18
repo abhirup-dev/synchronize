@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
-import { MButton, toast, Section, Chip } from '@/components/ui';
+import { MButton, toast, Section, Chip, SheetGrab } from '@/components/ui';
 import { useSync } from '@/lib/store';
 import { api } from '@/lib/api';
 import { useTheme } from '@/theme/use-theme';
@@ -47,8 +47,10 @@ export default function SpawnSheet() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pb-7">
-      <View className="flex-row items-baseline gap-2 pb-1 pt-4">
+    <View className="flex-1 bg-bg">
+      <SheetGrab />
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pb-7">
+      <View className="flex-row items-baseline gap-2 pb-1 pt-2">
         <Text className="font-sans-bold text-[18px] text-fg">Spawn agent</Text>
         <Text className="font-mono text-[9.5px] uppercase text-fg3">NEW SESSION</Text>
       </View>
@@ -123,5 +125,6 @@ export default function SpawnSheet() {
         />
       </View>
     </ScrollView>
+    </View>
   );
 }

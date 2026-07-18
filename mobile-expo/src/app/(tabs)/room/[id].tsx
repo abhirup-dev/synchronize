@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { KeyboardAvoidingView, LayoutAnimation, FlatList } from 'react-native';
+import { KeyboardAvoidingView, FlatList } from 'react-native';
 import { View, Text, Pressable, SafeAreaView } from '@/tw';
 import { MTop } from '@/components/ui';
 import { SigilChip } from '@/components/sigil';
@@ -37,10 +37,8 @@ export default function RoomScreen() {
     return () => closeRoom(roomId);
   }, [roomId, openRoom, closeRoom]);
 
-  // Ease newly arrived messages in instead of snapping (M3 standard easing).
-  useEffect(() => {
-    if (events.length) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, [events.length]);
+  // ponytail: no LayoutAnimation — it corrupts borderRadius rendering of
+  // unrelated views on Android (nav pill went square after visiting a chat).
 
   // Ack this room's unread activity when the chat is open.
   useEffect(() => {

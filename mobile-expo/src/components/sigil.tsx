@@ -1,12 +1,18 @@
 // Sigil chip — agent identity mark (design.md §1: identity is a sigil, not
-// an avatar). Harness vector marks recolored with the per-agent hue; the
+// an avatar). Harness vector marks in native brand colors; the
 // human operator gets the only lettered chip, on the primary accent.
 import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Path, Line } from 'react-native-svg';
-import { sigilColor } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 import { initials } from '@/lib/format';
+
+// LOGOS: NATIVE (frozen tweak) — harness marks wear their brand colors,
+// not the per-agent hue (content.js BRAND.brandColor). Hues stay on names.
+const BRAND_COLOR: Record<string, { dark: string; light: string }> = {
+  claude: { dark: '#D97757', light: '#D97757' },
+  codex: { dark: '#e7e8ea', light: '#000000' },
+};
 
 // Official vector paths (Bootstrap Icons, MIT — bi-claude / bi-openai),
 // lifted from the Sigil reference bundle (content.js BRAND table).
@@ -86,7 +92,8 @@ export function SigilChip({
     );
   }
   const harness = harnessOf(tool);
-  const color = sigilColor(id, dark);
+  const brand = BRAND_COLOR[harness];
+  const color = brand ? (dark ? brand.dark : brand.light) : c.fg;
   return (
     <View
       style={{

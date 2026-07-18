@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Appearance, useColorScheme } from 'react-native';
 import { View, Text, ScrollView, TextInput } from '@/tw';
-import { Section, KV, Chip, toast } from '@/components/ui';
+import { Section, KV, Chip, SheetGrab, toast } from '@/components/ui';
 import { useSync } from '@/lib/store';
 import { getBaseUrl, setBaseUrl } from '@/lib/api';
 import { useTheme } from '@/theme/use-theme';
@@ -35,8 +35,10 @@ export default function MenuSheet() {
   const s = sync.state;
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerClassName="px-5 pb-8">
-      <View className="flex-row items-baseline gap-2 pb-1 pt-4">
+    <View className="flex-1 bg-bg">
+      <SheetGrab />
+      <ScrollView className="flex-1" contentContainerClassName="px-5 pb-8">
+      <View className="flex-row items-baseline gap-2 pb-1 pt-2">
         <Text className="font-sans-bold text-[18px] text-fg">Settings</Text>
         <Text className="font-mono text-[9.5px] uppercase text-fg3">SIGIL · SYNCHRONIZE</Text>
       </View>
@@ -86,5 +88,6 @@ export default function MenuSheet() {
         EMULATOR REACHES THE HOST VIA adb reverse
       </Text>
     </ScrollView>
+    </View>
   );
 }

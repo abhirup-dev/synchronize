@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { View, Text, ScrollView } from '@/tw';
 import { MessageRow } from '@/components/message-row';
+import { SheetGrab } from '@/components/ui';
 import { Composer } from '@/components/composer';
 import { useSync } from '@/lib/store';
 
@@ -29,7 +30,8 @@ export default function ThreadSheet() {
 
   return (
     <View className="flex-1 bg-bg">
-      <View className="flex-row items-baseline gap-2 px-5 pb-2.5 pt-3">
+      <SheetGrab />
+      <View className="flex-row items-baseline gap-2.5 px-5 pb-2.5 pt-2">
         <Text className="font-sans-bold text-[16px] text-fg">Thread</Text>
         <Text className="font-mono text-[9.5px] text-fg3">
           {room ? `${room.kind === 'group' ? '#' : ''}${room.name} · ` : ''}

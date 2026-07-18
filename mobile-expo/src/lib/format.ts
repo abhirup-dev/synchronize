@@ -13,10 +13,9 @@ export function timeAgo(iso?: string | null): string {
 
 export function clockTime(iso?: string | null): string {
   if (!iso) return '';
+  // 24h clock — machine text is mono and unadorned (reference: "10:42").
   const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const ampm = d.getHours() < 12 ? 'AM' : 'PM';
-  return `${h}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 export function initials(name: string): string {

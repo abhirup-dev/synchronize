@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
-import { MButton, StatusPill, statusOf, toast, Section, KV } from '@/components/ui';
+import { MButton, StatusPill, statusOf, toast, Section, KV, SheetGrab } from '@/components/ui';
 import { SigilChip } from '@/components/sigil';
 import { useSync } from '@/lib/store';
 import { api } from '@/lib/api';
@@ -55,8 +55,10 @@ export default function AgentProfileSheet() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerClassName="pb-6">
-      <View className="flex-row items-center gap-3 px-5 pb-2.5 pt-4">
+    <View className="flex-1 bg-bg">
+      <SheetGrab />
+      <ScrollView className="flex-1" contentContainerClassName="pb-6">
+      <View className="flex-row items-center gap-3 px-5 pb-2.5 pt-2">
         <SigilChip id={peer.peer_id} tool={peer.tool} name={name} size={44} />
         <View className="min-w-0 flex-1">
           <Text
@@ -151,5 +153,6 @@ export default function AgentProfileSheet() {
         </View>
       </View>
     </ScrollView>
+    </View>
   );
 }
