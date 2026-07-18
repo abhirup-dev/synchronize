@@ -1,0 +1,49 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+/* SIGIL — M3 Expressive token set (design.md §6, v2.html mobile theme).
+   Same values live in src/theme/tokens.ts for JS-side consumers. */
+:root {
+  --bg: light-dark(#fafafa, #121316);
+  --surf: light-dark(#f0f0ef, #1a1b1f);
+  --surf2: light-dark(#e6e6e4, #222428);
+  --fg: light-dark(#1d1e20, #e7e8ea);
+  --fg2: light-dark(#5f6268, #9a9da3);
+  --fg3: light-dark(#a4a7ac, #55585f);
+  --outl: light-dark(rgba(29, 30, 32, 0.16), rgba(231, 232, 234, 0.18));
+  --pri: light-dark(#c2571f, #e8825a);
+  --onpri: light-dark(#ffffff, #121316);
+  --pric: light-dark(#c2571f24, #e8825a2e);
+  --onpric: light-dark(#c2571f, #e8825a);
+  --ok: #52c48b;
+  --danger: #d05050;
+}
+
+@layer theme {
+  @theme {
+    --color-bg: var(--bg);
+    --color-surf: var(--surf);
+    --color-surf2: var(--surf2);
+    --color-fg: var(--fg);
+    --color-fg2: var(--fg2);
+    --color-fg3: var(--fg3);
+    --color-outl: var(--outl);
+    --color-pri: var(--pri);
+    --color-onpri: var(--onpri);
+    --color-pric: var(--pric);
+    --color-onpric: var(--onpric);
+    --color-ok: var(--ok);
+    --color-danger: var(--danger);
+
+    /* Instrument Sans for prose, JetBrains Mono for machine text.
+       RN needs one family name per weight, hence the suffixed utilities. */
+    --font-sans: "InstrumentSans_400Regular";
+    --font-sans-medium: "InstrumentSans_500Medium";
+    --font-sans-semibold: "InstrumentSans_600SemiBold";
+    --font-sans-bold: "InstrumentSans_700Bold";
+    --font-mono: "JetBrainsMono_400Regular";
+    --font-mono-medium: "JetBrainsMono_500Medium";
+    --font-mono-bold: "JetBrainsMono_700Bold";
+  }
+}
