@@ -182,8 +182,16 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     async (room: Room, text: string, inReplyTo?: number) => {
       const peerId = peerRef.current;
       if (!peerId) throw new Error('not connected');
-      if (room.kind === 'group') await api.sendGroup(room.name, peerId, text, inReplyTo);
-      else await api.sendDm(peerId, room.peer!.peer_id, text);
+      if (room.kind === 'group') {
+        try {
+          await api.sendGroup(room.name, peerId, text, inReplyTo);
+        } catch (e) {
+          // The web session isn't auto-enrolled in groups — join on demand.
+          if (!String(e).includes('not_group_member')) throw e;
+          await api.joinGroup(room.name, peerId);
+          await api.sendGroup(room.name, peerId, text, inReplyTo);
+        }
+      } else await api.sendDm(peerId, room.peer!.peer_id, text);
       await refresh();
     },
     [refresh],

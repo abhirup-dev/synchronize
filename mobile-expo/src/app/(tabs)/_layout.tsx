@@ -31,7 +31,8 @@ function NavBar({ state, navigation }: any) {
             onPress={() => navigation.navigate(state.routes[idx].name)}
           >
             <View
-              className={`h-[30px] w-14 items-center justify-center rounded-full ${on ? 'bg-pric' : ''}`}
+              className={on ? 'bg-pric' : ''}
+              style={{ width: 56, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}
             >
               <Text className={`text-[15px] ${on ? 'text-onpric' : 'text-fg2'}`}>{d.icon}</Text>
               {badge > 0 ? (

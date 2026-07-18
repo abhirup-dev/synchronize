@@ -54,7 +54,7 @@ export default function RoomScreen() {
       : room?.peer?.online
         ? 'ONLINE'
         : 'OFFLINE';
-  const cluster = members.slice(0, 3);
+  const cluster = members.filter((m) => m.tool !== 'web').slice(0, 3);
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
@@ -78,11 +78,7 @@ export default function RoomScreen() {
           ) : undefined
         }
       />
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <FlatList<SyncEvent>
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: 6, paddingBottom: 8 }}
