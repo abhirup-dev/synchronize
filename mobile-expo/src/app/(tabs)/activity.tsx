@@ -30,7 +30,9 @@ export default function ActivityScreen() {
 
   const all = activity?.events ?? [];
   const unread = unreadEvents(activity);
-  const mentions = all.filter((e) => peerId && e.mentions_json?.includes(peerId));
+  const mentions = all.filter(
+    (e) => (peerId && e.mentions_json?.includes(peerId)) || e.body?.includes('@you'),
+  );
   const shown = filter === 'mentions' ? mentions : filter === 'awaiting' ? unread : all;
 
   const groups = useMemo(() => {
@@ -50,6 +52,7 @@ export default function ActivityScreen() {
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
       <MTop
+        menu
         title="Activity"
         sub={`${all.length} UPDATES · ${unread.length} AWAITING YOU · ● ${workingCount(state?.peers)} WORKING`}
       />
@@ -82,7 +85,7 @@ export default function ActivityScreen() {
                 </View>
               ) : null}
             </Pressable>
-            {g.items.slice(0, 6).map((e) => {
+            {g.items.map((e) => {
               const sender = peers.get(e.sender_peer_id);
               const un = !e.acked_at;
               return (
@@ -111,12 +114,7 @@ export default function ActivityScreen() {
                         {timeAgo(e.created_at)}
                       </Text>
                     </View>
-                    <Text
-                      className={`font-sans text-[12.5px] leading-[1.45] ${un ? 'text-fg' : 'text-fg2'}`}
-                      numberOfLines={2}
-                    >
-                      {e.body}
-                    </Text>
+                    <BodyText text={e.body} small muted={!un} numberOfLines={2} />
                   </View>
                   {un ? <View className="mt-1.5 h-[7px] w-[7px] rounded-full bg-pri" /> : null}
                 </Pressable>

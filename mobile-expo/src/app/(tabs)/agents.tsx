@@ -48,7 +48,7 @@ export default function AgentsScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
-      <MTop title="Agents" sub={`${agents.length} AGENTS · ${working} WORKING`} />
+      <MTop menu title="Agents" sub={`${agents.length} AGENTS · ${working} WORKING`} />
       <ScrollView className="flex-1" contentContainerClassName="pt-2 pb-2">
         {agents.map((a) => (
           <React.Fragment key={a.peer.peer_id}>{row(a)}</React.Fragment>

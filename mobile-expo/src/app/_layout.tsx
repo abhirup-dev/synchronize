@@ -2,6 +2,7 @@ import '../global.css';
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   useFonts,
@@ -52,6 +53,7 @@ export default function RootLayout() {
     <SyncProvider>
       <VariableContextProvider value={vars}>
       <StatusBar style={dark ? 'light' : 'dark'} />
+      <NavigationBar style="auto" />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -71,6 +73,16 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="agent/[peerId]"
+          options={{
+            presentation: 'formSheet',
+            sheetGrabberVisible: true,
+            sheetAllowedDetents: 'fitToContents',
+            sheetCornerRadius: 28,
+            contentStyle: { backgroundColor: c.bg },
+          }}
+        />
+        <Stack.Screen
+          name="menu"
           options={{
             presentation: 'formSheet',
             sheetGrabberVisible: true,

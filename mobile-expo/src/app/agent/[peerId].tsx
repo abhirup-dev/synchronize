@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView } from '@/tw';
-import { MButton, StatusPill, statusOf, toast } from '@/components/ui';
+import { MButton, StatusPill, statusOf, toast, Section, KV } from '@/components/ui';
 import { SigilChip } from '@/components/sigil';
 import { useSync } from '@/lib/store';
 import { api } from '@/lib/api';
@@ -15,29 +15,6 @@ const MODEL_OPTIONS: Record<string, string[]> = {
   claude: ['opus-4.5', 'sonnet-4.5', 'haiku-4.5'],
   codex: ['gpt-5.2-codex', 'gpt-5.1-codex-mini'],
 };
-
-function KV({ k, v, mono = true }: { k: string; v?: string | null; mono?: boolean }) {
-  if (!v) return null;
-  return (
-    <View className="flex-row justify-between gap-3 py-[5.5px]">
-      <Text className="font-sans text-[13px] text-fg3">{k}</Text>
-      <Text
-        className={`min-w-0 flex-1 text-right ${mono ? 'font-mono text-[11.5px]' : 'font-sans-semibold text-[13px]'} text-fg`}
-        numberOfLines={2}
-      >
-        {v}
-      </Text>
-    </View>
-  );
-}
-
-function Section({ label }: { label: string }) {
-  return (
-    <Text className="mb-1.5 mt-4 font-mono text-[9px] uppercase tracking-[0.18em] text-fg3">
-      {label}
-    </Text>
-  );
-}
 
 // Agent profile bottom sheet (design.md §6): identity header + status pill,
 // mono KV rows, model switcher as choice chips, control pills.

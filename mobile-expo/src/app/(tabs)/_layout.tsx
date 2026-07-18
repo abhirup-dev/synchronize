@@ -1,8 +1,10 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { View as RNView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, Pressable } from '@/tw';
 import { useSync } from '@/lib/store';
+import { useTheme } from '@/theme/use-theme';
 
 // M3 navigation bar with pill active indicator + count badge (mobile.js .mnav).
 // Custom JS bar: full control over the pill/badge anatomy from the reference.
@@ -14,6 +16,7 @@ const DESTS = [
 
 function NavBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
+  const { c } = useTheme();
   const { activity } = useSync();
   const unread = activity?.events.filter((e) => !e.acked_at).length ?? 0;
   return (
@@ -30,9 +33,16 @@ function NavBar({ state, navigation }: any) {
             className="flex-1 items-center gap-[3px]"
             onPress={() => navigation.navigate(state.routes[idx].name)}
           >
-            <View
-              className={on ? 'bg-pric' : ''}
-              style={{ width: 56, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}
+            {/* plain RN View: rn-css class styles would clobber the inline geometry */}
+            <RNView
+              style={{
+                width: 56,
+                height: 30,
+                borderRadius: 999,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: on ? c.pric : 'transparent',
+              }}
             >
               <Text className={`text-[15px] ${on ? 'text-onpric' : 'text-fg2'}`}>{d.icon}</Text>
               {badge > 0 ? (
@@ -40,7 +50,7 @@ function NavBar({ state, navigation }: any) {
                   <Text className="font-mono text-[8.5px] text-onpri">{badge}</Text>
                 </View>
               ) : null}
-            </View>
+            </RNView>
             <Text className={`font-sans-bold text-[11px] ${on ? 'text-fg' : 'text-fg2'}`}>{d.label}</Text>
           </Pressable>
         );
@@ -52,7 +62,7 @@ function NavBar({ state, navigation }: any) {
 export default function TabsLayout() {
   return (
     <Tabs
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, animation: 'shift' }}
       tabBar={(props) => <NavBar {...props} />}
       backBehavior="initialRoute"
     >

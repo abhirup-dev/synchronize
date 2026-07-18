@@ -1,29 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable, ScrollView, TextInput } from '@/tw';
-import { MButton, toast } from '@/components/ui';
+import { MButton, toast, Section, Chip } from '@/components/ui';
 import { useSync } from '@/lib/store';
 import { api } from '@/lib/api';
 import { useTheme } from '@/theme/use-theme';
-
-function Section({ label }: { label: string }) {
-  return (
-    <Text className="mb-1.5 mt-4 font-mono text-[9px] uppercase tracking-[0.18em] text-fg3">
-      {label}
-    </Text>
-  );
-}
-
-function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`rounded-full px-[13px] py-[7px] ${on ? 'bg-pric' : 'border border-outl'}`}
-    >
-      <Text className={`font-mono-bold text-[11px] ${on ? 'text-onpric' : 'text-fg2'}`}>{label}</Text>
-    </Pressable>
-  );
-}
 
 // Spawn agent sheet (design.md §5.4): harness segments, optional launch
 // profile, session name, target room — wired to /agent-sessions/launch.

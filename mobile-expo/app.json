@@ -23,6 +23,8 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-status-bar", { "style": "auto" }],
+      ["expo-navigation-bar", { "enforceContrast": false, "style": "auto" }],
       [
         "expo-splash-screen",
         {

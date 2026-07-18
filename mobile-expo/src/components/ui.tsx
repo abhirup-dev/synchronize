@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, ToastAndroid } from 'react-native';
+import { useRouter } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { statusColor, type AgentStatus } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
@@ -31,17 +32,21 @@ export function StatusPill({ status }: { status: AgentStatus }) {
 }
 
 // Top app bar — 21px 800 title over a mono sub-line (mobile.js .mtop).
+// `menu` appends the overflow button (routes to the /menu sheet).
 export function MTop({
   title,
   sub,
   onBack,
   right,
+  menu = false,
 }: {
   title: string;
   sub?: string;
   onBack?: () => void;
   right?: React.ReactNode;
+  menu?: boolean;
 }) {
+  const router = useRouter();
   return (
     <View className="flex-row items-center gap-3 px-4 pb-2.5 pt-3.5">
       {onBack ? (
@@ -64,7 +69,53 @@ export function MTop({
         ) : null}
       </View>
       {right}
+      {menu ? (
+        <Pressable
+          onPress={() => router.push('/menu')}
+          className="h-10 w-10 items-center justify-center rounded-full active:bg-surf"
+          hitSlop={6}
+        >
+          <Text className="font-sans-bold text-[18px] text-fg2">⋮</Text>
+        </Pressable>
+      ) : null}
     </View>
+  );
+}
+
+// Mono section label (profile/menu sheets).
+export function Section({ label }: { label: string }) {
+  return (
+    <Text className="mb-1.5 mt-4 font-mono text-[9px] uppercase tracking-[0.18em] text-fg3">
+      {label}
+    </Text>
+  );
+}
+
+// Key/value row — values mono by default (machine text).
+export function KV({ k, v, mono = true }: { k: string; v?: string | null; mono?: boolean }) {
+  if (!v) return null;
+  return (
+    <View className="flex-row justify-between gap-3 py-[5.5px]">
+      <Text className="font-sans text-[13px] text-fg3">{k}</Text>
+      <Text
+        className={`min-w-0 flex-1 text-right ${mono ? 'font-mono text-[11.5px]' : 'font-sans-semibold text-[13px]'} text-fg`}
+        numberOfLines={2}
+      >
+        {v}
+      </Text>
+    </View>
+  );
+}
+
+// Choice chip (M3): outlined at rest, tonal when selected.
+export function Chip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`rounded-full px-[13px] py-[7px] ${on ? 'bg-pric' : 'border border-outl'}`}
+    >
+      <Text className={`font-mono-bold text-[11px] ${on ? 'text-onpric' : 'text-fg2'}`}>{label}</Text>
+    </Pressable>
   );
 }
 

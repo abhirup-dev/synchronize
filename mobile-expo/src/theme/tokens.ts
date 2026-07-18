@@ -25,10 +25,11 @@ export const palettes: Record<'dark' | 'light', Palette> = {
     fg2: '#9a9da3',
     fg3: '#55585f',
     outl: 'rgba(231,232,234,0.18)',
-    pri: '#e8825a',
+    // graphite accent (design.md §2.3) — the chosen default
+    pri: '#c9ccd1',
     onpri: '#121316',
-    pric: '#e8825a2e',
-    onpric: '#e8825a',
+    pric: '#c9ccd12e',
+    onpric: '#c9ccd1',
   },
   light: {
     bg: '#fafafa',
@@ -38,10 +39,10 @@ export const palettes: Record<'dark' | 'light', Palette> = {
     fg2: '#5f6268',
     fg3: '#a4a7ac',
     outl: 'rgba(29,30,32,0.16)',
-    pri: '#c2571f',
+    pri: '#3a3d42',
     onpri: '#ffffff',
-    pric: '#c2571f24',
-    onpric: '#c2571f',
+    pric: '#3a3d4224',
+    onpric: '#3a3d42',
   },
 };
 

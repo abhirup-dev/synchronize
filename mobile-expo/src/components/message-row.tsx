@@ -8,10 +8,27 @@ import { clockTime, displayName, splitBody } from '@/lib/format';
 import type { Peer, SyncEvent } from '@/lib/types';
 
 // Inline mention highlighting — @name in primary, bold (design.md §6).
-export function BodyText({ text, self, small }: { text: string; self?: boolean; small?: boolean }) {
+export function BodyText({
+  text,
+  self,
+  small,
+  muted,
+  numberOfLines,
+}: {
+  text: string;
+  self?: boolean;
+  small?: boolean;
+  muted?: boolean;
+  numberOfLines?: number;
+}) {
   const parts = text.split(/(@[\w:./-]+)/g);
   return (
-    <Text className={`font-sans ${small ? 'text-[12.5px]' : 'text-[14px]'} leading-[1.5] ${self ? 'text-onpric' : 'text-fg'}`}>
+    <Text
+      numberOfLines={numberOfLines}
+      className={`font-sans ${small ? 'text-[12.5px] leading-[1.45]' : 'text-[14px] leading-[1.5]'} ${
+        self ? 'text-onpric' : muted ? 'text-fg2' : 'text-fg'
+      }`}
+    >
       {parts.map((p, i) =>
         p.startsWith('@') ? (
           <Text key={i} className={`font-sans-bold ${self ? 'text-onpric underline' : 'text-pri'}`}>

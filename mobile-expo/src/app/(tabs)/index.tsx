@@ -53,6 +53,7 @@ export default function RoomsScreen() {
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-bg">
       <MTop
+        menu
         title="Rooms"
         sub={`${rooms.length} ROOMS · ${unreadTotal} UNREAD · ● ${working} WORKING`}
         right={
