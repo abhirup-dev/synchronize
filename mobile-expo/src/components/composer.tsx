@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable } from '@/tw';
+import { TextInput as RNTextInput } from 'react-native';
+import { View, Text, Pressable } from '@/tw';
 import { useTheme } from '@/theme/use-theme';
 import { toast } from '@/components/ui';
 
@@ -31,8 +32,21 @@ export function Composer({
 
   return (
     <View className="flex-row items-center gap-2.5 px-4 pb-3 pt-2.5">
-      <TextInput
-        className="min-h-[46px] flex-1 rounded-full bg-surf px-[18px] py-3 font-sans text-[14px] text-fg"
+      {/* plain RNTextInput: the css element wasn't applying horizontal
+          padding on Android, leaving the placeholder ~7dp from the edge
+          instead of the reference's 18px inset */}
+      <RNTextInput
+        style={{
+          flex: 1,
+          minHeight: 46,
+          borderRadius: 999,
+          backgroundColor: c.surf,
+          paddingHorizontal: 18,
+          paddingVertical: 12,
+          fontFamily: 'InstrumentSans_400Regular',
+          fontSize: 14,
+          color: c.fg,
+        }}
         placeholder={placeholder}
         placeholderTextColor={c.fg3}
         value={text}

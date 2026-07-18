@@ -27,10 +27,19 @@ export default function RoomScreen() {
         (e) => (e.type === 'message' || e.type?.includes('message') || e.body) &&
           !e.reply_to_event_id && !e.parent_event_id &&
           !e.body?.startsWith('{'),
-      ),
+      ).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '')),
     [roomEvents, roomId],
   );
   const peers = useMemo(() => new Map((state?.peers ?? []).map((p) => [p.peer_id, p])), [state]);
+  // Latest reply time per thread parent — feeds the "· last HH:MM" chip meta.
+  const lastReply = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const e of roomEvents[roomId] ?? []) {
+      const parent = e.reply_to_event_id ?? e.parent_event_id;
+      if (parent && e.created_at) m.set(parent, e.created_at);
+    }
+    return m;
+  }, [roomEvents, roomId]);
 
   useEffect(() => {
     openRoom(roomId);
@@ -94,6 +103,7 @@ export default function RoomScreen() {
               sender={peers.get(item.sender_peer_id)}
               self={item.sender_peer_id === peerId}
               roomId={roomId}
+              lastReplyAt={lastReply.get(item.event_id)}
             />
           )}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}

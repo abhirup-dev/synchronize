@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { View, Text, Pressable } from '@/tw';
 import { SigilChip } from '@/components/sigil';
-import { nameColor } from '@/theme/tokens';
+import { View as RNView } from 'react-native';
+import { ember, nameColor } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 import { useSync } from '@/lib/store';
 import { clockTime, displayName, splitBody } from '@/lib/format';
@@ -43,7 +44,7 @@ export function BodyText({
 
   const mentionColor = (tag: string) => {
     const n = tag.slice(1).toLowerCase();
-    if (n === 'you') return c.pri;
+    if (n === 'you') return dark ? ember.dark : ember.light;
     const id = idByName.get(n);
     return id ? nameColor(id, dark) : c.pri;
   };
@@ -62,14 +63,27 @@ export function BodyText({
           </Text>
         );
       if (p.length > 2 && p.startsWith('`') && p.endsWith('`'))
+        // Inline View chip: a nested Text can't round its background, and
+        // reference chips are 5px-rounded with real padding.
         return (
-          <Text
+          <RNView
             key={i}
-            className={`font-mono ${small ? 'text-[11px]' : 'text-[12px]'}`}
-            style={{ backgroundColor: codeBg }}
+            style={{
+              backgroundColor: codeBg,
+              borderRadius: 5,
+              paddingHorizontal: 5,
+              paddingVertical: 1,
+              transform: [{ translateY: 3 }],
+            }}
           >
-            {` ${p.slice(1, -1)} `}
-          </Text>
+            <Text
+              className={`font-mono ${small ? 'text-[11px]' : 'text-[12px]'} ${
+                self ? 'text-onpric' : 'text-fg'
+              }`}
+            >
+              {p.slice(1, -1)}
+            </Text>
+          </RNView>
         );
       if (p.length > 4 && p.startsWith('**') && p.endsWith('**'))
         return (
@@ -102,7 +116,7 @@ export function BodyText({
         const li = ln.match(/^(\d+)\.\s+(.*)$/);
         if (li)
           return (
-            <View key={i} className="mt-[3px] flex-row pl-1">
+            <View key={i} className="mt-[3px] flex-row items-baseline pl-1">
               <Text className={base}>{li[1]}. </Text>
               <Text className={`${base} min-w-0 flex-1`}>{spans(li[2]!)}</Text>
             </View>
@@ -128,6 +142,7 @@ export function MessageRow({
   small = false,
   roomId,
   showThreadChip = true,
+  lastReplyAt,
 }: {
   event: SyncEvent;
   sender?: Peer;
@@ -135,6 +150,7 @@ export function MessageRow({
   small?: boolean;
   roomId?: string;
   showThreadChip?: boolean;
+  lastReplyAt?: string;
 }) {
   const router = useRouter();
   const { dark, c } = useTheme();
@@ -186,6 +202,7 @@ export function MessageRow({
             >
               <Text className="font-sans-bold text-[12px] text-pri">
                 ↳ {event.reply_count} {event.reply_count === 1 ? 'reply' : 'replies'}
+                {lastReplyAt ? ` · last ${clockTime(lastReplyAt)}` : ''}
               </Text>
             </Pressable>
           ) : null}

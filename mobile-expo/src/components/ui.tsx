@@ -48,11 +48,12 @@ export function MTop({
 }) {
   const router = useRouter();
   return (
-    <View className="flex-row items-center gap-3 px-4 pb-2.5 pt-3.5">
+    <View className="flex-row items-start gap-3 px-4 pb-2.5 pt-3.5">
       {onBack ? (
+        // Optically centered on the 21px title line, not the title+sub block.
         <Pressable
           onPress={onBack}
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-surf"
+          className="-mt-1.5 h-10 w-10 items-center justify-center rounded-full active:bg-surf"
           hitSlop={6}
         >
           <Text className="text-[17px] text-fg2">←</Text>

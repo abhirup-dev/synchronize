@@ -46,6 +46,10 @@ export const palettes: Record<'dark' | 'light', Palette> = {
   },
 };
 
+// Sigil brand accent (ACCENTS.ember) — @you mentions keep the brand ember
+// regardless of the M3 accent, exactly like the reference's paintMentions().
+export const ember = { dark: '#e8825a', light: '#c2571f' };
+
 export const statusColors = {
   working: '#52c48b',
   awaiting: 'pri', // resolved to palette.pri by statusColor()
