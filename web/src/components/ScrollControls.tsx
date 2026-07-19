@@ -22,7 +22,9 @@ const scrollCtrl = cva(
     variants: {
       newItems: {
         true: [
-          "scroll-ctrl-new animate-[new-message-pop_900ms_ease-out_infinite] bg-lime opacity-100",
+          // New-content pop: neutral sidebar-shade surface (bg-paper-3) + full
+          // opacity + pulse — theme-aligned in both light and dark, no accent hue.
+          "animate-[new-message-pop_900ms_ease-out_infinite] bg-paper-3 opacity-100",
         ],
         false: null,
       },

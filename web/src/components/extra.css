@@ -1111,30 +1111,41 @@
   white-space: nowrap;
 }
 
+/* ref .cont .gt: continuation timestamp surfaces in the left gutter on hover
+   (where the sigil would be), not crowding the action pill on the right. */
 :root .message-continuation-time {
   position: absolute;
-  top: 4px;
-  right: 0;
-  opacity: 1;
-  font-size: var(--text-9-5);
+  left: 0;
+  top: 8px;
+  right: auto;
+  width: 32px;
+  text-align: center;
+  opacity: 0;
+  font-size: var(--text-9);
   text-transform: none;
+  transition: opacity 120ms ease;
 }
 
-/* Reference inlay actions: bare quiet glyphs left of the timestamp — no
-   background, border, or shadow on the strip; hover = accent tint pill. */
+:root .message-row:is(:hover, :focus-within) .message-continuation-time {
+  opacity: 1;
+}
+
+/* Reference .rmeta: a floating pill of quiet glyphs straddling the row's top
+   rule (Slack-style, "between the bubbles"), solid bg so it stays legible over
+   dense text. Applies to group-start and continuation rows alike. */
 :root .message-actions {
   position: absolute;
-  top: 0;
-  right: 58px;
-  z-index: 2;
+  top: -13px;
+  right: 6px;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 1px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 1px 3px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper-2);
+  box-shadow: var(--overlay-shadow);
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease;
@@ -1613,12 +1624,9 @@
    reference, requested 2026-07-13) — kept last so they beat the per-surface
    thread/chat rules above. ─────────────────────────────────────────────── */
 
-/* Continuation rows reserve headroom so the hover action glyphs never overlap
-   the first text line (the reference lets them overlap; we don't). */
-:root .app-shell:not(.shell-compact) .message-row.is-grouped,
-:root .app-shell:not(.shell-compact) .thread-pane .message-row.is-grouped {
-  padding-top: 24px;
-}
+/* Continuation rows sit tight (ref .msg padding 4px 0). The hover action pill
+   floats above the row (see .message-actions below) and a solid bg keeps it
+   legible over the boundary, so no headroom reservation is needed. */
 
 /* Mini thread avatars: 20px sigil tile inline with the author-name text. */
 :root .app-shell:not(.shell-compact) .thread-pane .message-row.mini-avatar {
@@ -1626,14 +1634,29 @@
   column-gap: 8px;
 }
 
-/* Always-on hairline between consecutive agent bubbles (chat + thread);
-   hovering the row darkens its rules to emphasize the current message. */
+/* Block separators (chat + thread): one grayish hairline at the TOP of every
+   row that follows another — i.e. between consecutive message blocks. Always
+   on. There is exactly ONE line per boundary (never a top+bottom pair), so
+   hover can recolor these same lines without ever doubling them up. */
 :root .app-shell:not(.shell-compact)
   :is(.message-virtual-row + .message-virtual-row, .thread-virtual-row + .thread-virtual-row)
   .message-row:not(.is-self) {
   box-shadow: 0 -1px 0 var(--rule-2);
 }
 
-:root .app-shell:not(.shell-compact) .message-row:not(.is-self):hover {
-  box-shadow: 0 -1px 0 var(--rule), 0 1px 0 var(--rule);
+/* Hover focus: brighten the two separators that BOUND the hovered block — its
+   own top line and the next block's top line — from grayish (--rule-2) to
+   whiter (--rule). No new line is drawn; we only recolor the always-on lines,
+   so there is no doubling. Both selectors resolve to 0,8,0 and beat the
+   always-on rule above (0,7,0). The hovered-row selector is gated on a
+   preceding sibling, so the first row (no line above it) stays clean. */
+:root .app-shell:not(.shell-compact)
+  :is(.message-virtual-row + .message-virtual-row, .thread-virtual-row + .thread-virtual-row):hover
+  .message-row:not(.is-self) {
+  box-shadow: 0 -1px 0 var(--rule);
+}
+:root .app-shell:not(.shell-compact)
+  :is(.message-virtual-row:hover + .message-virtual-row, .thread-virtual-row:hover + .thread-virtual-row)
+  .message-row:not(.is-self) {
+  box-shadow: 0 -1px 0 var(--rule);
 }

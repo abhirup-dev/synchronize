@@ -15,7 +15,7 @@ interface HarnessProps {
   // for inspection (the real surface only flashes it during active scrolling).
   forceScrolling?: boolean;
   // Bump this to simulate a freshly-arrived message while scrolled away from
-  // the bottom — drives the lime "new items below" pop state.
+  // the bottom — drives the neutral "new items below" pop state.
   newItemsKey?: number | null;
   // Start scrolled to the bottom (atBottom => nothing to jump to going down).
   startAtBottom?: boolean;
@@ -76,7 +76,7 @@ export const ScrollingDown: Story = {
   render: () => <Harness forceScrolling scrollTopPx={120} />,
 };
 
-// Fresh message arrived while the user is scrolled up — the lime "new items
+// Fresh message arrived while the user is scrolled up — the neutral "new items
 // below" pill pops regardless of the scrolling window.
 export const NewItemsBelow: Story = {
   render: () => <Harness newItemsKey={1} />,

@@ -275,10 +275,17 @@ export const MessagePermalinkMenu: Story = {
 };
 
 export const GroupedWithPrev: Story = {
-  args: { message: msg("m3"), author: authorOf(msg("m3").authorId), groupedWithPrev: true },
+  args: { message: msg("m3"), author: authorOf(msg("m3").authorId), groupedWithPrev: true, onOpenThread: fn() },
   play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // ref .cont .gt: the continuation timestamp lives in the left gutter and is
+    // hidden until the row is hovered/focused (not always-on top-right).
     const timestamp = canvasElement.querySelector<HTMLElement>(".message-continuation-time")!;
-    await expect(getComputedStyle(timestamp).opacity).toBe("1");
+    await expect(getComputedStyle(timestamp).opacity).toBe("0");
+    await expect(getComputedStyle(timestamp).left).toBe("0px");
+    // focus a row action to trigger :focus-within and reveal the timestamp
+    canvas.getByRole("button", { name: "reply in thread" }).focus();
+    await waitFor(() => expect(getComputedStyle(timestamp).opacity).toBe("1"));
   },
 };
 

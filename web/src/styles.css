@@ -16,7 +16,9 @@ body {
   font-family: var(--font-ui);
   font-size: var(--text-13-5);
   line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+  /* No -webkit-font-smoothing override: the reference leaves it at the browser
+     default (macOS subpixel), which renders type slightly heavier. Forcing
+     `antialiased` here made every glyph a touch lighter than the ref. */
   /* Paper grain — very subtle dotted noise; alpha adjusts per theme */
   transition: background-color 200ms ease, color 200ms ease;
 }
