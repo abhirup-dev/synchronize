@@ -252,7 +252,7 @@ export const MessageRow = memo(function MessageRow({
                   <button
                     // ref .tfoot: `.thread` is 12/700 accent sans; `.meta` is mono 9.5 fg3.
                     // Font shorthand lives unlayered in extra.css (.thread-badge).
-                    className="thread-badge mt-0 inline-flex min-w-0 w-fit cursor-pointer items-baseline gap-[var(--space-6)] rounded-sm bg-transparent py-1 px-0 text-[color:var(--accent)] [border:var(--line-none)] hover:underline"
+                    className="thread-badge mt-0 inline-flex min-w-0 w-fit cursor-pointer items-baseline gap-[var(--space-6)] rounded-sm bg-transparent py-1 px-0 text-[color:var(--accent)] [border:var(--line-none)] no-underline hover:opacity-80"
                     aria-label={`Open thread with ${threadReplyCount} ${threadReplyCount === 1 ? "reply" : "replies"}`}
                     onClick={() => onOpenThread?.(message.id)}
                   >
