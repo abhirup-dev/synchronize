@@ -14,6 +14,7 @@ import {
   DAEMON_ERROR_CODES,
   DaemonProbeError,
   describeProbe,
+  hasCompetingOwner,
   isDaemonAbsent,
   probeDaemon,
   type DaemonProbe,
@@ -79,12 +80,18 @@ export async function ensureDaemon(): Promise<ClientConfig> {
     log(`using existing daemon ${describeProbe(existing)}`);
     return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
   }
-  // Spawn ONLY when nothing is listening. A wedged, incompatible, or
-  // token-protected daemon is still occupying the discovered endpoint, and
-  // starting a second one on top of it makes the situation worse and harder to
-  // read. Recovery from those states is an explicit operator verb
-  // (`make daemon-relaunch`), never an implicit side effect of a read.
-  if (!isDaemonAbsent(existing)) {
+  // Refuse early only on POSITIVE evidence that something else owns the
+  // endpoint: it identified as the wrong service, demanded a token, or failed
+  // for a reason other than nothing-listening. Starting a second daemon on top
+  // of one of those makes the situation worse and harder to read, and recovery
+  // is an explicit operator verb, never a side effect of a read.
+  //
+  // A timeout is NOT such evidence, so it falls through to the lock and gets
+  // re-probed there. This is the hottest path in the product — every CLI command
+  // and MCP call — and the health deadline is tight enough that a loaded machine
+  // can miss it twice while the daemon is perfectly fine. A genuinely wedged
+  // endpoint is still caught below, one probe round later.
+  if (hasCompetingOwner(existing)) {
     throw new DaemonProbeError(
       DAEMON_ERROR_CODES[existing.kind],
       `${describeProbe(existing)}\nRefusing to start a second daemon on an occupied endpoint. Run 'make daemon-relaunch' to recover.`,
@@ -98,8 +105,13 @@ export async function ensureDaemon(): Promise<ClientConfig> {
       log(`daemon became healthy while waiting ${describeProbe(refreshed)}`);
       return;
     }
+    // Serialized and re-probed: anything still not absent is occupying the
+    // endpoint for real, including a timeout that survived a second round.
     if (!isDaemonAbsent(refreshed)) {
-      throw new DaemonProbeError(DAEMON_ERROR_CODES[refreshed.kind], describeProbe(refreshed));
+      throw new DaemonProbeError(
+        DAEMON_ERROR_CODES[refreshed.kind],
+        `${describeProbe(refreshed)}\nRefusing to start a second daemon on an occupied endpoint. Run 'make daemon-relaunch' to recover.`,
+      );
     }
     log(`starting daemon home=${paths.home}`);
     const child = await startDaemon(paths);

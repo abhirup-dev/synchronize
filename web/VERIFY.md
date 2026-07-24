@@ -24,6 +24,19 @@ cd web && bunx playwright install chromium
 To watch/debug stories: `cd web && bun run storybook` (dev server + MCP on :6006).
 To run the tests headed: `cd web && bun run test:storybook:headed`.
 
+## Dev-server routing (run for changes to the dev config or the address module)
+
+```bash
+make web-dev                                                   # one shell
+bun run scripts/verify-web-dev.ts <the printed Portless URL>    # another
+```
+
+Asserts that client routes serve the dev bundle rather than the daemon's SPA
+fallback, that daemon routes forward without being named in the dev config, that
+request bodies cross the proxy, and that `/web/events` streams on an open
+connection instead of buffering to close. It needs a live Vite server, so it is a
+script rather than part of `bun test`.
+
 ## Manual matrix (run for UI-affecting changes)
 
 The story tests cover component states + shell render. Manually confirm the rest across

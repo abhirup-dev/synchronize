@@ -142,6 +142,28 @@ export function isDaemonAbsent(probe: DaemonProbe): boolean {
   return probe.kind === "discovery_missing" || (probe.kind === "unreachable" && probe.connectionRefused);
 }
 
+/**
+ * True when the probe is POSITIVE evidence that something else owns the
+ * endpoint: it answered and identified as the wrong thing, demanded a token, or
+ * failed for a reason other than nothing-listening.
+ *
+ * `timed_out` is deliberately excluded. It is absence of evidence, not evidence
+ * of an owner — a loaded machine can miss a tight health deadline while the
+ * daemon is fine. Callers should re-probe a timeout under serialization rather
+ * than treat it as a hard verdict.
+ */
+export function hasCompetingOwner(probe: DaemonProbe): boolean {
+  switch (probe.kind) {
+    case "incompatible":
+    case "auth_required":
+      return true;
+    case "unreachable":
+      return !probe.connectionRefused;
+    default:
+      return false;
+  }
+}
+
 /** Human-readable one-liner, prefixed with the stable code. */
 export function describeProbe(probe: DaemonProbe): string {
   switch (probe.kind) {

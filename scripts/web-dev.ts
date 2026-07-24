@@ -21,7 +21,6 @@ import { readJson } from "../src/fs.ts";
 import { getRuntimePaths } from "../src/paths.ts";
 import type { Discovery } from "../src/client.ts";
 
-const APP_NAME = "synchronize-dev";
 const REPO_ROOT = join(import.meta.dir, "..");
 const WEB_DIR = join(REPO_ROOT, "web");
 
@@ -86,16 +85,25 @@ if (probe.health.provenance) {
   console.log(`  daemon at ${p.source_root} @ ${p.git_sha?.slice(0, 8) ?? "unknown"}${p.git_dirty ? " (dirty)" : ""}`);
 }
 console.log(`ui source   ${WEB_DIR}`);
+// Read for reporting only. web/portless.json is the single site of the app name
+// and the dev script; passing --name here too would put one string in two files.
+const appName: string = await Bun.file(join(WEB_DIR, "portless.json"))
+  .json()
+  .then((config: { name?: string }) => config.name ?? "inferred")
+  .catch(() => "inferred");
 // The prefix is the LAST segment of the branch name, so feat/foo and fix/foo
 // both reduce to "foo" and would contend for one route. main/master get no
 // prefix at all.
-console.log(`portless    ${portless} (app "${APP_NAME}"; a linked worktree prefixes the branch's last segment)\n`);
+console.log(`portless    ${portless} (app "${appName}"; a linked worktree prefixes the branch's last segment)\n`);
 
 // ── 4. Start Portless + Vite ────────────────────────────────────────────────
+// Bare `run`: web/portless.json supplies both the app name and the dev script,
+// so this launcher and a plain `portless` in web/ behave identically.
+//
 // Portless assigns the port and passes it as PORT/HOST, which vite.dev.config.ts
 // reads. --force is never used: it would kill whatever already holds the route,
 // which in this project is most likely another worktree's UI.
-const child = spawn(portless, ["run", "--name", APP_NAME, "--", "bun", "run", "dev:raw"], {
+const child = spawn(portless, ["run"], {
   cwd: WEB_DIR,
   stdio: "inherit",
   env: { ...process.env, [ENV_DAEMON_URL]: daemonUrl },

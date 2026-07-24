@@ -13,8 +13,25 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { BASE, CLIENT_ROUTE_PREFIXES } from "./src/routing/address.ts";
 
-const DAEMON_URL = (process.env["SYNCHRONIZE_DAEMON_URL"] ?? "http://127.0.0.1:58405").replace(/\/$/, "");
+// Required, with no default. The daemon's port is random by default
+// (SYNCHRONIZE_PORT=0), so any hardcoded fallback here is a guess that forwards
+// silently to nothing — or to whatever else took the port. `make web-dev`
+// resolves and probes the runtime, then injects it.
+const DAEMON_URL = requireDaemonUrl();
 const PORT = Number(process.env["PORT"] ?? 5173);
+
+function requireDaemonUrl(): string {
+  const raw = process.env["SYNCHRONIZE_DAEMON_URL"]?.trim();
+  if (!raw) {
+    throw new Error(
+      "SYNCHRONIZE_DAEMON_URL is not set, so there is no runtime to forward to.\n" +
+        "Use 'make web-dev', which resolves and probes a runtime first.\n" +
+        "To run Vite directly: SYNCHRONIZE_DAEMON_URL=http://127.0.0.1:PORT bun run dev:raw\n" +
+        "('make daemon-status' prints the current daemon's URL.)",
+    );
+  }
+  return raw.replace(/\/$/, "");
+}
 
 export default defineConfig({
   root: __dirname,

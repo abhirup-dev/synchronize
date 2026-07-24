@@ -79,26 +79,39 @@ daemon spawned on top of it.
 
 ```ts
 type DaemonProbe =
-  | { kind: "healthy"; health: HealthResponse }
+  | { kind: "healthy"; baseUrl: string; health: HealthResponse }
   | { kind: "discovery_missing" }
-  | { kind: "unreachable"; cause: string }
-  | { kind: "timed_out"; timeoutMs: number }
-  | { kind: "incompatible"; expected: number; actual: unknown }
-  | { kind: "auth_required" };
+  | { kind: "unreachable"; baseUrl: string; cause: string; connectionRefused: boolean }
+  | { kind: "timed_out"; baseUrl: string; timeoutMs: number; attempts: number }
+  | { kind: "incompatible"; baseUrl: string; expected: number; actual: unknown }
+  | { kind: "auth_required"; baseUrl: string };
 ```
 
 The probe mutates no process and no file, bounds every request with a timeout,
 validates service name and API version, preserves `/health` provenance, and
 returns typed data rather than deciding policy.
 
+`connectionRefused` is what carries the fix for the duplicate-spawn bug. It
+separates *nothing is listening* from *listening and wedged* — the two states the
+old boolean collapsed, and the two whose correct responses are opposite.
+
 Policy belongs to consumers:
 
 ```text
   daemon-status    print the variant. never act.
   web-dev          require healthy, else exit non-zero.
-  ensureDaemon()   spawn ONLY on discovery_missing | unreachable.
-                   refuse on timed_out | incompatible | auth_required.
+  ensureDaemon()   spawn on:    discovery_missing | (unreachable && connectionRefused)
+                   refuse on:   incompatible | auth_required
+                                | (unreachable && !connectionRefused)
+                   re-probe on: timed_out
 ```
+
+A timeout is absence of evidence, not evidence of an owner: the health deadline
+is 500ms, tight enough for a loaded machine to miss while the daemon is fine, and
+this path runs on every CLI command and MCP call. So a timeout is not a verdict —
+it falls through to the launch lock and is probed again under serialization,
+where a genuinely wedged endpoint still refuses. Only positive evidence that
+something else owns the endpoint refuses immediately.
 
 Stable launcher error codes:
 

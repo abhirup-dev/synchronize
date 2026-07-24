@@ -3,7 +3,7 @@
 // the distinction autostart policy hangs on.
 import { afterAll, expect, test } from "bun:test";
 import { API_VERSION } from "../src/constants.ts";
-import { isDaemonAbsent, probeDaemon } from "../src/daemon-probe.ts";
+import { hasCompetingOwner, isDaemonAbsent, probeDaemon } from "../src/daemon-probe.ts";
 import { cleanupDaemonHomes, startDaemon } from "./support/daemon.ts";
 
 afterAll(cleanupDaemonHomes);
@@ -128,6 +128,24 @@ test("non-JSON on /health reports incompatible rather than healthy", async () =>
   } finally {
     stop();
   }
+});
+
+test("a timeout is not treated as a competing owner, so autostart can retry", () => {
+  // The distinction ensureDaemon hangs on: positive evidence of an owner refuses
+  // immediately, while a timeout falls through to be re-probed under the launch
+  // lock. Treating a timeout as a verdict turns a transient miss on a loaded
+  // machine into a hard failure on every CLI command and MCP call.
+  const timedOut = { kind: "timed_out", baseUrl: "http://x", timeoutMs: 500, attempts: 2 } as const;
+  expect(hasCompetingOwner(timedOut)).toBe(false);
+  expect(isDaemonAbsent(timedOut)).toBe(false); // still not spawnable without a re-probe
+
+  expect(hasCompetingOwner({ kind: "auth_required", baseUrl: "http://x" })).toBe(true);
+  expect(hasCompetingOwner({ kind: "incompatible", baseUrl: "http://x", expected: 1, actual: 2 })).toBe(true);
+  expect(hasCompetingOwner({ kind: "unreachable", baseUrl: "http://x", cause: "HTTP 500", connectionRefused: false })).toBe(true);
+
+  // Nothing listening is not an owner — this is the spawnable case.
+  expect(hasCompetingOwner({ kind: "unreachable", baseUrl: "http://x", cause: "refused", connectionRefused: true })).toBe(false);
+  expect(hasCompetingOwner({ kind: "discovery_missing" })).toBe(false);
 });
 
 test("the probe mutates nothing: a missing home stays missing", async () => {
