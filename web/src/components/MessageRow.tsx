@@ -13,7 +13,7 @@ import { AgentProfileDialog } from "./AgentPreview.tsx";
 import { useToast } from "./Toast.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
-import { messageDeepLinkUrl } from "../deeplinks.ts";
+import { messageAddressUrl } from "../routing/address.ts";
 import { copyText } from "../utils/clipboard.ts";
 
 interface MessageRowProps {
@@ -132,7 +132,7 @@ export const MessageRow = memo(function MessageRow({
           {
             label: "Copy link",
             onSelect: async () => {
-              const copied = await copyText(messageDeepLinkUrl(message.id));
+              const copied = await copyText(messageAddressUrl(message.id, window.location.origin));
               toast.show(copied ? "Message link copied" : "Could not copy message link", { kind: copied ? "success" : "error" });
             },
           },

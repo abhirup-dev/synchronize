@@ -55,7 +55,13 @@ function randomId(): string {
 }
 
 export interface DaemonDataSourceOptions {
-  baseUrl?: string;
+  /**
+   * RUNTIME — which daemon holds the data. Required, and deliberately NOT
+   * defaulted to window.location.origin: deriving the runtime from whoever
+   * served the document is a fine default but a wrong constraint, and a silent
+   * one. The single injection site is pickDataSource() in App.tsx.
+   */
+  baseUrl: string;
   token?: string;
   pollMs?: number;
   stateLimit?: number;
@@ -421,8 +427,8 @@ export class DaemonDataSource implements DataSource {
   private readonly token: string | undefined;
   private peerId: string;
 
-  constructor(opts: DaemonDataSourceOptions = {}) {
-    this.baseUrl = (opts.baseUrl ?? window.location.origin).replace(/\/$/, "");
+  constructor(opts: DaemonDataSourceOptions) {
+    this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.token = opts.token || undefined;
     this.pollMs = opts.pollMs ?? 2_000;
     this.stateLimit = opts.stateLimit ?? 500;

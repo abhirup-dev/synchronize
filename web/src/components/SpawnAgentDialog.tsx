@@ -72,18 +72,6 @@ interface RuntimeTarget {
 }
 
 
-interface DaemonLaunchProfile {
-  name: string;
-  tool: AgentLaunchTool;
-  available: boolean;
-  path?: string;
-  model?: string;
-  thinking?: string;
-  session_name?: string;
-  repo?: string;
-  disabled_reason?: string;
-}
-
 const TOOL_OPTIONS: ToolOption[] = [
   { value: "claude", label: "Claude" },
   { value: "pi", label: "Pi" },
@@ -100,7 +88,6 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const spawnAgent = useSpawnAgent();
   const launchProfiles = useLaunchProfiles();
   const toast = useToast();
-  const [fetchedProfiles, setFetchedProfiles] = useState<AgentLaunchProfile[]>([]);
   const [targetId, setTargetId] = useState("tool:pi");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID.pi);
   const [name, setName] = useState(() => defaultAgentName("pi", room));
@@ -113,8 +100,8 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const roomLabel = useMemo(() => roomNameText(room.kind, room.name), [room.kind, room.name]);
   const title = useMemo(() => `Spawn into ${roomLabel}`, [roomLabel]);
   const profiles = useMemo(
-    () => mergeLaunchProfiles(launchProfiles, fetchedProfiles, room.launchProfiles ?? []),
-    [fetchedProfiles, launchProfiles, room.launchProfiles],
+    () => mergeLaunchProfiles(launchProfiles, room.launchProfiles ?? []),
+    [launchProfiles, room.launchProfiles],
   );
   const targets = useMemo(() => runtimeTargets(room, profiles), [room, profiles]);
   const selectedTarget = targets.find((target) => target.id === targetId) ?? targets[0] ?? fallbackRuntimeTarget();
@@ -125,25 +112,6 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
     nameRef.current?.focus();
     nameRef.current?.select();
   }, []);
-
-  useEffect(() => {
-    if ((room.launchProfiles?.length ?? 0) > 0 || launchProfiles.length > 0) return;
-    let cancelled = false;
-    const token = sessionStorage.getItem("SYNCHRONIZE_TOKEN") ?? localStorage.getItem("SYNCHRONIZE_TOKEN");
-    const headers = new Headers({ accept: "application/json" });
-    if (token) headers.set("authorization", `Bearer ${token}`);
-    void fetch("/web/state?limit=1", { headers })
-      .then((response) => response.ok ? response.json() : null)
-      .then((state: { launch_profiles?: DaemonLaunchProfile[] } | null) => {
-        if (!cancelled) setFetchedProfiles(mapDaemonLaunchProfiles(state?.launch_profiles ?? []));
-      })
-      .catch(() => {
-        if (!cancelled) setFetchedProfiles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [launchProfiles.length, room.launchProfiles]);
 
   useEffect(() => {
     if (!profiles.some((profile) => profile.name === selectedTarget.profileName)) return;
@@ -440,20 +408,6 @@ function mergeLaunchProfiles(...sources: AgentLaunchProfile[][]): AgentLaunchPro
     for (const profile of profiles) byName.set(profile.name, profile);
   }
   return [...byName.values()];
-}
-
-function mapDaemonLaunchProfiles(profiles: DaemonLaunchProfile[]): AgentLaunchProfile[] {
-  return profiles.map((profile) => ({
-    name: profile.name,
-    tool: profile.tool,
-    available: profile.available,
-    ...(profile.path ? { path: profile.path } : {}),
-    ...(profile.model ? { model: profile.model } : {}),
-    ...(profile.thinking ? { thinking: profile.thinking } : {}),
-    ...(profile.session_name ? { sessionName: profile.session_name } : {}),
-    ...(profile.repo ? { repo: profile.repo } : {}),
-    ...(profile.disabled_reason ? { disabledReason: profile.disabled_reason } : {}),
-  }));
 }
 
 function isAliasInUse(room: Room, alias: string): boolean {

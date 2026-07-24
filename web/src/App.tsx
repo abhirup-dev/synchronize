@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Settings, X } from "lucide-react";
 import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
 import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
-import { deepLinkPath, parseDeepLinkId } from "./deeplinks.ts";
+import { isAppPath, parseAddress, serializeAddress } from "./routing/address.ts";
 import { MockDataSource } from "./data/mock.ts";
 import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
@@ -51,10 +51,29 @@ function pickDataSource(): DataSource {
     sessionStorage.getItem("SYNCHRONIZE_TOKEN") ??
     localStorage.getItem("SYNCHRONIZE_TOKEN") ??
     undefined;
-  if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "live" || window.location.pathname.startsWith("/web")) {
-    return new DaemonDataSource(token ? { token } : {});
+  if (localStorage.getItem("SYNCHRONIZE_DATA_SOURCE") === "live" || isAppPath(window.location.pathname)) {
+    return new DaemonDataSource({ baseUrl: runtimeBaseUrl(), ...(token ? { token } : {}) });
   }
   return new MockDataSource();
+}
+
+// RUNTIME — which daemon holds the data — is resolved ONCE, here, and injected
+// at DataSource construction. It is a separate axis from ORIGIN (who served the
+// document): in production they are the same process, but a worktree dev server
+// is a different process from the daemon it reads. Defaulting to the origin is
+// the right default and would be a wrong constraint, which is why it is a
+// parameter rather than a lookup inside DaemonDataSource.
+//
+// No component may read this or window.location.origin for data access — every
+// read goes through useDataSource(). That keeps a future SharedWorker or
+// desktop-IPC DataSource a one-line change at this call site.
+//
+// A worktree UI reaches a DIFFERENT runtime without a cross-origin base URL: the
+// dev server forwards every unclaimed request to the daemon it was launched
+// against, so the browser stays same-origin and SSE, cookies and auth headers
+// need no CORS. Hence one value here, not a second environment knob.
+function runtimeBaseUrl(): string {
+  return window.location.origin.replace(/\/$/, "");
 }
 
 export function App() {
@@ -191,8 +210,9 @@ export function Shell() {
   // focus/thread-open is deferred to the apply effect below, which waits for the
   // hydrated messages to land. Runs on mount and on browser back/forward.
   const loadDeepLinkFromUrl = useCallback(async () => {
-    const id = parseDeepLinkId();
-    if (!id) return;
+    const address = parseAddress(window.location);
+    if (!address) return;
+    const id = address.linkId;
     try {
       const target = await ds.resolveDeepLink(id);
       await ds.hydrateDeepLinkTarget(target);
@@ -257,7 +277,7 @@ export function Shell() {
     setPendingDeepLink(null);
     // Normalize the address bar to the canonical /web/e/:id form without adding a
     // history entry, so a refresh re-lands on the same target.
-    window.history.replaceState(null, "", deepLinkPath(target));
+    window.history.replaceState(null, "", serializeAddress({ kind: "event", linkId: target.linkId }));
   }, [pendingDeepLink, activeId, roomMessages]);
   const layout = shellLayout(shellMode);
   const rosterPersistent = layout.rosterColumn && !threadParentId;
