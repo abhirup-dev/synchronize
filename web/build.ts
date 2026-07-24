@@ -1,32 +1,19 @@
 #!/usr/bin/env bun
-// Build pipeline for the synchronize web UI.
+// Production build for the synchronize web UI: bun run web/build.ts
 //
-// Uses Bun's built-in bundler (no Vite / Webpack). Produces web/dist/ with:
-//   - index.html        (rewritten to point at the hashed bundles)
-//   - main.<hash>.js    (React bundle)
-//   - main.<hash>.css   (stylesheet)
-//   - <assets>          (any imported static files)
-//
-// Run:
-//   bun run web/build.ts            # one-shot build
-//   bun run web/build.ts --watch    # rebuild on change (poor man's HMR via reload)
+// web/index.html is the entrypoint, not a template. Bun follows its module
+// script, bundles it, and rewrites the tags to hashed filenames. The Vite dev
+// server serves that same file verbatim, so dev and production cannot drift.
 
-import { rm, writeFile, readFile, mkdir } from "node:fs/promises";
+import { rm, mkdir } from "node:fs/promises";
 import tailwind from "bun-plugin-tailwind";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 const ROOT = dirname(new URL(import.meta.url).pathname);
-const SRC = join(ROOT, "src");
-// Output dir + asset base are env-overridable so the SAME pipeline can emit both
-// the daemon bundle (served under /web/) and the Capacitor app bundle (served at
-// the WebView root, https://localhost/). No duplicated build script or sources.
-//   daemon (default): WEB_DIST_DIR=dist         WEB_ASSET_BASE=/web/
-//   android app:      WEB_DIST_DIR=dist-mobile   WEB_ASSET_BASE=/
-const DIST = join(ROOT, process.env["WEB_DIST_DIR"] ?? "dist");
-const ASSET_BASE = (process.env["WEB_ASSET_BASE"] ?? "/web/").replace(/\/?$/, "/");
+const DIST = join(ROOT, "dist");
+const ASSET_BASE = "/web/";
 const HTML_IN = join(ROOT, "index.html");
-const WATCH = process.argv.includes("--watch");
 
 async function build(): Promise<void> {
   const t0 = performance.now();
@@ -34,21 +21,28 @@ async function build(): Promise<void> {
   await mkdir(DIST, { recursive: true });
 
   const result = await Bun.build({
-    entrypoints: [join(SRC, "main.tsx")],
+    entrypoints: [HTML_IN],
     outdir: DIST,
     target: "browser",
     plugins: [tailwind],
     format: "esm",
     splitting: true,
-    minify: !WATCH,
-    sourcemap: WATCH ? "external" : "linked",
+    minify: true,
+    sourcemap: "linked",
+    // Absolute: the daemon answers /web, /web/ and /web/index.html alike, and
+    // relative ./ paths break the bare /web form.
+    publicPath: ASSET_BASE,
+    // No `entry` rule — index.html keeps a stable name for the daemon to serve.
+    // Hashed chunks/assets are what the daemon's immutable-cache regex matches
+    // (src/daemon/server.ts).
     naming: {
-      entry: "[name].[hash].[ext]",
       chunk: "[name].[hash].[ext]",
       asset: "[name].[hash].[ext]",
     },
+    // App.tsx gates ThemeTokenEditor on this folding to "production": without it
+    // the dev-only token editor ships and `process` is undefined in the browser.
     define: {
-      "process.env.NODE_ENV": JSON.stringify(WATCH ? "development" : "production"),
+      "process.env.NODE_ENV": JSON.stringify("production"),
     },
   });
 
@@ -57,40 +51,12 @@ async function build(): Promise<void> {
     throw new Error("web build failed");
   }
 
-  // Bun emits a top-level main.<hash>.js and a separate main.<hash>.css (when the
-  // entrypoint imports styles.css). Discover them by scanning result.outputs.
-  const jsEntry = result.outputs.find((o) => o.path.endsWith(".js") && o.kind === "entry-point");
-  const cssEntry = result.outputs.find((o) => o.path.endsWith(".css"));
-  if (!jsEntry) throw new Error("no JS entry produced");
-
-  const jsHref = jsEntry.path.split("/").pop()!;
-  const cssHref = cssEntry?.path.split("/").pop();
-
-  // Absolute ASSET_BASE paths so the bundle loads regardless of trailing slash.
-  // Daemon uses /web/ (handles /web, /web/, /web/index.html); the Capacitor app
-  // uses / (WebView root). Relative ./ paths break the daemon's /web form.
-  const html = (await readFile(HTML_IN, "utf8"))
-    .replace("__JS_BUNDLE__", `${ASSET_BASE}${jsHref}`)
-    .replace(
-      "__CSS_BUNDLE__",
-      cssHref ? `<link rel="stylesheet" href="${ASSET_BASE}${cssHref}" />` : "",
-    );
-  await writeFile(join(DIST, "index.html"), html, "utf8");
-
+  const emitted = result.outputs
+    .map((output) => output.path.split("/").pop()!)
+    .filter((name) => name.endsWith(".js") || name.endsWith(".css"))
+    .sort();
   const dt = (performance.now() - t0).toFixed(0);
-  console.log(`web bundle: ${jsHref}${cssHref ? ` + ${cssHref}` : ""} (${dt} ms)`);
+  console.log(`web bundle: ${emitted.join(" + ")} (${dt} ms)`);
 }
 
 await build();
-
-if (WATCH) {
-  const watcher = (await import("node:fs/promises")).watch(SRC, { recursive: true });
-  console.log("watching web/src/ for changes…");
-  for await (const _ of watcher) {
-    try {
-      await build();
-    } catch (err) {
-      console.error(err);
-    }
-  }
-}

@@ -1,8 +1,7 @@
-// Grammar coverage for web/src/routing/address.ts. Pure input, pure output — no
-// daemon, no DOM, no globals, no cleanup, so these run in parallel with
-// everything else. Composed deep-link flows (Shell + real History API) are
-// covered by web/src/components/DeepLinks.stories.tsx instead; the split exists
-// so grammar changes do not need a browser to prove.
+// Grammar coverage for web/src/routing/address.ts — pure in, pure out, so no
+// daemon, DOM or cleanup. Composed deep-link flows (Shell + real History API)
+// live in web/src/components/DeepLinks.stories.tsx; the split keeps grammar
+// changes from needing a browser to prove.
 import { expect, test } from "bun:test";
 import {
   BASE,

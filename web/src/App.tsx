@@ -57,21 +57,14 @@ function pickDataSource(): DataSource {
   return new MockDataSource();
 }
 
-// RUNTIME — which daemon holds the data — is resolved ONCE, here, and injected
-// at DataSource construction. It is a separate axis from ORIGIN (who served the
-// document): in production they are the same process, but a worktree dev server
-// is a different process from the daemon it reads. Defaulting to the origin is
-// the right default and would be a wrong constraint, which is why it is a
-// parameter rather than a lookup inside DaemonDataSource.
+// The one place RUNTIME (which daemon holds the data) is resolved. No component
+// may read it or window.location.origin for data access — every read goes through
+// useDataSource(), which keeps a future SharedWorker or desktop-IPC DataSource a
+// change at this call site alone.
 //
-// No component may read this or window.location.origin for data access — every
-// read goes through useDataSource(). That keeps a future SharedWorker or
-// desktop-IPC DataSource a one-line change at this call site.
-//
-// A worktree UI reaches a DIFFERENT runtime without a cross-origin base URL: the
-// dev server forwards every unclaimed request to the daemon it was launched
-// against, so the browser stays same-origin and SSE, cookies and auth headers
-// need no CORS. Hence one value here, not a second environment knob.
+// A worktree UI points at a different daemon without a cross-origin URL: its dev
+// server forwards unclaimed requests, so the browser stays same-origin and SSE
+// and auth headers need no CORS.
 function runtimeBaseUrl(): string {
   return window.location.origin.replace(/\/$/, "");
 }
@@ -284,25 +277,6 @@ export function Shell() {
   const rosterPanelAvailable = layout.rosterAsOverlay && !threadParentId;
   const communityPanelAvailable = layout.communityOverlay;
   const pushedThreadOpen = Boolean(threadParentId && !layout.threadAsSplit);
-
-  // Android hardware Back: close the top open surface before letting the OS
-  // exit the app. Reaches Capacitor's runtime via its injected global so the
-  // shared web bundle needs no @capacitor/app dependency — inert in the browser
-  // (the plugin is absent), active only inside the Capacitor WebView (APK).
-  useEffect(() => {
-    const cap = (window as unknown as {
-      Capacitor?: { Plugins?: { App?: { addListener?(e: string, cb: () => void): Promise<{ remove(): void }>; exitApp?(): void } } };
-    }).Capacitor;
-    const app = cap?.Plugins?.App;
-    if (!app?.addListener) return;
-    const sub = app.addListener("backButton", () => {
-      if (compactSettingsOpen) closeCompactSettings();
-      else if (agentPanelOpen || communityOpen) closeOverlays();
-      else if (threadParentId) setThreadParentId(null);
-      else app.exitApp?.();
-    });
-    return () => { void sub.then((handle) => handle.remove()); };
-  }, [compactSettingsOpen, agentPanelOpen, communityOpen, threadParentId]);
 
   // Jump-to-last-message-by-agent: scrolls to the latest message authored by
   // `agentId` in the active room, flashes it with the throbbing yellow ring.

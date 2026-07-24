@@ -35,10 +35,9 @@ export function useIsCompact(): boolean {
 // or changing a layout rule happens here, once. Medium is first-class — every
 // capability is enumerated, not implicit fallthrough. (sync-imeu.1.10/1.13)
 //
-// NOTE: this is the LAYOUT axis (viewport width). The PLATFORM axis (web vs
-// Capacitor/Android) is orthogonal and feature-detected separately — never fold
-// the two together (an Android tablet is capacitor + medium/desktop, not
-// compact).
+// NOTE: this is the LAYOUT axis (viewport width) and nothing else. Compact is a
+// narrow viewport, not "a phone" — never fold a platform check into it. A tablet
+// or a narrow desktop window is medium/desktop or compact purely by width.
 export interface ShellLayout {
   mode: ShellMode;
   /** Persistent left room-list sidebar (desktop + medium). Compact uses the Chats overlay. */

@@ -1,24 +1,22 @@
-// The single site of the app's mount point and its route grammar.
+// The app's mount point and route grammar:
 //
-// PURE by contract: no React import, no hooks, no context, and no unguarded
-// window access. That is what lets it be unit-tested without a DOM and imported
-// by the Vite dev config, which runs in Node and has no window at all.
-//
-// Grammar (unchanged):
 //   /web/e/:id   canonical (an event id)
 //   /web/t/:id   thread-root alias (same resolution; the pane opens on the root)
 //   ?event=:id   compatibility/debug form
 //
-// BASE is "/web/" in every environment — production daemon, worktree dev server,
-// and desktop webview alike — so dev and production paths are byte-identical.
-// The dev server must own this namespace: if it serves the document at "/", a
-// refresh of /web/e/abc escapes Vite, reaches the daemon, and the SPA fallback
-// answers with the PRODUCTION bundle at HTTP 200 with dead HMR and no error.
+// Pure by contract — no React, no hooks, no unguarded window access — so it can
+// be unit-tested without a DOM and imported by the Vite dev config, which runs
+// in Node.
+
+// Every environment mounts the app here, including the dev server. A dev server
+// serving the document at "/" instead would let /web/e/abc escape Vite, reach
+// the daemon, and get answered by its SPA fallback with the production bundle:
+// HTTP 200, dead HMR, no error anywhere.
 export const BASE = "/web/";
 
-// Route prefixes the client owns. The dev server's pass-through list is exactly
-// this set plus BASE itself; everything else is forwarded to the daemon. Kept
-// here rather than in the dev config so adding a route cannot forget it.
+// The dev server's pass-through list is exactly these plus BASE itself;
+// everything else is forwarded to the daemon. Kept here so adding a client route
+// cannot forget to teach the dev server about it.
 export const CLIENT_ROUTE_PREFIXES: readonly string[] = [`${BASE}e/`, `${BASE}t/`];
 
 /** The subset of `window.location` the parser reads. */
@@ -36,8 +34,8 @@ export interface Address {
 
 /** True when `pathname` is inside the app's mount point. */
 export function isAppPath(pathname: string): boolean {
-  // Deliberately matches the bare mount point too: the daemon serves the app at
-  // /web, /web/ and /web/index.html alike.
+  // Trailing slash stripped because the daemon serves the app at /web, /web/ and
+  // /web/index.html alike.
   return pathname.startsWith(BASE.replace(/\/$/, ""));
 }
 
@@ -53,10 +51,9 @@ export function serializeAddress(address: Address): string {
 }
 
 /**
- * Absolute, pasteable URL for a message. `origin` is the ORIGIN axis — where a
- * human's browser should go — which is deliberately NOT the RUNTIME axis that
- * DataSource owns. A worktree UI reading the production daemon still shares
- * links to its own origin, because that is the address the recipient can open.
+ * Absolute, pasteable URL for a message. `origin` is where a human's browser
+ * should go, which is not the runtime the DataSource reads: a worktree UI shares
+ * links to its own origin, because that is the address a recipient can open.
  */
 export function messageAddressUrl(messageId: string, origin: string): string {
   const linkId = messageId.startsWith("e:") ? messageId.slice(2) : messageId;

@@ -56,10 +56,9 @@ function randomId(): string {
 
 export interface DaemonDataSourceOptions {
   /**
-   * RUNTIME — which daemon holds the data. Required, and deliberately NOT
-   * defaulted to window.location.origin: deriving the runtime from whoever
-   * served the document is a fine default but a wrong constraint, and a silent
-   * one. The single injection site is pickDataSource() in App.tsx.
+   * RUNTIME — which daemon holds the data. Required rather than defaulted to the
+   * document's origin, so a UI served from somewhere else cannot silently read
+   * the wrong daemon. Injected at one site: pickDataSource() in App.tsx.
    */
   baseUrl: string;
   token?: string;

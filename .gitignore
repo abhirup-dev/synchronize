@@ -23,8 +23,6 @@ graphify-out/
 # Local UI reference captures
 docs/ui-reference/claude-design-screenshots/
 .codex-artifacts/
-mobile/.od-skills/
-mobile/od-sketches/
 
 # Claude-created nested worktrees should stay local
 .claude/worktrees/
