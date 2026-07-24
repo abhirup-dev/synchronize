@@ -49,6 +49,8 @@ help:
 	@echo "  clean-slate      Stop daemon, delete its AOE profile, wipe the runtime"
 	@echo "  dev-daemon-relaunch | dev-clean-slate   Same for the dev runtime ($(DEV_SYNC_HOME))"
 	@echo "Web UI:"
+	@echo "  web-build        Build web/dist only (never touches a daemon)"
+	@echo "  web-dev [RUNTIME=production|dev]  Probe a runtime, then start Portless + Vite"
 	@echo "  verify-web       Typecheck + web build + Playwright smoke (compact/medium/desktop × light/dark)"
 	@echo "Diagnostics:"
 	@echo "  doctor | inspect-daemon | inspect-peers | inspect-groups | inspect-events"
@@ -74,6 +76,21 @@ check-install:
 # install precondition so a fresh/unprovisioned worktree fails fast and clearly.
 test: check-install
 	@bun test
+
+# Build the production bundle. Deliberately does not touch a daemon — the daemon
+# picks up web/dist on its next request, so a build never needs a restart.
+.PHONY: web-build web-dev
+web-build:
+	@cd web && bun run build.ts
+
+# Worktree UI against an already-running runtime. RUNTIME selects WHICH runtime;
+# SYNCHRONIZE_DAEMON_URL overrides it entirely. The launcher owns one Vite child
+# and one Portless route, and no daemon lifecycle: if the chosen runtime is not
+# healthy it exits with a code and tells you which recovery verb to run.
+RUNTIME ?= production
+web-dev: check-install
+	@SYNCHRONIZE_HOME="$(if $(filter dev,$(RUNTIME)),$(DEV_SYNC_HOME),$(SYNC_HOME))" \
+		bun run scripts/web-dev.ts
 
 # Web UI regression gate (sync-imeu.1.23). Cheap-to-expensive: typecheck both
 # packages, build the bundle, then the Storybook story + play tests (headless

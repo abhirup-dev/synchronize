@@ -1,0 +1,4 @@
+{
+  "name": "synchronize-dev",
+  "script": "dev:raw"
+}

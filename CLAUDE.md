@@ -16,6 +16,8 @@ bun test -t "pattern"             # filter by test name
 bun run typecheck                 # tsc --noEmit
 cd web && bun run typecheck       # web TypeScript check
 cd web && bun run build           # build web/dist assets
+make web-dev                      # worktree UI (Portless + Vite) vs the production runtime
+make web-dev RUNTIME=dev          # ...vs the isolated dev runtime instead
 bun run src/daemon.ts             # run daemon directly
 bun run src/cli.ts <args>         # run CLI from source
 SYNCHRONIZE_MCP_MODE=codex bun run src/mcp.ts   # MCP stdio adapter
