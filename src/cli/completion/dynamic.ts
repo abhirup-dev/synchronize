@@ -7,7 +7,8 @@ import { listThreads } from "../../api/threads.ts";
 import type { GroupMemberListed } from "../../api/peers.ts";
 import type { AgentSessionBinding, MediaItem, Peer, ThreadDiscoveryRow } from "../../api/types.ts";
 import { type ClientConfig, type Discovery } from "../../client.ts";
-import { API_VERSION, ENV_TOKEN } from "../../constants.ts";
+import { probeDaemon } from "../../daemon-probe.ts";
+import { ENV_TOKEN } from "../../constants.ts";
 import { readJson } from "../../fs.ts";
 import { getRuntimePaths } from "../../paths.ts";
 import type { CompletionCandidate, CompletionContext, DynamicCompletionProvider } from "./types.ts";
@@ -74,28 +75,21 @@ async function completionClient(env: NodeJS.ProcessEnv): Promise<ClientConfig | 
   const paths = getRuntimePaths(env);
   const discovery = await readJson<Discovery>(paths.discoveryPath);
   if (!discovery) return null;
-  if (!(await isHealthy(discovery.baseUrl))) return null;
+  // Tab completion is latency-bound: it must never retry and never block on a
+  // slow daemon. Any non-healthy verdict simply means "no completions", so the
+  // probe's classification is deliberately discarded here.
+  const probe = await probeDaemon(discovery.baseUrl, {
+    timeoutMs: COMPLETION_HEALTH_TIMEOUT_MS,
+    token: env[ENV_TOKEN] ?? null,
+    attempts: 1,
+  });
+  if (probe.kind !== "healthy") return null;
   return {
     baseUrl: discovery.baseUrl,
     token: env[ENV_TOKEN] ?? null,
     paths,
     started: false,
   };
-}
-
-async function isHealthy(baseUrl: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), COMPLETION_HEALTH_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
-    if (!response.ok) return false;
-    const body = await response.json().catch(() => null);
-    return body?.service === "synchronize" && body?.api_version === API_VERSION;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function groupCandidates(groups: Array<{ name: string; description?: string | null }>): CompletionCandidate[] {

@@ -5,14 +5,25 @@ import { resolve } from "node:path";
 import { loadDaemonEnvFiles } from "./env-files.ts";
 import { loadConfig, resolveConnection } from "./config.ts";
 import {
-  API_VERSION,
-  ENV_HEALTH_TIMEOUT_MS,
   ENV_STARTED_BY_CLIENT,
   ENV_REMOTE_URL,
-  HEALTH_TIMEOUT_MS,
   STALE_LOCK_MS,
   STARTUP_TIMEOUT_MS,
 } from "./constants.ts";
+import {
+  DAEMON_ERROR_CODES,
+  DaemonProbeError,
+  describeProbe,
+  isDaemonAbsent,
+  probeDaemon,
+  type DaemonProbe,
+} from "./daemon-probe.ts";
+
+// A single timeout is tight enough to misfire under load, and a false "wedged"
+// verdict now blocks autostart instead of merely costing a spawn. Two attempts
+// on the discovery path; a remote daemon crosses a network, so it gets three.
+const DISCOVERY_PROBE_ATTEMPTS = 2;
+const REMOTE_PROBE_ATTEMPTS = 3;
 import { ensureDir, pathAgeMs, readJson, removePath } from "./fs.ts";
 import { getRuntimePaths, type RuntimePaths } from "./paths.ts";
 import { collectDaemonProvenance } from "./provenance.ts";
@@ -63,18 +74,32 @@ export async function ensureDaemon(): Promise<ClientConfig> {
   }
 
   await ensureDir(paths.home);
-  const existing = await readJson<Discovery>(paths.discoveryPath);
-  if (existing && (await isHealthy(existing.baseUrl))) {
-    log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
+  const existing = await probeDiscovered(paths, token);
+  if (existing.kind === "healthy") {
+    log(`using existing daemon ${describeProbe(existing)}`);
     return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
+  }
+  // Spawn ONLY when nothing is listening. A wedged, incompatible, or
+  // token-protected daemon is still occupying the discovered endpoint, and
+  // starting a second one on top of it makes the situation worse and harder to
+  // read. Recovery from those states is an explicit operator verb
+  // (`make daemon-relaunch`), never an implicit side effect of a read.
+  if (!isDaemonAbsent(existing)) {
+    throw new DaemonProbeError(
+      DAEMON_ERROR_CODES[existing.kind],
+      `${describeProbe(existing)}\nRefusing to start a second daemon on an occupied endpoint. Run 'make daemon-relaunch' to recover.`,
+    );
   }
 
   let started = false;
   await withLaunchLock(paths, async () => {
-    const refreshed = await readJson<Discovery>(paths.discoveryPath);
-    if (refreshed && (await isHealthy(refreshed.baseUrl))) {
-      log(`daemon became healthy while waiting base_url=${refreshed.baseUrl} pid=${refreshed.pid}`);
+    const refreshed = await probeDiscovered(paths, token);
+    if (refreshed.kind === "healthy") {
+      log(`daemon became healthy while waiting ${describeProbe(refreshed)}`);
       return;
+    }
+    if (!isDaemonAbsent(refreshed)) {
+      throw new DaemonProbeError(DAEMON_ERROR_CODES[refreshed.kind], describeProbe(refreshed));
     }
     log(`starting daemon home=${paths.home}`);
     const child = await startDaemon(paths);
@@ -136,8 +161,13 @@ function normalizeRemoteUrl(raw: string | undefined): string | null {
 }
 
 async function validateRemoteDaemon(baseUrl: string, token: string | null, timeoutMs?: number): Promise<void> {
-  if (!(await isHealthy(baseUrl, timeoutMs))) {
-    throw new Error(`${ENV_REMOTE_URL} points to an unreachable or incompatible synchronize daemon: ${baseUrl}`);
+  const probe = await probeDaemon(baseUrl, {
+    token,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    attempts: REMOTE_PROBE_ATTEMPTS,
+  });
+  if (probe.kind !== "healthy") {
+    throw new Error(`${ENV_REMOTE_URL} is not usable: ${describeProbe(probe)}`);
   }
 
   const headers = new Headers({ accept: "application/json" });
@@ -154,27 +184,11 @@ async function validateRemoteDaemon(baseUrl: string, token: string | null, timeo
   throw new Error(`${ENV_REMOTE_URL} /status failed: ${response.status} ${response.statusText}`);
 }
 
-async function isHealthy(baseUrl: string, timeoutMs?: number): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs ?? healthTimeoutMs());
-  try {
-    const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
-    if (!response.ok) return false;
-    const body = await response.json().catch(() => null);
-    return body?.service === "synchronize" && body?.api_version === API_VERSION;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function healthTimeoutMs(): number {
-  const raw = process.env[ENV_HEALTH_TIMEOUT_MS];
-  if (!raw) return HEALTH_TIMEOUT_MS;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return HEALTH_TIMEOUT_MS;
-  return Math.trunc(parsed);
+/** Probes whatever the discovery file points at, or reports it missing. */
+async function probeDiscovered(paths: RuntimePaths, token: string | null): Promise<DaemonProbe> {
+  const discovery = await readJson<Discovery>(paths.discoveryPath);
+  if (!discovery?.baseUrl) return { kind: "discovery_missing" };
+  return probeDaemon(discovery.baseUrl, { token, attempts: DISCOVERY_PROBE_ATTEMPTS });
 }
 
 async function withLaunchLock(paths: RuntimePaths, body: () => Promise<void>): Promise<void> {
@@ -243,8 +257,12 @@ async function waitForDaemon(paths: RuntimePaths, child: ChildProcess): Promise<
 
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    // Poll for healthy only. Every other variant is an expected transient here —
+    // the daemon we just spawned has not finished binding yet — so it must not
+    // be classified or acted on; the loop deadline and the child-exit check
+    // below are what bound the wait.
     const discovery = await readJson<Discovery>(paths.discoveryPath);
-    if (discovery && (await isHealthy(discovery.baseUrl))) return;
+    if (discovery && (await probeDaemon(discovery.baseUrl)).kind === "healthy") return;
     // Fail fast: if the spawned daemon already exited without becoming healthy,
     // polling the rest of the timeout is pointless — surface its output now.
     if (childState.exit) {

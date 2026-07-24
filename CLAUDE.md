@@ -19,7 +19,9 @@ cd web && bun run build           # build web/dist assets
 bun run src/daemon.ts             # run daemon directly
 bun run src/cli.ts <args>         # run CLI from source
 SYNCHRONIZE_MCP_MODE=codex bun run src/mcp.ts   # MCP stdio adapter
-make daemon-relaunch              # kill + wipe ~/.synchronize, start fresh
+make daemon-status                # read-only: discovery + health + provenance
+make daemon-relaunch              # restart the daemon, preserving state
+make clean-slate                  # stop the daemon and WIPE ~/.synchronize
 make demo                         # seed .demo-synchronize/ with sample data
 ```
 

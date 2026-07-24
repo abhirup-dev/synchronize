@@ -14,8 +14,8 @@ PI_AGENT_DIR ?= $(HOME)/.pi/agent
 
 .PHONY: help setup check-deps check-install test \
         demo demo-up demo-top demo-json demo-clean demo-spawn demo-down demo-profile \
-        daemon-kill daemon-relaunch clean-slate \
-        dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
+        daemon-status daemon-kill daemon-relaunch clean-slate \
+        dev-daemon-status dev-daemon-kill dev-daemon-relaunch dev-clean-slate \
         reinstall-books dev-reset \
         doctor inspect-daemon inspect-peers inspect-groups inspect-events \
         install-cli link install-claude install-codex install-pi install-all \
@@ -44,6 +44,7 @@ help:
 	@echo "  demo-profile     Print the AOE profile name backing the demo runtime"
 	@echo "  demo-down        Stop demo daemon, delete its AOE profile, wipe the demo runtime"
 	@echo "Runtime control (default home $(SYNC_HOME)):"
+	@echo "  daemon-status    Read-only: discovery + health + provenance (never mutates)"
 	@echo "  daemon-relaunch  Restart the daemon, preserving state"
 	@echo "  clean-slate      Stop daemon, delete its AOE profile, wipe the runtime"
 	@echo "  dev-daemon-relaunch | dev-clean-slate   Same for the dev runtime ($(DEV_SYNC_HOME))"
@@ -169,6 +170,15 @@ demo-clean:
 	fi
 	@SYNCHRONIZE_HOME="$(DEMO_HOME)" bun run scripts/aoe-teardown.ts 2>/dev/null || true
 	@rm -rf "$(DEMO_HOME)"
+
+# Observation only: these report what is at the discovered endpoint and never
+# start, stop, or wipe anything. Every recovery path has its own verb below, so
+# a status check can never surprise you by mutating the runtime.
+daemon-status:
+	@SYNCHRONIZE_HOME="$(SYNC_HOME)" bun run scripts/daemon-status.ts --recover-with daemon-relaunch $(ARGS)
+
+dev-daemon-status:
+	@SYNCHRONIZE_HOME="$(DEV_SYNC_HOME)" bun run scripts/daemon-status.ts --recover-with dev-daemon-relaunch $(ARGS)
 
 # daemon-kill stops the daemon but preserves runtime state (DB, media, logs).
 # Use `clean-slate` when you actually want to wipe state. This split matters
