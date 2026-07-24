@@ -1,6 +1,6 @@
 # Address And Runtime Decoupling
 
-Status: PROPOSED
+Status: IMPLEMENTED (branch `feat/dx-foundations`)
 Owner: abhirup
 Epic: `EPIC D`
 Companion: `docs/plans/launch-flow-architecture.md` (same branch)

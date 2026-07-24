@@ -1,6 +1,6 @@
 # Predictable Production And Worktree Launch Architecture
 
-Status: PROPOSED
+Status: IMPLEMENTED (branch `feat/dx-foundations`)
 Owner: abhirup
 Epics: `EPIC A` runtime resolution, `EPIC B` build simplification, `EPIC C` dev server
 Companion: `docs/plans/coupling-leaks.md` (same branch)
@@ -178,10 +178,12 @@ apply `base` to Storybook and register Tailwind twice.
   Vite and reach the daemon, whose SPA fallback (`src/daemon/server.ts:1394`)
   returns the production bundle with HTTP 200 and dead HMR. Holding `/web/` also
   keeps dev and production paths identical.
-- `server.port = Number(process.env.PORT)`. Vite does not read `PORT` itself;
-  Portless sets it.
+- `server.port = Number(process.env.PORT)` and `server.host` from `HOST`. Vite
+  does not read either itself; Portless sets them.
 - `strictPort: true`.
-- Existing React and Tailwind plugins.
+- `@vitejs/plugin-react` plus `@tailwindcss/vite`. The React plugin is a direct
+  dependency because Storybook's framework bundles its own copy rather than
+  exposing one.
 
 ### Forwarding: pass-through list, daemon by default
 
@@ -195,48 +197,71 @@ few, stable, and fail loudly, so they are the list that is maintained by hand.
   requests arriving at the dev server
              |
              v
-  [1] Vite internal middlewares — claim /web/@vite/*, /web/src/*,
-      /web/@fs/*, /web/node_modules/.vite/*
-             |  unclaimed
-             v
-  [2] configureServer POST hook
-        PASS-THROUGH LIST: /web/ exact, plus each client-route prefix from
-        web/src/routing/address.ts
-          -> next() -> htmlFallback -> dev index.html
-             |  everything else
-             v
-  [3] pipe to the injected daemon URL, stream the response back
-        no buffering, no compression, so SSE is unaffected
-        /web/state /web/session /web/events /web/attachments /web/resolve
-        /groups/* /peers/* /events/* /dm /threads/* /archive/* /resume/*
-        /activity/* /agent-sessions/*  and every future route, config-free
+  PRE middleware, ahead of Vite's own. Matches on req.originalUrl.
+             |
+             +-- VITE OWNS, so next():
+             |     /web, /web/, /web/index.html          (exact — never a prefix)
+             |     client-route prefixes from web/src/routing/address.ts
+             |     /web/ + {@vite/, @id/, @fs/, @react-refresh,
+             |               src/, node_modules/, .vite/}
+             |
+             +-- EVERYTHING ELSE -> pipe to the injected daemon URL:
+                   /web/state /web/session /web/events /web/attachments
+                   /web/resolve, /groups/* /peers/* /events/* /dm /threads/*
+                   /archive/* /resume/* /activity/* /agent-sessions/*
+                   and every future route, config-free
+
+  Streamed back unbuffered and uncompressed, so the /web/events SSE stream
+  stays live instead of accumulating until the request ends.
 ```
 
-The POST hook is the correct slot: Vite installs it after its internal
-middlewares and before `htmlFallback`, so the rule is positive — a request that
-reaches it has already been declined by Vite and therefore belongs to the
-daemon. HMR is unaffected because WebSocket `upgrade` events bypass the
-middleware chain.
+Two constraints make it a PRE middleware matching `originalUrl`, both of which
+a post-middleware gets wrong:
 
-Client-route prefixes come from `address.ts`, so `EPIC D` lands first.
+- Vite rewrites `req.url` to strip `base`, so a post-middleware sees `/` for
+  `/web/` and cannot tell client routes from daemon routes.
+- Vite's base middleware answers 404 for anything outside `base`, which
+  swallows every root-level daemon route before a post-middleware runs.
+
+`BASE` must match exactly and never as a prefix, or Vite captures the daemon's
+own `/web/*` endpoints. HMR is unaffected because WebSocket `upgrade` events
+bypass the middleware chain.
+
+The Vite-internal prefix list is Vite's own namespace, so it is stable and does
+not grow with our features. Client-route prefixes come from `address.ts`, so
+`EPIC D` lands first.
 
 ### Portless
 
 ```text
   make web-dev
       +-- resolve and probe the selected runtime
-      +-- portless run --name synchronize-dev bun run dev:raw
+      +-- portless run --name synchronize-dev -- bun run dev:raw
                                     +-- Vite reads PORT/HOST
 ```
 
-Portless prefixes linked worktrees automatically, producing
-`https://<worktree>.synchronize-dev.localhost:1355`. The `synchronize-dev`
+Portless prefixes a linked worktree automatically, producing
+`https://<branch-leaf>.synchronize-dev.localhost:1355`. The `synchronize-dev`
 namespace keeps development clear of the production alias
 `synchronize.localhost`.
 
-`dev:raw` runs Vite without Portless. When Portless is absent the launcher
-fails with installation guidance; it never installs or reconfigures the user's
-shared Portless service.
+The prefix is the LAST segment of the git branch, not the worktree directory
+name, and `main`/`master` get no prefix. So `feat/x` and `fix/x` both reduce to
+`x` and contend for one route; the launcher reports that collision rather than
+passing `--force`, which would SIGTERM whichever worktree UI already holds it.
+
+Portless injects `PORT`, `HOST`, `PORTLESS_URL`, `NODE_EXTRA_CA_CERTS` and
+`__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS`. It also injects `--port`/`--host`
+flags for frameworks that ignore `PORT` — but only when it recognises the child
+binary as Vite, and `bun run <script>` is not a runner it unwraps. The dev config
+therefore reads `PORT`/`HOST` from the environment, which is what makes the
+assigned port take effect. `allowedHosts` is left narrow because Vite reads the
+injected allowed-hosts variable itself.
+
+The proxy serves HTTPS on 1355 with a locally trusted CA and auto-starts on
+first use, so the launcher assumes it. `dev:raw` runs Vite without Portless.
+When Portless is absent the launcher fails with installation guidance; it never
+installs or reconfigures the user's shared Portless service.
 
 ## Command contract
 
