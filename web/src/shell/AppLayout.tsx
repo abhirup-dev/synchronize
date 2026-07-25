@@ -134,6 +134,7 @@ export function AppLayout() {
   // Rebuilt every render on purpose: the callbacks close over the current room
   // and its messages, and this component re-renders whenever those change.
   const chrome: ShellChromeApi = {
+    pane,
     theme,
     setTheme,
     skin,

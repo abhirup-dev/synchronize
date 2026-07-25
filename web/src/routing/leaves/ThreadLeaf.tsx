@@ -32,6 +32,9 @@ export function ThreadLeaf() {
   const chrome = useShellChrome();
   const [tab, setTab] = useState<RoomTab>("chat");
   const clearFocus = useClearFocus();
+  // A popped-out thread is the whole window, so it never shows the chat column
+  // it would sit beside inside the shell.
+  const asSplit = layout.threadAsSplit && !chrome.pane;
 
   if (!room) return <NoRooms />;
 
@@ -39,7 +42,7 @@ export function ThreadLeaf() {
 
   return (
     <>
-      {layout.threadAsSplit && (
+      {asSplit && (
         <RoomHeader
           room={room}
           tab={tab}
@@ -54,8 +57,8 @@ export function ThreadLeaf() {
           onCloseThread={closeThread}
         />
       )}
-      <ShellMainBody threadOpen style={layout.threadAsSplit ? threadSplitStyle(chrome.threadWidth) : undefined}>
-        {layout.threadAsSplit && (
+      <ShellMainBody threadOpen style={asSplit ? threadSplitStyle(chrome.threadWidth) : undefined}>
+        {asSplit && (
           <>
             <ShellChatColumn>
               <ChatView room={room} isThreadOpen onOpenDm={chrome.openDmForAgent} showTimeline={layout.timeline} />
@@ -68,7 +71,7 @@ export function ThreadLeaf() {
           parentId={threadParentId}
           {...(focus ? { focusMessageId: focus, onFocused: clearFocus } : {})}
           onClose={closeThread}
-          showHeader={!layout.threadAsSplit}
+          showHeader={!asSplit}
         />
       </ShellMainBody>
     </>

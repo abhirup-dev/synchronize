@@ -136,6 +136,14 @@ button {
   grid-template-columns: 280px minmax(0, 1fr);
 }
 
+/* A pane is one surface with no chrome, so it has no sidebar track to leave
+   room for. Without this the surface lands in the sidebar column and is clipped
+   to its width. Declared after the mode rules so it wins at every width. */
+.app-shell[data-shell-view="pane"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .app-shell.shell-compact {
   /* Height of the bottom-nav interactive bar (excludes the device safe-area
      inset, which the nav adds as padding). Overlays inset their bottom by this

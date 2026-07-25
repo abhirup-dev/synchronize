@@ -10,6 +10,9 @@ import type { ThemeName } from "../hooks/usePersistentTheme.ts";
  * route. Anything scoped to a single surface stays local to that leaf.
  */
 export interface ShellChromeApi {
+  /** This window is an embedded pane: no chrome, and no shell-only affordances
+   *  such as the desktop thread split — a popped-out thread IS the surface. */
+  pane: boolean;
   theme: ThemeName;
   setTheme: Dispatch<SetStateAction<ThemeName>>;
   skin: "brutal" | "glass";

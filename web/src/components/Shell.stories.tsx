@@ -57,3 +57,25 @@ export const Desktop: Story = {
     await waitFor(() => expect(canvasElement.querySelector(".chat-view")).toBeTruthy());
   },
 };
+
+// ?view=pane: the same surface with no chrome around it. UI state only — which
+// cells the shell renders — not address resolution, which tests/web-routes.test.ts
+// covers headlessly.
+export const PaneView: Story = {
+  beforeEach: () => {
+    window.history.replaceState(null, "", "/web/t/ml-deepdive?view=pane");
+    return () => window.history.replaceState(null, "", "/");
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const shell = canvasElement.querySelector(".app-shell");
+      expect(shell?.getAttribute("data-shell-view")).toBe("pane");
+    });
+    await waitFor(() => expect(document.querySelector(".thread-pane")).toBeTruthy());
+    // No rail, no room list, and no chat column beside the thread: a popped-out
+    // thread IS the window.
+    expect(canvasElement.querySelector(".sidebar")).toBeNull();
+    expect(canvasElement.querySelector(".bottom-nav")).toBeNull();
+    expect(canvasElement.querySelector(".chat-view")).toBeNull();
+  },
+};

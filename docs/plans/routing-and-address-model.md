@@ -1,6 +1,6 @@
 # Routing And Address Model
 
-Status: PROPOSED
+Status: IMPLEMENTED (branch feat/routing-contract)
 Owner: abhirup
 Branch: `feat/routing-contract` — stacked on `feat/dx-foundations`
 Epics: `E` addresses, `F` router foundation, `G` surface migration, `H` product and data contracts
@@ -318,6 +318,37 @@ Invariants, all grep-testable:
       H3 window.open named targets
       H4 scoped endpoint for the activity surface
       H5 scoped endpoints for agents and boards; shrink /web/state
+```
+
+## Where the implementation differs from this proposal
+
+```text
+  ONE layout route, not two. TanStack matches on PATH, so two pathless layout
+      parents over identical child paths is ambiguous. ?view=pane is a modifier,
+      not a path segment, so the chrome choice is one branch in one component
+      (shell/AppLayout.tsx) over one set of leaves. The property the plan wanted —
+      no N x 2 branches — holds; the mechanism is a branch, not two subtrees.
+
+  A ROOM ADDRESS IS A LAYOUT. /web/g/:publicId is a layout with chat, board and
+      artifacts nested inside it, so the room gate runs once per address rather
+      than once per surface. Boards extend to /web/d/:peerId/board/:boardId too:
+      the board tab exists for both room kinds, and one code path beats a
+      kind-conditional.
+
+  NO STORYBOOK FRAMEWORK SWAP. @storybook/tanstack-react requires Storybook
+      >= 10.5.4 plus @tanstack/react-start and start-client-core as peers — a
+      full-stack framework dependency for a client-only SPA. Instead Shell mounts
+      the real router, with an in-memory history when the mount point is outside
+      BASE (a story iframe). Cost: no compile-time checking of story params/query,
+      which no story declares today.
+
+  RESOLUTION IS NOT TESTED IN STORYBOOK. Grammar, resolution, canonicalisation
+      and the loaders-are-gates rule live in tests/web-routes.test.ts, driven
+      headlessly. Storybook covers what the UI does once a route has matched.
+
+  BOARDS HAVE NO SCOPED ENDPOINT because they have no daemon data:
+      DaemonDataSource.tasks() returns an empty snapshot in every runtime. The
+      agents half of H5 landed; boards had nothing to scope.
 ```
 
 ## Acceptance
