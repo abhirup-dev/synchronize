@@ -5,7 +5,9 @@
 import { expect, test } from "bun:test";
 import {
   BASE,
+  CLIENT_ROUTE_PATHS,
   CLIENT_ROUTE_PREFIXES,
+  isClientRoute,
   findRoomForAddress,
   isAppPath,
   messageAddressUrl,
@@ -19,18 +21,31 @@ function at(pathname: string, search = ""): { pathname: string; search: string }
   return { pathname, search };
 }
 
-test("BASE is the mount point and every client prefix sits under it", () => {
+test("BASE is the mount point and every client route sits under it", () => {
   expect(BASE).toBe("/web/");
-  for (const prefix of CLIENT_ROUTE_PREFIXES) {
-    expect(prefix.startsWith(BASE)).toBe(true);
+  for (const route of [...CLIENT_ROUTE_PREFIXES, ...CLIENT_ROUTE_PATHS]) {
+    expect(route.startsWith(BASE.replace(/\/$/, ""))).toBe(true);
+  }
+  // Parameterised routes must end in a slash, or they swallow sibling paths.
+  for (const prefix of CLIENT_ROUTE_PREFIXES) expect(prefix.endsWith("/")).toBe(true);
+});
+
+test("a daemon endpoint that merely starts with a client route is not a client route", () => {
+  // The failure this prevents is silent in the worst way: the dev server answers
+  // a JSON fetch with the dev HTML document.
+  for (const path of ["/web/state", "/web/events", "/web/agents-state", "/web/session", "/web/resolve", "/web/attachments"]) {
+    expect(isClientRoute(path), path).toBe(false);
+  }
+  for (const path of ["/web/", "/web", "/web/index.html", "/web/activity", "/web/agents", "/web/agents/p1", "/web/g/g_abc", "/web/g/g_abc/board/tasks"]) {
+    expect(isClientRoute(path), path).toBe(true);
   }
 });
 
-test("every path form in the grammar has a dev-server pass-through prefix", () => {
+test("every path form in the grammar is a client route", () => {
   // Without this, a new client route forwards to the daemon in dev and is
   // answered by its SPA fallback: 200, production bundle, dead HMR.
-  for (const path of ["/web/g/g_abc", "/web/d/peer-1", "/web/t/9", "/web/e/9", "/web/r/group:1"]) {
-    expect(CLIENT_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix))).toBe(true);
+  for (const path of ["/web/g/g_abc", "/web/g/by-name/ops", "/web/d/peer-1", "/web/t/9", "/web/e/9", "/web/r/group:1", "/web/activity", "/web/agents"]) {
+    expect(isClientRoute(path), path).toBe(true);
   }
 });
 

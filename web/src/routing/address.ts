@@ -33,18 +33,40 @@
 // HTTP 200, dead HMR, no error anywhere.
 export const BASE = "/web/";
 
-// The dev server's pass-through list is exactly these plus BASE itself;
-// everything else is forwarded to the daemon. Kept here so adding a client route
-// cannot forget to teach the dev server about it.
+// What the dev server keeps for itself; everything else under BASE is forwarded
+// to the daemon. Kept here so adding a client route cannot forget to teach the
+// dev server about it.
+//
+// Parameterised routes match by SEGMENT prefix (trailing slash), and leaf routes
+// match exactly. A bare prefix would be wrong in a way that is hard to see:
+// "/web/agents" as a prefix also swallows the daemon's /web/agents-state, which
+// then answers a JSON fetch with the dev HTML document.
 export const CLIENT_ROUTE_PREFIXES: readonly string[] = [
   `${BASE}g/`,
   `${BASE}d/`,
   `${BASE}t/`,
   `${BASE}e/`,
   `${BASE}r/`,
+  `${BASE}activity/`,
+  `${BASE}agents/`,
+];
+
+/** Leaf client routes, which own their exact path and nothing below it. */
+export const CLIENT_ROUTE_PATHS: readonly string[] = [
+  BASE,
+  BASE.replace(/\/$/, ""),
+  `${BASE}index.html`,
   `${BASE}activity`,
   `${BASE}agents`,
 ];
+
+/** True when the client owns this path — the dev server must not forward it. */
+export function isClientRoute(pathname: string): boolean {
+  return (
+    CLIENT_ROUTE_PATHS.includes(pathname) ||
+    CLIENT_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
+}
 
 /** The subset of `window.location` the parser reads. */
 export interface AddressLocation {

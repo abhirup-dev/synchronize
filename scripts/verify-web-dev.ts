@@ -53,7 +53,9 @@ for (const path of ["/web/", "/web/g/g_abc", "/web/g/by-name/ops", "/web/d/peer-
 }
 
 console.log("\n== daemon routes forward, though the dev config names none of them ==");
-for (const path of ["/health", "/status", "/peers", "/groups", "/web/state?limit=1"]) {
+// /web/agents-state is here on purpose: it shares a prefix with the /web/agents
+// CLIENT route, and a bare-prefix match would hand it the dev HTML document.
+for (const path of ["/health", "/status", "/peers", "/groups", "/web/state?limit=1", "/web/agents-state"]) {
   const { status, kind } = await classify(path);
   check(status < 500 && kind === "application/json", path, `${status} ${kind}`);
 }

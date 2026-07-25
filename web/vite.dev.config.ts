@@ -11,7 +11,7 @@
 import { defineConfig, type PluginOption, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { BASE, CLIENT_ROUTE_PREFIXES } from "./src/routing/address.ts";
+import { BASE, isClientRoute } from "./src/routing/address.ts";
 
 // Required, with no default. The daemon's port is random by default
 // (SYNCHRONIZE_PORT=0), so any hardcoded fallback here is a guess that forwards
@@ -80,9 +80,6 @@ const VITE_INTERNAL_PREFIXES = ["@vite/", "@id/", "@fs/", "@react-refresh", "src
  * post-middleware ever saw it.
  */
 function forwardToDaemon(daemonUrl: string): PluginOption {
-  // The mount point matches EXACTLY. Treating it as a prefix would hand Vite
-  // every daemon endpoint under /web/ too (/web/state, /web/events, …).
-  const exact = [BASE, BASE.replace(/\/$/, ""), `${BASE}index.html`];
   return {
     name: "synchronize:forward-to-daemon",
     configureServer(server: ViteDevServer) {
@@ -103,8 +100,10 @@ function forwardToDaemon(daemonUrl: string): PluginOption {
   };
 
   function viteOwns(path: string): boolean {
-    if (exact.includes(path)) return true;
-    if (CLIENT_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix))) return true;
+    // Exact-or-segment, never a bare prefix: a prefix hands Vite every daemon
+    // endpoint that merely starts with a client route (/web/state, /web/events,
+    // /web/agents-state), and the JSON fetch gets the dev HTML document instead.
+    if (isClientRoute(path)) return true;
     if (!path.startsWith(BASE)) return false;
     const rest = path.slice(BASE.length);
     return VITE_INTERNAL_PREFIXES.some((prefix) => rest.startsWith(prefix));
