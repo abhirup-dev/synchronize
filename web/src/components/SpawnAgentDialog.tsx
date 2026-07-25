@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Dialog } from "@base-ui-components/react/dialog";
 import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn";
-import { useLaunchProfiles, useSpawnAgent } from "../data/context.tsx";
-import type { AgentLaunchProfile, AgentLaunchTool, Room } from "../data/types.ts";
+import { useLaunchTools, useLaunchProfiles, useSpawnAgent } from "../data/context.tsx";
+import type { AgentLaunchProfile, AgentLaunchTool, LaunchToolAvailability, Room } from "../data/types.ts";
 import { DEFAULT_MODEL_ID, MODEL_OPTIONS, type ModelOption } from "../data/models.ts";
 import { useToast } from "./Toast.tsx";
 import { roomNameText } from "./primitives.tsx";
@@ -87,6 +87,9 @@ interface SpawnAgentDialogProps {
 export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
   const spawnAgent = useSpawnAgent();
   const launchProfiles = useLaunchProfiles();
+  // Launch tooling and profiles are per-daemon, not per-room: they come from the
+  // agents surface's scoped endpoint rather than riding on every room object.
+  const launchTools = useLaunchTools();
   const toast = useToast();
   const [targetId, setTargetId] = useState("tool:pi");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID.pi);
@@ -99,11 +102,8 @@ export function SpawnAgentDialog({ room, onClose }: SpawnAgentDialogProps) {
 
   const roomLabel = useMemo(() => roomNameText(room.kind, room.name), [room.kind, room.name]);
   const title = useMemo(() => `Spawn into ${roomLabel}`, [roomLabel]);
-  const profiles = useMemo(
-    () => mergeLaunchProfiles(launchProfiles, room.launchProfiles ?? []),
-    [launchProfiles, room.launchProfiles],
-  );
-  const targets = useMemo(() => runtimeTargets(room, profiles), [room, profiles]);
+  const profiles = launchProfiles;
+  const targets = useMemo(() => runtimeTargets(launchTools, profiles), [launchTools, profiles]);
   const selectedTarget = targets.find((target) => target.id === targetId) ?? targets[0] ?? fallbackRuntimeTarget();
   const modelOptions = useMemo(() => modelOptionsForTarget(profiles, selectedTarget), [profiles, selectedTarget]);
   const selectedModel = modelOptions.find((option) => option.id === modelId) ?? modelOptions[0];
@@ -350,9 +350,12 @@ function normalizeAliasDraft(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/--+/g, "-").slice(0, 11);
 }
 
-function runtimeTargets(room: Room, profiles: AgentLaunchProfile[]): RuntimeTarget[] {
+function runtimeTargets(
+  launchTools: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>,
+  profiles: AgentLaunchProfile[],
+): RuntimeTarget[] {
   const builtinTargets = TOOL_OPTIONS.map((option) => {
-    const availability = room.launchTools?.[option.value];
+    const availability = launchTools[option.value];
     const available = availability?.available ?? true;
     return {
       id: `tool:${option.value}`,

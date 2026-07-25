@@ -74,6 +74,7 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
     fixtures.push(await fixture("query.events", await fetch(`${d.baseUrl}/query/events`, json({ sql: "SELECT event_id, type FROM events ORDER BY event_id", limit: 2 }))));
     fixtures.push(await fixture("web.session", await fetch(`${d.baseUrl}/web/session`, { method: "POST" })));
     fixtures.push(await fixture("web.state", await fetch(`${d.baseUrl}/web/state`)));
+    fixtures.push(await fixture("web.agents_state", await fetch(`${d.baseUrl}/web/agents-state`)));
     fixtures.push(await fixture("unknown.not_found", await fetch(`${d.baseUrl}/phase0/unknown`)));
 
     expect(fixtures).toEqual([
@@ -106,6 +107,7 @@ test("normalized HTTP contract fixtures capture route family response shapes", a
       { name: "query.events", status: 200, body: { columns: ["string"], rows: [{ event_id: "number", type: "string" }], row_count: "number", truncated: true, elapsed_ms: "number" } },
       { name: "web.session", status: 200, body: { peer: peerShape({ deleted_at: null, purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null, auto_archive: null }) } },
       { name: "web.state", status: 200, body: webStateShape() },
+      { name: "web.agents_state", status: 200, body: webAgentsStateShape() },
       { name: "unknown.not_found", status: 404, body: { error: { code: "not_found", message: "GET /phase0/unknown is not implemented" } } },
     ]);
   } finally {
@@ -255,7 +257,6 @@ function webStateShape(): Record<string, unknown> {
     ok: true,
     daemon: { pid: "number", base_url: "string", started_at: "string", token_required: false },
     generated_at: "string",
-    agent_runtime_details: [agentRuntimeDetailsShape()],
     cursor: "number",
     peers: [peerShape({ online: true, presence: "string", purpose: "string", lifecycle_state: "string", archive_source: null, archived_at: null, archived_reason: null })],
     groups: [groupShape()],
@@ -264,6 +265,15 @@ function webStateShape(): Record<string, unknown> {
     room_summaries: [{ group_id: "number", last_event_id: "number", last_event_at: "string", last_preview: "string", message_count: "number" }],
     events: [],
     media: [],
+    skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
+  };
+}
+
+// The agents surface reads this from its own endpoint, so it is no longer part of
+// the workspace payload — see /web/agents-state.
+function webAgentsStateShape(): Record<string, unknown> {
+  return {
+    ok: true,
     launch_tools: {
       claude: { tool: "string", available: true, path: "string" },
       pi: { tool: "string", available: true, path: "string" },
@@ -271,7 +281,7 @@ function webStateShape(): Record<string, unknown> {
     },
     launch_profiles: [],
     launch_lifecycle: [],
-    skill_catalog: [{ id: "string", name: "string", description: "string", runtimes: ["string"], source_path: "string" }],
+    agent_runtime_details: [agentRuntimeDetailsShape()],
   };
 }
 

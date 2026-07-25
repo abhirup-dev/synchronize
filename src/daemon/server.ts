@@ -467,10 +467,6 @@ interface WebStateResponse {
     started_at: string;
     token_required: boolean;
   };
-  launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
-  launch_profiles: WebLaunchProfileStatus[];
-  launch_lifecycle: WebLaunchLifecycleRow[];
-  agent_runtime_details: WebAgentRuntimeDetails[];
   peers: Array<PeerRow & { online: boolean; aoe_session?: WebAoeSession }>;
   groups: FormattedGroup[];
   group_paths: FormattedGroupPath[];
@@ -482,6 +478,14 @@ interface WebStateResponse {
   // Present only when hydrating around a deep-link target (around_event_id). Lets
   // the client know whether the exact target made it into the bounded window.
   target?: { event_id: number; included: boolean; before_count: number; after_count: number };
+}
+
+export interface WebAgentsStateResponse {
+  ok: true;
+  launch_tools: Record<"claude" | "pi" | "letta", WebLaunchToolStatus>;
+  launch_profiles: WebLaunchProfileStatus[];
+  launch_lifecycle: WebLaunchLifecycleRow[];
+  agent_runtime_details: WebAgentRuntimeDetails[];
 }
 
 type WebLaunchLifecycleRow = Pick<
@@ -584,16 +588,13 @@ type WebEventRow = EventRow & {
   acked_count: number;
 };
 
-export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
-  const now = new Date().toISOString();
-  const limit = parseLimit(url.searchParams.get("limit"));
-  const since = parseCursor(url.searchParams.get("since"));
-  const room = url.searchParams.get("room");
-  const webPeerId = url.searchParams.get("peer_id");
-  const aroundRaw = Number(url.searchParams.get("around_event_id"));
-  const aroundEventId = Number.isInteger(aroundRaw) && aroundRaw >= 1 ? aroundRaw : null;
-  const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
-  const aoeProfile = aoeProfileName(ctx.paths.home);
+/**
+ * The agent-management payload: launch tooling, launch history and per-peer
+ * runtime details. Scoped OUT of /web/state because only the agents surface
+ * renders it, and one ETag over the whole workspace means an embedded pane pays
+ * for every field every other surface added.
+ */
+export function buildWebAgentsState(ctx: DaemonContext): WebAgentsStateResponse {
   const launchLifecycle = ctx.db
     .query<WebLaunchLifecycleRow, []>(
       `SELECT launch_id, peer_id, tool, profile_name, session_name, alias, cwd, target_group,
@@ -663,6 +664,25 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       ...row,
       git_dirty: row.git_dirty === null ? null : Boolean(row.git_dirty),
     }));
+  return {
+    ok: true,
+    launch_tools: launchToolStatus(),
+    launch_profiles: launchProfileStatus(ctx),
+    launch_lifecycle: launchLifecycle,
+    agent_runtime_details: agentRuntimeDetails,
+  };
+}
+
+export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
+  const now = new Date().toISOString();
+  const limit = parseLimit(url.searchParams.get("limit"));
+  const since = parseCursor(url.searchParams.get("since"));
+  const room = url.searchParams.get("room");
+  const webPeerId = url.searchParams.get("peer_id");
+  const aroundRaw = Number(url.searchParams.get("around_event_id"));
+  const aroundEventId = Number.isInteger(aroundRaw) && aroundRaw >= 1 ? aroundRaw : null;
+  const cursor = ctx.db.query<{ cursor: number | null }, []>("SELECT MAX(event_id) AS cursor FROM events").get()?.cursor ?? 0;
+  const aoeProfile = aoeProfileName(ctx.paths.home);
   const peers = ctx.db
     .query<PeerRow & { online: number }, [string]>(
       `SELECT peer_id, tool, session_name, purpose, machine_id, lease_expires_at,
@@ -771,10 +791,6 @@ export function buildWebState(ctx: DaemonContext, url: URL): WebStateResponse {
       started_at: ctx.startedAt,
       token_required: Boolean(ctx.token),
     },
-    launch_tools: launchToolStatus(),
-    launch_profiles: launchProfileStatus(ctx),
-    launch_lifecycle: launchLifecycle,
-    agent_runtime_details: agentRuntimeDetails,
     peers: [...peers, ...extraPeers],
     groups,
     group_paths: groupPaths,

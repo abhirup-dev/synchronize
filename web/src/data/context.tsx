@@ -32,6 +32,7 @@ export function useArtifacts(roomId: string) { return useSnapshot(useDataSource(
 export function useThreadSummary(parentMessageId: string) { return useSnapshot(useDataSource().threadSummary(parentMessageId)); }
 export function useSkillCatalog() { return useSnapshot(useDataSource().skillCatalog()); }
 export function useLaunchProfiles() { return useSnapshot(useDataSource().launchProfiles()); }
+export function useLaunchTools() { return useSnapshot(useDataSource().launchTools()); }
 export function useActivity() { return useSnapshot(useDataSource().activity()); }
 export function useActivityAwaitingCount() { return useSnapshot(useDataSource().activityAwaitingCount()); }
 export function useArchivedSessions() { return useSnapshot(useDataSource().archivedSessions()); }

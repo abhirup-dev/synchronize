@@ -34,8 +34,11 @@ function requireElement<T extends Element>(root: ParentNode, selector: string, l
   return el;
 }
 
-function roomButton(canvasElement: HTMLElement, roomId: string): HTMLElement {
-  return requireElement<HTMLElement>(canvasElement, `[data-vim-item="room-${roomId}"]`, `room ${roomId}`);
+// Awaited, not synchronous: the shell mounts after the router resolves its first
+// address, so a flow that grabs a room button on its first line races the redirect
+// from /web/ to the first room.
+async function roomButton(canvasElement: HTMLElement, roomId: string): Promise<HTMLElement> {
+  return waitFor(() => requireElement<HTMLElement>(canvasElement, `[data-vim-item="room-${roomId}"]`, `room ${roomId}`));
 }
 
 function messageRow(messageId: string): HTMLElement {
@@ -169,7 +172,7 @@ async function chatTopThreadTraversal(ctx: PlayCtx, options: FlowOptions = {}) {
 
   await ctx.step("Navigate from Activity into #checkout-revamp", async () => {
     await pause();
-    await userEvent.click(roomButton(ctx.canvasElement, "checkout-revamp"));
+    await userEvent.click(await roomButton(ctx.canvasElement, "checkout-revamp"));
     await waitFor(() => {
       expect(ctx.canvasElement.querySelector(".chat-view")).toBeTruthy();
       expect(ctx.canvasElement.querySelector(".room-header")?.textContent).toContain("checkout-revamp");
@@ -195,7 +198,7 @@ async function chatTopThreadTraversal(ctx: PlayCtx, options: FlowOptions = {}) {
 
 async function spawnAgentEntrypoint(ctx: PlayCtx, options: FlowOptions = {}) {
   const pause = pauseFor(options);
-  const checkoutRoom = roomButton(ctx.canvasElement, "checkout-revamp");
+  const checkoutRoom = await roomButton(ctx.canvasElement, "checkout-revamp");
 
   await ctx.step("Open the group room context menu", async () => {
     await pause();
@@ -206,7 +209,11 @@ async function spawnAgentEntrypoint(ctx: PlayCtx, options: FlowOptions = {}) {
   await ctx.step("Choose Spawn agent and verify the real dialog opens", async () => {
     await pause();
     await userEvent.click(screen.getByText("Spawn agent..."));
-    await expect(await screen.findByRole("heading", { name: /Spawn into #checkout-revamp/i })).toBeVisible();
+    // Generous timeout: the dialog mounts inside the routed shell, so it waits on
+    // the router settling as well as its own portal.
+    await expect(
+      await screen.findByRole("heading", { name: /Spawn into #checkout-revamp/i }, { timeout: 4000 }),
+    ).toBeVisible();
     await expect(screen.getByLabelText("Name")).toHaveValue("pi-checkout");
     await expect(screen.getByRole("button", { name: "Spawn" })).toBeVisible();
   });

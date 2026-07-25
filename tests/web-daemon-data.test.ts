@@ -144,45 +144,37 @@ test("daemon data source maps skill catalog from web state", () => {
   ]);
 });
 
-test("daemon data source maps launch profiles from web state", () => {
+test("launch profiles and tooling come from the scoped agents endpoint", async () => {
+  // Not from /web/state: only the agents surface renders them, so they moved to
+  // /web/agents-state and no longer ride along on every room.
   globalThis.localStorage = { getItem: () => null } as unknown as Storage;
   const ds = new DaemonDataSource({ baseUrl: "http://daemon.test" });
-  (ds as unknown as { peerId: string }).peerId = "web:local-human";
-
-  (ds as unknown as { applySummaryState(state: unknown): void }).applySummaryState({
-    ok: true,
-    cursor: 0,
-    launch_tools: {},
-    launch_profiles: [
-      {
-        name: "glaude",
-        tool: "claude",
-        available: true,
-        path: "/Users/dev/.local/bin/claude",
-        model: "glm-4.6",
-        thinking: "high",
-      },
-    ],
-    peers: [],
-    groups: [{ group_id: 1, name: "glm-test", description: null, created_at: "2026-06-23T00:00:00.000Z" }],
-    group_paths: [],
-    memberships: [],
-    room_summaries: [],
-    events: [],
-    media: [],
+  const profile = {
+    name: "glaude",
+    tool: "claude" as const,
+    available: true,
+    path: "/Users/dev/.local/bin/claude",
+    model: "glm-4.6",
+    thinking: "high",
+  };
+  const requested: string[] = [];
+  globalThis.fetch = stubFetch(async (input) => {
+    const url = new URL(String(input));
+    requested.push(url.pathname);
+    return new Response(JSON.stringify({
+      ok: true,
+      launch_tools: { claude: { tool: "claude", available: true, path: "/usr/local/bin/claude" } },
+      launch_profiles: [profile],
+      launch_lifecycle: [],
+      agent_runtime_details: [],
+    }));
   });
 
-  expect(ds.launchProfiles().get()).toEqual([
-    {
-      name: "glaude",
-      tool: "claude",
-      available: true,
-      path: "/Users/dev/.local/bin/claude",
-      model: "glm-4.6",
-      thinking: "high",
-    },
-  ]);
-  expect(ds.rooms().get()[0]?.launchProfiles).toEqual(ds.launchProfiles().get());
+  await (ds as unknown as { refreshAgentDetails(): Promise<void> }).refreshAgentDetails();
+
+  expect(requested).toEqual(["/web/agents-state"]);
+  expect(ds.launchProfiles().get()).toEqual([profile]);
+  expect(ds.launchTools().get()).toEqual({ claude: { tool: "claude", available: true, path: "/usr/local/bin/claude" } });
 });
 
 test("daemon data source keeps room-scoped historical authors resolvable", () => {

@@ -6,6 +6,7 @@ import { useAgents, useMe, useMessages, useReactToMessage } from "../data/contex
 import { MessageRow } from "./MessageRow.tsx";
 import { Composer } from "./Composer.tsx";
 import { useAutoScrollbar } from "../hooks/useAutoScrollbar.ts";
+import { useScrollAnchor } from "../hooks/useScrollAnchor.ts";
 import { ScrollControls } from "./ScrollControls.tsx";
 import { TimelineRail } from "./TimelineRail.tsx";
 import { ThreadSummaryPanel } from "./ThreadSummaryPanel.tsx";
@@ -207,6 +208,15 @@ export function ChatView({
     handleJumpTo(focusMessageId);
     onFocusedMessage?.();
   }, [focusMessageId, indexByMessageId, handleJumpTo, onFocusedMessage]);
+
+  useScrollAnchor({
+    roomId: room.id,
+    messages,
+    virtualizer,
+    indexByMessageId,
+    jumpTo: handleJumpTo,
+    focusMessageId,
+  });
 
   useEffect(() => {
     const last = messages.at(-1);

@@ -15,6 +15,7 @@ import { resolveWebDeepLink } from "../repo/events.ts";
 import { ensureLocalWebPeer } from "../repo/peers.ts";
 import { emitWebStateChanged, openWebEvents } from "../services/web-events.ts";
 import {
+  buildWebAgentsState,
   buildWebState,
   log,
   serveWebAsset,
@@ -35,21 +36,6 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
     const presenceOf = (row: { presence?: string; online: boolean }): string =>
       row.presence ?? (row.online ? "online" : "offline");
     const renderSig = [
-      ...Object.values(state.launch_tools).map((tool) => `${tool.tool}:${tool.available}:${tool.path ?? ""}`),
-      ...state.launch_lifecycle.map(
-        (launch) =>
-          `${launch.launch_id}:${launch.peer_id}:${launch.state}:${launch.target_group ?? ""}:${launch.backend_title}:${
-            launch.failure_code ?? ""
-          }:${launch.updated_at}`,
-      ),
-      ...state.agent_runtime_details.map(
-        (details) =>
-          `${details.peer_id}:${details.binding_id ?? ""}:${details.launch_id ?? ""}:${details.profile_name ?? ""}:${
-            details.model ?? ""
-          }:${details.thinking ?? ""}:${details.host_session_id ?? ""}:${details.cwd ?? ""}:${details.git_branch ?? ""}:${
-            details.git_dirty ?? ""
-          }:${details.launch_state ?? ""}:${details.updated_at ?? ""}`,
-      ),
       ...state.skill_catalog.map((skill) => `${skill.name}:${skill.runtimes.join(",")}:${skill.description}:${skill.source_path ?? ""}`),
       ...state.peers.map(
         (p) =>
@@ -68,6 +54,37 @@ export async function tryHandleWebRoute(request: Request, ctx: DaemonContext, ur
       .sort()
       .join("|");
     const etag = `W/"${state.cursor}.${Bun.hash(renderSig).toString(36)}"`;
+    if (request.headers.get("if-none-match") === etag) {
+      return new Response(null, { status: 304, headers: { etag } });
+    }
+    return jsonResponse(state, { headers: { etag, "cache-control": "no-cache" } });
+  }
+
+  // The agent-management surface's scoped endpoint. Its ETag covers launch
+  // tooling, launch history and runtime details only, so it survives every change
+  // to rooms, messages and presence — which is the point of scoping it out.
+  if (request.method === "GET" && url.pathname === "/web/agents-state") {
+    requireAuth(request, ctx);
+    const state = buildWebAgentsState(ctx);
+    const signature = [
+      ...Object.values(state.launch_tools).map((tool) => `${tool.tool}:${tool.available}:${tool.path ?? ""}`),
+      ...state.launch_profiles.map((profile) => `${profile.name}:${profile.available}`),
+      ...state.launch_lifecycle.map(
+        (launch) =>
+          `${launch.launch_id}:${launch.peer_id}:${launch.state}:${launch.target_group ?? ""}:${launch.backend_title}:${
+            launch.failure_code ?? ""
+          }:${launch.updated_at}`,
+      ),
+      ...state.agent_runtime_details.map(
+        (details) =>
+          `${details.peer_id}:${details.binding_id ?? ""}:${details.launch_id ?? ""}:${details.profile_name ?? ""}:${
+            details.model ?? ""
+          }:${details.thinking ?? ""}:${details.host_session_id ?? ""}:${details.cwd ?? ""}:${details.git_branch ?? ""}:${
+            details.git_dirty ?? ""
+          }:${details.launch_state ?? ""}:${details.updated_at ?? ""}`,
+      ),
+    ].join("|");
+    const etag = `W/"${Bun.hash(signature).toString(36)}"`;
     if (request.headers.get("if-none-match") === etag) {
       return new Response(null, { status: 304, headers: { etag } });
     }

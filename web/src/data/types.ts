@@ -103,8 +103,6 @@ export interface Room {
   publicId?: string;
   // For DMs only
   peerId?: string;
-  launchTools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>;
-  launchProfiles?: AgentLaunchProfile[];
 }
 
 export type MessageStatus = "queued" | "delivered" | "read";
@@ -411,6 +409,9 @@ export interface DataSource {
   threadSummary(parentMessageId: string): Snapshot<ThreadSummary>;
   skillCatalog(): Snapshot<SkillCatalogEntry[]>;
   launchProfiles(): Snapshot<AgentLaunchProfile[]>;
+  /** Which agent runtimes this daemon can spawn. Scoped to the agents surface,
+   *  so it arrives from /web/agents-state rather than /web/state. */
+  launchTools(): Snapshot<Partial<Record<AgentLaunchTool, LaunchToolAvailability>>>;
   me(): Snapshot<Agent>;
   /** Global cross-room Activity feed, newest-first. */
   activity(): Snapshot<ActivityItem[]>;

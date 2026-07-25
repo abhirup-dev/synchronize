@@ -7,11 +7,13 @@ import type {
   ActivityItem,
   Agent,
   AgentLaunchProfile,
+  AgentLaunchTool,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
   Artifact,
   DataSource,
+  LaunchToolAvailability,
   Message,
   MessageAttachment,
   ReactToMessageInput,
@@ -19,11 +21,11 @@ import type {
   ResumePreviewMember,
   Room,
   SendMessageInput,
-  StageAttachmentInput,
   SkillCatalogEntry,
+  Snapshot,
   SpawnAgentInput,
   SpawnAgentResult,
-  Snapshot,
+  StageAttachmentInput,
   Task,
   ThreadSummary,
   TimelineEvent,
@@ -112,6 +114,7 @@ export class MockDataSource implements DataSource {
   private readonly _me = createSnapshot<Agent>(AGENTS.find((a) => a.id === "you")!);
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>(MOCK_SKILL_CATALOG);
   private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
+  private readonly _launchTools = createSnapshot<Partial<Record<AgentLaunchTool, LaunchToolAvailability>>>({});
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>(MOCK_ARCHIVED_SESSIONS);
   // Activity feed: aggregated once from the seed (every other agent's message
   // across all rooms), then awaiting is recomputed from explicit handled
@@ -121,11 +124,23 @@ export class MockDataSource implements DataSource {
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
 
+  /**
+   * A mock daemon spawns nothing, so launch tooling is empty unless a caller
+   * supplies it. Stories that need a spawnable runtime pass fixtures here rather
+   * than hanging them off a Room, which is where the live app no longer keeps
+   * them either.
+   */
+  constructor(launch?: { tools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>; profiles?: AgentLaunchProfile[] }) {
+    if (launch?.tools) this._launchTools.set(launch.tools);
+    if (launch?.profiles) this._launchProfiles.set(launch.profiles);
+  }
+
   agents(): Snapshot<Agent[]> { return this._agents; }
   rooms(): Snapshot<Room[]>   { return this._rooms; }
   me(): Snapshot<Agent>        { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
   launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
+  launchTools(): Snapshot<Partial<Record<AgentLaunchTool, LaunchToolAvailability>>> { return this._launchTools; }
 
   activity(): Snapshot<ActivityItem[]> {
     if (this._activity.get().length === 0 && this.activityBase.length > 0) this.emitActivity();

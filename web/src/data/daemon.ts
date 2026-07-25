@@ -2,12 +2,14 @@ import type {
   ActivityItem,
   Agent,
   AgentLaunchProfile,
+  AgentLaunchTool,
   AgentStatus,
   ArchivePreview,
   ArchivePreviewMember,
   ArchivedSession,
   Artifact,
   DataSource,
+  LaunchToolAvailability,
   MemberState,
   Message,
   MessageAttachment,
@@ -17,10 +19,10 @@ import type {
   Room,
   SendMessageInput,
   SkillCatalogEntry,
+  Snapshot,
   SpawnAgentInput,
   SpawnAgentResult,
   StageAttachmentInput,
-  Snapshot,
   Task,
   ThreadSummary,
   TimelineEvent,
@@ -238,11 +240,17 @@ interface DaemonResolveResponse {
   root_event: unknown;
 }
 
+interface WebAgentsStateResponse {
+  ok: true;
+  launch_tools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>;
+  launch_profiles?: DaemonLaunchProfile[];
+  launch_lifecycle?: DaemonLaunchLifecycle[];
+  agent_runtime_details?: DaemonAgentRuntimeDetails[];
+}
+
 interface WebStateResponse {
   ok: true;
   cursor: number;
-  launch_tools?: Partial<Record<"claude" | "pi" | "letta", { tool: "claude" | "pi" | "letta"; available: boolean; path?: string }>>;
-  launch_profiles?: DaemonLaunchProfile[];
   launch_lifecycle?: DaemonLaunchLifecycle[];
   agent_runtime_details?: DaemonAgentRuntimeDetails[];
   peers: DaemonPeer[];
@@ -404,6 +412,10 @@ export class DaemonDataSource implements DataSource {
   private readonly _threadSummaries = new Map<string, MutableSnapshot<ThreadSummary>>();
   private readonly _skillCatalog = createSnapshot<SkillCatalogEntry[]>([]);
   private readonly _launchProfiles = createSnapshot<AgentLaunchProfile[]>([]);
+  private readonly _launchTools = createSnapshot<Partial<Record<AgentLaunchTool, LaunchToolAvailability>>>({});
+  // The agent-detail half of the old /web/state payload, kept so a room refresh
+  // can rebuild agents without re-fetching it.
+  private agentDetails: Pick<WebStateResponse, "launch_lifecycle" | "agent_runtime_details"> = {};
   private readonly _activity = createSnapshot<ActivityItem[]>([]);
   private readonly _activityAwaiting = createSnapshot<number>(0);
   private readonly _archivedSessions = createSnapshot<ArchivedSession[]>([]);
@@ -440,6 +452,7 @@ export class DaemonDataSource implements DataSource {
   me(): Snapshot<Agent> { return this._me; }
   skillCatalog(): Snapshot<SkillCatalogEntry[]> { return this._skillCatalog; }
   launchProfiles(): Snapshot<AgentLaunchProfile[]> { return this._launchProfiles; }
+  launchTools(): Snapshot<Partial<Record<AgentLaunchTool, LaunchToolAvailability>>> { return this._launchTools; }
 
   activity(): Snapshot<ActivityItem[]> {
     if (!this.activityRequested) {
@@ -572,11 +585,13 @@ export class DaemonDataSource implements DataSource {
     if (this.connected) return;
     this.connected = true;
     await this.registerWebPeer();
+    await this.refreshAgentDetails();
     await this.refresh();
     void this.refreshActivity({ reset: true });
     if (this.archivedRequested) void this.refreshArchivedSessions();
     this.openStream();
     this.pollTimer = window.setInterval(() => {
+      void this.refreshAgentDetails();
       void this.refresh();
       for (const roomId of this._messages.keys()) void this.refreshRoom(roomId);
     }, this.pollMs);
@@ -1131,6 +1146,26 @@ export class DaemonDataSource implements DataSource {
     return this.refreshing;
   }
 
+  /**
+   * The agents surface's scoped payload. Separate from refresh() so a change to
+   * launch state does not re-render the whole workspace and, more to the point,
+   * so the workspace payload does not carry it for consumers that never show it.
+   */
+  private async refreshAgentDetails(): Promise<void> {
+    try {
+      const state = await this.request<WebAgentsStateResponse>("/web/agents-state");
+      this.agentDetails = {
+        launch_lifecycle: state.launch_lifecycle ?? [],
+        agent_runtime_details: state.agent_runtime_details ?? [],
+      };
+      this._launchTools.set(state.launch_tools ?? {});
+      this._launchProfiles.set(reuseEqualLaunchProfiles(this._launchProfiles.get(), mapLaunchProfiles(state.launch_profiles ?? [])));
+    } catch {
+      // The workspace still renders without it; the agents surface degrades to
+      // "no runtime details reported" rather than the whole app failing.
+    }
+  }
+
   private async refreshAfterArchiveChange(): Promise<void> {
     await this.refresh();
     await this.refreshArchivedSessions();
@@ -1178,7 +1213,7 @@ export class DaemonDataSource implements DataSource {
     const memberByGroup = groupMembersByGroup(state.memberships);
     const pathsByGroup = groupPathsByGroup(state.group_paths ?? []);
     const summaryByGroup = new Map(state.room_summaries.map((summary) => [summary.group_id, summary] as const));
-    const agents = agentsFromState(state, this.peerId);
+    const agents = agentsFromState({ ...state, ...this.agentDetails }, this.peerId);
     const me = agents.find((agent) => agent.id === this.peerId) ?? mapAgent(peerById.get(this.peerId) ?? {
       peer_id: this.peerId,
       tool: "web",
@@ -1218,8 +1253,6 @@ export class DaemonDataSource implements DataSource {
           path: path.path,
           ...(path.label ? { label: path.label } : {}),
         })),
-        ...(state.launch_tools ? { launchTools: state.launch_tools } : {}),
-        ...(state.launch_profiles ? { launchProfiles: mapLaunchProfiles(state.launch_profiles) } : {}),
         ...(group.description ? { description: group.description } : {}),
         lastPreview: summary?.last_preview ?? "no activity yet",
         unread: 0,
@@ -1246,7 +1279,6 @@ export class DaemonDataSource implements DataSource {
     this._agents.set(reuseEqualAgents(currentAgents, mergeAgents(currentAgents, agents)));
     this._me.set(me);
     this._rooms.set(reuseEqualRooms(this._rooms.get(), [...groupRooms, ...dmRooms]));
-    this._launchProfiles.set(reuseEqualLaunchProfiles(this._launchProfiles.get(), mapLaunchProfiles(state.launch_profiles ?? [])));
     this._skillCatalog.set(reuseEqualSkillCatalog(this._skillCatalog.get(), mapSkillCatalog(state.skill_catalog ?? [])));
   }
 

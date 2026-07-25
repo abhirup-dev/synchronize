@@ -1,5 +1,5 @@
 import type { Preview } from "@storybook/react-vite";
-import { StorybookProviders } from "../src/storybook/StorybookProviders.tsx";
+import { StorybookProviders, type MockLaunchFixture } from "../src/storybook/StorybookProviders.tsx";
 import {
   DEFAULT_LIGHT_THEME,
   INITIAL_SKIN,
@@ -71,8 +71,10 @@ const preview: Preview = {
       document.body.style.background = "var(--paper)";
       return <Story />;
     },
-    (Story) => (
-      <StorybookProviders>
+    // Launch tooling is per-daemon, so a story that needs a spawnable runtime
+    // declares it as a parameter instead of a prop on a Room.
+    (Story, context) => (
+      <StorybookProviders launch={context.parameters["launch"] as MockLaunchFixture | undefined}>
         <Story />
       </StorybookProviders>
     ),
