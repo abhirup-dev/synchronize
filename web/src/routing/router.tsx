@@ -19,6 +19,7 @@ import {
   createRouter,
   notFound,
   redirect,
+  createMemoryHistory,
   useNavigate,
   useRouterState,
   type RouterHistory,
@@ -50,11 +51,23 @@ export interface AppSearch {
 }
 
 function validateSearch(raw: Record<string, unknown>): AppSearch {
-  // An unrecognised view is dropped rather than thrown: a stray query parameter
-  // must not turn a valid address into an error page.
+  // Unrecognised values are dropped rather than thrown, and the router stays
+  // non-strict about unknown keys: a stray query parameter must not turn a valid
+  // address into an error page. Router-level strictness rejects the whole
+  // location, which is the wrong trade for something like a UTM tag.
   const view = raw["view"] === "pane" ? ("pane" as const) : undefined;
   const focus = typeof raw["focus"] === "string" && raw["focus"] ? raw["focus"] : undefined;
   return { ...(view ? { view } : {}), ...(focus ? { focus } : {}) };
+}
+
+/**
+ * Whether a location selects the pane window role — the single runtime check.
+ * Non-strict search means an unrecognised value survives in the search object,
+ * so reading `view` is not the same as validating it, and a value that merely
+ * looks like a modifier must select no role.
+ */
+export function isPaneView(search: { view?: string }): boolean {
+  return search.view === "pane";
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
@@ -285,6 +298,15 @@ export function createAppRouter(ds: DataSource, history?: RouterHistory) {
     defaultPreloadStaleTime: 0,
     defaultGcTime: 0,
   });
+}
+
+/**
+ * A router detached from the address bar, started at `initialPath`. Used where
+ * there is no address bar to own: a Storybook iframe served from /iframe.html,
+ * and the headless route tests.
+ */
+export function createMemoryRouter(ds: DataSource, initialPath: string) {
+  return createAppRouter(ds, createMemoryHistory({ initialEntries: [initialPath] }));
 }
 
 export type AppRouter = ReturnType<typeof createAppRouter>;

@@ -12,6 +12,7 @@ import { cycleTheme, toggleThemeFamily, usePersistentTheme } from "../hooks/useP
 import { useVimNav, type VimPanel } from "../hooks/useVimNav.ts";
 import {
   ACTIVITY_ROOM_ID,
+  isPaneView,
   useActiveRoomId,
   useIsActivityRoute,
   useIsThreadRoute,
@@ -33,7 +34,7 @@ import { ShellChromeProvider, type ShellChromeApi } from "./chrome-context.tsx";
  * second chrome variant to write.
  */
 export function AppLayout() {
-  const { view } = useSearch({ strict: false }) as { view?: "pane" };
+  const pane = isPaneView(useSearch({ strict: false }) as { view?: string });
   const rooms = useRooms();
   const agents = useAgents();
   const toast = useToast();
@@ -148,7 +149,7 @@ export function AppLayout() {
     openDmForAgent,
   };
 
-  if (view === "pane") {
+  if (pane) {
     // A pane is embedded in another window's chrome, so it carries none of its
     // own — no rail, no room list, no bottom nav.
     return (

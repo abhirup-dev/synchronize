@@ -42,6 +42,7 @@ export const CLIENT_ROUTE_PREFIXES: readonly string[] = [
   `${BASE}t/`,
   `${BASE}e/`,
   `${BASE}r/`,
+  `${BASE}activity`,
 ];
 
 /** The subset of `window.location` the parser reads. */

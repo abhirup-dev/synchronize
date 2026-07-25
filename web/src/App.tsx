@@ -1,9 +1,9 @@
-import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
+import { RouterProvider } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { DataSource } from "./data/types.ts";
 import { DataSourceProvider, useDataSource } from "./data/context.tsx";
 import { BASE, isAppPath } from "./routing/address.ts";
-import { createAppRouter } from "./routing/router.tsx";
+import { createAppRouter, createMemoryRouter } from "./routing/router.tsx";
 import { MockDataSource } from "./data/mock.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
 import { ContextMenuProvider } from "./components/ContextMenu.tsx";
@@ -89,7 +89,7 @@ export function Shell() {
   const router = useMemo(
     // A Storybook iframe is served from /iframe.html, which is outside BASE and so
     // matches no route; those mounts get an in-memory history rooted at BASE.
-    () => createAppRouter(ds, isAppPath(window.location.pathname) ? undefined : createMemoryHistory({ initialEntries: [BASE] })),
+    () => (isAppPath(window.location.pathname) ? createAppRouter(ds) : createMemoryRouter(ds, BASE)),
     [ds],
   );
   return <RouterProvider router={router} />;
