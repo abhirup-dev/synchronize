@@ -14,6 +14,7 @@ import { useToast } from "./Toast.tsx";
 import { useArchiveWorkflow } from "./ArchiveRecovery.tsx";
 import { agentActionMenuItems } from "./agentActionMenu.ts";
 import { messageAddressUrl } from "../routing/address.ts";
+import { openInPane } from "../routing/router.tsx";
 import { copyText } from "../utils/clipboard.ts";
 
 interface MessageRowProps {
@@ -135,6 +136,10 @@ export const MessageRow = memo(function MessageRow({
               const copied = await copyText(messageAddressUrl(message.id, window.location.origin));
               toast.show(copied ? "Message link copied" : "Could not copy message link", { kind: copied ? "success" : "error" });
             },
+          },
+          {
+            label: "Open thread in new window",
+            onSelect: () => openInPane({ kind: "thread", eventId: threadAddressId(message) }),
           },
           { divider: true },
           { label: "Pin to room (soon)", disabled: true, onSelect: () => {} },
@@ -366,4 +371,10 @@ function BodyWithMentions({ body, agents }: { body: string; agents: Agent[] }) {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The thread a message belongs to: its root if it is a reply, else itself. */
+function threadAddressId(message: Message): string {
+  const id = message.parentId ?? message.id;
+  return id.startsWith("e:") ? id.slice(2) : id;
 }

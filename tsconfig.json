@@ -9,6 +9,9 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    // tests/web-routes.test.ts drives the web route tree, which lives in .tsx.
+    // web/ keeps its own tsconfig; this only lets the root parse what it imports.
+    "jsx": "react-jsx",
     "noEmit": true
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "extensions/**/*.ts"]

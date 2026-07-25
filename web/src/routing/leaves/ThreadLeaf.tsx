@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChatView } from "../../components/ChatView.tsx";
 import { ResizeHandle } from "../../components/ResizeHandle.tsx";
@@ -9,7 +9,7 @@ import { cycleTheme, toggleThemeFamily } from "../../hooks/usePersistentTheme.ts
 import { useShellChrome } from "../../shell/chrome-context.tsx";
 import { ShellChatColumn, ShellMainBody } from "../../shell-layout.tsx";
 import { useShellLayout } from "../../shell-mode.tsx";
-import { threadRoute, useNavigateToRoom } from "../router.tsx";
+import { threadRoute, useClearFocus, useNavigateToRoom } from "../router.tsx";
 import { threadSplitStyle } from "./RoomLeaf.tsx";
 import { NoRooms } from "./NoRooms.tsx";
 
@@ -27,16 +27,15 @@ export function ThreadLeaf() {
   const { focus } = useSearch({ strict: false }) as { focus?: string };
   const rooms = useRooms();
   const room = rooms.find((candidate) => candidate.id === roomId);
-  const navigate = useNavigate();
   const goToRoom = useNavigateToRoom();
   const layout = useShellLayout();
   const chrome = useShellChrome();
   const [tab, setTab] = useState<RoomTab>("chat");
+  const clearFocus = useClearFocus();
 
   if (!room) return <NoRooms />;
 
   const closeThread = () => goToRoom(room.id);
-  const clearFocus = () => void navigate({ to: ".", search: ({ view }) => (view ? { view } : {}), replace: true });
 
   return (
     <>

@@ -197,3 +197,56 @@ test("GET /activity awaits agent group messages after the observer's last thread
     await daemon.stop();
   }
 });
+
+test("the activity ETag is scoped: unrelated state changes do not invalidate it", async () => {
+  // The point of a per-surface endpoint. /web/state computes one ETag over the
+  // whole workspace, so a change anywhere invalidates it for every consumer —
+  // which is exactly what makes an embeddable pane expensive.
+  const home = await mkdtemp(join(tmpdir(), "synchronize-activity-etag-"));
+  homes.push(home);
+  const daemon = await startDaemon(home);
+  try {
+    const web = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/web/session", { method: "POST" });
+    const me = web.peer.peer_id;
+    const alice = await json<{ peer: { peer_id: string } }>(daemon.baseUrl, "/peers/register", {
+      method: "POST",
+      body: JSON.stringify({ session_name: "alice", tool: "codex" }),
+    });
+    await json(daemon.baseUrl, "/groups", {
+      method: "POST",
+      body: JSON.stringify({ name: "room", creator_peer_id: alice.peer.peer_id }),
+    });
+    for (const [peerId, alias] of [[me, "you"], [alice.peer.peer_id, "alice"]] as const) {
+      await json(daemon.baseUrl, `/groups/room/join`, { method: "POST", body: JSON.stringify({ peer_id: peerId, alias }) });
+    }
+    await json(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "first" }),
+    });
+
+    const path = `/activity/${encodeURIComponent(me)}?limit=20`;
+    const first = await fetch(`${daemon.baseUrl}${path}`);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    expect((await fetch(`${daemon.baseUrl}${path}`, { headers: { "if-none-match": etag! } })).status).toBe(304);
+
+    // A change in a domain the activity feed does not render: a new group with
+    // nobody in it. /web/state's ETag moves for this; the scoped one must not.
+    await json(daemon.baseUrl, "/groups", {
+      method: "POST",
+      body: JSON.stringify({ name: "unrelated", creator_peer_id: alice.peer.peer_id }),
+    });
+    expect((await fetch(`${daemon.baseUrl}${path}`, { headers: { "if-none-match": etag! } })).status).toBe(304);
+
+    // A change it does render invalidates it.
+    await json(daemon.baseUrl, "/groups/room/messages", {
+      method: "POST",
+      body: JSON.stringify({ sender_peer_id: alice.peer.peer_id, message: "second" }),
+    });
+    const after = await fetch(`${daemon.baseUrl}${path}`, { headers: { "if-none-match": etag! } });
+    expect(after.status).toBe(200);
+    expect(after.headers.get("etag")).not.toBe(etag);
+  } finally {
+    await daemon.stop();
+  }
+});

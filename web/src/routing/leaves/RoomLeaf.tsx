@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useSearch } from "@tanstack/react-router";
+import { Outlet, useSearch } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { AgentRoster } from "../../components/AgentRoster.tsx";
 import { BoardView } from "../../components/BoardView.tsx";
@@ -11,7 +11,7 @@ import { Placeholder } from "../../shell/compact-chrome.tsx";
 import { useShellChrome } from "../../shell/chrome-context.tsx";
 import { ShellChatColumn, ShellMainBody } from "../../shell-layout.tsx";
 import { useShellLayout } from "../../shell-mode.tsx";
-import { useActiveRoomId, useNavigateRoomTab, useNavigateToThread, useRoomTab } from "../router.tsx";
+import { useActiveRoomId, useClearFocus, useNavigateRoomTab, useNavigateToThread, useRoomTab } from "../router.tsx";
 import { NoRooms } from "./NoRooms.tsx";
 
 /**
@@ -57,17 +57,13 @@ export function RoomLayout() {
 export function ChatLeaf() {
   const room = useAddressedRoom();
   const { focus } = useSearch({ strict: false }) as { focus?: string };
-  const navigate = useNavigate();
   const openThread = useNavigateToThread();
   const layout = useShellLayout();
   const chrome = useShellChrome();
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
+  const clearFocus = useClearFocus();
 
   if (!room) return null;
-
-  // Clearing ?focus= replaces rather than pushes: the back button moves between
-  // rooms, not between scroll positions.
-  const clearFocus = () => void navigate({ to: ".", search: ({ view }) => (view ? { view } : {}), replace: true });
 
   return (
     <ShellChatColumn>

@@ -30,7 +30,7 @@ import { ArtifactsLeaf, BoardLeaf, ChatLeaf, RoomLayout } from "./leaves/RoomLea
 import { ThreadLeaf } from "./leaves/ThreadLeaf.tsx";
 import { AddressNotFound } from "./AddressNotFound.tsx";
 import { AppLayout } from "../shell/AppLayout.tsx";
-import { BASE, addressForRoom, findRoomForAddress } from "./address.ts";
+import { BASE, addressForRoom, findRoomForAddress, serializeAddress, serializeLocation, type Address } from "./address.ts";
 import type { DataSource, Room, WebDeepLinkTarget } from "../data/types.ts";
 
 /** The virtual cross-room destination. Not a room, so it has no address of its own. */
@@ -446,6 +446,30 @@ export function useNavigateRoomTab(): (tab: "chat" | "board" | "artifacts", room
       void navigate({ to, params: { peerId: address.peerId, boardId: DEFAULT_BOARD_ID }, search: (prev) => searchOf(prev) });
     }
   };
+}
+
+/**
+ * Drop ?focus= — always with replace, never push.
+ *
+ * The distinction the history discipline rests on: ?view is a window role and
+ * part of the address, so it participates in history; ?focus changes every time
+ * the user looks at a different message, so pushing it would make back crawl
+ * through scroll positions instead of leaving the room in one step.
+ */
+export function useClearFocus(): () => void {
+  const navigate = useNavigate();
+  return () => void navigate({ to: ".", search: (prev) => searchOf(prev), replace: true });
+}
+
+/**
+ * Open an address in its own chrome-less window, named after the address, so a
+ * second open focuses the existing window instead of duplicating it. The browser
+ * does that for free with a named target — no window registry, no presence
+ * protocol, no daemon state.
+ */
+export function openInPane(address: Address): Window | null {
+  const href = serializeLocation(address, { pane: true });
+  return window.open(href, `sync:${serializeAddress(address)}`);
 }
 
 /** Open the thread rooted at a web message id. */

@@ -41,6 +41,17 @@ test("no component fetches directly — reads go through the DataSource", async 
   expect(offenders).toEqual([]);
 });
 
+test("a navigation that stays on the same address replaces, never pushes", async () => {
+  // `to: "."` means "same address, different modifier" — which is only ever
+  // ?focus=. Pushing it would make back crawl through scroll positions instead
+  // of leaving the room in one step.
+  for (const file of await sources()) {
+    for (const call of file.text.matchAll(/navigate\(\{[^}]*to: "\."[\s\S]{0,240}?\}\)/g)) {
+      expect(call[0].includes("replace: true"), `${file.path}: ${call[0]}`).toBe(true);
+    }
+  }
+});
+
 test("no route-agnostic primitive imports a router hook", async () => {
   // These are reusable presentation, mounted under any address or none. One of
   // them importing a router hook makes it unmountable outside a RouterProvider.
