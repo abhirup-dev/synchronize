@@ -25,7 +25,8 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { ActivityLeaf } from "./leaves/ActivityLeaf.tsx";
-import { RoomLeaf } from "./leaves/RoomLeaf.tsx";
+import { AgentArchiveLeaf, AgentLeaf, AgentsLeaf } from "./leaves/AgentLeaves.tsx";
+import { ArtifactsLeaf, BoardLeaf, ChatLeaf, RoomLayout } from "./leaves/RoomLeaf.tsx";
 import { ThreadLeaf } from "./leaves/ThreadLeaf.tsx";
 import { AddressNotFound } from "./AddressNotFound.tsx";
 import { AppLayout } from "../shell/AppLayout.tsx";
@@ -88,13 +89,17 @@ interface ThreadGate extends RoomGate {
   threadParentId: string;
 }
 
+// A room address is a LAYOUT, not a leaf: the room gate loads once and the
+// surface inside it — chat, a board, artifacts — is a nested child. This is the
+// convention any future per-room surface follows; adding one is a child route,
+// not another branch inside the room component.
 const groupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "g/$publicId",
   loaderDeps: ({ search }: { search: AppSearch }) => ({ focus: search.focus }),
   loader: async ({ context, params, deps }): Promise<RoomGate> =>
     gateRoom(context.ds, { kind: "group", publicId: params.publicId }, deps.focus),
-  component: RoomLeaf,
+  component: RoomLayout,
 });
 
 const dmRoute = createRoute({
@@ -103,8 +108,29 @@ const dmRoute = createRoute({
   loaderDeps: ({ search }: { search: AppSearch }) => ({ focus: search.focus }),
   loader: async ({ context, params, deps }): Promise<RoomGate> =>
     gateRoom(context.ds, { kind: "dm", peerId: params.peerId }, deps.focus),
-  component: RoomLeaf,
+  component: RoomLayout,
 });
+
+/** The only board a room has today: its kanban. */
+export const DEFAULT_BOARD_ID = "tasks";
+
+/** The three surfaces a room address can show, under either room parent. */
+function roomSurfaceRoutes(parent: typeof groupRoute | typeof dmRoute) {
+  return [
+    createRoute({ getParentRoute: () => parent, path: "/", component: ChatLeaf }),
+    createRoute({
+      getParentRoute: () => parent,
+      path: "board/$boardId",
+      // A pure guard: the room gate above already resolved everything the board
+      // needs, so this returns nothing rather than restating it.
+      loader: ({ params }) => {
+        if (params.boardId !== DEFAULT_BOARD_ID) throw notFound();
+      },
+      component: BoardLeaf,
+    }),
+    createRoute({ getParentRoute: () => parent, path: "artifacts", component: ArtifactsLeaf }),
+  ];
+}
 
 export const threadRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -123,6 +149,32 @@ const activityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "activity",
   component: ActivityLeaf,
+});
+
+// ── Agents ───────────────────────────────────────────────────────────────────
+// Addressed by peer_id, the same opaque id a DM uses. No gate: the agent list is
+// live, and an agent that archives while its page is open should not turn the
+// surface into a not-found.
+
+const agentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "agents",
+  component: AgentsLeaf,
+});
+
+const agentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "agents/$peerId",
+  component: AgentLeaf,
+});
+
+// A sibling rather than a child: the console is the whole surface, so there is no
+// parent chrome for it to render inside. Nesting is exercised where it earns its
+// keep — a room layout with a surface inside it.
+const agentArchiveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "agents/$peerId/archive",
+  component: AgentArchiveLeaf,
 });
 
 // ── Resolvers ────────────────────────────────────────────────────────────────
@@ -269,9 +321,12 @@ function roomsWhenLoaded(ds: DataSource): Promise<Room[]> {
 const routeTree = rootRoute.addChildren([
   indexRoute,
   activityRoute,
+  agentsRoute,
+  agentRoute,
+  agentArchiveRoute,
   groupByNameResolverRoute,
-  groupRoute,
-  dmRoute,
+  groupRoute.addChildren(roomSurfaceRoutes(groupRoute)),
+  dmRoute.addChildren(roomSurfaceRoutes(dmRoute)),
   threadRoute,
   eventResolverRoute,
   roomResolverRoute,
@@ -358,6 +413,38 @@ export function useNavigateToRoom(): (roomId: string, focus?: string) => void {
       params: { roomId },
       search: (prev) => ({ ...searchOf(prev), ...(focus ? { focus } : {}) }),
     });
+  };
+}
+
+/** Which surface inside the current room address is showing. */
+export function useRoomTab(): "chat" | "board" | "artifacts" {
+  return useRouterState({
+    select: (state) => {
+      const ids = state.matches.map((match) => match.routeId);
+      if (ids.some((id) => id.endsWith("/board/$boardId"))) return "board" as const;
+      if (ids.some((id) => id.endsWith("/artifacts"))) return "artifacts" as const;
+      return "chat" as const;
+    },
+  });
+}
+
+/**
+ * Switch surface within the room the caller is already in. The address is derived
+ * from the room, so the tab strip never spells a path.
+ */
+export function useNavigateRoomTab(): (tab: "chat" | "board" | "artifacts", room: Room) => void {
+  const navigate = useNavigate();
+  return (tab, room) => {
+    const address = addressForRoom(room);
+    if (address?.kind === "group") {
+      const to = ({ chat: "/g/$publicId", board: "/g/$publicId/board/$boardId", artifacts: "/g/$publicId/artifacts" } as const)[tab];
+      void navigate({ to, params: { publicId: address.publicId, boardId: DEFAULT_BOARD_ID }, search: (prev) => searchOf(prev) });
+      return;
+    }
+    if (address?.kind === "dm") {
+      const to = ({ chat: "/d/$peerId", board: "/d/$peerId/board/$boardId", artifacts: "/d/$peerId/artifacts" } as const)[tab];
+      void navigate({ to, params: { peerId: address.peerId, boardId: DEFAULT_BOARD_ID }, search: (prev) => searchOf(prev) });
+    }
   };
 }
 

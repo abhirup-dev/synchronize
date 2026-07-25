@@ -1,46 +1,39 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Outlet, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { AgentRoster } from "../../components/AgentRoster.tsx";
 import { BoardView } from "../../components/BoardView.tsx";
 import { ChatView } from "../../components/ChatView.tsx";
-import { RoomHeader, type RoomTab } from "../../components/RoomHeader.tsx";
+import { RoomHeader } from "../../components/RoomHeader.tsx";
 import { useRooms } from "../../data/context.tsx";
+import type { Room } from "../../data/types.ts";
 import { cycleTheme, toggleThemeFamily } from "../../hooks/usePersistentTheme.ts";
 import { Placeholder } from "../../shell/compact-chrome.tsx";
 import { useShellChrome } from "../../shell/chrome-context.tsx";
 import { ShellChatColumn, ShellMainBody } from "../../shell-layout.tsx";
 import { useShellLayout } from "../../shell-mode.tsx";
-import { useActiveRoomId, useNavigateToThread } from "../router.tsx";
+import { useActiveRoomId, useNavigateRoomTab, useNavigateToThread, useRoomTab } from "../router.tsx";
 import { NoRooms } from "./NoRooms.tsx";
 
 /**
- * The chat surface for a group or DM address. Both addresses mount this one leaf:
- * the room it shows comes from the loader gate, not from which route matched.
+ * A room address. Both the group and DM addresses mount this layout: the room it
+ * shows comes from the loader gate, not from which route matched. The surface
+ * inside it — chat, a board, artifacts — is a nested route.
  */
-export function RoomLeaf() {
-  const rooms = useRooms();
-  const roomId = useActiveRoomId();
-  const room = rooms.find((candidate) => candidate.id === roomId);
-  const { focus } = useSearch({ strict: false }) as { focus?: string };
-  const navigate = useNavigate();
-  const openThread = useNavigateToThread();
+export function RoomLayout() {
+  const room = useAddressedRoom();
   const layout = useShellLayout();
   const chrome = useShellChrome();
-  const [tab, setTab] = useState<RoomTab>("chat");
-  const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
+  const tab = useRoomTab();
+  const goToTab = useNavigateRoomTab();
 
   if (!room) return <NoRooms />;
-
-  // Clearing ?focus= replaces rather than pushes: the back button moves between
-  // rooms, not between scroll positions.
-  const clearFocus = () => void navigate({ to: ".", search: ({ view }) => (view ? { view } : {}), replace: true });
 
   return (
     <>
       <RoomHeader
         room={room}
         tab={tab}
-        onTab={setTab}
+        onTab={(next) => goToTab(next, room)}
         theme={chrome.theme}
         onToggleTheme={(shiftKey) => chrome.setTheme((current) => (shiftKey ? cycleTheme(current) : toggleThemeFamily(current)))}
         skin={chrome.skin}
@@ -52,24 +45,7 @@ export function RoomLeaf() {
         onOpenSettings={chrome.openCompactSettings}
       />
       <ShellMainBody>
-        <ShellChatColumn>
-          {tab === "chat" ? (
-            <ChatView
-              room={room}
-              onOpenThread={openThread}
-              onOpenDm={chrome.openDmForAgent}
-              threadSummaryOpen={threadSummaryOpen}
-              onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
-              showTimeline={layout.timeline}
-              {...(focus ? { focusMessageId: focus, onFocusedMessage: clearFocus } : {})}
-              {...(layout.communityOverlay ? { onOpenCommunity: chrome.openCommunity } : {})}
-            />
-          ) : tab === "board" ? (
-            <BoardView roomId={room.id} />
-          ) : (
-            <Placeholder label="ARTIFACTS — coming in V2" />
-          )}
-        </ShellChatColumn>
+        <Outlet />
         {layout.rosterColumn ? (
           <AgentRoster room={room} onAgentDoubleClick={chrome.jumpToAgentLast} onOpenDm={chrome.openDmForAgent} />
         ) : null}
@@ -78,7 +54,62 @@ export function RoomLeaf() {
   );
 }
 
-/** Shared by RoomLeaf and ThreadLeaf: the split's grid template when open. */
+export function ChatLeaf() {
+  const room = useAddressedRoom();
+  const { focus } = useSearch({ strict: false }) as { focus?: string };
+  const navigate = useNavigate();
+  const openThread = useNavigateToThread();
+  const layout = useShellLayout();
+  const chrome = useShellChrome();
+  const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
+
+  if (!room) return null;
+
+  // Clearing ?focus= replaces rather than pushes: the back button moves between
+  // rooms, not between scroll positions.
+  const clearFocus = () => void navigate({ to: ".", search: ({ view }) => (view ? { view } : {}), replace: true });
+
+  return (
+    <ShellChatColumn>
+      <ChatView
+        room={room}
+        onOpenThread={openThread}
+        onOpenDm={chrome.openDmForAgent}
+        threadSummaryOpen={threadSummaryOpen}
+        onToggleThreadSummary={() => setThreadSummaryOpen((open) => !open)}
+        showTimeline={layout.timeline}
+        {...(focus ? { focusMessageId: focus, onFocusedMessage: clearFocus } : {})}
+        {...(layout.communityOverlay ? { onOpenCommunity: chrome.openCommunity } : {})}
+      />
+    </ShellChatColumn>
+  );
+}
+
+export function BoardLeaf() {
+  const room = useAddressedRoom();
+  if (!room) return null;
+  return (
+    <ShellChatColumn>
+      <BoardView roomId={room.id} />
+    </ShellChatColumn>
+  );
+}
+
+export function ArtifactsLeaf() {
+  return (
+    <ShellChatColumn>
+      <Placeholder label="ARTIFACTS — coming in V2" />
+    </ShellChatColumn>
+  );
+}
+
+/** The room the matched address gated on. */
+function useAddressedRoom(): Room | undefined {
+  const roomId = useActiveRoomId();
+  return useRooms().find((candidate) => candidate.id === roomId);
+}
+
+/** Shared by the room and thread layouts: the split's grid template when open. */
 export function threadSplitStyle(threadWidth: number): CSSProperties {
   return {
     gridTemplateColumns: `minmax(0, 1fr) ${threadWidth}px`,

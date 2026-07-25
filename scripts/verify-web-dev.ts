@@ -47,7 +47,7 @@ async function classify(path: string): Promise<{ status: number; kind: string }>
 console.log(`\n== client routes must serve the dev bundle (${origin}) ==`);
 // One per grammar form. A form missing from CLIENT_ROUTE_PREFIXES forwards to the
 // daemon instead, and its SPA fallback answers 200 with the production bundle.
-for (const path of ["/web/", "/web/g/g_abc", "/web/g/by-name/ops", "/web/d/peer-1", "/web/t/1", "/web/e/1", "/web/r/group:1", "/web/activity"]) {
+for (const path of ["/web/", "/web/g/g_abc", "/web/g/by-name/ops", "/web/d/peer-1", "/web/t/1", "/web/e/1", "/web/r/group:1", "/web/activity", "/web/agents"]) {
   const { status, kind } = await classify(path);
   check(status === 200 && kind === "dev-html", path, `${status} ${kind}`);
 }

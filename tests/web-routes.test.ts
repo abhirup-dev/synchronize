@@ -133,6 +133,24 @@ test("focus is a modifier: it reaches the surface through search, not the gate",
   expect(result.loaderData).toEqual({ roomId: "ml-ranking" });
 });
 
+test("a board nests inside the room address and the room gate runs once", async () => {
+  const result = await visit(`/web/g/${ML_RANKING}/board/tasks`);
+  expect(result.at).toBe(`/g/${ML_RANKING}/board/tasks`);
+  // One gate for the room, shared by whichever surface is nested inside it.
+  expect(result.loaderData).toEqual({ roomId: "ml-ranking" });
+  expect(result.loaderValues.filter((value) => value === "ml-ranking")).toHaveLength(1);
+});
+
+test("an unknown board under a real room is not found", async () => {
+  expect((await visit(`/web/g/${ML_RANKING}/board/no-such-board`)).statusCode).toBe(404);
+});
+
+test("agent surfaces are addressable by peer id", async () => {
+  expect((await visit("/web/agents")).statusCode).toBe(200);
+  expect((await visit("/web/agents/cortex")).at).toBe("/agents/cortex");
+  expect((await visit("/web/agents/cortex/archive")).at).toBe("/agents/cortex/archive");
+});
+
 test("no loader returns a renderable payload", async () => {
   // The rule cache ownership depends on: the router does not observe SSE, so
   // anything a loader returned and a component rendered would go stale on
@@ -148,10 +166,11 @@ test("re-entering a route re-runs its gate instead of serving a cached result", 
   const ds = new MockDataSource();
   const router = createMemoryRouter(ds, `/web/g/${ML_RANKING}`);
   await router.load();
+  const gate = () => [...router.state.matches].reverse().find((match) => (match.loaderData as { roomId?: string })?.roomId)?.loaderData;
   await router.navigate({ to: "/d/$peerId", params: { peerId: "cortex" } });
   await router.load();
-  expect(router.state.matches.at(-1)?.loaderData).toEqual({ roomId: "dm-cortex" });
+  expect(gate()).toEqual({ roomId: "dm-cortex" });
   await router.navigate({ to: "/g/$publicId", params: { publicId: ML_RANKING } });
   await router.load();
-  expect(router.state.matches.at(-1)?.loaderData).toEqual({ roomId: "ml-ranking" });
+  expect(gate()).toEqual({ roomId: "ml-ranking" });
 });
