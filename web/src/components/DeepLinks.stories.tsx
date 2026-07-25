@@ -12,7 +12,7 @@ import { Shell } from "../App.tsx";
 // userEvent we set window.location through the History API and let the REAL Shell
 // bootstrap react to it:
 //   • Paste / refresh case → `beforeEach` runs before the Shell mounts and sets
-//     `/web/e/:id`. On mount the Shell parses the URL (deeplinks.ts), resolves it
+//     the URL. On mount the Shell parses it (routing/address.ts), resolves it
 //     against MockDataSource, hydrates, switches rooms, and focuses the target.
 //   • Back/forward case → `pushState` + a dispatched `popstate`, then `history.back()`.
 //     This exercises the Shell's real popstate handler, the same path a browser
@@ -62,6 +62,13 @@ async function expectFocused(id: string): Promise<HTMLElement> {
   return el;
 }
 
+// Seed addresses (web/src/data/seed.ts) — fixed values, safe to assert on.
+const ML_RANKING = "g_8b2f05d16ea4";
+
+async function expectAddressBar(path: string): Promise<void> {
+  await waitFor(() => expect(window.location.pathname + window.location.search).toBe(path));
+}
+
 // A DM link opens the DM room and focuses the message; no thread pane.
 export const DmMessageLink: Story = {
   beforeEach: () => openAt("/web/e/dc1"),
@@ -69,6 +76,76 @@ export const DmMessageLink: Story = {
     await step("DM link lands on the message with no thread pane", async () => {
       await expectFocused("dc1");
       expect(document.querySelector(".thread-pane")).toBeNull();
+    });
+    await step("The resolver is rewritten to the canonical DM address", async () => {
+      await expectAddressBar("/web/d/cortex?focus=dc1");
+    });
+  },
+};
+
+// A canonical group address mounts the group directly — no resolution step.
+export const CanonicalGroupAddress: Story = {
+  beforeEach: () => openAt(`/web/g/${ML_RANKING}`),
+  play: async ({ step }: PlayCtx) => {
+    await step("The group's messages render and the address bar is untouched", async () => {
+      await waitFor(() => {
+        if (!document.getElementById("msg-ml-deepdive")) throw new Error("ml-ranking did not mount");
+      });
+      expect(window.location.pathname).toBe(`/web/g/${ML_RANKING}`);
+    });
+  },
+};
+
+// A canonical DM address addresses by peer_id.
+export const CanonicalDmAddress: Story = {
+  beforeEach: () => openAt("/web/d/cortex"),
+  play: async ({ step }: PlayCtx) => {
+    await step("The DM mounts and the address bar is untouched", async () => {
+      await waitFor(() => {
+        if (!document.getElementById("msg-dc1")) throw new Error("dm-cortex did not mount");
+      });
+      expect(window.location.pathname).toBe("/web/d/cortex");
+    });
+  },
+};
+
+// The by-name resolver — the form an agent can build, since bridge_send_group
+// addresses groups by name — lands on the opaque address.
+export const GroupByNameResolver: Story = {
+  beforeEach: () => openAt("/web/g/by-name/ml-ranking"),
+  play: async ({ step }: PlayCtx) => {
+    await step("The named group mounts and the address bar becomes canonical", async () => {
+      await waitFor(() => {
+        if (!document.getElementById("msg-ml-deepdive")) throw new Error("ml-ranking did not mount");
+      });
+      await expectAddressBar(`/web/g/${ML_RANKING}`);
+    });
+  },
+};
+
+// The legacy room id, demoted from address to resolver: old links keep working.
+export const LegacyRoomResolver: Story = {
+  beforeEach: () => openAt("/web/r/ml-ranking"),
+  play: async ({ step }: PlayCtx) => {
+    await step("The legacy room id resolves to the canonical address", async () => {
+      await waitFor(() => {
+        if (!document.getElementById("msg-ml-deepdive")) throw new Error("ml-ranking did not mount");
+      });
+      await expectAddressBar(`/web/g/${ML_RANKING}`);
+    });
+  },
+};
+
+// An address minted against another runtime. The whole point of opaque ids: this
+// must report not-found, never open whichever room sits at the same position.
+export const UnknownAddressReportsNotFound: Story = {
+  beforeEach: () => openAt("/web/g/g_from_another_runtime"),
+  play: async ({ step }: PlayCtx) => {
+    await step("A foreign address surfaces an error rather than a wrong room", async () => {
+      await waitFor(() => {
+        const toast = document.body.textContent ?? "";
+        if (!toast.includes("g_from_another_runtime")) throw new Error("no not-found message shown");
+      });
     });
   },
 };

@@ -6,10 +6,13 @@ import { expect, test } from "bun:test";
 import {
   BASE,
   CLIENT_ROUTE_PREFIXES,
+  findRoomForAddress,
   isAppPath,
   messageAddressUrl,
-  parseAddress,
+  parseLocation,
   serializeAddress,
+  serializeLocation,
+  type Address,
 } from "../web/src/routing/address.ts";
 
 function at(pathname: string, search = ""): { pathname: string; search: string } {
@@ -18,64 +21,123 @@ function at(pathname: string, search = ""): { pathname: string; search: string }
 
 test("BASE is the mount point and every client prefix sits under it", () => {
   expect(BASE).toBe("/web/");
-  expect(CLIENT_ROUTE_PREFIXES.length).toBeGreaterThan(0);
   for (const prefix of CLIENT_ROUTE_PREFIXES) {
     expect(prefix.startsWith(BASE)).toBe(true);
   }
 });
 
-test("parses the canonical /web/e/:id form", () => {
-  expect(parseAddress(at("/web/e/1234"))).toEqual({ kind: "event", linkId: "1234" });
+test("every path form in the grammar has a dev-server pass-through prefix", () => {
+  // Without this, a new client route forwards to the daemon in dev and is
+  // answered by its SPA fallback: 200, production bundle, dead HMR.
+  for (const path of ["/web/g/g_abc", "/web/d/peer-1", "/web/t/9", "/web/e/9", "/web/r/group:1"]) {
+    expect(CLIENT_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix))).toBe(true);
+  }
 });
 
-test("parses the /web/t/:id thread alias to the same shape", () => {
-  expect(parseAddress(at("/web/t/1234"))).toEqual({ kind: "event", linkId: "1234" });
+test("canonical addresses parse to their own variants", () => {
+  expect(parseLocation(at("/web/g/g_4c1e7a90b2d3")).address).toEqual({ kind: "group", publicId: "g_4c1e7a90b2d3" });
+  expect(parseLocation(at("/web/d/peer-uuid")).address).toEqual({ kind: "dm", peerId: "peer-uuid" });
+  expect(parseLocation(at("/web/t/1234")).address).toEqual({ kind: "thread", eventId: "1234" });
 });
 
-test("parses the ?event= compatibility form", () => {
-  expect(parseAddress(at("/", "?event=99"))).toEqual({ kind: "event", linkId: "99" });
-  // A path match wins over the query form when both are present.
-  expect(parseAddress(at("/web/e/path", "?event=query"))).toEqual({ kind: "event", linkId: "path" });
+test("an address carries no resolver, and a resolver carries no address", () => {
+  const address = parseLocation(at("/web/g/g_abc"));
+  expect(address.resolver).toBeNull();
+  const resolver = parseLocation(at("/web/e/42"));
+  expect(resolver.address).toBeNull();
+  expect(resolver.resolver).toEqual({ kind: "event", eventId: "42" });
 });
 
-test("returns null for paths outside the grammar", () => {
-  expect(parseAddress(at("/web/"))).toBeNull();
-  expect(parseAddress(at("/web/e/"))).toBeNull();
-  expect(parseAddress(at("/groups/ops"))).toBeNull();
-  expect(parseAddress(at("/web/x/1"))).toBeNull();
-  // Present-but-empty ?event= is absent, not an empty-id target.
-  expect(parseAddress(at("/", "?event="))).toBeNull();
+test("resolver forms parse to their own variants", () => {
+  expect(parseLocation(at("/web/e/42")).resolver).toEqual({ kind: "event", eventId: "42" });
+  expect(parseLocation(at("/web/g/by-name/checkout-revamp")).resolver).toEqual({
+    kind: "group-by-name",
+    name: "checkout-revamp",
+  });
+  expect(parseLocation(at("/web/r/group:1")).resolver).toEqual({ kind: "room", roomId: "group:1" });
+  expect(parseLocation(at("/web/", "?event=99")).resolver).toEqual({ kind: "event", eventId: "99" });
 });
 
-test("path ids are percent-decoded and round-trip through serialize", () => {
-  const encoded = encodeURIComponent("e:with/slash?and=amp");
-  const parsed = parseAddress(at(`/web/e/${encoded}`));
-  // The regex stops at the first "/", so a slash inside an id must arrive encoded
-  // and must survive decoding intact.
-  expect(parsed).toEqual({ kind: "event", linkId: "e:with/slash?and=amp" });
-  expect(parseAddress(at(serializeAddress(parsed!)))).toEqual(parsed);
+test("by-name wins over the bare group form", () => {
+  // Read as a public id, "by-name" would yield "no group has that id" — the
+  // wrong answer to a resolvable request.
+  const parsed = parseLocation(at("/web/g/by-name/ops"));
+  expect(parsed.address).toBeNull();
+  expect(parsed.resolver).toEqual({ kind: "group-by-name", name: "ops" });
+  // A group literally addressed as "by-name" with nothing after it is not a route.
+  expect(parseLocation(at("/web/g/by-name")).resolver).toBeNull();
+  expect(parseLocation(at("/web/g/by-name")).address).toBeNull();
 });
 
-test("serialize always emits the canonical e/ form, never the t/ alias", () => {
-  expect(serializeAddress({ kind: "event", linkId: "77" })).toBe("/web/e/77");
-  const fromAlias = parseAddress(at("/web/t/77"))!;
-  expect(serializeAddress(fromAlias)).toBe("/web/e/77");
+test("?event= applies only when the path says nothing", () => {
+  expect(parseLocation(at("/web/e/path", "?event=query")).resolver).toEqual({ kind: "event", eventId: "path" });
+  expect(parseLocation(at("/web/g/g_abc", "?event=query")).resolver).toBeNull();
+  // Present-but-empty is absent, not an empty-id target.
+  expect(parseLocation(at("/web/", "?event=")).resolver).toBeNull();
+});
+
+test("modifiers parse independently of the address", () => {
+  const parsed = parseLocation(at("/web/g/g_abc", "?view=pane&focus=e:42"));
+  expect(parsed.address).toEqual({ kind: "group", publicId: "g_abc" });
+  expect(parsed.modifiers).toEqual({ pane: true, focus: "e:42" });
+  expect(parseLocation(at("/web/g/g_abc")).modifiers).toEqual({ pane: false, focus: null });
+  // Only "pane" turns the modifier on; an unknown value is not a window role.
+  expect(parseLocation(at("/web/g/g_abc", "?view=split")).modifiers.pane).toBe(false);
+});
+
+test("paths outside the grammar parse to nothing", () => {
+  for (const path of ["/web/", "/web/g/", "/web/e/", "/groups/ops", "/web/x/1"]) {
+    const parsed = parseLocation(at(path));
+    expect(parsed.address, path).toBeNull();
+    expect(parsed.resolver, path).toBeNull();
+  }
+});
+
+test("ids are percent-decoded and round-trip through serialize", () => {
+  const cases: Address[] = [
+    { kind: "group", publicId: "g_with/slash" },
+    { kind: "dm", peerId: "peer with space" },
+    { kind: "thread", eventId: "e:1?x=2" },
+  ];
+  for (const address of cases) {
+    expect(parseLocation(at(serializeAddress(address))).address).toEqual(address);
+  }
+});
+
+test("serializeLocation round-trips modifiers and drops the defaults", () => {
+  const address: Address = { kind: "group", publicId: "g_abc" };
+  expect(serializeLocation(address)).toBe("/web/g/g_abc");
+  expect(serializeLocation(address, { pane: false, focus: null })).toBe("/web/g/g_abc");
+  const url = serializeLocation(address, { pane: true, focus: "e:42" });
+  expect(url).toBe("/web/g/g_abc?view=pane&focus=e%3A42");
+  const parsed = parseLocation(at("/web/g/g_abc", "?view=pane&focus=e%3A42"));
+  expect(parsed.address).toEqual(address);
+  expect(parsed.modifiers).toEqual({ pane: true, focus: "e:42" });
 });
 
 test("isAppPath covers the bare mount point, the slashed form, and index.html", () => {
   // The daemon serves the app at all three, so all three are app paths.
-  expect(isAppPath("/web")).toBe(true);
-  expect(isAppPath("/web/")).toBe(true);
-  expect(isAppPath("/web/index.html")).toBe(true);
-  expect(isAppPath("/web/e/1")).toBe(true);
-  expect(isAppPath("/")).toBe(false);
-  expect(isAppPath("/groups/ops")).toBe(false);
+  for (const path of ["/web", "/web/", "/web/index.html", "/web/g/g_abc"]) expect(isAppPath(path)).toBe(true);
+  for (const path of ["/", "/groups/ops"]) expect(isAppPath(path)).toBe(false);
 });
 
-test("messageAddressUrl builds an absolute link and strips the e: prefix", () => {
+test("findRoomForAddress matches by opaque id and returns null otherwise", () => {
+  const rooms = [
+    { kind: "group", id: "group:1", publicId: "g_abc" },
+    { kind: "group", id: "group:2", publicId: "g_def" },
+    { kind: "dm", id: "dm:p1", peerId: "p1" },
+  ];
+  expect(findRoomForAddress({ kind: "group", publicId: "g_def" }, rooms)?.id).toBe("group:2");
+  expect(findRoomForAddress({ kind: "dm", peerId: "p1" }, rooms)?.id).toBe("dm:p1");
+  // An address minted in another runtime: not-found, never a positional match.
+  expect(findRoomForAddress({ kind: "group", publicId: "g_from_dev" }, rooms)).toBeNull();
+  // A thread resolves through the daemon, not the room list.
+  expect(findRoomForAddress({ kind: "thread", eventId: "1" }, rooms)).toBeNull();
+});
+
+test("messageAddressUrl builds an absolute resolver link and strips the e: prefix", () => {
   expect(messageAddressUrl("e:42", "https://synchronize.localhost:1355")).toBe(
     "https://synchronize.localhost:1355/web/e/42",
   );
-  // Ids that are not prefixed are used verbatim.
   expect(messageAddressUrl("mock-1", "http://127.0.0.1:58405")).toBe("http://127.0.0.1:58405/web/e/mock-1");
 });

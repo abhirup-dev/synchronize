@@ -2,7 +2,16 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Settings, X } from "lucide-react";
 import type { DataSource, WebDeepLinkTarget } from "./data/types.ts";
 import { DataSourceProvider, useDataSource, useRooms, useMessages, useAgents } from "./data/context.tsx";
-import { isAppPath, parseAddress, serializeAddress } from "./routing/address.ts";
+import {
+  addressForRoom,
+  findRoomForAddress,
+  isAppPath,
+  parseLocation,
+  serializeLocation,
+  type Address,
+  type Modifiers,
+  type Resolver,
+} from "./routing/address.ts";
 import { MockDataSource } from "./data/mock.ts";
 import { CHAT_BACKGROUNDS } from "./data/chatBackgrounds.ts";
 import { DaemonDataSource } from "./data/daemon.ts";
@@ -122,6 +131,35 @@ export function ConnectionError({ message }: { message: string }) {
 
 const ACTIVITY_ID = "activity";
 
+/** Web message ids are "e:123"; a thread address carries the bare event id. */
+function stripEventPrefix(messageId: string): string {
+  return messageId.startsWith("e:") ? messageId.slice(2) : messageId;
+}
+
+function describeResolver(resolver: Resolver): string {
+  switch (resolver.kind) {
+    case "event":
+      return `No message ${resolver.eventId} on this daemon`;
+    case "group-by-name":
+      return `No group named ${resolver.name} on this daemon`;
+    case "room":
+      return `No room ${resolver.roomId} on this daemon`;
+  }
+}
+
+function describeAddress(address: Address): string {
+  // Named as "this daemon" deliberately: the usual cause is a link minted in
+  // another runtime, and the address itself is correct — just not here.
+  switch (address.kind) {
+    case "group":
+      return `No group ${address.publicId} on this daemon`;
+    case "dm":
+      return `No direct message with ${address.peerId} on this daemon`;
+    case "thread":
+      return `No thread ${address.eventId} on this daemon`;
+  }
+}
+
 // Exported so Storybook can mount the full app shell for cross-component flow
 // tests (e.g. activity → open thread → scroll). App() is the only other caller.
 export function Shell() {
@@ -199,32 +237,14 @@ export function Shell() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Read the URL, resolve + hydrate the target, then switch rooms. The actual
-  // focus/thread-open is deferred to the apply effect below, which waits for the
-  // hydrated messages to land. Runs on mount and on browser back/forward.
-  const loadDeepLinkFromUrl = useCallback(async () => {
-    const address = parseAddress(window.location);
-    if (!address) return;
-    const id = address.linkId;
-    try {
-      const target = await ds.resolveDeepLink(id);
-      await ds.hydrateDeepLinkTarget(target);
-      setActiveId(target.roomId);
-      setPendingDeepLink(target);
-    } catch {
-      // Unknown or unauthorized link — leave the user on the default room.
-    }
-  }, [ds]);
-
+  // A counter rather than the URL itself: the URL is read inside the effect, and
+  // what has to be tracked is "there is a new history entry to apply".
+  const [locationEpoch, setLocationEpoch] = useState(0);
   useEffect(() => {
-    void loadDeepLinkFromUrl();
-  }, [loadDeepLinkFromUrl]);
-
-  useEffect(() => {
-    const onPop = () => void loadDeepLinkFromUrl();
+    const onPop = () => setLocationEpoch((epoch) => epoch + 1);
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [loadDeepLinkFromUrl]);
+  }, []);
 
   // Reset secondary state when switching rooms. NOTE: agentPanelOpen is
   // deliberately NOT reset here — the compact "Agents" tab leaves the Activity
@@ -252,6 +272,118 @@ export function Shell() {
     jumpToRoom(dm.id);
   };
 
+  // Reading the room list through a ref, not a dependency: a room list that grows
+  // while the user is elsewhere must not re-apply the URL and yank them back.
+  const roomsRef = useRef(rooms);
+  roomsRef.current = rooms;
+
+  // Resolve a resolver to the canonical location it points at. An event goes
+  // through the DataSource because only the daemon knows which room and thread it
+  // lives in; the other two are lookups in the loaded room list.
+  const resolveToLocation = useCallback(
+    async (resolver: Resolver): Promise<{ address: Address; focus?: string } | null> => {
+      switch (resolver.kind) {
+        case "event": {
+          const target = await ds.resolveDeepLink(resolver.eventId);
+          await ds.hydrateDeepLinkTarget(target);
+          setActiveId(target.roomId);
+          setPendingDeepLink(target);
+          if (target.surface === "group-thread" && target.threadParentId) {
+            return {
+              address: { kind: "thread", eventId: stripEventPrefix(target.threadParentId) },
+              focus: target.focusMessageId,
+            };
+          }
+          const room = roomsRef.current.find((candidate) => candidate.id === target.roomId);
+          const address = room ? addressForRoom(room) : null;
+          return address ? { address, focus: target.focusMessageId } : null;
+        }
+        case "group-by-name": {
+          const room = roomsRef.current.find((candidate) => candidate.kind === "group" && candidate.name === resolver.name);
+          const address = room ? addressForRoom(room) : null;
+          if (!address || !room) return null;
+          setActiveId(room.id);
+          return { address };
+        }
+        case "room": {
+          const room = roomsRef.current.find((candidate) => candidate.id === resolver.roomId);
+          const address = room ? addressForRoom(room) : null;
+          if (!address || !room) return null;
+          setActiveId(room.id);
+          return { address };
+        }
+      }
+    },
+    [ds],
+  );
+
+  // Mount a canonical address. A thread still needs the daemon to say which room
+  // its root lives in, so it routes through the same resolution as an event.
+  const applyAddress = useCallback(
+    async (address: Address, modifiers: Modifiers): Promise<boolean> => {
+      if (address.kind === "thread") {
+        const target = await ds.resolveDeepLink(address.eventId);
+        await ds.hydrateDeepLinkTarget(target);
+        setActiveId(target.roomId);
+        setPendingDeepLink(modifiers.focus ? { ...target, focusMessageId: modifiers.focus } : target);
+        return true;
+      }
+      const room = findRoomForAddress(address, roomsRef.current);
+      if (!room) return false;
+      setActiveId(room.id);
+      // ?focus= goes through pendingDeepLink rather than straight to
+      // focusMessageId: the room-reset effect clears the latter on the very
+      // activeId change this triggers, and pending state survives it.
+      if (modifiers.focus) {
+        setPendingDeepLink({
+          roomId: room.id,
+          surface: room.kind === "dm" ? "dm" : "group-main",
+          focusMessageId: modifiers.focus,
+          threadParentId: null,
+          linkId: stripEventPrefix(modifiers.focus),
+          eventId: 0,
+        });
+      }
+      return true;
+    },
+    [ds],
+  );
+
+  // Read the URL once per history entry, once the room list exists — a group or
+  // DM address is resolved against it, so applying earlier would report every
+  // address as not-found.
+  const appliedEpochRef = useRef(-1);
+  useEffect(() => {
+    if (rooms.length === 0 || appliedEpochRef.current === locationEpoch) return;
+    appliedEpochRef.current = locationEpoch;
+    const { address, resolver, modifiers } = parseLocation(window.location);
+    if (!address && !resolver) return;
+    void (async () => {
+      try {
+        if (resolver) {
+          const resolved = await resolveToLocation(resolver);
+          if (!resolved) throw new Error(describeResolver(resolver));
+          // Canonicalise without a history entry, so back leaves the app rather
+          // than bouncing between a pointer and what it points at.
+          window.history.replaceState(
+            null,
+            "",
+            serializeLocation(resolved.address, {
+              pane: modifiers.pane,
+              focus: resolved.focus ?? modifiers.focus,
+            }),
+          );
+          return;
+        }
+        if (address && !(await applyAddress(address, modifiers))) throw new Error(describeAddress(address));
+      } catch (error) {
+        // A link minted against another runtime, or a deleted target. Say so
+        // instead of leaving the user on an unrelated room with no explanation.
+        toast.show(error instanceof Error ? error.message : "This link could not be opened", { kind: "error" });
+      }
+    })();
+  }, [locationEpoch, rooms.length, resolveToLocation, applyAddress, toast]);
+
   // Apply a pending deep link once its room is active and the target message has
   // hydrated. Declared after the room-reset effect so, on the activeId change it
   // triggers, the reset runs first and this re-applies on top. Waits (re-running
@@ -268,9 +400,6 @@ export function Shell() {
     }
     setFocusMessageId(target.focusMessageId);
     setPendingDeepLink(null);
-    // Normalize the address bar to the canonical /web/e/:id form without adding a
-    // history entry, so a refresh re-lands on the same target.
-    window.history.replaceState(null, "", serializeAddress({ kind: "event", linkId: target.linkId }));
   }, [pendingDeepLink, activeId, roomMessages]);
   const layout = shellLayout(shellMode);
   const rosterPersistent = layout.rosterColumn && !threadParentId;

@@ -157,6 +157,7 @@ function groupShape(): Record<string, unknown> {
   return {
     group_id: "number",
     name: "string",
+    public_id: "string",
     durable: true,
     media_dir: "string",
     creator_peer_id: "string",
