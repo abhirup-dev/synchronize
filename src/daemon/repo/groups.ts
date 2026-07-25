@@ -10,6 +10,8 @@ import { getPeer } from "./peers.ts";
 
 export interface GroupRow {
   group_id: number;
+  /** Opaque durable address, `g_`-tagged. See newGroupPublicId in src/db.ts. */
+  public_id: string;
   name: string;
   durable: number;
   media_dir: string;

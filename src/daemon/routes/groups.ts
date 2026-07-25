@@ -1,4 +1,5 @@
 import { MAX_MESSAGE_CHARS } from "../../constants.ts";
+import { newGroupPublicId } from "../../db.ts";
 import { HttpError, jsonResponse } from "../../http.ts";
 import { mapSqliteConstraint } from "../errors.ts";
 import { parseSelectorsFromUrl } from "../selectors.ts";
@@ -81,8 +82,8 @@ export async function tryHandleGroupsRoute(request: Request, ctx: DaemonContext,
       }
       try {
         ctx.db
-          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, ?, ?, ?, ?)")
-          .run(name, durable, mediaDir, creatorPeerId ?? null, description);
+          .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description, public_id) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(name, durable, mediaDir, creatorPeerId ?? null, description, newGroupPublicId());
       } catch (error) {
         throw mapSqliteConstraint(error, "group_exists", `Group already exists: ${name}`);
       }

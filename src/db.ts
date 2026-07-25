@@ -818,6 +818,39 @@ function migrate(db: Database): void {
     `);
     if (!hasPeerThreadInteractionsV15) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (15)`);
   }
+
+  // v16: groups.public_id — the opaque, durable address for a group.
+  // group_id is a per-home AUTOINCREMENT, so every runtime has a group 1 and a
+  // link pasted across runtimes opens a DIFFERENT room silently. An opaque id
+  // does not collide, so the same paste yields a clean not-found.
+  //
+  // NOT NULL is enforced by the backfill plus the writers, not by the column:
+  // SQLite's ALTER TABLE ADD COLUMN rejects UNIQUE and rejects NOT NULL without a
+  // constant default, and a constant default is exactly what must not exist here.
+  const hasGroupPublicIdV16 = db
+    .query<{ version: number }, []>("SELECT version FROM schema_migrations WHERE version = 16")
+    .get();
+  const groupColsV16 = db.query<{ name: string }, []>("PRAGMA table_info(groups)").all().map((col) => col.name);
+  if (!hasGroupPublicIdV16 || !groupColsV16.includes("public_id")) {
+    if (!groupColsV16.includes("public_id")) db.exec(`ALTER TABLE groups ADD COLUMN public_id TEXT`);
+    // Re-runnable: only unset rows are backfilled, so an interrupted migration
+    // resumes rather than reassigning addresses that may already be pasted.
+    for (const row of db.query<{ group_id: number }, []>("SELECT group_id FROM groups WHERE public_id IS NULL").all()) {
+      db.query<void, [string, number]>("UPDATE groups SET public_id = ? WHERE group_id = ?").run(newGroupPublicId(), row.group_id);
+    }
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_public_id ON groups (public_id)`);
+    if (!hasGroupPublicIdV16) db.exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (16)`);
+  }
+}
+
+/**
+ * Mint a group address. 48 random bits of hex behind a `g_` tag — enough that a
+ * collision needs ~16M groups in one home, short enough to read in a log line
+ * and to paste into a message. The tag makes a bare id recognizable out of
+ * context; the UNIQUE index is what actually guarantees distinctness.
+ */
+export function newGroupPublicId(): string {
+  return `g_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
 }
 
 /**

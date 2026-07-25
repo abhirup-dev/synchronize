@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { appendFile, rm } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config.ts";
-import { openDatabase, pruneEphemeralGroups } from "../db.ts";
+import { newGroupPublicId, openDatabase, pruneEphemeralGroups } from "../db.ts";
 import { applyDaemonEnvFiles } from "../env-files.ts";
 import { ensureDir, writeJson } from "../fs.ts";
 import { errorResponse, HttpError } from "../http.ts";
@@ -1138,8 +1138,8 @@ function ensureLaunchGroup(ctx: DaemonContext, name: string): GroupRow {
   const mediaDir = `${ctx.paths.mediaPath}/${groupName.toLowerCase()}`;
   const groupId = ctx.db.transaction(() => {
     ctx.db
-      .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description) VALUES (?, 1, ?, NULL, NULL)")
-      .run(groupName, mediaDir);
+      .query("INSERT INTO groups (name, durable, media_dir, creator_peer_id, description, public_id) VALUES (?, 1, ?, NULL, NULL, ?)")
+      .run(groupName, mediaDir, newGroupPublicId());
     const id = Number(ctx.db.query<{ id: number }, []>("SELECT last_insert_rowid() AS id").get()?.id);
     insertGroupPath(ctx.db, id, defaultGroupPath(ctx));
     ctx.db
