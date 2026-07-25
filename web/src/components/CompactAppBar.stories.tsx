@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { userEvent, within, expect, fn } from "storybook/test";
-import { CompactAppBar } from "../App.tsx";
+import { CompactAppBar } from "../shell/compact-chrome.tsx";
 
 // Header bar for the compact Chats / Agents full-bleed overlays: a close (X)
 // button, title + optional detail line, and a display-settings button. Pinned to

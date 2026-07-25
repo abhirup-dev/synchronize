@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { userEvent, screen, expect, fn, waitFor } from "storybook/test";
-import { CompactSettingsSheet } from "../App.tsx";
+import { CompactSettingsSheet } from "../shell/compact-chrome.tsx";
 
 // The compact display-settings bottom sheet (theme / skin / chat-background).
 // Built on the Sheet primitive, so it portals OUT of the canvas — play tests

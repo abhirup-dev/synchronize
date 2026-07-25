@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { userEvent, within, expect, fn } from "storybook/test";
-import { SettingsRow } from "../App.tsx";
+import { SettingsRow } from "../shell/compact-chrome.tsx";
 
 // Label + value row used inside the compact settings sheet. Tapping the whole
 // row advances the setting (the value reflects current state).

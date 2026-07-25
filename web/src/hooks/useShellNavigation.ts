@@ -5,11 +5,11 @@ import { shellLayout, type ShellMode } from "../shell-mode.tsx";
 interface ShellNavigationOptions {
   shellMode: ShellMode;
   isActivity: boolean;
-  setActiveId: (id: string) => void;
-  /** The virtual Activity destination id (App owns the routing constant). */
-  activityId: string;
+  /** Router navigation, so this hook never spells an address. */
+  goToRoom: (roomId: string) => void;
+  goToActivity: () => void;
   /** Last real room visited, so "Chats"/"Agents" can restore a conversation when
-   *  leaving the Activity feed. Owned by App (set from activeId). */
+   *  leaving the Activity feed. Owned by the layout. */
   lastRoomIdRef: RefObject<string>;
 }
 
@@ -18,9 +18,9 @@ interface ShellNavigationOptions {
  * display-settings sheet, bottom-nav routing, focus restore, and the resize/Escape
  * effects that close them. Extracted from App so the Shell is composition rather
  * than overlay plumbing, and so this mode-specific logic stops leaking through App
- * and child props (sync-imeu.1.4). App keeps core routing (activeId, threadParentId).
+ * and child props (sync-imeu.1.4). The route tree keeps core routing.
  */
-export function useShellNavigation({ shellMode, isActivity, setActiveId, activityId, lastRoomIdRef }: ShellNavigationOptions) {
+export function useShellNavigation({ shellMode, isActivity, goToRoom, goToActivity, lastRoomIdRef }: ShellNavigationOptions) {
   const [communityOpen, setCommunityOpen] = useState(false);
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const [compactSettingsOpen, setCompactSettingsOpen] = useState(false);
@@ -51,7 +51,7 @@ export function useShellNavigation({ shellMode, isActivity, setActiveId, activit
   };
   const closeCompactSettings = () => setCompactSettingsOpen(false);
   const selectRoom = (id: string) => {
-    setActiveId(id);
+    goToRoom(id);
     setCommunityOpen(false);
     setAgentPanelOpen(false);
   };
@@ -62,18 +62,18 @@ export function useShellNavigation({ shellMode, isActivity, setActiveId, activit
   const bottomNavTab: BottomNavTab = isActivity ? "activity" : agentPanelOpen ? "agents" : "chats";
   const onNavChats = () => {
     setAgentPanelOpen(false);
-    if (isActivity) setActiveId(lastRoomIdRef.current);
+    if (isActivity) goToRoom(lastRoomIdRef.current);
     rememberOverlayOpener();
     setCommunityOpen(true);
   };
   const onNavActivity = () => {
     setCommunityOpen(false);
     setAgentPanelOpen(false);
-    setActiveId(activityId);
+    goToActivity();
   };
   const onNavAgents = () => {
     setCommunityOpen(false);
-    if (isActivity) setActiveId(lastRoomIdRef.current);
+    if (isActivity) goToRoom(lastRoomIdRef.current);
     rememberOverlayOpener();
     setAgentPanelOpen(true);
   };

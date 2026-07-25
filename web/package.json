@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@base-ui-components/react": "^1.0.0-rc.0",
+    "@tanstack/react-router": "^1.170.18",
     "@tanstack/react-virtual": "^3.13.25",
     "bun-plugin-tailwind": "^0.1.2",
     "class-variance-authority": "^0.7.1",

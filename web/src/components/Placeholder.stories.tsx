@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Placeholder } from "../App.tsx";
+import { Placeholder } from "../shell/compact-chrome.tsx";
 import { inChatSurface } from "../storybook/shellFrames.tsx";
 
 // Stamp shown for not-yet-built surfaces (e.g. the Artifacts tab).
