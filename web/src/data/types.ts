@@ -98,6 +98,9 @@ export interface Room {
   lastPreview?: string;
   unread: number;
   pinned?: boolean;
+  /** Groups only: the opaque durable address (`g_…`). Its absence means the room
+   *  is not addressable — a DM addresses by peerId instead. */
+  publicId?: string;
   // For DMs only
   peerId?: string;
   launchTools?: Partial<Record<AgentLaunchTool, LaunchToolAvailability>>;

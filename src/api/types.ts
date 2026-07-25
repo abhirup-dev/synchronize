@@ -223,6 +223,8 @@ export interface ThreadSummaryResponse {
 
 export interface Group {
   group_id: number;
+  /** Opaque durable address, `g_`-tagged. See newGroupPublicId in src/db.ts. */
+  public_id: string;
   name: string;
   durable: boolean;
   media_dir: string;

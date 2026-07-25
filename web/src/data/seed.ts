@@ -70,20 +70,27 @@ const groupPaths = (name: string): { paths: GroupPath[] } => ({
   ],
 });
 
+// Fixed rather than generated: an address appears in story URLs and snapshots,
+// so it has to be the same value on every run.
 export const GROUPS: Room[] = [
   { id: "checkout-revamp", kind: "group", name: "checkout-revamp", emoji: "🛒", ...slot(0),
+    publicId: "g_4c1e7a90b2d3",
     members: ["you", "cortex", "atlas", "vega", "nova"], ...groupPaths("checkout-revamp"),
     lastPreview: "Cortex: pushed schema migration #4128", unread: 3, pinned: true },
   { id: "ml-ranking",      kind: "group", name: "ml-ranking",      emoji: "🧠", ...slot(5),
+    publicId: "g_8b2f05d16ea4",
     members: ["you", "pulse", "vega", "echo"], ...groupPaths("ml-ranking"),
     lastPreview: "Pulse: AUC bumped to 0.871", unread: 0 },
   { id: "infra-oncall",    kind: "group", name: "infra-oncall",    emoji: "🚨", ...slot(6),
+    publicId: "g_d90c3416b7fa",
     members: ["you", "vega", "nova", "cortex"], ...groupPaths("infra-oncall"),
     lastPreview: "Vega: rotated KMS keys", unread: 2 },
   { id: "design-system",   kind: "group", name: "design-system",   emoji: "🎨", ...slot(1),
+    publicId: "g_2a7b46ce80d1",
     members: ["you", "atlas", "echo"], ...groupPaths("design-system"),
     lastPreview: "Atlas: shipped <Button v2>", unread: 0 },
   { id: "heartbeat-checks", kind: "group", name: "heartbeat-checks", emoji: "💓", ...slot(3),
+    publicId: "g_6e05fa2c9143",
     members: ["you", "cortex", "atlas", "vega", "nova", "echo", "pulse"], ...groupPaths("heartbeat-checks"),
     lastPreview: "Vega: are you alive? 4/6 ✓", unread: 2 },
 ];

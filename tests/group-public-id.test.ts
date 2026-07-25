@@ -6,12 +6,17 @@ import { Database } from "bun:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createGroup } from "../src/api/groups.ts";
+import { registerPeer } from "../src/api/peers.ts";
 import { newGroupPublicId, openDatabase } from "../src/db.ts";
+import { startDaemon } from "./support/daemon.ts";
 
 const dirs: string[] = [];
+const homes: string[] = [];
 
 afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+  for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
 async function freshDb() {
@@ -108,4 +113,23 @@ test("ephemeral cleanup still drops durable = 0 rows", async () => {
 test("ids are distinct across many mints", () => {
   const ids = new Set(Array.from({ length: 2000 }, newGroupPublicId));
   expect(ids.size).toBe(2000);
+});
+
+test("a group created through the daemon is addressable in /web/state", async () => {
+  const started = await startDaemon();
+  homes.push(started.home);
+  try {
+    const alice = (await registerPeer(started.client, { sessionName: "alice", tool: "cli" })).peer;
+    const created = (await createGroup(started.client, { name: "address-room", creatorPeerId: alice.peer_id })).group;
+    expect(created.public_id).toMatch(/^g_[0-9a-f]{12}$/);
+
+    const state = (await (await fetch(`${started.baseUrl}/web/state?limit=1`)).json()) as {
+      groups: Array<{ group_id: number; public_id: string }>;
+    };
+    expect(state.groups.length).toBeGreaterThan(0);
+    for (const group of state.groups) expect(group.public_id).toMatch(/^g_[0-9a-f]{12}$/);
+    expect(state.groups.find((group) => group.group_id === created.group_id)?.public_id).toBe(created.public_id);
+  } finally {
+    await started.stop();
+  }
 });

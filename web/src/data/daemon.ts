@@ -89,6 +89,7 @@ interface DaemonPeer {
 
 interface DaemonGroup {
   group_id: number;
+  public_id: string;
   name: string;
   durable: boolean;
   description: string | null;
@@ -1201,6 +1202,7 @@ export class DaemonDataSource implements DataSource {
       return {
         id: roomId,
         kind: "group" as const,
+        publicId: group.public_id,
         name: group.name,
         emoji: "#",
         color: identityColorCss(colorRef),
