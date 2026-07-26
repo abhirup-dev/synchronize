@@ -10,7 +10,7 @@ import { useShellChrome } from "../../shell/chrome-context.tsx";
 import { ShellChatColumn, ShellMainBody } from "../../shell-layout.tsx";
 import { useShellLayout } from "../../shell-mode.tsx";
 import { threadRoute, useClearFocus, useNavigateToRoom } from "../router.tsx";
-import { threadSplitStyle } from "./RoomLeaf.tsx";
+import { threadSplitStyle } from "../../shell/thread-split.ts";
 import { NoRooms } from "./NoRooms.tsx";
 
 /**

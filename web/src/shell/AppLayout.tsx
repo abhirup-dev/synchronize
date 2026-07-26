@@ -23,6 +23,7 @@ import { AppShellGrid, ShellMainColumn } from "../shell-layout.tsx";
 import { shellLayout, shellModeForWidth, type ShellMode } from "../shell-mode.tsx";
 import { CompactAppBar, CompactSettingsSheet } from "./compact-chrome.tsx";
 import { ShellChromeProvider, type ShellChromeApi } from "./chrome-context.tsx";
+import { flashMessage } from "./thread-split.ts";
 
 /**
  * The one layout route. It owns the chrome-wide state (appearance, thread split
@@ -244,13 +245,4 @@ export function AppLayout() {
       </AppShellGrid>
     </ShellChromeProvider>
   );
-}
-
-/** Scroll a message into view and flash the deep-link highlight on it. */
-export function flashMessage(messageId: string): void {
-  const el = document.getElementById(`msg-${messageId}`);
-  if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-  el.classList.add("flash-highlight");
-  window.setTimeout(() => el.classList.remove("flash-highlight"), 2400);
 }

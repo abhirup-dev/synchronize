@@ -22,6 +22,7 @@ import {
   createMemoryHistory,
   useNavigate,
   useRouterState,
+  type AnyRoute,
   type RouterHistory,
 } from "@tanstack/react-router";
 import { ActivityLeaf } from "./leaves/ActivityLeaf.tsx";
@@ -114,8 +115,9 @@ const dmRoute = createRoute({
 /** The only board a room has today: its kanban. */
 export const DEFAULT_BOARD_ID = "tasks";
 
-/** The three surfaces a room address can show, under either room parent. */
-function roomSurfaceRoutes(parent: typeof groupRoute | typeof dmRoute) {
+/** The three surfaces a room address can show, under any room parent — the two
+ *  canonical addresses and the legacy id that stands in when there is none. */
+function roomSurfaceRoutes(parent: AnyRoute) {
   return [
     createRoute({ getParentRoute: () => parent, path: "/", component: ChatLeaf }),
     createRoute({
@@ -214,14 +216,31 @@ const groupByNameResolverRoute = createRoute({
   },
 });
 
+/**
+ * The legacy room id. Normally a resolver: it redirects to the canonical address
+ * and disappears.
+ *
+ * It also has to be a working FALLBACK ADDRESS, because a room can exist without
+ * a canonical one — a runtime that predates the public_id migration serves groups
+ * with no address at all. Not-found is the right answer for an id that names
+ * nothing; it is the wrong answer for a room sitting right there in the sidebar.
+ * So when there is nothing to canonicalise to, this renders the room instead, and
+ * the address bar keeping the /r/ form is the visible signal that the runtime
+ * owes an address.
+ */
 const roomResolverRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "r/$roomId",
   loaderDeps: ({ search }: { search: AppSearch }) => searchOf(search),
-  loader: async ({ context, params, deps }) => {
+  loader: async ({ context, params, deps }): Promise<RoomGate> => {
     const rooms = await roomsWhenLoaded(context.ds);
-    throw redirectToRoom(rooms.find((candidate) => candidate.id === params.roomId), deps);
+    const room = rooms.find((candidate) => candidate.id === params.roomId);
+    if (!room) throw notFound();
+    const address = addressForRoom(room);
+    if (address) throw redirectToAddress(address, deps);
+    return { roomId: room.id };
   },
+  component: RoomLayout,
 });
 
 /** `/web/` itself: land on the first room, or the activity feed when there is none. */
@@ -231,7 +250,9 @@ const indexRoute = createRoute({
   loaderDeps: ({ search }: { search: AppSearch }) => searchOf(search),
   loader: async ({ context, deps }) => {
     const rooms = await roomsWhenLoaded(context.ds);
-    const first = rooms.find((room) => addressForRoom(room) !== null);
+    // Prefer a room with a canonical address; fall back to the first room by its
+    // legacy id rather than stranding the user on the activity feed.
+    const first = rooms.find((room) => addressForRoom(room) !== null) ?? rooms[0];
     if (!first) throw redirect({ to: ACTIVITY_PATH, search: deps, replace: true });
     throw redirectToRoom(first, deps);
   },
@@ -249,12 +270,23 @@ export function stripEventPrefix(messageId: string): string {
   return messageId.startsWith("e:") ? messageId.slice(2) : messageId;
 }
 
+/**
+ * Send the caller to a room's canonical address, or — when it has none — to its
+ * legacy id, which renders the room rather than failing. Only not-found when
+ * there is no such room at all.
+ */
 function redirectToRoom(room: Room | undefined, search: AppSearch): never {
-  const address = room ? addressForRoom(room) : null;
-  if (address?.kind === "group") {
+  if (!room) throw notFound();
+  const address = addressForRoom(room);
+  if (address) throw redirectToAddress(address, search);
+  throw redirect({ to: "/r/$roomId", params: { roomId: room.id }, search, replace: true });
+}
+
+function redirectToAddress(address: Address, search: AppSearch): never {
+  if (address.kind === "group") {
     throw redirect({ to: "/g/$publicId", params: { publicId: address.publicId }, search, replace: true });
   }
-  if (address?.kind === "dm") {
+  if (address.kind === "dm") {
     throw redirect({ to: "/d/$peerId", params: { peerId: address.peerId }, search, replace: true });
   }
   throw notFound();
@@ -329,7 +361,7 @@ const routeTree = rootRoute.addChildren([
   dmRoute.addChildren(roomSurfaceRoutes(dmRoute)),
   threadRoute,
   eventResolverRoute,
-  roomResolverRoute,
+  roomResolverRoute.addChildren(roomSurfaceRoutes(roomResolverRoute)),
 ]);
 
 /**
@@ -405,13 +437,13 @@ export function useNavigateToRoom(): (roomId: string, focus?: string) => void {
   const navigate = useNavigate();
   return (roomId, focus) => {
     if (roomId === ACTIVITY_ROOM_ID) {
-      void navigate({ to: ACTIVITY_PATH, search: (prev) => searchOf(prev) });
+      void navigate({ to: ACTIVITY_PATH, search: (prev: AppSearch) => searchOf(prev) });
       return;
     }
     void navigate({
       to: "/r/$roomId",
       params: { roomId },
-      search: (prev) => ({ ...searchOf(prev), ...(focus ? { focus } : {}) }),
+      search: (prev: AppSearch) => ({ ...searchOf(prev), ...(focus ? { focus } : {}) }),
     });
   };
 }
@@ -438,12 +470,12 @@ export function useNavigateRoomTab(): (tab: "chat" | "board" | "artifacts", room
     const address = addressForRoom(room);
     if (address?.kind === "group") {
       const to = ({ chat: "/g/$publicId", board: "/g/$publicId/board/$boardId", artifacts: "/g/$publicId/artifacts" } as const)[tab];
-      void navigate({ to, params: { publicId: address.publicId, boardId: DEFAULT_BOARD_ID }, search: (prev) => searchOf(prev) });
+      void navigate({ to, params: { publicId: address.publicId, boardId: DEFAULT_BOARD_ID }, search: (prev: AppSearch) => searchOf(prev) });
       return;
     }
     if (address?.kind === "dm") {
       const to = ({ chat: "/d/$peerId", board: "/d/$peerId/board/$boardId", artifacts: "/d/$peerId/artifacts" } as const)[tab];
-      void navigate({ to, params: { peerId: address.peerId, boardId: DEFAULT_BOARD_ID }, search: (prev) => searchOf(prev) });
+      void navigate({ to, params: { peerId: address.peerId, boardId: DEFAULT_BOARD_ID }, search: (prev: AppSearch) => searchOf(prev) });
     }
   };
 }
@@ -458,7 +490,7 @@ export function useNavigateRoomTab(): (tab: "chat" | "board" | "artifacts", room
  */
 export function useClearFocus(): () => void {
   const navigate = useNavigate();
-  return () => void navigate({ to: ".", search: (prev) => searchOf(prev), replace: true });
+  return () => void navigate({ to: ".", search: (prev: AppSearch) => searchOf(prev), replace: true });
 }
 
 /**
@@ -479,7 +511,7 @@ export function useNavigateToThread(): (parentMessageId: string) => void {
     void navigate({
       to: "/t/$eventId",
       params: { eventId: stripEventPrefix(parentMessageId) },
-      search: (prev) => searchOf(prev),
+      search: (prev: AppSearch) => searchOf(prev),
     });
   };
 }

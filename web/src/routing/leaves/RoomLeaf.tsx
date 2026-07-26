@@ -1,5 +1,5 @@
 import { Outlet, useSearch } from "@tanstack/react-router";
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { AgentRoster } from "../../components/AgentRoster.tsx";
 import { BoardView } from "../../components/BoardView.tsx";
 import { ChatView } from "../../components/ChatView.tsx";
@@ -103,12 +103,4 @@ export function ArtifactsLeaf() {
 function useAddressedRoom(): Room | undefined {
   const roomId = useActiveRoomId();
   return useRooms().find((candidate) => candidate.id === roomId);
-}
-
-/** Shared by the room and thread layouts: the split's grid template when open. */
-export function threadSplitStyle(threadWidth: number): CSSProperties {
-  return {
-    gridTemplateColumns: `minmax(0, 1fr) ${threadWidth}px`,
-    "--thread-pane-width": `${threadWidth}px`,
-  } as CSSProperties;
 }

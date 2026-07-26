@@ -174,3 +174,40 @@ test("re-entering a route re-runs its gate instead of serving a cached result", 
   await router.load();
   expect(gate()).toEqual({ roomId: "ml-ranking" });
 });
+
+test("a room with no canonical address stays reachable at its legacy id", async () => {
+  // A runtime that predates the public_id migration serves groups with no
+  // address. Not-found is right for an id that names nothing; it is wrong for a
+  // room sitting in the sidebar, which would make the whole app unusable.
+  const ds = new MockDataSource();
+  // The production shape: groups with no public_id and no DM rooms at all, so
+  // nothing in the workspace has a canonical address.
+  const stripped = ds.rooms().get()
+    .filter((room) => room.kind === "group")
+    .map((room) => {
+      const { publicId: _dropped, ...rest } = room;
+      return rest;
+    });
+  (ds.rooms() as unknown as { set(value: unknown): void }).set(stripped);
+
+  const router = createMemoryRouter(ds, "/web/r/ml-ranking");
+  await router.load();
+  expect(router.state.statusCode).toBe(200);
+  expect(router.state.location.pathname).toBe("/r/ml-ranking");
+  expect([...router.state.matches].reverse().find((m) => (m.loaderData as { roomId?: string })?.roomId)?.loaderData)
+    .toEqual({ roomId: "ml-ranking" });
+
+  // And the mount point lands there rather than stranding on the activity feed.
+  const index = createMemoryRouter(ds, "/web/");
+  await index.load();
+  expect(index.state.redirect?.options.href).toBe("/web/r/checkout-revamp");
+});
+
+test("the legacy id still canonicalises when the room does have an address", async () => {
+  const result = await visit("/web/r/ml-ranking");
+  expect(result.at).toBe(`/g/${ML_RANKING}`);
+});
+
+test("a legacy id naming no room is still not-found", async () => {
+  expect((await visit("/web/r/no-such-room")).statusCode).toBe(404);
+});
