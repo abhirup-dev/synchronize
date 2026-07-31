@@ -8,7 +8,7 @@
   <array>
     <string>/bin/zsh</string>
     <string>-c</string>
-    <string>source /Users/abhirupdas/.config/rc/keys.env; exec /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/home/.agentmemory/bin/iii --no-update-check --config /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/iii-config.yaml</string>
+    <string>source /Users/abhirupdas/.config/rc/keys.env; set -a; source /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/llm.env; set +a; exec /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/home/.agentmemory/bin/iii --no-update-check --config /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/iii-config.yaml</string>
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory</string>

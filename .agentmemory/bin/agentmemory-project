@@ -35,7 +35,51 @@ case "${1:-start}" in
     ;;
   stop)
     if launchctl print "$launchd_domain/$launchd_label" >/dev/null 2>&1; then
-      exec launchctl bootout "$launchd_domain/$launchd_label"
+      service_pid=$(launchctl print "$launchd_domain/$launchd_label" |
+        awk '/^[[:space:]]*pid = [0-9]+$/ { print $3; exit }')
+      worker_pids=""
+      if [ -n "$service_pid" ]; then
+        worker_pids=$(pgrep -P "$service_pid" 2>/dev/null || true)
+      fi
+
+      # Let AgentMemory persist its in-memory search indexes while the iii
+      # engine is still available. A direct launchctl bootout stops the engine
+      # first, which can strand the worker during its shutdown handshake.
+      if [ -n "$worker_pids" ]; then
+        kill -TERM $worker_pids 2>/dev/null || true
+        for _ in $(jot 100); do
+          alive=""
+          for worker_pid in $worker_pids; do
+            if kill -0 "$worker_pid" 2>/dev/null; then
+              alive=1
+              break
+            fi
+          done
+          [ -z "$alive" ] && break
+          sleep 0.1
+        done
+      fi
+
+      launchctl bootout "$launchd_domain/$launchd_label"
+
+      # Do not let a replacement engine start while an old worker can still
+      # reconnect and later unregister the new worker's shared REST routes.
+      for _ in $(jot 300); do
+        alive=""
+        for worker_pid in $worker_pids; do
+          if kill -0 "$worker_pid" 2>/dev/null; then
+            alive=1
+            break
+          fi
+        done
+        if [ -z "$alive" ] &&
+          ! launchctl print "$launchd_domain/$launchd_label" >/dev/null 2>&1; then
+          exit 0
+        fi
+        sleep 0.1
+      done
+      echo "agentmemory service did not exit within 30 seconds" >&2
+      exit 1
     fi
     echo "agentmemory launchd service is not loaded"
     ;;
