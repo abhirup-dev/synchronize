@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+
+worktree_root=$(git -C "$(dirname -- "$0")/../.." rev-parse --show-toplevel)
+common_dir=$(git -C "$worktree_root" rev-parse --path-format=absolute --git-common-dir)
+project_root=$(dirname -- "$common_dir")
+runtime_home="$project_root/.agentmemory/runtime/home"
+rest_url="http://127.0.0.1:3211"
+launchd_label="dev.agentmemory.synchronize"
+launchd_domain="gui/$(id -u)"
+launchd_plist="$project_root/.agentmemory/launchd/$launchd_label.plist"
+installed_plist="$HOME/Library/LaunchAgents/$launchd_label.plist"
+
+mkdir -p "$runtime_home"
+export HOME="$runtime_home"
+export AGENTMEMORY_URL="$rest_url"
+export AGENTMEMORY_PROJECT_NAME="synchronize"
+export AGENTMEMORY_III_CONFIG="$project_root/.agentmemory/iii-config.yaml"
+export III_ENGINE_URL="ws://127.0.0.1:49134"
+export STANDALONE_PERSIST_PATH="$project_root/.agentmemory/runtime/standalone.json"
+export CLAUDE_PROJECT_PATH="$worktree_root"
+export AGENTMEMORY_TOOLS="all"
+
+cd "$project_root/.agentmemory"
+
+case "${1:-start}" in
+  start)
+    mkdir -p "$HOME/Library/LaunchAgents" "$project_root/.agentmemory/runtime/logs"
+    ln -sfn "$launchd_plist" "$installed_plist"
+    if launchctl print "$launchd_domain/$launchd_label" >/dev/null 2>&1; then
+      echo "agentmemory launchd service is already loaded"
+      exit 0
+    fi
+    exec launchctl bootstrap "$launchd_domain" "$installed_plist"
+    ;;
+  stop)
+    if launchctl print "$launchd_domain/$launchd_label" >/dev/null 2>&1; then
+      exec launchctl bootout "$launchd_domain/$launchd_label"
+    fi
+    echo "agentmemory launchd service is not loaded"
+    ;;
+  status)
+    exec "$project_root/node_modules/.bin/agentmemory" status --port 3211
+    ;;
+  doctor)
+    shift
+    exec "$project_root/node_modules/.bin/agentmemory" doctor --port 3211 "$@"
+    ;;
+  dashboard)
+    open "https://synchronize-agentmemory.localhost:1355"
+    ;;
+  *)
+    echo "usage: $0 {start|stop|status|doctor|dashboard}" >&2
+    exit 2
+    ;;
+esac

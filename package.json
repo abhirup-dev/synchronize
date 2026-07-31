@@ -14,10 +14,17 @@
     "ast-grep": "ast-grep",
     "ast-grep:scan": "ast-grep scan",
     "ast-grep:test": "ast-grep test",
+    "agentmemory:start": "./.agentmemory/bin/agentmemory-project start",
+    "agentmemory:stop": "./.agentmemory/bin/agentmemory-project stop",
+    "agentmemory:status": "./.agentmemory/bin/agentmemory-project status",
+    "agentmemory:doctor": "./.agentmemory/bin/agentmemory-project doctor",
+    "agentmemory:dashboard": "./.agentmemory/bin/agentmemory-project dashboard",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "devDependencies": {
+    "@agentmemory/agentmemory": "0.9.28",
+    "@agentmemory/mcp": "0.9.28",
     "@ast-grep/cli": "^0.44.0",
     "@types/bun": "^1.2.0",
     "typescript": "^5.7.0"

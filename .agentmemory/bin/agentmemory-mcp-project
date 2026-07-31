@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+worktree_root=$(git -C "$(dirname -- "$0")/../.." rev-parse --show-toplevel)
+common_dir=$(git -C "$worktree_root" rev-parse --path-format=absolute --git-common-dir)
+project_root=$(dirname -- "$common_dir")
+runtime_home="$project_root/.agentmemory/runtime/home"
+
+mkdir -p "$runtime_home"
+export HOME="$runtime_home"
+export AGENTMEMORY_URL="http://127.0.0.1:3211"
+export AGENTMEMORY_PROJECT_NAME="synchronize"
+export AGENTMEMORY_III_CONFIG="$project_root/.agentmemory/iii-config.yaml"
+export III_ENGINE_URL="ws://127.0.0.1:49134"
+export STANDALONE_PERSIST_PATH="$project_root/.agentmemory/runtime/standalone.json"
+export AGENTMEMORY_TOOLS="all"
+
+cd "$project_root/.agentmemory"
+exec "$project_root/node_modules/.bin/agentmemory-mcp"

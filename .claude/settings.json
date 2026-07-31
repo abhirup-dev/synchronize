@@ -1,25 +1,142 @@
 {
   "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "command": "bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [
           {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" session-start"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
             "command": "bd prime",
             "type": "command"
           }
-        ],
-        "matcher": ""
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" prompt-submit"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" post-tool-use"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" post-tool-failure"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" pre-compact"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" subagent-start"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" subagent-stop"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" notification"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" task-completed"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" stop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" session-end"
+          }
+        ]
       }
     ]
   }

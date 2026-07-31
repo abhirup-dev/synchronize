@@ -1,0 +1,68 @@
+{
+  "description": "Project-local AgentMemory hooks for synchronize.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" session-start",
+            "statusMessage": "agentmemory: loading session context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" prompt-submit",
+            "statusMessage": "agentmemory: recalling relevant memories"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|Read|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" post-tool-use"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" pre-compact"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-hook-project\" stop"
+          }
+        ]
+      }
+    ]
+  }
+}

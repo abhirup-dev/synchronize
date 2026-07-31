@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.agentmemory.synchronize</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>source /Users/abhirupdas/.config/rc/keys.env; exec /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/home/.agentmemory/bin/iii --no-update-check --config /Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/iii-config.yaml</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/home</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>AGENTMEMORY_URL</key>
+    <string>http://127.0.0.1:3211</string>
+    <key>AGENTMEMORY_PROJECT_NAME</key>
+    <string>synchronize</string>
+    <key>AGENTMEMORY_III_CONFIG</key>
+    <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/iii-config.yaml</string>
+    <key>III_ENGINE_URL</key>
+    <string>ws://127.0.0.1:49134</string>
+    <key>III_REST_PORT</key>
+    <string>3211</string>
+    <key>III_STREAM_PORT</key>
+    <string>3212</string>
+    <key>STANDALONE_PERSIST_PATH</key>
+    <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/standalone.json</string>
+    <key>CLAUDE_PROJECT_PATH</key>
+    <string>/Users/abhirupdas/Codes/Personal/synchronize</string>
+    <key>AGENTMEMORY_TOOLS</key>
+    <string>all</string>
+    <key>VIEWER_ALLOWED_ORIGINS</key>
+    <string>https://synchronize-agentmemory.localhost:1355,http://localhost:3211,http://localhost:3213,http://127.0.0.1:3211,http://127.0.0.1:3213</string>
+    <key>VIEWER_ALLOWED_HOSTS</key>
+    <string>synchronize-agentmemory.localhost:1355</string>
+  </dict>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/logs/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/logs/launchd.error.log</string>
+</dict>
+</plist>

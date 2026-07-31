@@ -1,0 +1,3 @@
+[mcp_servers.agentmemory]
+command = "/bin/sh"
+args = ["-c", "exec \"$(git rev-parse --path-format=absolute --git-common-dir)/../.agentmemory/bin/agentmemory-mcp-project\""]
