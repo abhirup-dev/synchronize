@@ -1,7 +1,11 @@
 workers:
+  - name: iii-worker-manager
+    config:
+      port: ${III_ENGINE_PORT:49234}
+      host: 127.0.0.1
   - name: iii-http
     config:
-      port: 3211
+      port: ${III_REST_PORT:3211}
       host: 127.0.0.1
       default_timeout: 180000
       cors:
@@ -32,7 +36,7 @@ workers:
         name: kv
   - name: iii-stream
     config:
-      port: 3212
+      port: ${III_STREAM_PORT:3212}
       host: 127.0.0.1
       adapter:
         name: kv

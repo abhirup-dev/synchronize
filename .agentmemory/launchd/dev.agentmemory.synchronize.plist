@@ -32,7 +32,9 @@
     <key>AGENTMEMORY_III_CONFIG</key>
     <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/iii-config.yaml</string>
     <key>III_ENGINE_URL</key>
-    <string>ws://127.0.0.1:49134</string>
+    <string>ws://127.0.0.1:49234</string>
+    <key>III_ENGINE_PORT</key>
+    <string>49234</string>
     <key>III_REST_PORT</key>
     <string>3211</string>
     <key>III_STREAM_PORT</key>
