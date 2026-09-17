@@ -64,17 +64,25 @@ export async function ensureDaemon(): Promise<ClientConfig> {
 
   await ensureDir(paths.home);
   const existing = await readJson<Discovery>(paths.discoveryPath);
-  if (existing && (await isHealthy(existing.baseUrl))) {
-    log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
-    return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
+  if (existing) {
+    const health = await probeHealth(existing.baseUrl);
+    if (health === "healthy") {
+      log(`using existing daemon base_url=${existing.baseUrl} pid=${existing.pid}`);
+      return { baseUrl: existing.baseUrl, token, paths, started: false, remote: false };
+    }
+    if (health !== "unreachable") throw occupiedDaemonError(existing, health);
   }
 
   let started = false;
   await withLaunchLock(paths, async () => {
     const refreshed = await readJson<Discovery>(paths.discoveryPath);
-    if (refreshed && (await isHealthy(refreshed.baseUrl))) {
-      log(`daemon became healthy while waiting base_url=${refreshed.baseUrl} pid=${refreshed.pid}`);
-      return;
+    if (refreshed) {
+      const health = await probeHealth(refreshed.baseUrl);
+      if (health === "healthy") {
+        log(`daemon became healthy while waiting base_url=${refreshed.baseUrl} pid=${refreshed.pid}`);
+        return;
+      }
+      if (health !== "unreachable") throw occupiedDaemonError(refreshed, health);
     }
     log(`starting daemon home=${paths.home}`);
     const child = await startDaemon(paths);
@@ -154,19 +162,34 @@ async function validateRemoteDaemon(baseUrl: string, token: string | null, timeo
   throw new Error(`${ENV_REMOTE_URL} /status failed: ${response.status} ${response.statusText}`);
 }
 
-async function isHealthy(baseUrl: string, timeoutMs?: number): Promise<boolean> {
+type HealthProbe = "healthy" | "unreachable" | "timed_out" | "incompatible";
+
+async function probeHealth(baseUrl: string, timeoutMs?: number): Promise<HealthProbe> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs ?? healthTimeoutMs());
   try {
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
-    if (!response.ok) return false;
+    if (!response.ok) return "incompatible";
     const body = await response.json().catch(() => null);
-    return body?.service === "synchronize" && body?.api_version === API_VERSION;
+    return body?.service === "synchronize" && body?.api_version === API_VERSION ? "healthy" : "incompatible";
   } catch {
-    return false;
+    return controller.signal.aborted ? "timed_out" : "unreachable";
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function isHealthy(baseUrl: string, timeoutMs?: number): Promise<boolean> {
+  return (await probeHealth(baseUrl, timeoutMs)) === "healthy";
+}
+
+function occupiedDaemonError(discovery: Discovery, health: Exclude<HealthProbe, "healthy" | "unreachable">): Error {
+  const make = discovery.provenance?.source_root ? `make -C "${discovery.provenance.source_root}"` : "make";
+  const reason = health === "timed_out" ? "timed out" : "returned an incompatible response";
+  return new Error(
+    `Discovered daemon pid ${discovery.pid} at ${discovery.baseUrl} ${reason}; refusing to autostart another daemon on that address. ` +
+      `Inspect with '${make} inspect-daemon'. If it is synchronize, restart without wiping state with '${make} daemon-relaunch'.`,
+  );
 }
 
 function healthTimeoutMs(): number {

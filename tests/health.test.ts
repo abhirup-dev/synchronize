@@ -293,6 +293,67 @@ test("SYNCHRONIZE_HEALTH_TIMEOUT_MS controls remote daemon health validation", a
   }
 });
 
+test("occupied but unresponsive discovered daemon refuses autostart", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-unresponsive-"));
+  homes.push(home);
+  const originalHome = process.env.SYNCHRONIZE_HOME;
+  const originalHealthTimeout = process.env.SYNCHRONIZE_HEALTH_TIMEOUT_MS;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch() {
+      await Bun.sleep(200);
+      return Response.json({ ok: true, service: "synchronize", api_version: 1 });
+    },
+  });
+
+  await Bun.write(join(home, "daemon.json"), JSON.stringify({
+    pid: process.pid,
+    host: "127.0.0.1",
+    port: server.port,
+    baseUrl: server.url.toString().replace(/\/$/, ""),
+    tokenRequired: false,
+    dbPath: join(home, "synchronize.db"),
+    mediaPath: join(home, "media"),
+    startedAt: new Date().toISOString(),
+    provenance: { source_root: process.cwd() },
+  }));
+
+  try {
+    process.env.SYNCHRONIZE_HOME = home;
+    process.env.SYNCHRONIZE_HEALTH_TIMEOUT_MS = "25";
+    await expect(ensureDaemon()).rejects.toThrow("refusing to autostart another daemon");
+    expect(await Bun.file(join(home, "daemon.err.log")).exists()).toBe(false);
+  } finally {
+    restoreEnv("SYNCHRONIZE_HOME", originalHome);
+    restoreEnv("SYNCHRONIZE_HEALTH_TIMEOUT_MS", originalHealthTimeout);
+    server.stop(true);
+  }
+});
+
+test("unreachable stale discovery still autostarts a replacement daemon", async () => {
+  const home = await mkdtemp(join(tmpdir(), "synchronize-stale-discovery-"));
+  homes.push(home);
+  const originalHome = process.env.SYNCHRONIZE_HOME;
+  const originalPort = process.env.SYNCHRONIZE_PORT;
+  let daemonPid: number | null = null;
+  await Bun.write(join(home, "daemon.json"), JSON.stringify({ pid: 999_999, baseUrl: "http://127.0.0.1:9" }));
+
+  try {
+    process.env.SYNCHRONIZE_HOME = home;
+    process.env.SYNCHRONIZE_PORT = "0";
+    const client = await ensureDaemon();
+    const discovery = await Bun.file(join(home, "daemon.json")).json() as { pid: number; baseUrl: string };
+    daemonPid = discovery.pid;
+    expect(client.started).toBe(true);
+    expect(discovery.baseUrl).not.toBe("http://127.0.0.1:9");
+  } finally {
+    restoreEnv("SYNCHRONIZE_HOME", originalHome);
+    restoreEnv("SYNCHRONIZE_PORT", originalPort);
+    if (daemonPid) await killPid(daemonPid);
+  }
+});
+
 test("CLI-launched daemon stays alive across separate CLI processes", async () => {
   const home = await mkdtemp(join(tmpdir(), "synchronize-cli-daemon-"));
   homes.push(home);
