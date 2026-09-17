@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+url="${AGENTMEMORY_URL:-http://127.0.0.1:3211}"
+project="${AGENTMEMORY_PROJECT_NAME:-synchronize}"
+dry_run=0
+
+if [[ "${1:-}" == "--dry-run" ]]; then
+  dry_run=1
+elif [[ $# -gt 0 ]]; then
+  echo "usage: $0 [--dry-run]" >&2
+  exit 2
+fi
+
+for dependency in /usr/bin/curl jq; do
+  command -v "$dependency" >/dev/null
+done
+
+/usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+  "$url/agentmemory/livez" >/dev/null
+
+sessions=$(/usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+  "$url/agentmemory/sessions")
+
+rows=()
+while IFS=$'\t' read -r session_id observations; do
+  [[ -n "$session_id" ]] && rows+=("$session_id"$'\t'"$observations")
+done < <(
+  jq -r --arg project "$project" '
+    [.sessions[]
+      | select(.status == "completed")
+      | select((.tags // []) | index("jsonl-import"))
+      | select(.project == $project)
+      | select(.summary == null)]
+    | sort_by(.observationCount // 0)
+    | .[]
+    | [.id, (.observationCount // 0)]
+    | @tsv
+  ' <<<"$sessions"
+)
+
+echo "AgentMemory delta backfill"
+echo "server:  $url"
+echo "project: $project"
+echo "pending: ${#rows[@]} session(s)"
+echo
+
+if [[ ${#rows[@]} -eq 0 ]]; then
+  echo "Nothing to summarize."
+  exit 0
+fi
+
+if [[ "$dry_run" == 1 ]]; then
+  printf '%-40s %10s\n' "session" "observations"
+  for row in "${rows[@]}"; do
+    printf '%-40s %10s\n' "${row%%$'\t'*}" "${row#*$'\t'}"
+  done
+  exit 0
+fi
+
+ok=0
+failed=0
+index=0
+for row in "${rows[@]}"; do
+  index=$((index + 1))
+  session_id="${row%%$'\t'*}"
+  observations="${row#*$'\t'}"
+  body=$(jq -nc \
+    --arg sessionId "$session_id" \
+    --arg project "$project" \
+    '{sessionId: $sessionId, project: $project}')
+
+  response=$(
+    /usr/bin/curl -sS --connect-timeout 10 --max-time 1800 \
+      -X POST "$url/agentmemory/summarize" \
+      -H 'Content-Type: application/json' \
+      --data "$body" ||
+      printf '{"success":false,"error":"curl_failed"}'
+  )
+
+  if jq -e '.success == true' >/dev/null 2>&1 <<<"$response"; then
+    ok=$((ok + 1))
+    title=$(jq -r '.summary.title // ""' <<<"$response")
+    printf '[%3d/%3d] OK   obs=%-5s %s  %s\n' \
+      "$index" "${#rows[@]}" "$observations" "$session_id" "$title"
+  else
+    failed=$((failed + 1))
+    error=$(jq -r '.error // "invalid_response"' <<<"$response" 2>/dev/null ||
+      printf 'invalid_response')
+    printf '[%3d/%3d] FAIL obs=%-5s %s  %s\n' \
+      "$index" "${#rows[@]}" "$observations" "$session_id" "$error"
+  fi
+done
+
+echo
+echo "summaries: ok=$ok failed=$failed"
+
+if [[ "$ok" -gt 0 ]]; then
+  echo "running project-scoped consolidation..."
+  consolidation=$(
+    /usr/bin/curl -sS --connect-timeout 10 --max-time 1800 \
+      -X POST "$url/agentmemory/consolidate-pipeline" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -nc --arg project "$project" '{project: $project}')" ||
+      printf '{"success":false,"error":"curl_failed"}'
+  )
+  jq . <<<"$consolidation" 2>/dev/null || printf '%s\n' "$consolidation"
+fi
+
+remaining=$(
+  /usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+    "$url/agentmemory/sessions" |
+    jq --arg project "$project" '
+      [.sessions[]
+        | select(.status == "completed")
+        | select((.tags // []) | index("jsonl-import"))
+        | select(.project == $project)
+        | select(.summary == null)]
+      | length
+    '
+)
+echo "remaining unsummarized imported sessions: $remaining"
+
+[[ "$failed" -eq 0 ]]

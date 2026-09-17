@@ -20,5 +20,6 @@ export III_ENGINE_URL="ws://127.0.0.1:$III_ENGINE_PORT"
 export STANDALONE_PERSIST_PATH="$project_root/.agentmemory/runtime/standalone.json"
 export CLAUDE_PROJECT_PATH="$worktree_root"
 export AGENTMEMORY_WORKTREE_PATH="$worktree_root"
+export AGENTMEMORY_INJECT_CONTEXT="true"
 
 exec node "$hook_path"

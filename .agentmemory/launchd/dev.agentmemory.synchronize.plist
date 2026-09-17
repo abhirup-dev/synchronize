@@ -43,6 +43,8 @@
     <string>/Users/abhirupdas/Codes/Personal/synchronize/.agentmemory/runtime/standalone.json</string>
     <key>CLAUDE_PROJECT_PATH</key>
     <string>/Users/abhirupdas/Codes/Personal/synchronize</string>
+    <key>AGENTMEMORY_INJECT_CONTEXT</key>
+    <string>true</string>
     <key>AGENTMEMORY_TOOLS</key>
     <string>all</string>
     <key>VIEWER_ALLOWED_ORIGINS</key>

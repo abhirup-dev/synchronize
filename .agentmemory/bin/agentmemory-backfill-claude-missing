@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="${AGENTMEMORY_REPO:-$(pwd)}"
+url="${AGENTMEMORY_URL:-http://127.0.0.1:3211}"
+project="${AGENTMEMORY_PROJECT_NAME:-$(basename "$repo")}"
+inventory="$repo/.agentmemory/bin/agentmemory-backfill-candidates.mjs"
+delta="$repo/.agentmemory/bin/agentmemory-backfill-delta"
+manifest="${AGENTMEMORY_BACKFILL_MANIFEST:-$repo/.agentmemory/runtime/backfill-claude-missing.json}"
+
+for dependency in /usr/bin/curl jq node; do
+  command -v "$dependency" >/dev/null
+done
+
+/usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+  "$url/agentmemory/livez" >/dev/null
+
+node "$inventory" candidates \
+  --repo "$repo" \
+  --project "$project" \
+  --agent claude \
+  --status missing \
+  --agentmemory-url "$url" \
+  --format json >"$manifest"
+
+mapfile_cmd='
+  .sessions
+  | sort_by(.bytes // 0)
+  | .[]
+  | [.sessionId, .sourcePath, (.bytes // 0)]
+  | @tsv
+'
+rows=()
+while IFS=$'\t' read -r session_id source_path bytes; do
+  [[ -n "$session_id" ]] &&
+    rows+=("$session_id"$'\t'"$source_path"$'\t'"$bytes")
+done < <(jq -r "$mapfile_cmd" "$manifest")
+
+echo "AgentMemory exact Claude import"
+echo "server:     $url"
+echo "project:    $project"
+echo "manifest:   $manifest"
+echo "candidates: ${#rows[@]} missing session(s)"
+echo
+
+imported=0
+for row in "${rows[@]}"; do
+  session_id="${row%%$'\t'*}"
+  remainder="${row#*$'\t'}"
+  source_path="${remainder%%$'\t'*}"
+  bytes="${remainder#*$'\t'}"
+
+  response=$(
+    /usr/bin/curl -fsS --connect-timeout 10 --max-time 1800 \
+      -X POST "$url/agentmemory/replay/import-jsonl" \
+      -H 'Content-Type: application/json' \
+      --data "$(jq -nc --arg path "$source_path" '{path: $path}')"
+  )
+  jq -e --arg id "$session_id" \
+    '.success == true and (.sessionIds | index($id) != null)' \
+    >/dev/null <<<"$response"
+
+  sessions=$(
+    /usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+      "$url/agentmemory/sessions"
+  )
+  session=$(jq -c --arg id "$session_id" \
+    '.sessions[] | select(.id == $id)' <<<"$sessions")
+  [[ -n "$session" ]]
+
+  # The documented replay importer derives project from cwd. Worktrees therefore
+  # need the documented import API to normalize only the session metadata.
+  if [[ "$(jq -r '.project' <<<"$session")" != "$project" ]]; then
+    repair=$(
+      /usr/bin/curl -fsS --connect-timeout 10 --max-time 120 \
+        -X POST "$url/agentmemory/import" \
+        -H 'Content-Type: application/json' \
+        --data "$(
+          jq -nc \
+            --arg version "0.9.28" \
+            --arg project "$project" \
+            --argjson session "$session" \
+            '{
+              strategy: "merge",
+              exportData: {
+                version: $version,
+                sessions: [($session | .project = $project)],
+                observations: {},
+                memories: [],
+                summaries: []
+              }
+            }'
+        )"
+    )
+    jq -e '.success == true' >/dev/null <<<"$repair"
+  fi
+
+  verify=$(
+    /usr/bin/curl -fsS --connect-timeout 10 --max-time 30 \
+      "$url/agentmemory/sessions" |
+      jq -c --arg id "$session_id" --arg project "$project" \
+        '.sessions[]
+         | select(.id == $id and .project == $project
+                  and .status == "completed"
+                  and (.observationCount // 0) > 0)'
+  )
+  [[ -n "$verify" ]]
+
+  imported=$((imported + 1))
+  printf '[%3d/%3d] OK bytes=%-10s obs=%-5s %s\n' \
+    "$imported" "${#rows[@]}" "$bytes" \
+    "$(jq -r '.observationCount' <<<"$verify")" "$session_id"
+done
+
+echo
+echo "exact imports complete: $imported"
+echo "starting the proven summarize + consolidate delta runner..."
+AGENTMEMORY_URL="$url" AGENTMEMORY_PROJECT_NAME="$project" "$delta"
